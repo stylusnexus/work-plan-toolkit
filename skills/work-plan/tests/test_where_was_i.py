@@ -5,6 +5,8 @@ last session timestamp+summary + next pick + behind-it (optional) +
 local git (optional) + new-issues (optional) + bottom rule. NEVER a
 dump of all open/closed issues.
 """
+from __future__ import annotations
+
 import io
 import sys
 import tempfile
