@@ -64,8 +64,6 @@ work-plan-toolkit/
 │       └── SKILL.md                    # bundled companion skill
 ├── commands/
 │   └── work-plan.md                    # Claude Code slash command alias
-├── config/
-│   └── config.example.yml              # template (don't edit)
 ├── docs/
 │   └── usage-examples.md
 └── notes/
@@ -125,27 +123,22 @@ repos:
     local: /path/to/local/checkout           # optional, enables in-progress detection
 ```
 
-### Template vs runtime config
+### Where your config lives
 
-Two config files exist; only one is the active one:
+The active config the skill reads is **`~/.claude/work-plan/config.yml`** — created by `install.sh` (or `install.ps1`) on first run. There's no template file in the repo to confuse with the runtime config; install just writes the right two lines directly.
 
-| File | Role |
-|---|---|
-| `<toolkit>/config/config.example.yml` | **Template only** — read-only, lives with the repo, ships with `notes_root: ./notes` (relative). Don't edit this. |
-| `<toolkit>/notes/` | **Default notes folder** — bundled, empty until `init-repo` populates per-repo subdirs. |
-| `~/.claude/work-plan/config.yml` | **Active runtime config** — what the skill reads. Created by `install.sh` on first run by copying the template AND replacing `./notes` with the absolute toolkit path. **Edit this** to override settings. |
-
-After a fresh install, your active config at `~/.claude/work-plan/config.yml` looks like:
+After a fresh install, it looks like:
 
 ```yaml
+# work-plan config — created by install.sh. Edit this file to customize.
+# Run /work-plan init-repo <key> --github=<org/repo> to populate repos:.
 notes_root: /absolute/path/to/work-plan-toolkit/notes
-repos:
-  example-repo:
-    github: your-org/your-repo
-    local: /path/to/local/checkout
+repos: {}
 ```
 
-`notes_root` is the **absolute path of the toolkit's bundled `notes/` folder**. To change it, edit `~/.claude/work-plan/config.yml` (NOT the template — editing the template gets blown away by `git pull`).
+`notes_root` is the **absolute path of the toolkit's bundled `notes/` folder**, so the default works out of the box. To change it (e.g., to `~/Documents/Project Notes/`), edit this file.
+
+The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key>`, which adds a per-repo subdir + writes the repo block back into this same config file via `yq`.
 
 ## Usage walkthrough
 

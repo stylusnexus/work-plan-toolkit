@@ -101,11 +101,13 @@ if (Test-Path $cmdDst) {
 if (Test-Path $ConfigFile) {
     Ok "config already exists, leaving alone ($ConfigFile)"
 } else {
-    Copy-Item (Join-Path $ToolkitDir "config\config.example.yml") $ConfigFile
     $absNotes = Join-Path $ToolkitDir "notes"
-    (Get-Content $ConfigFile) `
-        -replace '^notes_root:.*', "notes_root: $absNotes" `
-        | Set-Content $ConfigFile
+    @"
+# work-plan config — created by install.ps1. Edit this file to customize.
+# Run /work-plan init-repo <key> --github=<org/repo> to populate repos:.
+notes_root: $absNotes
+repos: {}
+"@ | Set-Content -Path $ConfigFile -Encoding UTF8
     Ok "seeded $ConfigFile (notes_root: $absNotes)"
 }
 

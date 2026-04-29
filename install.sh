@@ -103,11 +103,13 @@ fi
 if [ -f "${CONFIG_FILE}" ]; then
     ok "config already exists, leaving alone (${CONFIG_FILE})"
 else
-    cp "${TOOLKIT_DIR}/config/config.example.yml" "${CONFIG_FILE}"
     abs_notes="${TOOLKIT_DIR}/notes"
-    tmp="$(mktemp)"
-    awk -v abs="${abs_notes}" '/^notes_root:/ { print "notes_root: " abs; next } { print }' \
-        "${CONFIG_FILE}" > "${tmp}" && mv "${tmp}" "${CONFIG_FILE}"
+    cat > "${CONFIG_FILE}" <<EOF
+# work-plan config — created by install.sh. Edit this file to customize.
+# Run /work-plan init-repo <key> --github=<org/repo> to populate repos:.
+notes_root: ${abs_notes}
+repos: {}
+EOF
     ok "seeded ${CONFIG_FILE} (notes_root: ${abs_notes})"
 fi
 
