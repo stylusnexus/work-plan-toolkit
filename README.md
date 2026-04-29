@@ -251,6 +251,6 @@ python3 -m unittest discover tests
 
 MIT — see `LICENSE`.
 
-## Author
+## Maintainer
 
-Eve McGivern · [@stylusnexus](https://github.com/stylusnexus)
+Stylus Nexus Holdings LLC · [@stylusnexus](https://github.com/stylusnexus)
