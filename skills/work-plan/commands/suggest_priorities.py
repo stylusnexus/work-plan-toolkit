@@ -2,7 +2,7 @@
 
 Two-step:
 1. CLI fetches all unlabeled open issues, writes JSON batch + prints prompt
-2. Agent fills priorities into /tmp/work_plan_priorities.answers.json
+2. Agent fills priorities into ~/.claude/work-plan/cache/priorities.answers.json
 3. Run with --apply to apply via gh
 """
 import json
@@ -11,8 +11,11 @@ import sys
 from pathlib import Path
 
 from lib.config import load_config, ConfigError
+from lib.scratch import cache_dir
 
-BATCH_PATH = Path("/tmp/work_plan_priorities.json")
+
+def _batch_path() -> Path:
+    return cache_dir() / "priorities.json"
 PROMPT_TEMPLATE = """\
 For each GitHub issue below, suggest a priority label (P0/P1/P2/P3) based on
 title, milestone, and labels. Return JSON: [{"number": N, "priority": "P0"}, ...]
@@ -40,7 +43,7 @@ def run(args: list[str]) -> int:
         return 1
 
     if apply_mode:
-        return _apply()
+        return _apply(cfg)
 
     repos = list(cfg["repos"].keys())
     if repo_arg:
@@ -73,9 +76,9 @@ def run(args: list[str]) -> int:
         print("All open issues already have priority labels.")
         return 0
 
-    BATCH_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BATCH_PATH.write_text(json.dumps({"repo": repo, "issues": unlabeled}, indent=2))
-    print(f"Wrote {len(unlabeled)} issues to {BATCH_PATH}")
+    batch_path = _batch_path()
+    batch_path.write_text(json.dumps({"repo": repo, "issues": unlabeled}, indent=2))
+    print(f"Wrote {len(unlabeled)} issues to {batch_path}")
     print()
     print("=" * 60)
     print(PROMPT_TEMPLATE)
@@ -86,21 +89,26 @@ def run(args: list[str]) -> int:
         print(f"#{i['number']} [{m_title}] [{','.join(labels) or 'no-labels'}] {i['title']}")
     print("=" * 60)
     print()
-    print(f"After agent returns JSON, save to {BATCH_PATH.with_suffix('.answers.json')}")
+    print(f"After agent returns JSON, save to {batch_path.with_suffix('.answers.json')}")
     print(f"Then run: python3 ~/.claude/skills/work-plan/work_plan.py suggest-priorities --apply")
     return 0
 
 
-def _apply() -> int:
-    answers_path = BATCH_PATH.with_suffix(".answers.json")
+def _apply(cfg: dict) -> int:
+    batch_path = _batch_path()
+    answers_path = batch_path.with_suffix(".answers.json")
     if not answers_path.exists():
         print(f"ERROR: {answers_path} not found. Run without --apply first.")
         return 1
-    if not BATCH_PATH.exists():
-        print(f"ERROR: {BATCH_PATH} not found.")
+    if not batch_path.exists():
+        print(f"ERROR: {batch_path} not found.")
         return 1
-    batch = json.loads(BATCH_PATH.read_text())
+    batch = json.loads(batch_path.read_text())
     repo = batch["repo"]
+    allowed_repos = {entry.get("github") for entry in cfg.get("repos", {}).values()}
+    if repo not in allowed_repos:
+        print(f"ERROR: batch repo '{repo}' not in config.yml repos.")
+        return 1
     answers = json.loads(answers_path.read_text())
 
     print(f"Applying {len(answers)} priority labels to {repo}...")
