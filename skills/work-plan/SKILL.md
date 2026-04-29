@@ -57,7 +57,7 @@ After running `handoff`:
 Both are two-step:
 
 1. CLI fetches issues + writes prompt to terminal.
-2. **You** read the issues, output the requested JSON, save via Write tool to `/tmp/work_plan_priorities.answers.json` or `/tmp/work_plan_groups.answers.json`.
+2. **You** read the issues, output the requested JSON, save via Write tool to `~/.claude/work-plan/cache/priorities.answers.json` or `~/.claude/work-plan/cache/groups.answers.json`.
 3. Re-run with `--apply` to commit changes.
 
 Show the proposed labels/clusters BEFORE applying. The user may want to override.

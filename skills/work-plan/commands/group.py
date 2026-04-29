@@ -2,9 +2,9 @@
 
 Two-step:
 1. CLI fetches issues by filter (--milestone / --label / --search), writes JSON
-   batch to /tmp/work_plan_groups.json, prints clustering prompt.
+   batch to ~/.claude/work-plan/cache/groups.json, prints clustering prompt.
 2. Agent reads issues, produces JSON of clusters, saves to
-   /tmp/work_plan_groups.answers.json.
+   ~/.claude/work-plan/cache/groups.answers.json.
 3. Run with --apply to create/update track files.
 """
 import json
@@ -16,9 +16,15 @@ from pathlib import Path
 
 from lib.config import load_config, ConfigError
 from lib.frontmatter import parse_file, write_file
+from lib.scratch import cache_dir
 
-BATCH_PATH = Path("/tmp/work_plan_groups.json")
-ANSWERS_PATH = Path("/tmp/work_plan_groups.answers.json")
+
+def _batch_path() -> Path:
+    return cache_dir() / "groups.json"
+
+
+def _answers_path() -> Path:
+    return cache_dir() / "groups.answers.json"
 
 PROMPT_TEMPLATE = """\
 Cluster the GitHub issues below into thematic tracks. Each track represents a
@@ -102,15 +108,15 @@ def run(args: list[str]) -> int:
         print("No issues match the filter.")
         return 0
 
-    BATCH_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BATCH_PATH.write_text(json.dumps({
+    batch_path = _batch_path()
+    batch_path.write_text(json.dumps({
         "repo": repo,
         "folder": folder,
         "milestone": milestone_arg.split("=", 1)[1] if milestone_arg else None,
         "issues": issues,
     }, indent=2))
 
-    print(f"Wrote {len(issues)} issues to {BATCH_PATH}")
+    print(f"Wrote {len(issues)} issues to {batch_path}")
     print()
     print("=" * 60)
     print(PROMPT_TEMPLATE)
@@ -121,24 +127,29 @@ def run(args: list[str]) -> int:
         print(f"#{i['number']} [{m_title}] [{','.join(labels) or 'no-labels'}] {i['title']}")
     print("=" * 60)
     print()
-    print(f"After agent returns clusters JSON, save to {ANSWERS_PATH}")
+    print(f"After agent returns clusters JSON, save to {_answers_path()}")
     print("Then run: python3 ~/.claude/skills/work-plan/work_plan.py group --apply")
     return 0
 
 
 def _apply(cfg: dict) -> int:
-    if not ANSWERS_PATH.exists():
-        print(f"ERROR: {ANSWERS_PATH} not found. Run without --apply first.")
+    answers_path = _answers_path()
+    batch_path = _batch_path()
+    if not answers_path.exists():
+        print(f"ERROR: {answers_path} not found. Run without --apply first.")
         return 1
-    if not BATCH_PATH.exists():
-        print(f"ERROR: {BATCH_PATH} not found.")
+    if not batch_path.exists():
+        print(f"ERROR: {batch_path} not found.")
         return 1
 
-    batch = json.loads(BATCH_PATH.read_text())
+    batch = json.loads(batch_path.read_text())
     repo = batch["repo"]
     folder = batch["folder"]
+    if folder not in cfg.get("repos", {}):
+        print(f"ERROR: batch folder '{folder}' not in config.yml repos.")
+        return 1
     batch_milestone = batch.get("milestone") or "v1.0.0"
-    answers = json.loads(ANSWERS_PATH.read_text())
+    answers = json.loads(answers_path.read_text())
 
     notes_root = Path(cfg["notes_root"])
     track_dir = notes_root / folder
