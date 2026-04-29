@@ -52,6 +52,20 @@ After installing, authenticate `gh` once:
 gh auth login   # follow the prompts; needs `repo` scope to read issues
 ```
 
+## Compatible tools
+
+The toolkit is a Python CLI. Different agent tools discover and invoke it differently:
+
+| Tool | How to install | How to invoke |
+|---|---|---|
+| **Claude Code** | `./install.sh` (or `.\install.ps1`) — auto-detects `~/.claude/` | `/work-plan <subcommand>` (slash command) |
+| **Codex** | `./install.sh --target=$HOME/.agents` (or `-Target` on Windows) | `/work-plan <subcommand>` (or direct CLI — see below) |
+| **Cursor / GitHub Copilot / any other tool** | Skip the installer. Just clone the repo. | `python3 <toolkit>/skills/work-plan/work_plan.py <subcommand>` directly. Recommended: alias as `wp` in your shell rc:<br>**bash/zsh**: `alias wp="python3 /path/to/work-plan-toolkit/skills/work-plan/work_plan.py"`<br>**PowerShell**: `function wp { python "C:\path\to\work-plan-toolkit\skills\work-plan\work_plan.py" @args }` |
+
+For the slash-command-aware tools (Claude Code, Codex), the installer copies the skill into the right discovery path. For the others, the CLI works standalone — you just need it on your `PATH` or aliased.
+
+To install for **both** Claude Code and Codex, run the installer twice with different `--target` values.
+
 ## Install
 
 **macOS / Linux / WSL:**

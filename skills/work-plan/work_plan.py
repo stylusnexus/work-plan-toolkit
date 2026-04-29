@@ -58,7 +58,7 @@ DESCRIPTIONS = [
     ("init", "<path-to-md>",
      "Add frontmatter to an existing track .md file.",
      "After moving/creating a new .md file in Project Notes/<repo>/ that has no frontmatter.",
-     "/work-plan init '/Applications/Development/Projects/Project Notes/critforge/foo.md'"),
+     "/work-plan init '<notes_root>/<repo-key>/foo.md'"),
     ("init-repo", "<key> [--github=<org/repo>] [--local=<path>]",
      "Bootstrap a new repo: create <notes_root>/<key>/archive/{shipped,abandoned}/ and add the repo block to your config.",
      "When you start tracking a new GitHub repo. Replaces the old 'copy the example folder' setup.",
@@ -66,7 +66,7 @@ DESCRIPTIONS = [
     ("suggest-priorities", "[--repo=<folder>] [--apply]",
      "AI-assisted batch backfill of priority/PN labels.",
      "ONE-TIME setup, or whenever a wave of new unlabeled issues piles up.",
-     "/work-plan suggest-priorities --repo=critforge"),
+     "/work-plan suggest-priorities --repo=myproject"),
     ("group", "[--milestone=X] [--label=Y] [--repo=Z] [--apply]",
      "AI-cluster GitHub issues into thematic track files.",
      "ONE-TIME bulk organization of an unsorted milestone, or after a re-org.",
@@ -123,11 +123,11 @@ def _print_help() -> int:
     print()
     print("ONE-TIME SETUP\n")
     print("  Bulk-cluster milestone →  /work-plan group --milestone='v1.0.0 — Public Launch'")
-    print("  Backfill priorities    →  /work-plan suggest-priorities --repo=critforge")
+    print("  Backfill priorities    →  /work-plan suggest-priorities --repo=myproject")
     print()
     print("=" * 80)
-    print(f"Config: ~/.claude/work-plan/config.yml")
-    print(f"Spec:   <CritForge>/docs/superpowers/specs/2026-04-28-daily-work-planner-design.md")
+    print(f"Config: ~/.claude/work-plan/config.yml  (or ~/.agents/work-plan/config.yml on Codex)")
+    print(f"Docs:   See the toolkit README for full setup, requirements, and platform-specific install.")
     return 0
 
 

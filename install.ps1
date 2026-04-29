@@ -1,14 +1,49 @@
-# install.ps1 — install the work-plan toolkit into $env:USERPROFILE/.claude/  (Windows)
+# install.ps1 — install the work-plan toolkit  (Windows native PowerShell)
 #
-# Copies skills + command into ~/.claude/. Re-run after `git pull` to refresh.
+# Auto-detects target dir: $env:USERPROFILE\.claude\ (Claude Code) or
+# $env:USERPROFILE\.agents\ (Codex). Override with -Target <dir>.
+# Copies files. Re-run after `git pull` to refresh.
+
+param(
+    [string]$Target = "",
+    [switch]$Help
+)
 
 $ErrorActionPreference = "Stop"
 
-$ToolkitDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ClaudeDir   = Join-Path $env:USERPROFILE ".claude"
-$SkillsDir   = Join-Path $ClaudeDir "skills"
-$CommandsDir = Join-Path $ClaudeDir "commands"
-$ConfigDir   = Join-Path $ClaudeDir "work-plan"
+if ($Help) {
+    @"
+Usage: .\install.ps1 [-Target <dir>]
+
+Auto-detects target if -Target not given:
+  1. $env:USERPROFILE\.claude\  (Claude Code)
+  2. $env:USERPROFILE\.agents\  (Codex)
+
+To install for both, run twice:
+  .\install.ps1 -Target "$env:USERPROFILE\.claude"
+  .\install.ps1 -Target "$env:USERPROFILE\.agents"
+"@
+    exit 0
+}
+
+$ToolkitDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# Resolve target
+if ($Target) {
+    $BaseDir = $Target
+} elseif (Test-Path (Join-Path $env:USERPROFILE ".claude")) {
+    $BaseDir = Join-Path $env:USERPROFILE ".claude"
+} elseif (Test-Path (Join-Path $env:USERPROFILE ".agents")) {
+    $BaseDir = Join-Path $env:USERPROFILE ".agents"
+} else {
+    Write-Host "ERROR no target dir found. Looked for ~\.claude (Claude Code) and ~\.agents (Codex)." -ForegroundColor Red
+    Write-Host "Pass -Target <dir> to install elsewhere, or install Claude Code / Codex first." -ForegroundColor Red
+    exit 1
+}
+
+$SkillsDir   = Join-Path $BaseDir "skills"
+$CommandsDir = Join-Path $BaseDir "commands"
+$ConfigDir   = Join-Path $BaseDir "work-plan"
 $ConfigFile  = Join-Path $ConfigDir "config.yml"
 
 function Bold($msg) { Write-Host $msg -ForegroundColor White }
@@ -18,12 +53,12 @@ function Err($msg)  { Write-Host "ERROR $msg" -ForegroundColor Red }
 
 Bold "work-plan toolkit installer (Windows)"
 Write-Host "Toolkit:  $ToolkitDir"
-Write-Host "Target:   $ClaudeDir"
+Write-Host "Target:   $BaseDir"
 Write-Host ""
 
-# 1. Verify Claude Code dirs exist
-if (-not (Test-Path $ClaudeDir)) {
-    Err "$ClaudeDir not found. Is Claude Code installed?"
+# 1. Verify target dir exists
+if (-not (Test-Path $BaseDir)) {
+    Err "$BaseDir not found. Pass -Target <dir> or install Claude Code / Codex first."
     exit 1
 }
 New-Item -ItemType Directory -Force -Path $SkillsDir, $CommandsDir, $ConfigDir | Out-Null

@@ -1,14 +1,30 @@
-# uninstall.ps1 — remove work-plan toolkit copies from $env:USERPROFILE/.claude/  (Windows)
+# uninstall.ps1 — remove work-plan toolkit copies  (Windows native PowerShell)
 #
-# Removes ONLY copies installed by this toolkit (verified via .installed-from marker).
-# Leaves your config + notes alone.
+# Auto-detects target dir: ~\.claude\ (Claude Code) or ~\.agents\ (Codex).
+# Override with -Target <dir>. Removes ONLY copies installed by this toolkit
+# (verified via .installed-from marker). Leaves config + notes alone.
+
+param(
+    [string]$Target = ""
+)
 
 $ErrorActionPreference = "Stop"
 
-$ToolkitDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ClaudeDir   = Join-Path $env:USERPROFILE ".claude"
-$SkillsDir   = Join-Path $ClaudeDir "skills"
-$CommandsDir = Join-Path $ClaudeDir "commands"
+$ToolkitDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+if ($Target) {
+    $BaseDir = $Target
+} elseif (Test-Path (Join-Path $env:USERPROFILE ".claude")) {
+    $BaseDir = Join-Path $env:USERPROFILE ".claude"
+} elseif (Test-Path (Join-Path $env:USERPROFILE ".agents")) {
+    $BaseDir = Join-Path $env:USERPROFILE ".agents"
+} else {
+    Write-Host "ERROR no target dir found." -ForegroundColor Red
+    exit 1
+}
+
+$SkillsDir   = Join-Path $BaseDir "skills"
+$CommandsDir = Join-Path $BaseDir "commands"
 
 function Bold($msg) { Write-Host $msg -ForegroundColor White }
 function Ok($msg)   { Write-Host "ok $msg" -ForegroundColor Green }

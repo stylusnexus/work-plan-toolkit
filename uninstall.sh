@@ -1,15 +1,34 @@
 #!/usr/bin/env bash
-# uninstall.sh — remove work-plan toolkit copies from ~/.claude/  (macOS / Linux / WSL)
+# uninstall.sh — remove work-plan toolkit copies  (macOS / Linux / WSL)
 #
-# Removes ONLY copies that were installed by this toolkit (verified via the
-# .installed-from marker file). Leaves your config + notes alone.
+# Auto-detects target dir: ~/.claude/ (Claude Code) or ~/.agents/ (Codex).
+# Override with --target=<dir>. Removes ONLY copies that were installed by this
+# toolkit (verified via the .installed-from marker file). Leaves config + notes alone.
 
 set -euo pipefail
 
 TOOLKIT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-CLAUDE_DIR="${HOME}/.claude"
-SKILLS_DIR="${CLAUDE_DIR}/skills"
-COMMANDS_DIR="${CLAUDE_DIR}/commands"
+
+TARGET_OVERRIDE=""
+for arg in "$@"; do
+    case "${arg}" in
+        --target=*) TARGET_OVERRIDE="${arg#--target=}" ;;
+    esac
+done
+
+if [ -n "${TARGET_OVERRIDE}" ]; then
+    BASE_DIR="${TARGET_OVERRIDE/#\~/$HOME}"
+elif [ -d "${HOME}/.claude" ]; then
+    BASE_DIR="${HOME}/.claude"
+elif [ -d "${HOME}/.agents" ]; then
+    BASE_DIR="${HOME}/.agents"
+else
+    printf "ERROR no target dir found.\n" >&2
+    exit 1
+fi
+
+SKILLS_DIR="${BASE_DIR}/skills"
+COMMANDS_DIR="${BASE_DIR}/commands"
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }
 warn() { printf "\033[33m! %s\033[0m\n" "$1"; }

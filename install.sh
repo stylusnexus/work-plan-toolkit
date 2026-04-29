@@ -1,16 +1,53 @@
 #!/usr/bin/env bash
-# install.sh — install the work-plan toolkit into ~/.claude/  (macOS / Linux / WSL)
+# install.sh — install the work-plan toolkit  (macOS / Linux / WSL)
 #
-# Copies (not symlinks — for Windows compatibility via WSL paths) skills + command
-# into ~/.claude/. Re-run after `git pull` to refresh.
+# Auto-detects target dir: ~/.claude/ (Claude Code) or ~/.agents/ (Codex).
+# Override with --target=<dir> for custom locations.
+# Copies files (not symlinks — for Windows compatibility via WSL paths).
+# Re-run after `git pull` to refresh.
 
 set -euo pipefail
 
 TOOLKIT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-CLAUDE_DIR="${HOME}/.claude"
-SKILLS_DIR="${CLAUDE_DIR}/skills"
-COMMANDS_DIR="${CLAUDE_DIR}/commands"
-CONFIG_DIR="${CLAUDE_DIR}/work-plan"
+
+# Parse --target flag if given
+TARGET_OVERRIDE=""
+for arg in "$@"; do
+    case "${arg}" in
+        --target=*) TARGET_OVERRIDE="${arg#--target=}" ;;
+        --help|-h)
+            cat <<HLP
+Usage: ./install.sh [--target=<dir>]
+
+Auto-detects target if --target not given:
+  1. ~/.claude/  (Claude Code)
+  2. ~/.agents/  (Codex)
+
+To install for both, run twice:
+  ./install.sh --target=\$HOME/.claude
+  ./install.sh --target=\$HOME/.agents
+HLP
+            exit 0
+            ;;
+    esac
+done
+
+# Resolve target
+if [ -n "${TARGET_OVERRIDE}" ]; then
+    BASE_DIR="${TARGET_OVERRIDE/#\~/$HOME}"
+elif [ -d "${HOME}/.claude" ]; then
+    BASE_DIR="${HOME}/.claude"
+elif [ -d "${HOME}/.agents" ]; then
+    BASE_DIR="${HOME}/.agents"
+else
+    printf "\033[31mERROR\033[0m no target dir found. Looked for ~/.claude (Claude Code) and ~/.agents (Codex).\n" >&2
+    printf "Pass --target=<dir> to install elsewhere, or install Claude Code / Codex first.\n" >&2
+    exit 1
+fi
+
+SKILLS_DIR="${BASE_DIR}/skills"
+COMMANDS_DIR="${BASE_DIR}/commands"
+CONFIG_DIR="${BASE_DIR}/work-plan"
 CONFIG_FILE="${CONFIG_DIR}/config.yml"
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }
@@ -20,12 +57,12 @@ err()  { printf "\033[31mERROR\033[0m %s\n" "$1" >&2; }
 
 bold "work-plan toolkit installer"
 echo "Toolkit:  ${TOOLKIT_DIR}"
-echo "Target:   ${CLAUDE_DIR}"
+echo "Target:   ${BASE_DIR}"
 echo
 
 # 1. Verify Claude Code dirs exist
-if [ ! -d "${CLAUDE_DIR}" ]; then
-    err "${CLAUDE_DIR} not found. Is Claude Code installed?"
+if [ ! -d "${BASE_DIR}" ]; then
+    err "${BASE_DIR} not found. Pass --target=<dir> or install Claude Code / Codex first."
     exit 1
 fi
 mkdir -p "${SKILLS_DIR}" "${COMMANDS_DIR}" "${CONFIG_DIR}"
