@@ -8,3 +8,4 @@ __pycache__/
 .vscode/settings.json
 work-plan-toolkit.code-workspace
 CLAUDE.md
+.claude/settings.local.json
