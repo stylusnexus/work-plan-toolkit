@@ -15,6 +15,43 @@ The four commands you'll use 80% of the time are:
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
 
+## Requirements
+
+The toolkit is a Python CLI that shells out to standard tools. You need **all four** installed before running `install.sh` / `install.ps1`:
+
+| Tool | Min version | Why |
+|---|---|---|
+| Python | **3.9+** | The CLI itself. Uses PEP 585 generics (`list[dict]`, `dict[int, str]`), no 3.10+ features, no third-party libraries (stdlib only — no `pip install` step). |
+| `gh` | recent | Live GitHub state queries (issues, milestones, labels). Must be authenticated: `gh auth login` once before first run. |
+| `git` | any 2.x | Detects current branch, ahead-of-upstream count, modified files. |
+| `yq` (mikefarah/yq, Go-based) | 4.x | Reads + edits YAML frontmatter and config. **Note**: Python `yq` (kislyuk/yq, the jq wrapper) won't work — install the Go version. |
+
+Install per platform (one-liners):
+
+```bash
+# macOS (Homebrew)
+brew install python@3 gh git yq
+
+# Linux (Debian/Ubuntu)
+sudo apt update && sudo apt install python3 git
+# gh: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+# yq: sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/local/bin/yq
+
+# Linux (Arch)
+sudo pacman -S python github-cli git go-yq
+
+# Windows (PowerShell with winget)
+winget install Python.Python.3 GitHub.cli Git.Git MikeFarah.yq
+```
+
+`install.sh` and `install.ps1` both verify all four are on `PATH` before doing anything else, and print install hints if any are missing.
+
+After installing, authenticate `gh` once:
+
+```bash
+gh auth login   # follow the prompts; needs `repo` scope to read issues
+```
+
 ## Install
 
 **macOS / Linux / WSL:**
