@@ -159,7 +159,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 |---|---|
 | `brief` | Multi-track snapshot of all active tracks across configured repos. |
 | `handoff <track>` | Wrap up a work block. Writes a `### Session — <ts>` entry, has Claude pick `next_up` based on priority + project memory, persists via `--set-next`. |
-| `orient <track>` (alias: `where-was-i`) | Read-only ~15-line paste block. Header + priority/milestone + last session + next pick + behind-it cluster + git state. Designed to drop into a fresh terminal. |
+| `orient [track]` (alias: `where-was-i`) | Read-only paste block. With a track name: ~15-line track summary (priority, last session, next pick, git state). With no track: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. |
 | `close <track>` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
 | `refresh-md <track>` `\|` `--all` | Body status icons drifted from GitHub state. `--all` sweeps every active track. |
@@ -178,7 +178,7 @@ Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list w
 ## Composes with
 
 - **`/repo-activity-summary`** (bundled) — Global "what's open across the whole repo" view. Use when you need a wider lens than per-track.
-- **superpowers `/handoff` skill** (not bundled — install separately) — Generic fresh-session export for non-track-bound contexts.
+- For non-track-bound work (you're in a directory but no track exists yet for what you're doing), run `/work-plan orient` with no track arg — it falls through to a cwd snapshot of branch + recent commits + modified files. No external skill needed.
 
 ## Philosophy
 

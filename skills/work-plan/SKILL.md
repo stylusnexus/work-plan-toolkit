@@ -6,7 +6,7 @@ argument-hint: [brief|handoff|orient|hygiene|--help]
 
 # Work Plan
 
-Track-aware daily planner. Composes with `/repo-activity-summary` (global view) and `/handoff` (fresh-session export). Spec: `<CritForge>/docs/superpowers/specs/2026-04-28-daily-work-planner-design.md`.
+Track-aware daily planner. Composes with `/repo-activity-summary` (global view); use `/work-plan capture` for non-track-bound state snapshots.
 
 ## When to use which subcommand
 
@@ -14,12 +14,12 @@ Track-aware daily planner. Composes with `/repo-activity-summary` (global view) 
 |---|---|
 | `/work-plan brief` | Starting work, after a gap, or whenever a multi-track snapshot is needed. |
 | `/work-plan handoff [track]` | Wrapping up a work block. Captures touched + next + blockers. Updates frontmatter and body status table. |
-| `/work-plan where-was-i [track]` | Re-orienting on a track after switching from another Claude Code session. |
+| `/work-plan where-was-i [track]` | Re-orienting after switching sessions. With a track: ~15-line track paste-block. Without: cwd snapshot (branch, recent commits, modified files) for non-track work. |
 | `/work-plan slot <issue-num> [track]` | A new GitHub issue should belong to a track. |
 | `/work-plan close [track]` | Track is done (shipped) / paused (parked) / won't ship (abandoned). |
 | `/work-plan refresh-md <track> \| --all` | Body status icons drifted from GitHub state. `--all` sweeps every active track. |
 | `/work-plan hygiene` | **Weekly all-in-one cleanup**: refresh-md --all + reconcile --all + duplicates. |
-| `/work-plan orient <track>` | Alias for `where-was-i`. Re-orient on a track. |
+| `/work-plan orient [track]` | Alias for `where-was-i`. Same dual-mode behavior. |
 | `/work-plan list [--all]` | List active tracks (or all including parked/archived). |
 | `/work-plan init <path>` | Add frontmatter to a new track .md file. |
 | `/work-plan init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
@@ -92,7 +92,7 @@ Then create per-repo subfolders under notes_root and move existing track files i
 ## Composition with other skills
 
 - DO use `/repo-activity-summary` for the global "what's open across the whole repo" view.
-- DO use `/handoff` (existing skill) for spinning up a new Claude Code session on a generic context.
+- DO use `/work-plan orient` (no track arg) for a cwd snapshot when you're working on something that doesn't yet belong to a track.
 - DO use `/work-plan` for track-aware work: bookended brief/handoff, parallel-session re-orientation, drift detection, closure.
 
 ## Common mistakes

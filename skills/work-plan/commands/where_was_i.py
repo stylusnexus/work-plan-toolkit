@@ -1,20 +1,32 @@
 """where-was-i / orient subcommand.
 
-Prints a tight ~15-line paste-ready block summarizing where a track stands.
-Designed to bootstrap a fresh Claude Code session: header rule, priority +
-milestone + repo line, track + local paths, last session timestamp +
-one-line summary, the next pick by issue number + title, up to 3 issues
-behind it, current local-git state, and (if any) new related issues
-filed since last handoff. No closed/merged dump — that's what the GitHub
-issue list is for.
+Two modes:
+
+1. With a track name (`/work-plan orient ux-redesign`):
+   Prints a tight ~15-line paste-ready block summarizing where the track stands.
+   Header rule, priority + milestone + repo, track + local paths, last session
+   timestamp + one-line summary, the next pick by issue number + title, up to 3
+   issues behind it, current local-git state, and (if any) new related issues
+   filed since last handoff.
+
+2. With no track name (`/work-plan orient`):
+   Snapshot of the current working directory — branch, ahead-of-upstream count,
+   uncommitted file count, last 3 commits, modified files. Use this when you're
+   working on something that doesn't yet belong to a track.
+
+Add `--pick` to force the interactive track picker instead of cwd-snapshot mode.
+
+No closed/merged dump — that's what the GitHub issue list is for.
 """
 import re
+import subprocess
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name
-from lib.prompts import prompt_input
+from lib.prompts import prompt_input, parse_flags
 from lib.github_state import fetch_issues
 from lib.git_state import (
     parse_iso_timestamp,
@@ -28,7 +40,8 @@ RULE_WIDTH = 57
 
 
 def run(args: list[str]) -> int:
-    track_name = args[0] if args else None
+    flags, positional = parse_flags(args, {"--pick"})
+    track_name = positional[0] if positional else None
 
     try:
         cfg = load_config()
@@ -36,10 +49,16 @@ def run(args: list[str]) -> int:
         print(f"ERROR: {e}")
         return 1
 
+    # Mode 1 (track named): orient on that track.
+    # Mode 2 (--pick): interactive track picker (preserves old default behavior).
+    # Mode 3 (no args, no flag): cwd snapshot.
+    if not track_name and "--pick" not in flags:
+        return _orient_cwd()
+
     tracks = discover_tracks(cfg)
 
     if not track_name:
-        # Interactive: list active tracks and prompt
+        # --pick: interactive
         active = [t for t in tracks if t.has_frontmatter
                   and t.meta.get("status") in ("active", "in-progress", "blocked")]
         if not active:
@@ -69,7 +88,11 @@ def run(args: list[str]) -> int:
             print(f"No track matching '{track_name}'.")
             return 1
 
-    # === Gather data ===
+    return _orient_track(track)
+
+
+def _orient_track(track) -> int:
+    """Render the track paste-block (mode 1)."""
     slug = track.meta.get("track", track.name)
     priority = track.meta.get("launch_priority", "P3")
     milestone = track.meta.get("milestone_alignment", "—")
@@ -77,17 +100,14 @@ def run(args: list[str]) -> int:
     next_up = track.meta.get("next_up") or []
     last_handoff_iso = track.meta.get("last_handoff")
 
-    # Resolve next_up titles (and the pick) from GitHub.
     issue_nums = track.meta.get("github", {}).get("issues") or []
     titles_by_num: dict[int, str] = {}
     if track.repo and next_up:
-        # Only fetch the issues we need to title, not the full track list.
         wanted = [n for n in next_up[:4] if n in issue_nums or True]
         fetched = fetch_issues(track.repo, wanted)
         for i in fetched:
             titles_by_num[i["number"]] = i.get("title", "")
 
-    # === Render block ===
     print(_top_rule(slug))
     print(f"Priority: {priority}  ·  Milestone: {milestone}  ·  Repo: {repo}")
     print(f"Track:  {track.path}")
@@ -117,7 +137,6 @@ def run(args: list[str]) -> int:
     else:
         print("Next pick: (none set — run `/work-plan handoff` to set one)")
 
-    # Local git state (skip section entirely if no local clone)
     if track.local_path:
         cur = current_branch(track.local_path)
         if cur:
@@ -126,7 +145,6 @@ def run(args: list[str]) -> int:
             print()
             print(f"Local: on {cur} ({ahead} ahead of dev, {uc} uncommitted)")
 
-    # New issues filed since last handoff — append-only if any exist.
     new_unlisted = _new_issues_since_handoff(track, last_handoff_iso, slug, issue_nums)
     if new_unlisted:
         print()
@@ -138,8 +156,50 @@ def run(args: list[str]) -> int:
     return 0
 
 
+def _orient_cwd() -> int:
+    """Render the cwd snapshot (mode 3) — for non-track-bound work."""
+    cwd = Path.cwd()
+    if not _is_git_repo(cwd):
+        print("ERROR: not inside a git repository.")
+        print("       cwd-snapshot mode of orient needs git state to display.")
+        print("       Use `/work-plan orient <track>` for a track paste-block instead,")
+        print("       or `/work-plan orient --pick` for the interactive track picker.")
+        return 1
+
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+    upstream, ahead = _ahead_of_upstream(cwd)
+    modified = _modified_files(cwd)
+    commits = _recent_commits(cwd, n=3)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    print(_top_rule("current directory"))
+    print(f"Path:   {cwd}")
+    if upstream:
+        print(f"Branch: {branch}  ({ahead} ahead of {upstream}, {len(modified)} uncommitted)")
+    else:
+        print(f"Branch: {branch}  (no upstream tracked, {len(modified)} uncommitted)")
+
+    if commits:
+        print()
+        print("Last 3 commits:")
+        for sha, msg in commits:
+            print(f"  {sha} {msg}")
+
+    if modified:
+        print()
+        print("Modified:")
+        for entry in modified[:20]:
+            print(f"  {entry}")
+        if len(modified) > 20:
+            print(f"  … and {len(modified) - 20} more")
+
+    print()
+    print(f"Snapshot: {now}")
+    print(_bottom_rule())
+    return 0
+
+
 def _top_rule(slug: str) -> str:
-    """`─── <slug> ───` plus enough trailing dashes to span RULE_WIDTH."""
     label = f" {slug} "
     left = RULE_CHAR * 3
     used = len(left) + len(label)
@@ -152,12 +212,7 @@ def _bottom_rule() -> str:
 
 
 def _last_session_summary(body: str) -> tuple[Optional[str], str]:
-    """Return (timestamp, one-line summary) of the most recent session block.
-
-    Looks for `### Session — <ts>` headers, then the first non-empty
-    content line below (typically `- Touched: …`). The leading bullet
-    marker `- ` is stripped so the summary reads cleanly.
-    """
+    """Return (timestamp, one-line summary) of the most recent session block."""
     if "### Session — " not in body:
         return (None, "")
     idx = body.rfind("### Session — ")
@@ -179,7 +234,6 @@ def _last_session_summary(body: str) -> tuple[Optional[str], str]:
         s = line.strip()
         if not s:
             continue
-        # Strip a single leading bullet marker for cleaner output.
         if s.startswith("- "):
             s = s[2:].strip()
         summary = s
@@ -189,7 +243,6 @@ def _last_session_summary(body: str) -> tuple[Optional[str], str]:
 
 def _new_issues_since_handoff(track, last_handoff_iso: Optional[str],
                               slug: str, listed_nums: list[int]) -> list[dict]:
-    """Find recently-created GitHub issues that should slot into this track."""
     if not (track.repo and last_handoff_iso):
         return []
     try:
@@ -200,3 +253,50 @@ def _new_issues_since_handoff(track, last_handoff_iso: Optional[str],
     new_map = find_new_issues_for_tracks(track.repo, [slug], since_days=days)
     listed = set(listed_nums)
     return [i for i in new_map.get(slug, []) if i["number"] not in listed]
+
+
+# === Helpers for cwd-snapshot mode ===
+
+def _is_git_repo(cwd: Path) -> bool:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=str(cwd), capture_output=True, text=True,
+    )
+    return proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+def _git(args: list[str], cwd: Path) -> str:
+    proc = subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True, text=True,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def _ahead_of_upstream(cwd: Path) -> tuple[str, int]:
+    upstream = _git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cwd)
+    if not upstream:
+        return ("", 0)
+    ahead_str = _git(["rev-list", "--count", f"{upstream}..HEAD"], cwd)
+    try:
+        return (upstream, int(ahead_str or "0"))
+    except ValueError:
+        return (upstream, 0)
+
+
+def _modified_files(cwd: Path) -> list[str]:
+    out = _git(["status", "--porcelain"], cwd)
+    if not out:
+        return []
+    return [line for line in out.split("\n") if line.strip()]
+
+
+def _recent_commits(cwd: Path, n: int = 3) -> list[tuple[str, str]]:
+    out = _git(["log", f"-{n}", "--pretty=format:%h %s"], cwd)
+    if not out:
+        return []
+    pairs = []
+    for line in out.split("\n"):
+        if " " in line:
+            sha, msg = line.split(" ", 1)
+            pairs.append((sha, msg))
+    return pairs
