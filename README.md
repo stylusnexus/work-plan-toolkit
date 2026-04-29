@@ -42,6 +42,69 @@ Re-run `install.sh` (or `install.ps1`) after `git pull` to refresh.
 
 External dependencies (verified by the installer): `gh`, `git`, `yq`, `python3`.
 
+### What gets created
+
+After clone, the toolkit looks like this:
+
+```
+work-plan-toolkit/
+├── README.md
+├── LICENSE
+├── .gitignore
+├── install.sh / install.ps1            # macOS+Linux+WSL / Windows
+├── uninstall.sh / uninstall.ps1
+├── skills/
+│   ├── work-plan/
+│   │   ├── SKILL.md
+│   │   ├── work_plan.py                # CLI entry
+│   │   ├── commands/                   # 15 subcommand modules
+│   │   ├── lib/                        # config, frontmatter, gh, git, prompts, …
+│   │   └── tests/                      # 69 unittest cases
+│   └── repo-activity-summary/
+│       └── SKILL.md                    # bundled companion skill
+├── commands/
+│   └── work-plan.md                    # Claude Code slash command alias
+├── config/
+│   └── config.example.yml              # template (don't edit)
+├── docs/
+│   └── usage-examples.md
+└── notes/
+    └── README.md                       # default notes_root (empty until init-repo)
+```
+
+After running `install.sh` (or `install.ps1`), the installer creates this in your home directory:
+
+```
+~/.claude/
+├── skills/
+│   ├── work-plan/                      # copy of toolkit's skills/work-plan/
+│   │   ├── SKILL.md
+│   │   ├── work_plan.py
+│   │   ├── commands/
+│   │   ├── lib/
+│   │   ├── tests/
+│   │   └── .installed-from             # marker file (toolkit absolute path)
+│   └── repo-activity-summary/
+│       ├── SKILL.md
+│       └── .installed-from             # marker file
+├── commands/
+│   └── work-plan.md                    # copy of toolkit's commands/work-plan.md
+└── work-plan/
+    └── config.yml                      # seeded from template, notes_root resolved
+                                        # to absolute toolkit path (edit this one)
+```
+
+Then, when you run `/work-plan init-repo myproject --github=your-org/myproject`, the toolkit's `notes/` folder gets a per-repo subdir (under whatever `notes_root` resolves to):
+
+```
+<notes_root>/
+└── myproject/                          # created by init-repo
+    ├── archive/
+    │   ├── shipped/.gitkeep            # close mv's shipped tracks here
+    │   └── abandoned/.gitkeep          # close mv's abandoned tracks here
+    └── <track-slug>.md                 # active tracks live at top level
+```
+
 ## Configure
 
 After install, bootstrap your first repo with the **`init-repo`** subcommand:
