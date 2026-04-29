@@ -10,17 +10,21 @@ on:
 
 jobs:
   unittest:
-    name: Python ${{ matrix.python-version }} unittest
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} · Python ${{ matrix.python-version }} unittest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version:
           - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
+        include:
+          - os: macos-latest
+            python-version: "3.12"
 
     steps:
       - name: Check out repository
@@ -33,7 +37,12 @@ jobs:
 
       - name: Install mikefarah/yq
         run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64
+          case "${{ runner.os }}" in
+            Linux) BIN=yq_linux_amd64 ;;
+            macOS) BIN=yq_darwin_arm64 ;;
+            *) echo "Unsupported runner: ${{ runner.os }}" >&2; exit 1 ;;
+          esac
+          sudo curl -sSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/v4.53.2/$BIN"
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
