@@ -267,6 +267,8 @@ The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key
 - **`init-repo` writes to your config via `yq -i`.** Inputs are JSON-encoded before being passed to `yq`, so a maliciously crafted `--github=` value can't break out of the YAML edit.
 - **`install.sh` / `install.ps1` only touch user-owned dirs.** No `sudo`, no system-wide changes, no privilege escalation.
 
+For vulnerability reporting, threat model, and past advisories, see [SECURITY.md](./SECURITY.md).
+
 ## Usage walkthrough
 
 See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work handoff, fresh-session orient, weekly hygiene).
