@@ -93,17 +93,41 @@ gh auth login   # follow the prompts; needs `repo` scope to read issues
 
 ## Compatible tools
 
-The toolkit is a Python CLI. Different agent tools discover and invoke it differently:
+A skill has two distinct contracts: (1) the underlying **CLI** that does the work, and (2) the **SKILL.md prompt-engineering** that tells the LLM how to use it (when to relay output verbatim, how to pick `next_up`, etc.). The CLI is portable; the prompt-engineering is model-specific. Honest split:
 
-| Tool | How to install | How to invoke |
+| Layer | What it is | Claude Code | Codex | Cursor | GitHub Copilot |
+|---|---|---|---|---|---|
+| **1. Python CLI** | `work_plan.py` + subcommands. Pure stdlib, shells out to `gh`/`git`/`yq`. | ✅ Proven | ✅ Proven | ✅ Direct invocation | ✅ Direct invocation |
+| **2. Skill auto-discovery** | LLM client reads SKILL.md frontmatter, surfaces skill on relevant prompts | ✅ Proven via `~/.claude/skills/` | ⚠️ Per spec via `~/.agents/skills/` — **unverified** | ❌ No native skill system; use the Cursor shim (see below) | ❌ No native skill system; use the Copilot shim (see below) |
+| **3. Instruction compliance** | Model follows prompt-engineered rules (verbatim relay, Claude-driven `next_up` flow, two-step AI subcommands) | ✅ Tested with Opus 4.x and Sonnet 4.x | ⚠️ Likely with GPT-4 class, may degrade with smaller models | ⚠️ Depends on which model Cursor is set to; less reliable than purpose-built skill systems | ⚠️ Copilot Chat models often ignore long context; basic CLI usage works, prompt-engineered behaviors don't |
+
+### Install per platform
+
+| Tool | Install command | Then invoke as |
 |---|---|---|
-| **Claude Code** | `./install.sh` (or `.\install.ps1`) — auto-detects `~/.claude/` | `/work-plan <subcommand>` (slash command) |
-| **Codex** | `./install.sh --target=$HOME/.agents` (or `-Target` on Windows) | `/work-plan <subcommand>` (or direct CLI — see below) |
-| **Cursor / GitHub Copilot / any other tool** | Skip the installer. Just clone the repo. | `python3 <toolkit>/skills/work-plan/work_plan.py <subcommand>` directly. Recommended: alias as `wp` in your shell rc:<br>**bash/zsh**: `alias wp="python3 /path/to/work-plan-toolkit/skills/work-plan/work_plan.py"`<br>**PowerShell**: `function wp { python "C:\path\to\work-plan-toolkit\skills\work-plan\work_plan.py" @args }` |
+| **Claude Code** | `./install.sh` (macOS / Linux / WSL) or `.\install.ps1` (Windows) | `/work-plan <subcommand>` |
+| **Codex** | `./install.sh --target=$HOME/.agents` or `.\install.ps1 -Target "$env:USERPROFILE\.agents"` | `/work-plan <subcommand>` (slash command if Codex picks up the skill) or direct CLI |
+| **Cursor** | Skip installer. Clone repo + copy `shims/cursor/work-plan.cursorrules` into your project's `.cursorrules` (or merge it in) | `python3 <toolkit>/skills/work-plan/work_plan.py <sub>` — alias `wp` recommended |
+| **GitHub Copilot** | Skip installer. Clone repo + copy `shims/copilot/work-plan-copilot-instructions.md` into your project's `.github/copilot-instructions.md` (merge if it already exists) | Direct CLI as above |
+| **Any other tool** | Skip installer. Just `git clone`. | Direct CLI |
 
-For the slash-command-aware tools (Claude Code, Codex), the installer copies the skill into the right discovery path. For the others, the CLI works standalone — you just need it on your `PATH` or aliased.
+Shell rc alias for the direct-CLI cases:
 
-To install for **both** Claude Code and Codex, run the installer twice with different `--target` values.
+```bash
+# bash/zsh (~/.bashrc, ~/.zshrc)
+alias wp="python3 /path/to/work-plan-toolkit/skills/work-plan/work_plan.py"
+
+# PowerShell ($PROFILE)
+function wp { python "C:\path\to\work-plan-toolkit\skills\work-plan\work_plan.py" @args }
+```
+
+To install for **both** Claude Code AND Codex, run the installer twice with different `--target` values.
+
+### What the shims do
+
+For tools without a native skill system (Cursor, Copilot), `shims/` contains drop-in files that give the LLM the same prompt-engineered behavior the SKILL.md provides on Claude Code: condensed CLI usage, when to relay verbatim, the two-step AI subcommand pattern, and a pointer to the full toolkit docs.
+
+The shims are **per-project** — copy them into each repo where you want the work-plan tool surfaced to your agent. They don't auto-load globally.
 
 ## Install
 
@@ -156,6 +180,10 @@ work-plan-toolkit/
 │   └── work-plan.md                    # Claude Code slash command alias
 ├── docs/
 │   └── usage-examples.md
+├── shims/                              # Drop-in instruction files for non-skill-aware tools
+│   ├── README.md
+│   ├── cursor/work-plan.cursorrules
+│   └── copilot/work-plan-copilot-instructions.md
 └── notes/
     └── README.md                       # default notes_root (empty until init-repo)
 ```

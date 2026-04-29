@@ -1,0 +1,66 @@
+# work-plan toolkit (Cursor shim)
+#
+# Drop this file at your project's repo root as `.cursorrules`. If you already have
+# a `.cursorrules`, merge this content into it. Cursor 0.40+ users can alternatively
+# convert this to `.cursor/rules/work-plan.mdc` with frontmatter — content is the same.
+#
+# Source of truth: https://github.com/stylusnexus/work-plan-toolkit
+# Full SKILL.md: <toolkit>/skills/work-plan/SKILL.md
+
+## work-plan: track-aware daily work planner
+
+There is a Python CLI installed at `<toolkit-path>/skills/work-plan/work_plan.py` that wraps GitHub issue tracking with markdown-frontmattered "track" files. When the user asks about daily planning, switching between work streams, end-of-session handoffs, or re-orienting after a context switch, prefer this tool over manually grepping issues or files.
+
+### Subcommands the user is most likely to invoke
+
+- `work_plan.py brief` — multi-track snapshot at the start of a work session
+- `work_plan.py handoff <track>` — capture session state at the end of a work block, write `next_up` for tomorrow
+- `work_plan.py orient [<track>]` — re-orient. With a track: ~15-line track paste-block. Without: cwd snapshot (branch, recent commits, modified files)
+- `work_plan.py hygiene` — weekly drift + label sync + duplicate scan
+
+Plus `slot`, `close`, `init`, `init-repo`, `list`, `refresh-md`, `reconcile`, `duplicates`, `suggest-priorities`, `group`. Run `--help` for the full list.
+
+### How to invoke from Cursor
+
+Run via the integrated terminal or `Run in terminal` action:
+
+```bash
+python3 /path/to/work-plan-toolkit/skills/work-plan/work_plan.py <subcommand> [args]
+```
+
+Recommended: alias as `wp` in the user's shell rc (see toolkit README for setup).
+
+### Behavioral rules
+
+When the user runs `brief`, `handoff`, `orient`, or `hygiene` and asks you to interpret or relay the result:
+
+1. **Reproduce the full CLI output verbatim in a fenced code block in your response.** These outputs are designed to be paste-ready into a fresh terminal/session — summarizing or paraphrasing destroys their value.
+2. Don't truncate. Don't add commentary inline within the block.
+3. After the verbatim block, you may add a 1-2 sentence interpretation if it helps.
+
+### Two-step AI subcommands
+
+`suggest-priorities` and `group` are two-step:
+
+1. The CLI fetches issues and prints a prompt to terminal asking for JSON output.
+2. You produce the requested JSON, save it via your file-write tool to `/tmp/work_plan_priorities.answers.json` or `/tmp/work_plan_groups.answers.json`.
+3. Re-run the CLI with `--apply` to commit changes.
+
+Show the proposed labels/clusters to the user BEFORE running with `--apply` — they may want to override.
+
+### Picking `next_up` after handoff
+
+After `handoff <track>` runs, you should:
+
+1. Read the output (open issues, last session log, priority, milestone).
+2. Survey any project memory/notes the user has shared for related signals (deploy gates, blocked items, in-flight clusters).
+3. Pick a "next" — single ticket OR tight cluster (2-4 issues) — based on track priority, milestone, and what's gating other work.
+4. Justify the pick in 1-2 sentences.
+5. Run `python3 /path/to/work_plan.py handoff <track> --set-next <comma-list>` (e.g. `--set-next 4167,4148,4149`) to persist.
+6. Show the user what was set so they can override.
+
+### Avoid
+
+- Don't reimplement subcommand logic in chat — always shell out to the CLI.
+- Don't edit track frontmatter manually — use `handoff` or `slot` instead (they update timestamps and dedupe).
+- Don't call `gh` directly to check issue state — `brief` and `orient` already do that with track context.
