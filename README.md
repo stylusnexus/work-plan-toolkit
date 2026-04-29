@@ -1,0 +1,100 @@
+# work-plan toolkit
+
+Track-aware daily work planning for developers running parallel Claude Code sessions across many GitHub issues.
+
+`work-plan` is a Claude Code skill that wraps a small Python CLI. It treats your daily work as a set of *tracks* — each track is a markdown file with YAML frontmatter listing its priority, milestone, GitHub issue numbers, and current status. The skill derives state live from GitHub (`gh`), git, and the markdown body, so the markdown stays light (it references issues by ID rather than duplicating their state).
+
+The four commands you'll use 80% of the time are:
+
+| Command | When |
+|---|---|
+| `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. |
+| `/work-plan handoff <track>` | End of a work block. Captures what you touched and Claude picks `next_up` for tomorrow. |
+| `/work-plan orient <track>` | Switching context. ~15-line paste-block of priority / last session / next pick / git state — drop into a fresh Claude Code terminal. |
+| `/work-plan hygiene` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. |
+
+A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
+
+## Install
+
+```bash
+git clone <this-repo> work-plan-toolkit
+cd work-plan-toolkit
+./install.sh
+```
+
+The installer:
+
+- Symlinks `skills/work-plan` and `skills/repo-activity-summary` into `~/.claude/skills/`
+- Symlinks `commands/work-plan.md` into `~/.claude/commands/`
+- Creates `~/.claude/work-plan/config.yml` from the bundled template (only if no config exists), with `notes_root` pointing at the toolkit's bundled `notes/` folder so it works out of the box
+
+External dependencies (verified by the installer): `gh`, `git`, `yq`, `python3`.
+
+## Configure
+
+Open `~/.claude/work-plan/config.yml`. Add one entry per repo you want to track:
+
+```yaml
+notes_root: /absolute/path/to/your/notes/    # or keep the bundled default
+repos:
+  myproject:
+    github: your-org/myproject
+    local: /path/to/local/checkout           # optional, enables in-progress detection
+```
+
+Then create per-repo subdirectories under `notes_root` (e.g., `myproject/`) and start adding track files. The bundled `notes/example-repo/` shows the layout, including the `archive/{shipped,abandoned}/` subdirs that `close` populates.
+
+## Usage walkthrough
+
+See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work handoff, fresh-session orient, weekly hygiene).
+
+## Subcommand reference
+
+| Subcommand | What it does |
+|---|---|
+| `brief` | Multi-track snapshot of all active tracks across configured repos. |
+| `handoff <track>` | Wrap up a work block. Writes a `### Session — <ts>` entry, has Claude pick `next_up` based on priority + project memory, persists via `--set-next`. |
+| `orient <track>` (alias: `where-was-i`) | Read-only ~15-line paste block. Header + priority/milestone + last session + next pick + behind-it cluster + git state. Designed to drop into a fresh terminal. |
+| `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. |
+| `close <track>` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
+| `refresh-md <track>` `\|` `--all` | Body status icons drifted from GitHub state. `--all` sweeps every active track. |
+| `hygiene` | Weekly all-in-one: `refresh-md --all` + `reconcile --all` + `duplicates`. |
+| `list [--all]` | List active tracks (or all including parked/archived). |
+| `init <path>` | Add frontmatter to a brand-new track .md file. |
+| `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
+| `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
+| `reconcile <track>` `\|` `--all` | Sync track frontmatter with `track/<slug>` GitHub labels. |
+| `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
+| `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
+
+Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list with examples.
+
+## Composes with
+
+- **`/repo-activity-summary`** (bundled) — Global "what's open across the whole repo" view. Use when you need a wider lens than per-track.
+- **superpowers `/handoff` skill** (not bundled — install separately) — Generic fresh-session export for non-track-bound contexts.
+
+## Philosophy
+
+- **Derive, don't duplicate.** GitHub is canonical for issue state; markdown references issues by ID. The skill queries `gh` live and synthesizes the answer rather than caching what `gh` already knows.
+- **Session-bootstrap commands output paste blocks, not data dumps.** `orient` returns ~15 lines you can drop into a fresh Claude Code terminal with full context. Never bury the suggested next move under historical noise.
+- **Track files are durable across parallel sessions.** Five Claude Code terminals open on five different tracks shouldn't conflict — each session reads/writes its own track file, and the frontmatter `last_handoff` timestamp lets you tell which session last touched a track.
+- **Heuristic priority backfill is one-shot, not continuous.** `suggest-priorities` is a migration tool; once issues are labeled, GitHub stays canonical. The skill doesn't reclassify on every run.
+
+## Testing
+
+```bash
+cd skills/work-plan
+python3 -m unittest discover tests
+```
+
+69 tests, no external dependencies (mocks `gh`/`git` calls).
+
+## License
+
+MIT — see `LICENSE`.
+
+## Author
+
+Eve McGivern · [@stylusnexus](https://github.com/stylusnexus)

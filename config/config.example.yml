@@ -1,0 +1,20 @@
+# work-plan config — copied to ~/.claude/work-plan/config.yml on first install.
+#
+# notes_root: where your track markdown files live. Each repo gets a subdirectory:
+#   <notes_root>/<repo-key>/<track-slug>.md
+#
+# install.sh resolves the relative ./notes path below to the absolute path of
+# the bundled notes/ folder in this toolkit, so the default works out of the box.
+# Override with your own path (e.g. ~/Documents/Project Notes/) at any time.
+notes_root: ./notes
+
+repos:
+  # Each entry maps a local subdir-key (under notes_root) to a GitHub repo.
+  # Add one block per repo you want to track.
+  example-repo:
+    github: your-org/your-repo        # GitHub slug for `gh` queries
+    local: /path/to/local/checkout    # Optional — enables in-progress branch + uncommitted detection
+
+  # critforge:
+  #   github: stylusnexus/CritForge
+  #   local: /Applications/Development/Projects/CritForge
