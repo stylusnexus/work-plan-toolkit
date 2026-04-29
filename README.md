@@ -15,6 +15,45 @@ The four commands you'll use 80% of the time are:
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
 
+## How it works
+
+The toolkit treats GitHub as the canonical source of issue state and never tries to mirror it. Track markdown files are lightweight references — they list issue numbers and a few pieces of derived metadata (priority, milestone, `next_up`, last session timestamp). The CLI re-derives everything else live from `gh`, `git`, and the markdown body.
+
+```mermaid
+flowchart TB
+    subgraph sources["Data sources (canonical)"]
+        direction LR
+        gh["GitHub issues<br/>(via gh CLI)"]
+        git["git state<br/>(branch, commits, modified files)"]
+        md["Track markdown<br/>(YAML frontmatter + body)"]
+    end
+
+    subgraph cli["work-plan CLI (Python stdlib)"]
+        direction LR
+        brief["brief<br/><i>multi-track view</i>"]
+        handoff["handoff<br/><i>capture session + Claude picks next_up</i>"]
+        orient["orient<br/><i>paste-block context for new session</i>"]
+        hygiene["hygiene<br/><i>weekly drift + dup sweep</i>"]
+    end
+
+    subgraph outputs["Outputs"]
+        direction LR
+        paste["Paste-ready blocks<br/>(relayed verbatim to chat)"]
+        update["Updated frontmatter<br/>(next_up, session log, status table)"]
+        sync["GitHub label sync<br/>(reconcile, refresh-md)"]
+    end
+
+    sources --> cli
+    cli --> outputs
+    update -.->|"next day"| md
+```
+
+**Daily rhythm**:
+
+- **Morning** → `brief` shows multi-track plate, then `orient <track>` produces a ~15-line paste-block to drop into a fresh agent session.
+- **End of work block** → `handoff <track>` captures what you touched, then Claude (in your agent session) reviews the open list + project memory and writes `next_up` back into frontmatter so tomorrow's `orient` knows where to point.
+- **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.
+
 ## Requirements
 
 The toolkit is a Python CLI that shells out to standard tools. You need **all four** installed before running `install.sh` / `install.ps1`:
