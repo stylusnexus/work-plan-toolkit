@@ -74,7 +74,7 @@ brew install python@3 gh git yq
 # Linux (Debian/Ubuntu)
 sudo apt update && sudo apt install python3 git
 # gh: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-# yq: sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && sudo chmod +x /usr/local/bin/yq
+# yq: sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64 && sudo chmod +x /usr/local/bin/yq
 
 # Linux (Arch)
 sudo pacman -S python github-cli git go-yq
