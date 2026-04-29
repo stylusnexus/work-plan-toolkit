@@ -62,6 +62,28 @@ repos:
     local: /path/to/local/checkout           # optional, enables in-progress detection
 ```
 
+### Template vs runtime config
+
+Two config files exist; only one is the active one:
+
+| File | Role |
+|---|---|
+| `<toolkit>/config/config.example.yml` | **Template only** — read-only, lives with the repo, ships with `notes_root: ./notes` (relative). Don't edit this. |
+| `<toolkit>/notes/` | **Default notes folder** — bundled, empty until `init-repo` populates per-repo subdirs. |
+| `~/.claude/work-plan/config.yml` | **Active runtime config** — what the skill reads. Created by `install.sh` on first run by copying the template AND replacing `./notes` with the absolute toolkit path. **Edit this** to override settings. |
+
+After a fresh install, your active config at `~/.claude/work-plan/config.yml` looks like:
+
+```yaml
+notes_root: /absolute/path/to/work-plan-toolkit/notes
+repos:
+  example-repo:
+    github: your-org/your-repo
+    local: /path/to/local/checkout
+```
+
+`notes_root` is the **absolute path of the toolkit's bundled `notes/` folder**. To change it, edit `~/.claude/work-plan/config.yml` (NOT the template — editing the template gets blown away by `git pull`).
+
 ## Usage walkthrough
 
 See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work handoff, fresh-session orient, weekly hygiene).
