@@ -8,13 +8,11 @@
 # Override with your own path (e.g. ~/Documents/Project Notes/) at any time.
 notes_root: ./notes
 
-repos:
-  # Each entry maps a local subdir-key (under notes_root) to a GitHub repo.
-  # Add one block per repo you want to track.
-  example-repo:
-    github: your-org/your-repo        # GitHub slug for `gh` queries
-    local: /path/to/local/checkout    # Optional — enables in-progress branch + uncommitted detection
-
-  # critforge:
-  #   github: stylusnexus/CritForge
-  #   local: /Applications/Development/Projects/CritForge
+# repos: map local subdir-keys (under notes_root) to GitHub repos.
+# Ships empty — populate via /work-plan init-repo <key> --github=<org/repo>,
+# or add blocks manually in the shape below:
+#
+#   myproject:
+#     github: your-org/myproject
+#     local: /path/to/local/checkout    # optional, enables in-progress detection
+repos: {}
