@@ -3,18 +3,32 @@
 This is the default `notes_root` shipped with the toolkit. If you didn't override
 `notes_root` in `~/.claude/work-plan/config.yml`, your track files live here.
 
-## Structure
+## Bootstrap a new repo
+
+Run `/work-plan init-repo <key> --github=<org/repo> [--local=<path>]` to create
+the right folder structure for a repo and add it to your config in one step.
+
+For example:
+
+```bash
+/work-plan init-repo myproject --github=your-org/myproject --local=~/code/myproject
+```
+
+…creates `notes/myproject/archive/shipped/`, `notes/myproject/archive/abandoned/`,
+adds the repo block to `~/.claude/work-plan/config.yml`, and tells you what to
+do next.
+
+## Resulting structure
 
 ```
 notes/
-├── <repo-key>/                 # One subdirectory per GitHub repo you track
-│   ├── <track-slug>.md         # Active tracks (frontmatter + body)
-│   └── archive/                # Closed tracks, organized by lifecycle state
-│       ├── shipped/
-│       │   └── <track-slug>.md
-│       └── abandoned/
-│           └── <track-slug>.md
-└── example-repo/               # Pre-baked example to model your own after
+└── <repo-key>/                 # One subdirectory per GitHub repo you track
+    ├── <track-slug>.md         # Active tracks (frontmatter + body)
+    └── archive/                # Closed tracks, organized by lifecycle state
+        ├── shipped/
+        │   └── <track-slug>.md
+        └── abandoned/
+            └── <track-slug>.md
 ```
 
 ## Lifecycle states
@@ -32,5 +46,3 @@ notes/
   issues, next_up, etc.) followed by free-form body content.
 - Use `/work-plan init <path>` to add frontmatter to a brand-new track file.
 - Use `/work-plan close <track>` to move shipped/abandoned tracks into `archive/`.
-
-See `example-repo/` for the pattern.

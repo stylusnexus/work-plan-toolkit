@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# install.sh — install the work-plan toolkit into ~/.claude/
+# install.sh — install the work-plan toolkit into ~/.claude/  (macOS / Linux / WSL)
 #
-# Symlinks skills/work-plan and skills/repo-activity-summary into ~/.claude/skills/,
-# the slash command into ~/.claude/commands/, and seeds ~/.claude/work-plan/config.yml
-# with the bundled notes folder as default notes_root if no config exists yet.
+# Copies (not symlinks — for Windows compatibility via WSL paths) skills + command
+# into ~/.claude/. Re-run after `git pull` to refresh.
 
 set -euo pipefail
 
@@ -49,52 +48,55 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 ok "all dependencies present"
 
-# 3. Symlink skills
-link_skill() {
+# 3. Copy skills (with marker file for safe uninstall)
+copy_skill() {
     local name="$1"
     local src="${TOOLKIT_DIR}/skills/${name}"
     local dst="${SKILLS_DIR}/${name}"
 
-    if [ -L "${dst}" ] && [ "$(readlink "${dst}")" = "${src}" ]; then
-        ok "${name} already linked"
-        return
-    fi
     if [ -e "${dst}" ]; then
-        warn "${dst} exists and is not our symlink."
-        printf "    Overwrite? [y/N] "
-        read -r ans
-        if [ "${ans}" != "y" ] && [ "${ans}" != "Y" ]; then
-            warn "skipped ${name}"
-            return
+        # Re-install: only proceed if marker matches our toolkit
+        if [ -f "${dst}/.installed-from" ] && grep -qx "${TOOLKIT_DIR}" "${dst}/.installed-from"; then
+            rm -rf "${dst}"
+        else
+            warn "${dst} exists and was not installed by this toolkit."
+            printf "    Overwrite? [y/N] "
+            read -r ans
+            if [ "${ans}" != "y" ] && [ "${ans}" != "Y" ]; then
+                warn "skipped ${name}"
+                return
+            fi
+            rm -rf "${dst}"
         fi
-        rm -rf "${dst}"
     fi
-    ln -s "${src}" "${dst}"
-    ok "linked ${name}"
+    cp -R "${src}" "${dst}"
+    # Drop a marker so uninstall knows this copy is ours
+    printf "%s\n" "${TOOLKIT_DIR}" > "${dst}/.installed-from"
+    ok "copied ${name}"
 }
 
-link_skill "work-plan"
-link_skill "repo-activity-summary"
+copy_skill "work-plan"
+copy_skill "repo-activity-summary"
 
-# 4. Symlink slash command
+# 4. Copy slash command (no marker file — single file)
 cmd_src="${TOOLKIT_DIR}/commands/work-plan.md"
 cmd_dst="${COMMANDS_DIR}/work-plan.md"
-if [ -L "${cmd_dst}" ] && [ "$(readlink "${cmd_dst}")" = "${cmd_src}" ]; then
-    ok "work-plan command already linked"
-elif [ -e "${cmd_dst}" ]; then
-    warn "${cmd_dst} exists and is not our symlink."
-    printf "    Overwrite? [y/N] "
-    read -r ans
-    if [ "${ans}" = "y" ] || [ "${ans}" = "Y" ]; then
-        rm -f "${cmd_dst}"
-        ln -s "${cmd_src}" "${cmd_dst}"
-        ok "linked command"
+if [ -e "${cmd_dst}" ]; then
+    if cmp -s "${cmd_src}" "${cmd_dst}"; then
+        ok "command already up to date"
     else
-        warn "skipped command"
+        warn "${cmd_dst} differs from toolkit. Overwrite? [y/N] "
+        read -r ans
+        if [ "${ans}" = "y" ] || [ "${ans}" = "Y" ]; then
+            cp "${cmd_src}" "${cmd_dst}"
+            ok "copied command"
+        else
+            warn "skipped command"
+        fi
     fi
 else
-    ln -s "${cmd_src}" "${cmd_dst}"
-    ok "linked command"
+    cp "${cmd_src}" "${cmd_dst}"
+    ok "copied command"
 fi
 
 # 5. Seed config — only if it doesn't already exist
@@ -102,9 +104,7 @@ if [ -f "${CONFIG_FILE}" ]; then
     ok "config already exists, leaving alone (${CONFIG_FILE})"
 else
     cp "${TOOLKIT_DIR}/config/config.example.yml" "${CONFIG_FILE}"
-    # Resolve the relative ./notes path to the absolute toolkit notes dir
     abs_notes="${TOOLKIT_DIR}/notes"
-    # Use awk for portable in-place edit (sed -i differs between macOS and GNU)
     tmp="$(mktemp)"
     awk -v abs="${abs_notes}" '/^notes_root:/ { print "notes_root: " abs; next } { print }' \
         "${CONFIG_FILE}" > "${tmp}" && mv "${tmp}" "${CONFIG_FILE}"
@@ -124,3 +124,6 @@ echo
 bold "Done."
 echo "Try:  python3 ${SKILLS_DIR}/work-plan/work_plan.py --help"
 echo "Or in Claude Code: /work-plan --help"
+echo
+echo "Bootstrap your first repo:  /work-plan init-repo <key>"
+echo "Re-run after 'git pull' to refresh."

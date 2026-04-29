@@ -17,23 +17,42 @@ A dozen more subcommands cover slotting new issues into tracks, closing tracks (
 
 ## Install
 
+**macOS / Linux / WSL:**
 ```bash
 git clone <this-repo> work-plan-toolkit
 cd work-plan-toolkit
 ./install.sh
 ```
 
+**Windows (native PowerShell):**
+```powershell
+git clone <this-repo> work-plan-toolkit
+cd work-plan-toolkit
+.\install.ps1
+```
+
 The installer:
 
-- Symlinks `skills/work-plan` and `skills/repo-activity-summary` into `~/.claude/skills/`
-- Symlinks `commands/work-plan.md` into `~/.claude/commands/`
+- **Copies** (not symlinks — for Windows compatibility) `skills/work-plan` and `skills/repo-activity-summary` into `~/.claude/skills/`
+- Copies `commands/work-plan.md` into `~/.claude/commands/`
 - Creates `~/.claude/work-plan/config.yml` from the bundled template (only if no config exists), with `notes_root` pointing at the toolkit's bundled `notes/` folder so it works out of the box
+- Drops a `.installed-from` marker so `uninstall` knows what's safe to remove
+
+Re-run `install.sh` (or `install.ps1`) after `git pull` to refresh.
 
 External dependencies (verified by the installer): `gh`, `git`, `yq`, `python3`.
 
 ## Configure
 
-Open `~/.claude/work-plan/config.yml`. Add one entry per repo you want to track:
+After install, bootstrap your first repo with the **`init-repo`** subcommand:
+
+```bash
+/work-plan init-repo myproject --github=your-org/myproject --local=/path/to/checkout
+```
+
+This creates `<notes_root>/myproject/archive/{shipped,abandoned}/` and adds the repo block to your `~/.claude/work-plan/config.yml` (idempotent; errors if the key already exists). Skip `--github` / `--local` to be prompted interactively.
+
+You can also edit `~/.claude/work-plan/config.yml` directly:
 
 ```yaml
 notes_root: /absolute/path/to/your/notes/    # or keep the bundled default
@@ -42,8 +61,6 @@ repos:
     github: your-org/myproject
     local: /path/to/local/checkout           # optional, enables in-progress detection
 ```
-
-Then create per-repo subdirectories under `notes_root` (e.g., `myproject/`) and start adding track files. The bundled `notes/example-repo/` shows the layout, including the `archive/{shipped,abandoned}/` subdirs that `close` populates.
 
 ## Usage walkthrough
 
@@ -62,6 +79,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `hygiene` | Weekly all-in-one: `refresh-md --all` + `reconcile --all` + `duplicates`. |
 | `list [--all]` | List active tracks (or all including parked/archived). |
 | `init <path>` | Add frontmatter to a brand-new track .md file. |
+| `init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
 | `reconcile <track>` `\|` `--all` | Sync track frontmatter with `track/<slug>` GitHub labels. |

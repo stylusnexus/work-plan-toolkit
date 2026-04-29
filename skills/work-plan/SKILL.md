@@ -22,6 +22,7 @@ Track-aware daily planner. Composes with `/repo-activity-summary` (global view) 
 | `/work-plan orient <track>` | Alias for `where-was-i`. Re-orient on a track. |
 | `/work-plan list [--all]` | List active tracks (or all including parked/archived). |
 | `/work-plan init <path>` | Add frontmatter to a new track .md file. |
+| `/work-plan init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `/work-plan suggest-priorities --repo=<folder>` | Batch AI label backfill (one-time migration). |
 | `/work-plan group [--milestone=v1.0.0] [--label=foo] [--repo=<folder>]` | AI-cluster GitHub issues into thematic track files. Creates `<repo>/<slug>.md` per cluster with frontmatter + status table. Two-step like suggest-priorities (fetch → agent clusters → `--apply`). |
 | `/work-plan reconcile <track-name> \| --all` | Sync track frontmatter with `track/<slug>` GitHub labels. Adds labeled-but-missing issues, flags listed-but-unlabeled. Run weekly. |
