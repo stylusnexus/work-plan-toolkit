@@ -2,6 +2,8 @@
 
 Thanks for considering a contribution. This is a small, focused tool — issues and PRs are very welcome, especially for cross-platform/cross-tool fixes (Windows quirks, Codex compatibility, edge cases in `gh`/`yq` behavior).
 
+By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Quick links
 
 - **Bug reports / feature requests**: [open an issue](https://github.com/stylusnexus/work-plan-toolkit/issues/new)
