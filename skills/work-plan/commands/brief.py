@@ -11,6 +11,7 @@ from lib.git_state import (
 )
 from lib.closure import compute_signals, is_closure_ready
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
+from lib.next_up import suggest_next_up
 from lib.drift import detect_drift
 from lib.render import time_aware_framing, render_track_row, render_archived_reopen
 
@@ -89,8 +90,19 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     issues = fetch_issues(repo, issue_nums) if (repo and issue_nums) else []
     issues_by_num = {i["number"]: i for i in issues}
 
+    # When `next_up_auto: true` is set in track frontmatter, derive the list
+    # live from open issues (priority-sorted, blockers excluded) instead of
+    # reading the stored `next_up`. The track's persisted list is ignored
+    # for display purposes — useful for tracks where you don't want to
+    # hand-curate but still want a sensible "what's next" surfaced.
+    if meta.get("next_up_auto") and issues:
+        blocker_nums = meta.get("blockers") or []
+        next_up_nums = suggest_next_up(issues, blocker_nums)
+    else:
+        next_up_nums = meta.get("next_up") or []
+
     next_up_items = []
-    for num in (meta.get("next_up") or []):
+    for num in next_up_nums:
         i = issues_by_num.get(num)
         if i:
             next_up_items.append({
