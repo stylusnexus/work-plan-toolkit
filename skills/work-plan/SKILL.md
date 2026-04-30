@@ -24,7 +24,7 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | `/work-plan init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `/work-plan suggest-priorities --repo=<key>` | Two-step AI label backfill (one-time migration). |
 | `/work-plan group [--milestone=X] [--label=Y] [--repo=Z]` | Two-step AI clustering: turn a flat list of issues into thematic track files. |
-| `/work-plan reconcile <track> \| --all` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels` in frontmatter. |
+| `/work-plan reconcile <track> \| --all [--draft]` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels` in frontmatter. Add `--draft` to preview proposed ADDs/FLAGs without prompting or writing. |
 | `/work-plan duplicates [--min-similarity=0.7]` | Find likely-duplicate issues by title similarity (stdlib difflib). |
 
 ## How to invoke
