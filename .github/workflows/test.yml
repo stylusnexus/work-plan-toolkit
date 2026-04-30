@@ -4,9 +4,18 @@ on:
   push:
     branches:
       - main
+      - dev
   pull_request:
     branches:
       - main
+      - dev
+
+# Cancel superseded runs on feature branches and PRs to save Actions minutes
+# during rapid iteration. Pushes to main and dev are never cancelled so the
+# integration branches retain a complete green-check history per commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
   unittest:
@@ -25,6 +34,8 @@ jobs:
         include:
           - os: macos-latest
             python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
 
     steps:
       - name: Check out repository
@@ -35,7 +46,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install mikefarah/yq
+      - name: Install mikefarah/yq (Linux/macOS)
+        if: runner.os != 'Windows'
         run: |
           case "${{ runner.os }}" in
             Linux) BIN=yq_linux_amd64 ;;
@@ -46,6 +58,31 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
-      - name: Run work-plan unittest suite
+      - name: Install mikefarah/yq (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $url = "https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_windows_amd64.exe"
+          $dest = "$env:RUNNER_TEMP\yq.exe"
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          Add-Content -Path $env:GITHUB_PATH -Value (Split-Path $dest -Parent)
+
+      - name: Verify yq on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: yq --version
+
+      - name: Run work-plan unittest suite (Linux/macOS)
+        if: runner.os != 'Windows'
         working-directory: skills/work-plan
         run: python3 -m unittest discover tests
+
+      - name: Run work-plan unittest suite (Windows)
+        if: runner.os == 'Windows'
+        working-directory: skills/work-plan
+        env:
+          # Force UTF-8 stdout. Windows runners default to cp1252 in non-tty
+          # mode, which can't encode unicode chars used in _print_help().
+          PYTHONUTF8: "1"
+        run: python -m unittest discover tests
