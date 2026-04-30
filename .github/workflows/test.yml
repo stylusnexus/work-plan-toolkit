@@ -74,4 +74,8 @@ jobs:
       - name: Run work-plan unittest suite (Windows)
         if: runner.os == 'Windows'
         working-directory: skills/work-plan
+        env:
+          # Force UTF-8 stdout. Windows runners default to cp1252 in non-tty
+          # mode, which can't encode unicode chars used in _print_help().
+          PYTHONUTF8: "1"
         run: python -m unittest discover tests
