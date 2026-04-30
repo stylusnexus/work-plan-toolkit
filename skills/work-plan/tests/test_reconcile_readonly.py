@@ -154,6 +154,56 @@ class ReadOnlyContractTest(unittest.TestCase):
         mock_prompt.assert_not_called()
         mock_write.assert_not_called()
 
+    def test_apply_writes_without_prompting(self):
+        # --apply writes the proposed ADDs without showing the y/N prompt.
+        # user_choice="n" would normally REJECT the write — proves --apply
+        # short-circuits the prompt entirely. GitHub side stays read-only.
+        track = _fake_track(slug="epsilon", repo="ok/ok", issues=[5])
+        gh_response = [
+            {"number": 5, "title": "x", "state": "OPEN"},
+            {"number": 99, "title": "new", "state": "OPEN"},
+        ]
+        rc, captured, mock_write, mock_prompt = self._drive(
+            track=track, gh_response=gh_response,
+            user_choice="n", extra_args=["--apply"],
+        )
+        self.assertEqual(rc, 0)
+        self._assert_read_only(captured)
+        mock_prompt.assert_not_called()
+        mock_write.assert_called_once()
+
+    def test_apply_skips_when_no_adds(self):
+        # --apply should not write if there's nothing new to add. The track's
+        # frontmatter already lists every labeled issue, so adds=[]. No prompt,
+        # no write — silent no-op for that track.
+        track = _fake_track(slug="zeta", repo="ok/ok", issues=[5, 99])
+        gh_response = [
+            {"number": 5, "title": "x", "state": "OPEN"},
+            {"number": 99, "title": "y", "state": "OPEN"},
+        ]
+        rc, captured, mock_write, mock_prompt = self._drive(
+            track=track, gh_response=gh_response,
+            user_choice="n", extra_args=["--apply"],
+        )
+        self.assertEqual(rc, 0)
+        self._assert_read_only(captured)
+        mock_prompt.assert_not_called()
+        mock_write.assert_not_called()
+
+    def test_draft_and_apply_are_mutually_exclusive(self):
+        # Passing both flags is a usage error — should fail fast with rc=2
+        # and never call gh, prompt, or write_file.
+        track = _fake_track(slug="eta", repo="ok/ok", issues=[1])
+        rc, captured, mock_write, mock_prompt = self._drive(
+            track=track, gh_response=[],
+            user_choice="n", extra_args=["--draft", "--apply"],
+        )
+        self.assertEqual(rc, 2)
+        self.assertEqual(captured, [],
+                         "no gh calls should be made when arg validation fails")
+        mock_prompt.assert_not_called()
+        mock_write.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
