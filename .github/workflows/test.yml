@@ -18,7 +18,23 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 jobs:
+  # Fast pre-matrix lint catches PEP 604 union annotations that would fail at
+  # module-load time on Python 3.9. Without this gate, the 3.9 matrix cell is
+  # the only line of defense — and it only fires after a PR is opened. The
+  # lint runs in seconds and short-circuits the matrix on failure.
+  lint-py39:
+    name: Python 3.9 union-syntax lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run py39 union-syntax lint
+        run: python3 scripts/lint_py39_unions.py
+
   unittest:
+    needs: lint-py39
     name: ${{ matrix.os }} · Python ${{ matrix.python-version }} unittest
     runs-on: ${{ matrix.os }}
 
