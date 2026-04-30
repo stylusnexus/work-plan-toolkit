@@ -21,7 +21,7 @@ from lib.git_state import (
 )
 from lib.github_state import fetch_issues, state_to_status_label
 from lib.status_table import update_row_status, find_canonical_status_tables, ISSUE_NUM_RE
-from lib.new_issues import find_new_issues_for_tracks
+from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.prompts import prompt_lines, parse_flags
 
 
@@ -142,7 +142,8 @@ def _derived_handoff(track) -> int:
     new_issues = []
     if track.repo and last_handoff_dt:
         days = max(1, int((now - last_handoff_dt).total_seconds() / 86400))
-        new_map = find_new_issues_for_tracks(track.repo, [slug], since_days=days)
+        slug_labels = build_slug_labels([track])
+        new_map = find_new_issues_for_tracks(track.repo, [slug], slug_labels=slug_labels, since_days=days)
         listed_set = set(issue_nums)
         new_issues = [i for i in new_map.get(slug, []) if i["number"] not in listed_set]
 

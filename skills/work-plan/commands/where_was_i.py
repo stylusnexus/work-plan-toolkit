@@ -32,7 +32,7 @@ from lib.git_state import (
     parse_iso_timestamp,
     current_branch, uncommitted_file_count, commits_ahead,
 )
-from lib.new_issues import find_new_issues_for_tracks
+from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 
 
 RULE_CHAR = "─"
@@ -250,7 +250,8 @@ def _new_issues_since_handoff(track, last_handoff_iso: Optional[str],
     except ValueError:
         return []
     days = max(1, int((datetime.now() - last_dt).total_seconds() / 86400))
-    new_map = find_new_issues_for_tracks(track.repo, [slug], since_days=days)
+    slug_labels = build_slug_labels([track])
+    new_map = find_new_issues_for_tracks(track.repo, [slug], slug_labels=slug_labels, since_days=days)
     listed = set(listed_nums)
     return [i for i in new_map.get(slug, []) if i["number"] not in listed]
 

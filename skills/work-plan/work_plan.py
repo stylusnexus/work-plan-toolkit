@@ -39,6 +39,7 @@ SUBCOMMANDS = {
     "suggest-priorities": "commands.suggest_priorities",
     "group": "commands.group",
     "reconcile": "commands.reconcile",
+    "--reconcile": "commands.reconcile",  # flag-style alias
     "duplicates": "commands.duplicates",
     "canonicalize": "commands.canonicalize",
     "hygiene": "commands.hygiene",
@@ -92,7 +93,7 @@ DESCRIPTIONS = [
      "ONE-TIME bulk organization of an unsorted milestone, or after a re-org.",
      "/work-plan group --milestone='v1.0.0 — Public Launch'"),
     ("reconcile", "<track> | --all",
-     "Sync track frontmatter with track/<slug> GitHub labels.",
+     "Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter.",
      "WEEKLY hygiene — pulls labeled issues into their tracks, flags un-labeled ones.",
      "/work-plan reconcile --all"),
     ("duplicates", "[--min-similarity=0.7] [--limit=20] [--state=open]",
@@ -131,8 +132,8 @@ def _print_help() -> int:
     print("  New issue filed       →  /work-plan slot <#>")
     print("  Track shipped/done    →  /work-plan close <track>")
     print()
-    print("  Need to remember? You only need 4 flags: --brief · --handoff · --orient · --hygiene")
-    print("  (Subcommand form also works: brief, handoff, orient, hygiene)")
+    print("  Need to remember? You only need 5 flags: --brief · --handoff · --orient · --reconcile · --hygiene")
+    print("  (Subcommand form also works: brief, handoff, orient, reconcile, hygiene)")
     print()
     print("WEEKLY HYGIENE\n")
     print("  All-in-one (recommended)  →  /work-plan --hygiene")

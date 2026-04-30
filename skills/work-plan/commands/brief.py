@@ -10,7 +10,7 @@ from lib.git_state import (
     branch_in_progress, commits_ahead, uncommitted_file_count, current_branch,
 )
 from lib.closure import compute_signals, is_closure_ready
-from lib.new_issues import find_new_issues_for_tracks
+from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.drift import detect_drift
 from lib.render import time_aware_framing, render_track_row, render_archived_reopen
 
@@ -122,7 +122,8 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
         operational_status = stored_status
 
     track_slug = meta.get("track", track.name)
-    new_issues_map = find_new_issues_for_tracks(repo, [track_slug], since_days=7) if repo else {}
+    slug_labels = build_slug_labels([track])
+    new_issues_map = find_new_issues_for_tracks(repo, [track_slug], slug_labels=slug_labels, since_days=7) if repo else {}
     listed_set = set(issue_nums)
     new_issues = []
     for issue in new_issues_map.get(track_slug, []):
@@ -188,7 +189,8 @@ def _surface_archived_reopens(cfg: dict) -> None:
     callouts = []
     for repo, tracks_in_repo in by_repo.items():
         slugs = [a.meta.get("track", a.name) for a in tracks_in_repo]
-        new_map = find_new_issues_for_tracks(repo, slugs, since_days=14)
+        slug_labels = build_slug_labels(tracks_in_repo)
+        new_map = find_new_issues_for_tracks(repo, slugs, slug_labels=slug_labels, since_days=14)
         for slug, issues in new_map.items():
             for issue in issues:
                 callouts.append((slug, issue))
