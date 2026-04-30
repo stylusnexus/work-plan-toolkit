@@ -10,6 +10,13 @@ on:
       - main
       - dev
 
+# Cancel superseded runs on feature branches and PRs to save Actions minutes
+# during rapid iteration. Pushes to main and dev are never cancelled so the
+# integration branches retain a complete green-check history per commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
 jobs:
   unittest:
     name: ${{ matrix.os }} · Python ${{ matrix.python-version }} unittest
