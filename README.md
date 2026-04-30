@@ -4,13 +4,14 @@ Track-aware daily work planning for developers running parallel Claude Code sess
 
 `work-plan` is a Claude Code skill that wraps a small Python CLI. It treats your daily work as a set of *tracks* — each track is a markdown file with YAML frontmatter listing its priority, milestone, GitHub issue numbers, and current status. The skill derives state live from GitHub (`gh`), git, and the markdown body, so the markdown stays light (it references issues by ID rather than duplicating their state).
 
-The four commands you'll use 80% of the time are:
+The five essentials you'll use 80% of the time are:
 
 | Command | When |
 |---|---|
 | `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. |
-| `/work-plan handoff <track>` | End of a work block. Captures what you touched and Claude picks `next_up` for tomorrow. |
+| `/work-plan handoff <track>` | End of a work block. Captures what you touched. Use `--auto-next` for an algorithmic priority-sorted `next_up` (no LLM), `--set-next 1,2,3` for explicit numbers, or pair with Claude in chat for a curated pick. |
 | `/work-plan orient <track>` | Switching context. ~15-line paste-block of priority / last session / next pick / git state — drop into a fresh Claude Code terminal. |
+| `/work-plan reconcile <track> \| --all [--draft]` | Track frontmatter drifted from GitHub labels. `--draft` previews proposed ADDs/FLAGs without prompting or writing — handy for sweep audits. |
 | `/work-plan hygiene` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. |
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
@@ -31,7 +32,7 @@ flowchart TB
     subgraph cli["work-plan CLI (Python stdlib)"]
         direction LR
         brief["brief<br/><i>multi-track view</i>"]
-        handoff["handoff<br/><i>capture session + Claude picks next_up</i>"]
+        handoff["handoff<br/><i>capture session + algorithmic or LLM next_up</i>"]
         orient["orient<br/><i>paste-block context for new session</i>"]
         hygiene["hygiene<br/><i>weekly drift + dup sweep</i>"]
     end
@@ -51,7 +52,11 @@ flowchart TB
 **Daily rhythm**:
 
 - **Morning** → `brief` shows multi-track plate, then `orient <track>` produces a ~15-line paste-block to drop into a fresh agent session.
-- **End of work block** → `handoff <track>` captures what you touched, then Claude (in your agent session) reviews the open list + project memory and writes `next_up` back into frontmatter so tomorrow's `orient` knows where to point.
+- **End of work block** → `handoff <track>` captures what you touched. Three ways to set `next_up` for tomorrow:
+  - `handoff <track> --auto-next` — algorithmic (no LLM): top-3 by priority then most-recently-updated, blockers excluded. Interactive `[Y/n/edit]` prompt — accept, edit, or skip.
+  - `handoff <track> --set-next 4167,4148` — explicit numbers when you know exactly which issues are next.
+  - Free-form via Claude in your agent session, which can review project memory and write a curated list back. The two `--*-next` flags are the no-LLM paths.
+  - For tracks where you don't want to bother curating at all, set `next_up_auto: true` in the track's frontmatter — `brief` will then derive the list live each invocation, ignoring whatever's stored.
 - **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.
 
 ## Requirements
@@ -278,7 +283,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | Subcommand | What it does |
 |---|---|
 | `brief` | Multi-track snapshot of all active tracks across configured repos. |
-| `handoff <track>` | Wrap up a work block. Writes a `### Session — <ts>` entry, has Claude pick `next_up` based on priority + project memory, persists via `--set-next`. |
+| `handoff <track> [--auto-next \| --set-next 1,2,3]` | Wrap up a work block. Writes a `### Session — <ts>` entry. `--auto-next` suggests a priority-sorted top-3 from open issues (interactive: apply / edit / skip). `--set-next 1,2,3` is the explicit form. Without either flag, just captures the session summary and reads any pre-existing `next_up`. |
 | `orient [track]` (alias: `where-was-i`) | Read-only paste block. With a track name: ~15-line track summary (priority, last session, next pick, git state). With no track: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. |
 | `close <track>` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
@@ -289,11 +294,20 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
-| `reconcile <track>` `\|` `--all` | Sync track frontmatter with `track/<slug>` GitHub labels. |
+| `reconcile <track>` `\|` `--all [--draft]` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
 
 Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list with examples.
+
+## Version
+
+```bash
+python3 ~/.claude/skills/work-plan/work_plan.py --version
+# work-plan 2026.04.30+a1b2c3d
+```
+
+The version is **calver + git short SHA** of the deploy commit on `main`. It's auto-bumped on every push to main by `.github/workflows/version-bump.yml` — there's no hand-maintained version constant. Re-running `./install.sh` (or `.\install.ps1`) after a `git pull` refreshes the value in your installed copy. Include this string in any bug report so the maintainer knows exactly which commit you're on.
 
 ## Composes with
 
