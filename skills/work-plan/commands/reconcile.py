@@ -63,12 +63,13 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all"})
+    flags, positional = parse_flags(args, {"--all", "--draft"})
     do_all = flags.get("--all", False)
+    draft = flags.get("--draft", False)
     track_name = positional[0] if positional else None
 
     if not do_all and not track_name:
-        print("usage: work_plan.py reconcile <track-name> | --all")
+        print("usage: work_plan.py reconcile <track-name> | --all [--draft]")
         return 2
 
     try:
@@ -125,6 +126,11 @@ def run(args: list[str]) -> int:
             print(f"  FLAG ({len(flag_nums)}) — in frontmatter but missing every configured label:")
             for num in flag_nums:
                 print(f"    #{num} (label removed; consider /work-plan slot to move)")
+
+        if draft:
+            # --draft: print the analysis above and stop. No prompt, no write.
+            # Useful for sweep audits and scripted reports.
+            continue
 
         choice = prompt_input(f"\n  Apply ADDs to {track.path.name}? [y/N/skip-flags]").lower()
         if choice == "y":
