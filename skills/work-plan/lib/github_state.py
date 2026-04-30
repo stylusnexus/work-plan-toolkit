@@ -17,7 +17,7 @@ def fetch_issues(repo: str, issue_numbers: Iterable[int]) -> list[dict]:
         proc = subprocess.run(
             ["gh", "issue", "view", str(num),
              "--repo", repo,
-             "--json", "number,state,labels,title,milestone,url,closedAt,body"],
+             "--json", "number,state,labels,title,milestone,url,closedAt,body,updatedAt"],
             capture_output=True, text=True,
         )
         if proc.returncode != 0:

@@ -13,7 +13,7 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | Subcommand | When |
 |---|---|
 | `/work-plan brief` | Starting work or after a gap. Multi-track snapshot. |
-| `/work-plan handoff [track]` | Wrapping up a work block. Captures touched + next + blockers; writes session log. |
+| `/work-plan handoff [track] [--auto-next \| --set-next 1,2,3]` | Wrapping up a work block. Captures touched + next + blockers; writes session log. Add `--auto-next` to suggest a priority-sorted next_up list from open issues (interactive: apply / edit / skip). Tracks with `next_up_auto: true` in frontmatter get the auto-derived list surfaced in `brief` automatically. |
 | `/work-plan orient [track]` (alias `where-was-i`) | Re-orienting. With a track: ~15-line track paste-block. Without: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `/work-plan hygiene` | Weekly all-in-one cleanup: refresh-md --all + reconcile --all + duplicates. |
 | `/work-plan slot <issue-num> [track]` | A new GitHub issue should belong to a track. |
