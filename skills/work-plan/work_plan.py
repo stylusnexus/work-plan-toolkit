@@ -2,6 +2,8 @@
 """Daily work planner CLI."""
 import sys
 
+VERSION = "0.1.0"
+
 SUBCOMMANDS = {
     "brief": "commands.brief",
     "--brief": "commands.brief",          # flag-style alias
@@ -128,6 +130,7 @@ def _print_help() -> int:
     print("=" * 80)
     print(f"Config: ~/.claude/work-plan/config.yml  (or ~/.agents/work-plan/config.yml on Codex)")
     print(f"Docs:   See the toolkit README for full setup, requirements, and platform-specific install.")
+    print(f"Meta:   --help / -h · --version / -v")
     return 0
 
 
@@ -137,6 +140,9 @@ def main(argv: list[str]) -> int:
     sub = argv[1]
     if sub in ("--help", "-h", "help"):
         return _print_help()
+    if sub in ("--version", "-v"):
+        print(f"work-plan {VERSION}")
+        return 0
     if sub not in SUBCOMMANDS:
         print(f"unknown subcommand '{sub}'", file=sys.stderr)
         print(f"Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
