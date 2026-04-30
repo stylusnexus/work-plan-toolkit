@@ -53,8 +53,8 @@ def _fake_track(*, slug, repo, labels=None, issues=None):
 
 
 class ReadOnlyContractTest(unittest.TestCase):
-    def _drive(self, *, track, gh_response, user_choice):
-        """Run reconcile.run against mocks; return (exit_code, captured_argvs, write_mock)."""
+    def _drive(self, *, track, gh_response, user_choice, extra_args=None):
+        """Run reconcile.run against mocks; return (exit_code, captured_argvs, write_mock, prompt_mock)."""
         captured = []
 
         def fake_run(argv, *args, **kwargs):
@@ -69,10 +69,11 @@ class ReadOnlyContractTest(unittest.TestCase):
         with patch("commands.reconcile.subprocess.run", side_effect=fake_run), \
              patch("commands.reconcile.load_config", return_value=cfg), \
              patch("commands.reconcile.discover_tracks", return_value=[track]), \
-             patch("commands.reconcile.prompt_input", return_value=user_choice), \
+             patch("commands.reconcile.prompt_input", return_value=user_choice) as mock_prompt, \
              patch("commands.reconcile.write_file") as mock_write:
-            rc = reconcile.run([track.meta["track"]])
-        return rc, captured, mock_write
+            args = [track.meta["track"]] + (extra_args or [])
+            rc = reconcile.run(args)
+        return rc, captured, mock_write, mock_prompt
 
     def _assert_read_only(self, captured):
         gh_calls = [a for a in captured if a and a[0] == "gh"]
@@ -95,7 +96,7 @@ class ReadOnlyContractTest(unittest.TestCase):
             {"number": 1, "title": "one", "state": "OPEN"},
             {"number": 4, "title": "four", "state": "OPEN"},
         ]
-        rc, captured, mock_write = self._drive(
+        rc, captured, mock_write, _ = self._drive(
             track=track, gh_response=gh_response, user_choice="n",
         )
         self.assertEqual(rc, 0)
@@ -108,7 +109,7 @@ class ReadOnlyContractTest(unittest.TestCase):
         track = _fake_track(slug="beta", repo="ok/ok",
                             labels=["storytelling", "campaigns"], issues=[10])
         gh_response = [{"number": 10, "title": "x", "state": "OPEN"}]
-        rc, captured, mock_write = self._drive(
+        rc, captured, mock_write, _ = self._drive(
             track=track, gh_response=gh_response, user_choice="n",
         )
         self.assertEqual(rc, 0)
@@ -126,12 +127,32 @@ class ReadOnlyContractTest(unittest.TestCase):
             {"number": 5, "title": "x", "state": "OPEN"},
             {"number": 99, "title": "new", "state": "OPEN"},
         ]
-        rc, captured, mock_write = self._drive(
+        rc, captured, mock_write, _ = self._drive(
             track=track, gh_response=gh_response, user_choice="y",
         )
         self.assertEqual(rc, 0)
         self._assert_read_only(captured)
         mock_write.assert_called_once()
+
+    def test_draft_skips_user_prompt_and_write(self):
+        # --draft prints the analysis but never prompts and never writes.
+        # Even with proposed ADDs (so the report path is exercised), the user
+        # should not be interrupted and the local file should remain untouched.
+        # user_choice="y" would normally trigger a write — proves --draft
+        # short-circuits before the prompt is reached.
+        track = _fake_track(slug="delta", repo="ok/ok", issues=[5])
+        gh_response = [
+            {"number": 5, "title": "x", "state": "OPEN"},
+            {"number": 99, "title": "new", "state": "OPEN"},
+        ]
+        rc, captured, mock_write, mock_prompt = self._drive(
+            track=track, gh_response=gh_response,
+            user_choice="y", extra_args=["--draft"],
+        )
+        self.assertEqual(rc, 0)
+        self._assert_read_only(captured)
+        mock_prompt.assert_not_called()
+        mock_write.assert_not_called()
 
 
 if __name__ == "__main__":
