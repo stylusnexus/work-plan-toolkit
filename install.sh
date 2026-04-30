@@ -115,6 +115,16 @@ copy_skill() {
 copy_skill "work-plan"
 copy_skill "repo-activity-summary"
 
+# 3.5 Copy VERSION file alongside work_plan.py so --version can read it.
+# VERSION lives at the repo root (auto-bumped on each main push by
+# .github/workflows/version-bump.yml); the runtime expects it next to the script.
+if [ -f "${TOOLKIT_DIR}/VERSION" ]; then
+    cp "${TOOLKIT_DIR}/VERSION" "${SKILLS_DIR}/work-plan/VERSION"
+    ok "copied VERSION ($(tr -d '[:space:]' < "${TOOLKIT_DIR}/VERSION"))"
+else
+    warn "no VERSION file at toolkit root — --version will report 'unknown'"
+fi
+
 # 4. Copy slash command (no marker file — single file)
 cmd_src="${TOOLKIT_DIR}/commands/work-plan.md"
 cmd_dst="${COMMANDS_DIR}/work-plan.md"
