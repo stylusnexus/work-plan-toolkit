@@ -2,7 +2,7 @@
 import io
 import unittest
 import sys
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -21,13 +21,16 @@ class SmokeTest(unittest.TestCase):
     def test_version_flag_prints_and_exits_zero(self):
         for flag in ("--version", "-v"):
             with self.subTest(flag=flag):
-                buf = io.StringIO()
-                with redirect_stdout(buf):
+                out_buf = io.StringIO()
+                err_buf = io.StringIO()
+                with redirect_stdout(out_buf), redirect_stderr(err_buf):
                     rc = work_plan.main(["work_plan.py", flag])
-                out = buf.getvalue().strip()
+                out = out_buf.getvalue().strip()
+                err = err_buf.getvalue()
                 self.assertEqual(rc, 0)
-                self.assertTrue(out, f"{flag} produced empty output")
+                self.assertTrue(out, f"{flag} produced empty stdout")
                 self.assertIn(work_plan.VERSION, out)
+                self.assertEqual(err, "", f"{flag} wrote to stderr: {err!r}")
 
 
 if __name__ == "__main__":
