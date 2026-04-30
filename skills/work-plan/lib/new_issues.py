@@ -1,4 +1,6 @@
 """Detect new GitHub issues that should slot into existing tracks."""
+from __future__ import annotations
+
 import re
 from datetime import datetime, timedelta
 
