@@ -24,7 +24,7 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | `/work-plan init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `/work-plan suggest-priorities --repo=<key>` | Two-step AI label backfill (one-time migration). |
 | `/work-plan group [--milestone=X] [--label=Y] [--repo=Z]` | Two-step AI clustering: turn a flat list of issues into thematic track files. |
-| `/work-plan reconcile <track> \| --all` | Sync track frontmatter with `track/<slug>` GitHub labels. |
+| `/work-plan reconcile <track> \| --all` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels` in frontmatter. |
 | `/work-plan duplicates [--min-similarity=0.7]` | Find likely-duplicate issues by title similarity (stdlib difflib). |
 
 ## How to invoke
@@ -61,6 +61,23 @@ Both are two-step:
 3. Re-run with `--apply` to commit changes.
 
 Show the proposed labels/clusters BEFORE applying. The user may want to override.
+
+## Track ↔ GitHub label mapping
+
+By default, `reconcile` and the `brief` new-issue suggester look for the label `track/<slug>` on GitHub issues. If your repo uses a different scheme (flat labels like `storytelling`, namespaced labels like `area/maps`, or no `track/*` namespace at all), declare the labels per-track in the markdown frontmatter:
+
+```yaml
+---
+track: storytelling-enhancements
+status: active
+github:
+  repo: your-org/your-repo
+  labels: [storytelling, campaigns]   # OR semantics — issue matches if ANY label is present
+  issues: [4296, 4290, ...]
+---
+```
+
+This is read-only on GitHub: the skill never adds, removes, or rewrites labels on the remote — it only reads them to know which issues belong to a track. The only writes are to your local markdown frontmatter, gated behind interactive confirmation. If `github.labels` is omitted, the default `track/<slug>` pattern is used (existing setups keep working unchanged).
 
 ## Setup
 
