@@ -11,12 +11,20 @@ For a given track:
   - Propose FLAGS (in frontmatter but no longer labeled — possible move out).
   - User confirms before writing to the LOCAL frontmatter file.
 
+Modes (mutually exclusive):
+  (default)  Interactive — prompt y/N per track before writing.
+  --draft    Preview only. Print proposed ADDs/FLAGs, never write.
+  --apply    Non-interactive. Write all proposed ADDs without prompting.
+             Useful when running through Claude Code's slash-command harness
+             where the interactive prompt isn't reachable. FLAGs are still
+             advisory and never auto-acted on.
+
 READ-ONLY GITHUB CONTRACT
   reconcile only READS GitHub via `gh issue list`. It NEVER writes labels,
   edits issues, or modifies remote state. The only writes are to the local
-  track .md frontmatter, and only with explicit user confirmation. Any future
-  change must preserve this property — write paths to GitHub belong in
-  `suggest-priorities --apply` or `group --apply`, not here.
+  track .md frontmatter — even under --apply, the GitHub side is untouched.
+  Any future change must preserve this property — write paths to GitHub
+  belong in `suggest-priorities --apply` or `group --apply`, not here.
 
 Run with --all to reconcile every active track in one pass.
 """
@@ -63,13 +71,18 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all", "--draft"})
+    flags, positional = parse_flags(args, {"--all", "--draft", "--apply"})
     do_all = flags.get("--all", False)
     draft = flags.get("--draft", False)
+    apply_auto = flags.get("--apply", False)
     track_name = positional[0] if positional else None
 
     if not do_all and not track_name:
-        print("usage: work_plan.py reconcile <track-name> | --all [--draft]")
+        print("usage: work_plan.py reconcile <track-name> | --all [--draft|--apply]")
+        return 2
+
+    if draft and apply_auto:
+        print("ERROR: --draft and --apply are mutually exclusive.")
         return 2
 
     try:
@@ -130,6 +143,18 @@ def run(args: list[str]) -> int:
         if draft:
             # --draft: print the analysis above and stop. No prompt, no write.
             # Useful for sweep audits and scripted reports.
+            continue
+
+        if apply_auto:
+            # --apply: write all proposed ADDs without prompting.
+            # Still read-only on GitHub — only writes are to local frontmatter,
+            # same as the interactive path. FLAGs remain advisory (never auto-acted on).
+            if not adds:
+                continue
+            new_issues = sorted(listed_nums | labeled_nums)
+            track.meta.setdefault("github", {})["issues"] = new_issues
+            write_file(track.path, track.meta, track.body)
+            print(f"  ✓ Updated {track.path.name} ({len(adds)} added)")
             continue
 
         choice = prompt_input(f"\n  Apply ADDs to {track.path.name}? [y/N/skip-flags]").lower()
