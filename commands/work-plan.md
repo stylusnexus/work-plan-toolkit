@@ -1,6 +1,6 @@
 ---
-description: Track-aware daily work planning (4 essentials + --help for full list)
-argument-hint: [brief|handoff|orient|hygiene|--help]
+description: Track-aware daily work planning (5 essentials + --help for full list)
+argument-hint: "[brief|handoff|orient|reconcile|hygiene|--help]"
 ---
 
 Run the work-plan CLI with the user's arguments:
