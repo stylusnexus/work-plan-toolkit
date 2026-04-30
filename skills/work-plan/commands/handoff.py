@@ -19,21 +19,30 @@ from lib.git_state import (
     has_uncommitted, current_branch, parse_iso_timestamp,
     gap_seconds_to_label, uncommitted_file_count, commits_ahead,
 )
-from lib.github_state import fetch_issues, state_to_status_label
+from lib.github_state import fetch_issues, state_to_status_label, extract_priority
 from lib.status_table import update_row_status, find_canonical_status_tables, ISSUE_NUM_RE
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
-from lib.prompts import prompt_lines, parse_flags
+from lib.next_up import suggest_next_up
+from lib.prompts import prompt_lines, parse_flags, prompt_input
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--interactive", "-i", "--set-next"})
+    flags, positional = parse_flags(args, {"--interactive", "-i", "--set-next", "--auto-next"})
     interactive = flags.get("--interactive", False) or flags.get("-i", False)
+    auto_next = flags.get("--auto-next", False)
 
     # Support both --set-next=4167,4148 (parse_flags handles via key=value) and
     # --set-next 4167,4148 (space-separated). For the space form, parse_flags
     # marks --set-next as True; we then claim the first positional that looks
     # like a comma-separated issue list.
     set_next_raw = flags.get("--set-next")
+
+    if auto_next and set_next_raw is not None and set_next_raw is not False:
+        # Both passed → ambiguous intent. Fail loudly rather than silently
+        # letting the second flag clobber the first.
+        print("ERROR: --set-next and --auto-next are mutually exclusive. "
+              "Pick one — explicit list or interactive suggestion.")
+        return 2
     if set_next_raw is True:
         for i, p in enumerate(positional):
             if _looks_like_issue_list(p):
@@ -65,6 +74,16 @@ def run(args: list[str]) -> int:
         from lib.frontmatter import parse_file
         track.meta, track.body = parse_file(track.path)
 
+    # --auto-next: compute a suggested next_up from open issues, prompt user
+    # to apply / edit / skip. Runs after --set-next so an explicit list still
+    # wins if both are passed (--set-next is the manual override).
+    if auto_next:
+        rc = _apply_auto_next(track)
+        if rc != 0:
+            return rc
+        from lib.frontmatter import parse_file
+        track.meta, track.body = parse_file(track.path)
+
     if interactive:
         return _interactive_handoff(track)
     return _derived_handoff(track)
@@ -89,6 +108,63 @@ def _apply_set_next(track, raw: str) -> int:
     track.meta["next_up"] = nums
     write_file(track.path, track.meta, track.body)
     print(f"✓ next_up set to: {nums}")
+    return 0
+
+
+def _apply_auto_next(track) -> int:
+    """Suggest a next_up list from open issues; prompt user to apply/edit/skip.
+
+    Algorithm lives in lib.next_up.suggest_next_up — open, non-blocker issues
+    sorted by priority then most-recently-updated. The interactive prompt
+    keeps the user in control (no silent overwrite of a hand-curated list).
+    """
+    if not track.repo:
+        print(f"ERROR: --auto-next needs a github.repo on the track ({track.name}).")
+        return 2
+    issue_nums = track.meta.get("github", {}).get("issues") or []
+    if not issue_nums:
+        print(f"No issues attached to {track.name}; nothing to suggest.")
+        return 0
+
+    issues = fetch_issues(track.repo, issue_nums)
+    blocker_nums = track.meta.get("blockers") or []
+    suggestion = suggest_next_up(issues, blocker_nums)
+    if not suggestion:
+        print(f"No open, non-blocker issues for {track.name}; next_up unchanged.")
+        return 0
+
+    # Decorate with title + priority for the preview.
+    by_num = {i["number"]: i for i in issues}
+    print(f"\nSuggested next_up for {track.name}:")
+    for num in suggestion:
+        i = by_num.get(num, {})
+        pri = extract_priority(i.get("labels", []))
+        print(f"  #{num}  [{pri}]  {i.get('title', '')}")
+
+    answer = prompt_input("\nApply this list to next_up? [Y/n/edit] ").strip().lower()
+    if answer in ("", "y", "yes"):
+        track.meta["next_up"] = suggestion
+    elif answer in ("n", "no"):
+        print("Skipped — next_up unchanged.")
+        return 0
+    elif answer in ("e", "edit"):
+        raw = prompt_input("Enter comma-separated issue numbers: ").strip()
+        if not raw:
+            print("Empty — next_up unchanged.")
+            return 0
+        try:
+            override = [int(p.strip()) for p in raw.split(",") if p.strip()]
+        except ValueError:
+            print(f"ERROR: expected comma-separated integers, got: {raw!r}")
+            return 2
+        track.meta["next_up"] = override
+    else:
+        # Anything else: refuse to guess. Better to fail than silently apply.
+        print(f"ERROR: unrecognized response {answer!r}; expected y / n / edit.")
+        return 2
+
+    write_file(track.path, track.meta, track.body)
+    print(f"✓ next_up set to: {track.meta['next_up']}")
     return 0
 
 
