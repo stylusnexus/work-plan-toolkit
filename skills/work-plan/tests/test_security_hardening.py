@@ -21,7 +21,16 @@ from lib import scratch
 from commands import group, suggest_priorities
 
 
+# POSIX file mode bits aren't honored on Windows NTFS — os.chmod(0o700) is a
+# no-op for directories there and stat.S_IMODE reports 0o777 regardless. The
+# /tmp planting hardening these tests cover is itself a POSIX concern.
+_POSIX_MODE_ONLY = unittest.skipIf(
+    sys.platform == "win32", "POSIX file mode bits not honored on Windows"
+)
+
+
 class CacheDirTest(unittest.TestCase):
+    @_POSIX_MODE_ONLY
     def test_creates_with_mode_0700(self):
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(scratch.Path, "home", return_value=Path(td)):
@@ -31,6 +40,7 @@ class CacheDirTest(unittest.TestCase):
             mode = stat.S_IMODE(os.stat(p).st_mode)
             self.assertEqual(mode, 0o700)
 
+    @_POSIX_MODE_ONLY
     def test_tightens_existing_loose_perms(self):
         with tempfile.TemporaryDirectory() as td:
             existing = Path(td) / ".claude" / "work-plan" / "cache"
