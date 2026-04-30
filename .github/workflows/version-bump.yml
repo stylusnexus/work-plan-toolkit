@@ -1,0 +1,55 @@
+name: Bump VERSION
+
+on:
+  push:
+    branches:
+      - main
+
+# Serialize bump runs so two near-simultaneous pushes to main can't both
+# attempt to write VERSION concurrently. cancel-in-progress: false ensures
+# the queued run still completes — we want to bump for every push, not
+# just the latest.
+concurrency:
+  group: version-bump-main
+  cancel-in-progress: false
+
+# Skip if the triggering commit is the bump itself, in case a future change
+# adopts a PAT (which would re-trigger workflows). Pushes via GITHUB_TOKEN
+# already don't trigger downstream workflows, but this is belt-and-suspenders.
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump VERSION to <date>+<sha>
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compute and write VERSION
+        id: compute
+        run: |
+          DATE=$(date -u +%Y.%m.%d)
+          SHA=$(git rev-parse --short HEAD)
+          NEW="${DATE}+${SHA}"
+          echo "$NEW" > VERSION
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push if VERSION changed
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+        run: |
+          if git diff --quiet VERSION; then
+            echo "VERSION already at $NEW_VERSION — nothing to commit."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add VERSION
+          git commit -m "chore(version): bump to $NEW_VERSION [skip ci]"
+          # Defensive against races even though concurrency:group serializes —
+          # absorbs anything that landed on main while this job was queueing.
+          git pull --rebase origin main
+          git push

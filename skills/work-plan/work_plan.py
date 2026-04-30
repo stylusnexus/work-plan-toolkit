@@ -1,8 +1,26 @@
 #!/usr/bin/env python3
 """Daily work planner CLI."""
 import sys
+from pathlib import Path
 
-VERSION = "0.1.0"
+
+def _load_version() -> str:
+    # Walk upward from this file looking for a VERSION file. Handles two layouts:
+    # installed (VERSION sits next to work_plan.py via install.sh) and source
+    # (VERSION at the repo root, two parents up). Walks to the filesystem root
+    # rather than a fixed depth so vendored copies and unusual checkout layouts
+    # still resolve.
+    p = Path(__file__).resolve().parent
+    while True:
+        candidate = p / "VERSION"
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8").strip() or "unknown"
+        if p.parent == p:
+            return "unknown"
+        p = p.parent
+
+
+VERSION = _load_version()
 
 SUBCOMMANDS = {
     "brief": "commands.brief",

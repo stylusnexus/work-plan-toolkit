@@ -18,6 +18,15 @@ class SmokeTest(unittest.TestCase):
     def test_main_no_args_returns_2(self):
         self.assertEqual(work_plan.main(["work_plan.py"]), 2)
 
+    def test_version_loads_from_file(self):
+        # VERSION lives at the repo root in source mode and next to work_plan.py
+        # in installed mode. The loader walks upward; either layout must produce
+        # a non-empty string. Guards against future moves of the VERSION file.
+        v = work_plan._load_version()
+        self.assertTrue(v, "VERSION file unreachable from work_plan.py")
+        self.assertNotEqual(v, "unknown",
+                            "VERSION file present but resolved to 'unknown' fallback")
+
     def test_version_flag_prints_and_exits_zero(self):
         for flag in ("--version", "-v"):
             with self.subTest(flag=flag):
