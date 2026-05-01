@@ -79,6 +79,24 @@ github:
 
 This is read-only on GitHub: the skill never adds, removes, or rewrites labels on the remote — it only reads them to know which issues belong to a track. The only writes are to your local markdown frontmatter, gated behind interactive confirmation. If `github.labels` is omitted, the default `track/<slug>` pattern is used (existing setups keep working unchanged).
 
+## Track ↔ commit attribution
+
+`handoff` shows commits attributed to a track since the last handoff. Attribution rules (in order):
+
+1. **Explicit branches** — if frontmatter has `github.branches: [feature/x, ...]`, only commits on those branches count. Path globs do not apply.
+2. **Issue mention OR path glob** — otherwise, scan all branches and keep commits whose subject mentions an issue in `github.issues`, OR whose changed paths match any glob in `github.paths` (fnmatch syntax — `*`, `?`, `**`, `[seq]`).
+
+```yaml
+github:
+  repo: your-org/your-repo
+  issues: [4148, 4149, ...]
+  paths:
+    - "apps/web/src/components/ux/**"
+    - "**/useToast*"
+```
+
+When zero commits attribute to the track but the repo has activity in the same window, the handoff renders a soft signal (`0 attributed / N repo-wide since last handoff`) so the silence isn't mistaken for "nothing happened."
+
 ## Setup
 
 Run `./install.sh` (macOS / Linux / WSL) or `.\install.ps1` (Windows) from the toolkit root. Then `/work-plan init-repo <key> --github=<org/repo>` to bootstrap your first repo. See the toolkit README for full setup, requirements, and platform-specific install commands.
