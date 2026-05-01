@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - dev
+  workflow_dispatch:
 
 # Cancel superseded runs on feature branches and PRs to save Actions minutes
 # during rapid iteration. Pushes to main and dev are never cancelled so the
