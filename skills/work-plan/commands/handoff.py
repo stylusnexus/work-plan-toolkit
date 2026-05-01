@@ -8,6 +8,7 @@ fresh-session prompt the user can paste into a new Claude Code session.
 Use --interactive (or -i) for the legacy blank-prompt mode where you fill in
 each section by hand.
 """
+import fnmatch
 import subprocess
 from datetime import datetime, timedelta
 
@@ -206,6 +207,10 @@ def _derived_handoff(track) -> int:
     # === Git data (only if attributable) ===
     commits = _recent_commits(track, last_handoff_dt)
     uncommitted = _uncommitted_files(track)
+    repo_wide_commits = (
+        _repo_commits_since(track.local_path, last_handoff_dt)
+        if not commits else 0
+    )
 
     # === GitHub data (only if reachable) ===
     issue_nums = track.meta.get("github", {}).get("issues") or []
@@ -288,6 +293,12 @@ def _derived_handoff(track) -> int:
         if len(commits) > 8:
             print(f"  ... and {len(commits) - 8} more")
         print()
+    elif repo_wide_commits > 0:
+        print(f"RECENT COMMITS: 0 attributed to this track  "
+              f"({repo_wide_commits} repo-wide since last handoff)")
+        print("  Attribution: subject must reference an issue in `github.issues`,")
+        print("  or a changed path must match a glob in `github.paths`.")
+        print()
 
     # SUPPLEMENT 2: Uncommitted (if current branch belongs to this track)
     if uncommitted:
@@ -319,7 +330,7 @@ def _derived_handoff(track) -> int:
     print("-" * 70)
     prompt_text = _build_fresh_session_prompt(
         track, commits, uncommitted, last_session, open_items, open_source,
-        next_up, issues_by_num,
+        next_up, issues_by_num, repo_wide_commits,
     )
     print(prompt_text)
     print("-" * 70)
@@ -373,10 +384,11 @@ def _recent_commits(track, since_dt) -> list[dict]:
 
     Attribution rules (in order):
       1. If track has explicit `github.branches`, use those branches' history.
-      2. Otherwise, scan ALL recent commits across the repo and keep only those
-         that mention an issue number (#NNNN) listed in this track's
-         `github.issues`. This avoids false attribution when the current branch
-         is for a different track.
+         Path globs do not apply here — explicit branches are the contract.
+      2. Otherwise, scan ALL recent commits across the repo and keep those:
+           - whose subject mentions an issue number (#NNNN) in `github.issues`, OR
+           - whose changed paths match any glob in `github.paths` (fnmatch
+             syntax, e.g. "apps/web/src/components/ux/**", "**/useToast*").
       3. If neither yields anything, return empty (don't fall back to current
          branch — that's almost always wrong for multi-track repos).
     """
@@ -386,13 +398,13 @@ def _recent_commits(track, since_dt) -> list[dict]:
     track_issues = set(track.meta.get("github", {}).get("issues") or [])
     issue_re = _re.compile(r"#(\d+)")
     branches = track.meta.get("github", {}).get("branches") or []
+    path_globs = track.meta.get("github", {}).get("paths") or []
     since_iso = since_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     seen = set()
     out = []
 
     if branches:
-        # Path 1: explicit branches
         for b in branches:
             proc = subprocess.run(
                 ["git", "-C", str(track.local_path), "log", b,
@@ -411,33 +423,62 @@ def _recent_commits(track, since_dt) -> list[dict]:
                     continue
                 seen.add(sha)
                 out.append({"sha": sha, "subject": subject, "date": date})
-    else:
-        # Path 2: scan all branches, filter by issue mentions
-        if not track_issues:
-            return []
-        proc = subprocess.run(
-            ["git", "-C", str(track.local_path), "log", "--all",
-             f"--since={since_iso}",
-             "--pretty=format:%H|%s|%cI"],
-            capture_output=True, text=True,
+        out.sort(key=lambda c: c["date"], reverse=True)
+        return out
+
+    if not track_issues and not path_globs:
+        return []
+
+    pretty = "format:---COMMIT---%n%H|%s|%cI"
+    cmd = ["git", "-C", str(track.local_path), "log", "--all",
+           f"--since={since_iso}", f"--pretty={pretty}"]
+    if path_globs:
+        cmd.append("--name-only")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return []
+
+    blocks = [b for b in proc.stdout.split("---COMMIT---\n") if b.strip()]
+    for block in blocks:
+        block_lines = block.split("\n")
+        try:
+            sha, subject, date = block_lines[0].split("|", 2)
+        except (IndexError, ValueError):
+            continue
+        if sha in seen:
+            continue
+        files = [ln for ln in block_lines[1:] if ln]
+        mentioned = {int(m) for m in issue_re.findall(subject)}
+        match_issue = bool(mentioned & track_issues)
+        match_path = bool(path_globs) and any(
+            fnmatch.fnmatch(f, pat) for f in files for pat in path_globs
         )
-        if proc.returncode != 0 or not proc.stdout.strip():
-            return []
-        for line in proc.stdout.strip().split("\n"):
-            try:
-                sha, subject, date = line.split("|", 2)
-            except ValueError:
-                continue
-            if sha in seen:
-                continue
-            mentioned = {int(m) for m in issue_re.findall(subject)}
-            if not (mentioned & track_issues):
-                continue
-            seen.add(sha)
-            out.append({"sha": sha, "subject": subject, "date": date})
+        if not (match_issue or match_path):
+            continue
+        seen.add(sha)
+        out.append({"sha": sha, "subject": subject, "date": date})
 
     out.sort(key=lambda c: c["date"], reverse=True)
     return out
+
+
+def _repo_commits_since(local_path, since_dt) -> int:
+    """Total repo-wide commit count across all branches since since_dt.
+
+    Used to render a 'silence is expected' signal when zero commits attribute
+    to the track but the repo has activity.
+    """
+    if not since_dt or not local_path:
+        return 0
+    since_iso = since_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    proc = subprocess.run(
+        ["git", "-C", str(local_path), "log", "--all",
+         f"--since={since_iso}", "--pretty=format:%H"],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return 0
+    return sum(1 for ln in proc.stdout.splitlines() if ln.strip())
 
 
 def _uncommitted_files(track) -> list[str]:
@@ -498,7 +539,8 @@ def _issues_closed_since(issues: list[dict], since_dt) -> list[dict]:
 
 
 def _build_fresh_session_prompt(track, commits, uncommitted, last_session,
-                                 open_items, open_source, next_up, issues_by_num) -> str:
+                                 open_items, open_source, next_up, issues_by_num,
+                                 repo_wide_commits=0) -> str:
     """Build a copy-pasteable prompt for a fresh Claude Code session.
 
     Body-first: leads with the last session log + open items (always available).
@@ -533,6 +575,14 @@ def _build_fresh_session_prompt(track, commits, uncommitted, last_session,
         lines.append("## Recent commits attributed to this track")
         for c in commits[:5]:
             lines.append(f"- `{c['sha'][:7]}` {c['subject']}")
+        lines.append("")
+    elif repo_wide_commits > 0:
+        lines.append("## Recent commits")
+        lines.append(
+            f"0 attributed to this track ({repo_wide_commits} repo-wide since last handoff). "
+            "Attribution requires an issue ref in the commit subject or a path match "
+            "against `github.paths`."
+        )
         lines.append("")
 
     if uncommitted:
