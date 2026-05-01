@@ -11,7 +11,7 @@ The five essentials you'll use 80% of the time are:
 | `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. |
 | `/work-plan handoff <track>` | End of a work block. Captures what you touched. Use `--auto-next` for an algorithmic priority-sorted `next_up` (no LLM), `--set-next 1,2,3` for explicit numbers, or pair with Claude in chat for a curated pick. |
 | `/work-plan orient <track>` | Switching context. ~15-line paste-block of priority / last session / next pick / git state — drop into a fresh Claude Code terminal. |
-| `/work-plan reconcile <track> \| --all [--draft]` | Track frontmatter drifted from GitHub labels. `--draft` previews proposed ADDs/FLAGs without prompting or writing — handy for sweep audits. |
+| `/work-plan reconcile <track> \| --all [--draft]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. `--draft` previews proposed ADDs/FLAGs without prompting or writing. |
 | `/work-plan hygiene` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. |
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
@@ -287,14 +287,14 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `orient [track]` (alias: `where-was-i`) | Read-only paste block. With a track name: ~15-line track summary (priority, last session, next pick, git state). With no track: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. |
 | `close <track>` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
-| `refresh-md <track>` `\|` `--all` | Body status icons drifted from GitHub state. `--all` sweeps every active track. |
+| `refresh-md <track>` `\|` `--all` | Update issue STATE (open/closed, status labels) inside the track body's status table. Does NOT change track membership — this is the right tool for "refresh the work I just completed." `--all` sweeps every active track. |
 | `hygiene` | Weekly all-in-one: `refresh-md --all` + `reconcile --all` + `duplicates`. |
 | `list [--all]` | List active tracks (or all including parked/archived). |
 | `init <path>` | Add frontmatter to a brand-new track .md file. |
 | `init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
-| `reconcile <track>` `\|` `--all [--draft]` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. |
+| `reconcile <track>` `\|` `--all [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
 
