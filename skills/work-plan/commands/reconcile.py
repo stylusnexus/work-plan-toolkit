@@ -127,6 +127,12 @@ def run(args: list[str]) -> int:
             for num in flag_nums:
                 print(f"    #{num} (label removed; consider /work-plan slot to move)")
 
+        if listed_nums and len(flag_nums) / len(listed_nums) > 0.5:
+            print(f"\n  ⓘ {len(flag_nums)}/{len(listed_nums)} frontmatter issues lack the configured label(s).")
+            print(f"    This track looks hand-curated, not label-driven — reconcile may not be the right tool.")
+            print(f"    If you just want to update issue state in the body table, try:")
+            print(f"      /work-plan refresh-md {slug}")
+
         if draft:
             # --draft: print the analysis above and stop. No prompt, no write.
             # Useful for sweep audits and scripted reports.
