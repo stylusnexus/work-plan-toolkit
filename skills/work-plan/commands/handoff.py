@@ -68,7 +68,7 @@ def run(args: list[str]) -> int:
 
     # Apply --set-next first if present, so derived/interactive output reflects it.
     if isinstance(set_next_raw, str):
-        rc = _apply_set_next(track, set_next_raw)
+        rc = _apply_set_next(track, set_next_raw, cfg)
         if rc != 0:
             return rc
         # Re-load track meta after write so downstream handoff sees new next_up
@@ -79,7 +79,7 @@ def run(args: list[str]) -> int:
     # to apply / edit / skip. Runs after --set-next so an explicit list still
     # wins if both are passed (--set-next is the manual override).
     if auto_next:
-        rc = _apply_auto_next(track)
+        rc = _apply_auto_next(track, cfg)
         if rc != 0:
             return rc
         from lib.frontmatter import parse_file
@@ -96,7 +96,7 @@ def _looks_like_issue_list(s: str) -> bool:
     return bool(parts) and all(p.isdigit() for p in parts)
 
 
-def _apply_set_next(track, raw: str) -> int:
+def _apply_set_next(track, raw: str, cfg: dict) -> int:
     """Parse comma-list of issue numbers and persist to track frontmatter."""
     try:
         nums = [int(p.strip()) for p in raw.split(",") if p.strip()]
@@ -106,13 +106,16 @@ def _apply_set_next(track, raw: str) -> int:
     if not nums:
         print("ERROR: --set-next received an empty list.")
         return 2
+    if not _check_next_up_collisions(track, nums, cfg):
+        print("Skipped — next_up unchanged.")
+        return 0
     track.meta["next_up"] = nums
     write_file(track.path, track.meta, track.body)
     print(f"✓ next_up set to: {nums}")
     return 0
 
 
-def _apply_auto_next(track) -> int:
+def _apply_auto_next(track, cfg: dict) -> int:
     """Suggest a next_up list from open issues; prompt user to apply/edit/skip.
 
     Algorithm lives in lib.next_up.suggest_next_up — open, non-blocker issues
@@ -144,7 +147,7 @@ def _apply_auto_next(track) -> int:
 
     answer = prompt_input("\nApply this list to next_up? [Y/n/edit] ").strip().lower()
     if answer in ("", "y", "yes"):
-        track.meta["next_up"] = suggestion
+        candidate = suggestion
     elif answer in ("n", "no"):
         print("Skipped — next_up unchanged.")
         return 0
@@ -154,19 +157,58 @@ def _apply_auto_next(track) -> int:
             print("Empty — next_up unchanged.")
             return 0
         try:
-            override = [int(p.strip()) for p in raw.split(",") if p.strip()]
+            candidate = [int(p.strip()) for p in raw.split(",") if p.strip()]
         except ValueError:
             print(f"ERROR: expected comma-separated integers, got: {raw!r}")
             return 2
-        track.meta["next_up"] = override
     else:
         # Anything else: refuse to guess. Better to fail than silently apply.
         print(f"ERROR: unrecognized response {answer!r}; expected y / n / edit.")
         return 2
 
+    if not _check_next_up_collisions(track, candidate, cfg):
+        print("Skipped — next_up unchanged.")
+        return 0
+    track.meta["next_up"] = candidate
     write_file(track.path, track.meta, track.body)
     print(f"✓ next_up set to: {track.meta['next_up']}")
     return 0
+
+
+def _check_next_up_collisions(track, proposed: list[int], cfg: dict) -> bool:
+    """Warn when a proposed next_up issue is already next_up on a sibling
+    active track in the same repo. Returns True if no collisions or the user
+    accepts the prompt; False if the user declines.
+
+    Read-only: scans local frontmatter only — no GitHub calls. Same-path
+    tracks (i.e. the track being updated itself) are excluded so re-applying
+    an existing list isn't flagged as a self-collision. Parked / abandoned
+    sibling tracks are skipped because they don't compete for attention.
+    """
+    siblings = [t for t in discover_tracks(cfg)
+                if t.has_frontmatter
+                and t.path != track.path
+                and t.repo
+                and t.repo == track.repo
+                and t.meta.get("status") in ("active", "in-progress", "blocked")]
+    if not siblings:
+        return True
+
+    proposed_set = set(proposed)
+    collisions = []
+    for sib in siblings:
+        for num in (sib.meta.get("next_up") or []):
+            if num in proposed_set:
+                collisions.append((num, sib.name))
+
+    if not collisions:
+        return True
+
+    print()
+    for num, sib_name in collisions:
+        print(f"⚠️  #{num} is already next_up on track '{sib_name}'")
+    answer = prompt_input("Apply anyway? [y/N] ").strip().lower()
+    return answer in ("y", "yes")
 
 
 def _resolve_track(tracks, track_arg):
