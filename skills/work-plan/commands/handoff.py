@@ -121,6 +121,12 @@ def _apply_auto_next(track, cfg: dict) -> int:
     Algorithm lives in lib.next_up.suggest_next_up — open, non-blocker issues
     sorted by priority then most-recently-updated. The interactive prompt
     keeps the user in control (no silent overwrite of a hand-curated list).
+
+    Cross-track collisions are handled by SKIPPING — auto-next's pitch is
+    non-interactive, so issues already next_up on a sibling active track in
+    the same repo are dropped from the suggestion before the user sees it,
+    with one transparent "↷ skipped" line per drop. The edit branch reverts
+    to --set-next-style warn/confirm because the user is being explicit there.
     """
     if not track.repo:
         print(f"ERROR: --auto-next needs a github.repo on the track ({track.name}).")
@@ -132,9 +138,23 @@ def _apply_auto_next(track, cfg: dict) -> int:
 
     issues = fetch_issues(track.repo, issue_nums)
     blocker_nums = track.meta.get("blockers") or []
-    suggestion = suggest_next_up(issues, blocker_nums)
-    if not suggestion:
+    raw_suggestion = suggest_next_up(issues, blocker_nums)
+    if not raw_suggestion:
         print(f"No open, non-blocker issues for {track.name}; next_up unchanged.")
+        return 0
+
+    # Filter sibling-claimed issues out of the suggestion. Print one line
+    # per skip so the user knows what was dropped and why.
+    claimed = _sibling_claimed_next_up_map(track, cfg)
+    suggestion = []
+    for num in raw_suggestion:
+        if num in claimed:
+            print(f"↷ skipped #{num} (already next_up on '{claimed[num]}')")
+        else:
+            suggestion.append(num)
+
+    if not suggestion:
+        print(f"All suggested issues are already next_up on sibling tracks; next_up unchanged.")
         return 0
 
     # Decorate with title + priority for the preview.
@@ -161,18 +181,38 @@ def _apply_auto_next(track, cfg: dict) -> int:
         except ValueError:
             print(f"ERROR: expected comma-separated integers, got: {raw!r}")
             return 2
+        # User went manual — treat the same as --set-next: warn-and-confirm
+        # so they can override if the collision was intentional.
+        if not _check_next_up_collisions(track, candidate, cfg):
+            print("Skipped — next_up unchanged.")
+            return 0
     else:
         # Anything else: refuse to guess. Better to fail than silently apply.
         print(f"ERROR: unrecognized response {answer!r}; expected y / n / edit.")
         return 2
 
-    if not _check_next_up_collisions(track, candidate, cfg):
-        print("Skipped — next_up unchanged.")
-        return 0
     track.meta["next_up"] = candidate
     write_file(track.path, track.meta, track.body)
     print(f"✓ next_up set to: {track.meta['next_up']}")
     return 0
+
+
+def _sibling_claimed_next_up_map(track, cfg: dict) -> dict:
+    """Return {issue_num: sibling_track_name} for every issue claimed as
+    next_up on a sibling active track in the same repo. Read-only on local
+    frontmatter — no GitHub calls. If multiple siblings claim the same
+    issue, the first encountered wins (stable order from discover_tracks)."""
+    claimed: dict = {}
+    for sib in discover_tracks(cfg):
+        if (not sib.has_frontmatter
+                or sib.path == track.path
+                or not sib.repo
+                or sib.repo != track.repo
+                or sib.meta.get("status") not in ("active", "in-progress", "blocked")):
+            continue
+        for num in (sib.meta.get("next_up") or []):
+            claimed.setdefault(num, sib.name)
+    return claimed
 
 
 def _check_next_up_collisions(track, proposed: list[int], cfg: dict) -> bool:
