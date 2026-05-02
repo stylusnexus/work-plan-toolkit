@@ -3,8 +3,9 @@ from datetime import datetime
 from pathlib import Path
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, discover_archived_tracks
+from lib.tracks import discover_tracks, discover_archived_tracks, filter_tracks_by_repo
 from lib.github_state import fetch_issues, extract_priority
+from lib.prompts import parse_flags
 from lib.git_state import (
     parse_iso_timestamp, gap_seconds_to_label,
     branch_in_progress, commits_ahead, uncommitted_file_count, current_branch,
@@ -17,6 +18,12 @@ from lib.render import time_aware_framing, render_track_row, render_archived_reo
 
 
 def run(args: list[str]) -> int:
+    flags, _ = parse_flags(args, {"--repo"})
+    repo_key = flags.get("--repo")
+    if repo_key is True:
+        print("usage: work_plan.py brief [--repo=<key>]")
+        return 2
+
     try:
         cfg = load_config()
     except ConfigError as e:
@@ -24,6 +31,15 @@ def run(args: list[str]) -> int:
         return 1
 
     tracks = discover_tracks(cfg)
+    if repo_key:
+        scoped = filter_tracks_by_repo(tracks, repo_key)
+        if not scoped:
+            print(f"No tracks found for repo '{repo_key}'.")
+            available = sorted((cfg.get("repos") or {}).keys())
+            if available:
+                print(f"Configured repo keys: {', '.join(available)}")
+            return 0
+        tracks = scoped
     active = [t for t in tracks if t.has_frontmatter
               and t.meta.get("status") in ("active", "in-progress", "blocked")]
 
@@ -67,7 +83,7 @@ def run(args: list[str]) -> int:
             print(f"  needs filing: {t.path}  → move into a repo subfolder")
         print()
 
-    _surface_archived_reopens(cfg)
+    _surface_archived_reopens(cfg, repo_key=repo_key)
 
     n_active = len(active)
     n_in_progress = sum(1 for _, b in blocks if b["operational_status"] == "in-progress")
@@ -190,8 +206,10 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     }
 
 
-def _surface_archived_reopens(cfg: dict) -> None:
+def _surface_archived_reopens(cfg: dict, repo_key: str = None) -> None:
     archived = discover_archived_tracks(cfg)
+    if repo_key:
+        archived = filter_tracks_by_repo(archived, repo_key)
     if not archived:
         return
     by_repo: dict[str, list] = {}

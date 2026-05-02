@@ -48,10 +48,10 @@ SUBCOMMANDS = {
 
 DESCRIPTIONS = [
     # (name, args, what, when, example)
-    ("brief", "",
-     "Multi-track snapshot with time-aware framing.",
-     "Starting a work session, after a gap, or any time you want a status snapshot.",
-     "/work-plan brief"),
+    ("brief", "[--repo=<key>]",
+     "Multi-track snapshot with time-aware framing. --repo scopes the brief (and the archived-reopen callouts) to one configured repo.",
+     "Starting a work session, after a gap, or any time you want a status snapshot. Use --repo when you only want to think about one project today.",
+     "/work-plan brief --repo=critforge"),
     ("handoff", "[track] [--set-next 1,2,3 | --auto-next] [--interactive]",
      "Wrap up a session: capture touched/next/blockers, update body status table. Use --set-next to set the next_up list explicitly. Use --auto-next to suggest a priority-sorted list from open issues (interactive: apply / edit / skip).",
      "Ending a work block — before stepping away, going to bed, or switching tracks. Use --auto-next when you don't want to hand-pick issue numbers.",
@@ -68,10 +68,10 @@ DESCRIPTIONS = [
      "Retire a track: shipped / parked / abandoned. Moves to archive/.",
      "When a track is done, paused, or won't ship — frees mental space.",
      "/work-plan close tabletop"),
-    ("refresh-md", "<track> | --all [--yes]",
+    ("refresh-md", "<track> | --all | --repo=<key> [--yes]",
      "Update issue STATE (open/closed, status labels) inside the track body's status table. Does not change track membership.",
-     "Usually NOT needed directly: `handoff` already refreshes the body table for its own track, and `brief` reads GitHub live. Reach for this when a sibling track has drifted because you haven't `handoff`'d it lately. `--all` sweeps every active track (also runs as part of weekly `hygiene`).",
-     "/work-plan refresh-md --all"),
+     "Usually NOT needed directly: `handoff` already refreshes the body table for its own track, and `brief` reads GitHub live. Reach for this when a sibling track has drifted because you haven't `handoff`'d it lately. `--all` sweeps every active track; `--repo=<key>` scopes the sweep to one repo (also runs as part of weekly `hygiene`).",
+     "/work-plan refresh-md --repo=critforge"),
     ("list", "[--all]",
      "List active tracks (or all including parked/archived).",
      "Quick scan of what tracks exist; --all to see archived.",
@@ -92,10 +92,10 @@ DESCRIPTIONS = [
      "AI-cluster GitHub issues into thematic track files.",
      "ONE-TIME bulk organization of an unsorted milestone, or after a re-org.",
      "/work-plan group --milestone='v1.0.0 — Public Launch'"),
-    ("reconcile", "<track> | --all [--draft]",
+    ("reconcile", "<track> | --all | --repo=<key> [--draft]",
      "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. Add --draft to preview proposed ADDs/FLAGs without prompting or writing. NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
-     "WEEKLY hygiene on label-driven tracks — pulls labeled issues into their tracks, flags un-labeled ones. Skip on hand-curated tracks (it'll propose dropping curated issues every run).",
-     "/work-plan reconcile --all --draft"),
+     "WEEKLY hygiene on label-driven tracks — pulls labeled issues into their tracks, flags un-labeled ones. Use --repo=<key> to scope the sweep to one repo. Skip on hand-curated tracks (it'll propose dropping curated issues every run).",
+     "/work-plan reconcile --repo=critforge --draft"),
     ("duplicates", "[--min-similarity=0.7] [--limit=20] [--state=open]",
      "Find likely-duplicate issues by title similarity.",
      "WEEKLY hygiene, or before a milestone planning session — find consolidation candidates.",
@@ -104,10 +104,10 @@ DESCRIPTIONS = [
      "Insert a canonical master issue table at the top of a track. Refresh-md then targets ONLY this table, leaving narrative tables alone.",
      "ONE-TIME for hand-written tracks with multiple narrative tables, OR after restructuring a track.",
      "/work-plan canonicalize ux-redesign"),
-    ("hygiene", "[--yes] [--no-duplicates]",
-     "Weekly cleanup wrapper: refresh-md --all + reconcile --all + duplicates.",
-     "WEEKLY — runs all three hygiene commands in sequence so you don't have to remember each.",
-     "/work-plan hygiene"),
+    ("hygiene", "[--yes] [--no-duplicates] [--repo=<key>]",
+     "Weekly cleanup wrapper: refresh-md + reconcile + duplicates. With --repo=<key>, steps 1 and 2 scope to that repo; the duplicates step (a global similarity scan) is skipped.",
+     "WEEKLY — runs all three hygiene commands in sequence so you don't have to remember each. Use --repo=<key> to clean up one project without touching the others.",
+     "/work-plan hygiene --repo=critforge"),
 ]
 
 
@@ -137,10 +137,16 @@ def _print_help() -> int:
     print()
     print("WEEKLY HYGIENE\n")
     print("  All-in-one (recommended)  →  /work-plan --hygiene")
+    print("  Scope to one repo         →  /work-plan hygiene --repo=<key>")
     print("  Or individually:")
-    print("    Drift in status tables  →  /work-plan refresh-md --all")
-    print("    Sync labels ↔ tracks    →  /work-plan reconcile --all")
+    print("    Drift in status tables  →  /work-plan refresh-md --all  (or --repo=<key>)")
+    print("    Sync labels ↔ tracks    →  /work-plan reconcile --all   (or --repo=<key>)")
     print("    Find duplicate issues   →  /work-plan duplicates")
+    print()
+    print("FOCUS ON ONE PROJECT\n")
+    print("  Daily snapshot, one repo  →  /work-plan brief --repo=<key>")
+    print("  Weekly cleanup, one repo  →  /work-plan hygiene --repo=<key>")
+    print("  (<key> is the folder name under notes_root, e.g. 'critforge'.)")
     print()
     print("ONE-TIME SETUP\n")
     print("  Bulk-cluster milestone →  /work-plan group --milestone='v1.0.0 — Public Launch'")

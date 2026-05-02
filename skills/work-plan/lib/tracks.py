@@ -15,6 +15,7 @@ class Track:
     needs_init: bool
     needs_filing: bool
     repo: Optional[str] = None
+    folder: Optional[str] = None
     local_path: Optional[Path] = None
     meta: dict = field(default_factory=dict)
     body: str = ""
@@ -26,6 +27,15 @@ def discover_tracks(cfg: dict) -> list[Track]:
     if not notes_root.exists():
         return []
     return _walk(notes_root, cfg, include_archive=False)
+
+
+def filter_tracks_by_repo(tracks: list[Track], key: str) -> list[Track]:
+    """Filter tracks by repo. Matches the config-key folder name OR the
+    `org/repo` GitHub slug, so users can pass either. Case-insensitive."""
+    k = key.lower()
+    return [t for t in tracks
+            if (t.folder and t.folder.lower() == k)
+            or (t.repo and t.repo.lower() == k)]
 
 
 def find_track_by_name(name: str, tracks: list[Track],
@@ -92,6 +102,7 @@ def _build_track(md_path: Path, notes_root: Path, cfg: dict) -> Track:
         needs_init=in_subfolder and not has_fm,
         needs_filing=not in_subfolder,
         repo=repo,
+        folder=folder_name,
         local_path=local,
         meta=meta,
         body=body,
