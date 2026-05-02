@@ -18,7 +18,7 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | `/work-plan hygiene` | Weekly all-in-one cleanup: refresh-md --all + reconcile --all + duplicates. |
 | `/work-plan slot <issue-num> [track]` | A new GitHub issue should belong to a track. |
 | `/work-plan close [track]` | Track is done (shipped) / paused (parked) / won't ship (abandoned). |
-| `/work-plan refresh-md <track> \| --all` | Status icons drifted from GitHub state. |
+| `/work-plan refresh-md <track> \| --all` | Status icons drifted from GitHub state. **You usually don't need to call this directly:** `handoff` already rewrites the body table for its own track on every run, and `brief` reads GitHub live. Reach for `refresh-md` (or `--all`) when a sibling track has drifted because you haven't `handoff`'d it lately. |
 | `/work-plan list [--all]` | List active tracks (or all including parked/archived). |
 | `/work-plan init <path>` | Add frontmatter to a new track .md file. |
 | `/work-plan init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |

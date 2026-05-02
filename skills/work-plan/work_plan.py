@@ -70,7 +70,7 @@ DESCRIPTIONS = [
      "/work-plan close tabletop"),
     ("refresh-md", "<track> | --all [--yes]",
      "Update issue STATE (open/closed, status labels) inside the track body's status table. Does not change track membership.",
-     "After you ship/close issues and want the track's body table to reflect reality. This is the right tool for 'update the work I just completed'. Use --all for a sweep.",
+     "Usually NOT needed directly: `handoff` already refreshes the body table for its own track, and `brief` reads GitHub live. Reach for this when a sibling track has drifted because you haven't `handoff`'d it lately. `--all` sweeps every active track (also runs as part of weekly `hygiene`).",
      "/work-plan refresh-md --all"),
     ("list", "[--all]",
      "List active tracks (or all including parked/archived).",
