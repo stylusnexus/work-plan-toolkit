@@ -24,7 +24,7 @@ import json
 import subprocess
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo
 from lib.frontmatter import write_file
 from lib.prompts import parse_flags, prompt_input
 
@@ -63,13 +63,17 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all", "--draft"})
+    flags, positional = parse_flags(args, {"--all", "--draft", "--repo"})
     do_all = flags.get("--all", False)
     draft = flags.get("--draft", False)
+    repo_key = flags.get("--repo")
+    if repo_key is True:
+        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
+        return 2
     track_name = positional[0] if positional else None
 
-    if not do_all and not track_name:
-        print("usage: work_plan.py reconcile <track-name> | --all [--draft]")
+    if not do_all and not track_name and not repo_key:
+        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
         return 2
 
     try:
@@ -82,8 +86,13 @@ def run(args: list[str]) -> int:
     active = [t for t in tracks if t.has_frontmatter
               and t.meta.get("status") in ("active", "in-progress", "blocked")]
 
-    if do_all:
+    if do_all or repo_key:
         targets = active
+        if repo_key:
+            targets = filter_tracks_by_repo(targets, repo_key)
+            if not targets:
+                print(f"No active tracks for repo '{repo_key}'.")
+                return 0
     else:
         target = find_track_by_name(track_name, tracks, active_only=True)
         if not target:

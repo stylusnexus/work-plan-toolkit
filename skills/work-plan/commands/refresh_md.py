@@ -1,6 +1,6 @@
 """refresh-md subcommand."""
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo
 from lib.github_state import fetch_issues, state_to_status_label
 from lib.frontmatter import write_file
 from lib.status_table import find_all_status_tables, find_canonical_status_tables, ISSUE_NUM_RE
@@ -8,13 +8,17 @@ from lib.prompts import prompt_yes_no, parse_flags
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all", "--yes"})
+    flags, positional = parse_flags(args, {"--all", "--yes", "--repo"})
     do_all = flags.get("--all", False)
     yes = flags.get("--yes", False)
+    repo_key = flags.get("--repo")
+    if repo_key is True:
+        print("usage: work_plan.py refresh-md <track-name> | --all | --repo=<key>  [--yes]")
+        return 2
     track_name = positional[0] if positional else None
 
-    if not do_all and not track_name:
-        print("usage: work_plan.py refresh-md <track-name> | --all  [--yes]")
+    if not do_all and not track_name and not repo_key:
+        print("usage: work_plan.py refresh-md <track-name> | --all | --repo=<key>  [--yes]")
         return 2
 
     try:
@@ -24,10 +28,15 @@ def run(args: list[str]) -> int:
         return 1
 
     tracks = discover_tracks(cfg)
-    if do_all:
+    if do_all or repo_key:
         targets = [t for t in tracks if t.has_frontmatter
                    and t.meta.get("status") in ("active", "in-progress", "blocked")]
-        if not targets:
+        if repo_key:
+            targets = filter_tracks_by_repo(targets, repo_key)
+            if not targets:
+                print(f"No active tracks to refresh for repo '{repo_key}'.")
+                return 0
+        elif not targets:
             print("No active tracks to refresh.")
             return 0
         return _refresh_many(targets, yes)

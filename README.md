@@ -8,11 +8,11 @@ The five essentials you'll use 80% of the time are:
 
 | Command | When |
 |---|---|
-| `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. |
+| `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. Add `--repo=<key>` to scope to one project. |
 | `/work-plan handoff <track>` | End of a work block. Captures what you touched. Use `--auto-next` for an algorithmic priority-sorted `next_up` (no LLM), `--set-next 1,2,3` for explicit numbers, or pair with Claude in chat for a curated pick. |
 | `/work-plan orient <track>` | Switching context. ~15-line paste-block of priority / last session / next pick / git state — drop into a fresh Claude Code terminal. |
-| `/work-plan reconcile <track> \| --all [--draft]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. `--draft` previews proposed ADDs/FLAGs without prompting or writing. |
-| `/work-plan hygiene` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. |
+| `/work-plan reconcile <track> \| --all \| --repo=<key> [--draft]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. `--draft` previews proposed ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. |
+| `/work-plan hygiene [--repo=<key>]` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. `--repo=<key>` scopes steps 1–2 to one repo (duplicates is global, so it's skipped in scoped mode). |
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
 
@@ -57,8 +57,7 @@ flowchart TB
   - `handoff <track> --set-next 4167,4148` — explicit numbers when you know exactly which issues are next.
   - Free-form via Claude in your agent session, which can review project memory and write a curated list back. The two `--*-next` flags are the no-LLM paths.
   - For tracks where you don't want to bother curating at all, set `next_up_auto: true` in the track's frontmatter — `brief` will then derive the list live each invocation, ignoring whatever's stored.
-- **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.
-
+- **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.aude
 > **When does the body status table get refreshed?** `handoff` already rewrites the ✅/🔲 icons for its own track on every run (live `gh` fetch → `update_row_status`). `brief` reads GitHub state live and never relies on the body table, so it's always accurate. The only drift `refresh-md` exists to fix is *cross-track*: a track you haven't `handoff`'d recently whose icons fell behind because issues moved while you were heads-down on a sibling track. That's why `hygiene --all` sweeps it weekly.
 
 ## Requirements
@@ -284,19 +283,19 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 
 | Subcommand | What it does |
 |---|---|
-| `brief` | Multi-track snapshot of all active tracks across configured repos. |
+| `brief [--repo=<key>]` | Multi-track snapshot of all active tracks across configured repos. `--repo=<key>` filters to one project (matches the folder name under `notes_root` or the `org/repo` GitHub slug; archived-reopen callouts are also scoped). |
 | `handoff <track> [--auto-next \| --set-next 1,2,3]` | Wrap up a work block. Writes a `### Session — <ts>` entry. `--auto-next` suggests a priority-sorted top-3 from open issues (interactive: apply / edit / skip). `--set-next 1,2,3` is the explicit form. Without either flag, just captures the session summary and reads any pre-existing `next_up`. |
 | `orient [track]` (alias: `where-was-i`) | Read-only paste block. With a track name: ~15-line track summary (priority, last session, next pick, git state). With no track: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. |
 | `close <track>` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
-| `refresh-md <track>` `\|` `--all` | Update issue STATE (open/closed, status labels) inside the track body's status table. Does NOT change track membership — this is the right tool for "refresh the work I just completed." `--all` sweeps every active track. |
-| `hygiene` | Weekly all-in-one: `refresh-md --all` + `reconcile --all` + `duplicates`. |
+| `refresh-md <track>` `\|` `--all` `\|` `--repo=<key>` | Update issue STATE (open/closed, status labels) inside the track body's status table. Does NOT change track membership — this is the right tool for "refresh the work I just completed." `--all` sweeps every active track; `--repo=<key>` scopes the sweep to one repo. |
+| `hygiene [--repo=<key>]` | Weekly all-in-one: `refresh-md` + `reconcile` + `duplicates`. With `--repo=<key>`, steps 1 and 2 scope to that repo and the global `duplicates` step is skipped. |
 | `list [--all]` | List active tracks (or all including parked/archived). |
 | `init <path>` | Add frontmatter to a brand-new track .md file. |
 | `init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
-| `reconcile <track>` `\|` `--all [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
+| `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
 
