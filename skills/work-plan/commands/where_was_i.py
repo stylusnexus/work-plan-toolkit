@@ -102,11 +102,13 @@ def _orient_track(track) -> int:
 
     issue_nums = track.meta.get("github", {}).get("issues") or []
     titles_by_num: dict[int, str] = {}
+    states_by_num: dict[int, str] = {}
     if track.repo and next_up:
-        wanted = [n for n in next_up[:4] if n in issue_nums or True]
+        wanted = next_up[:4]
         fetched = fetch_issues(track.repo, wanted)
         for i in fetched:
             titles_by_num[i["number"]] = i.get("title", "")
+            states_by_num[i["number"]] = (i.get("state") or "").upper()
 
     print(_top_rule(slug))
     print(f"Priority: {priority}  ·  Milestone: {milestone}  ·  Repo: {repo}")
@@ -126,14 +128,18 @@ def _orient_track(track) -> int:
     if next_up:
         pick_num = next_up[0]
         pick_title = titles_by_num.get(pick_num, "")
-        print(f"Next pick: #{pick_num}  {pick_title}".rstrip())
+        pick_suffix = _state_suffix(states_by_num.get(pick_num))
+        print(f"Next pick: #{pick_num}  {pick_title}{pick_suffix}".rstrip())
+        if _is_closed(states_by_num.get(pick_num)):
+            print(f"  ⚠  next_up:[0] has shipped — run `/work-plan handoff {slug}` to rotate")
         rest = next_up[1:4]
         if rest:
             print()
             print("Behind it:")
             for num in rest:
                 title = titles_by_num.get(num, "")
-                print(f"  #{num}  {title}".rstrip())
+                suffix = _state_suffix(states_by_num.get(num))
+                print(f"  #{num}  {title}{suffix}".rstrip())
     else:
         print("Next pick: (none set — run `/work-plan handoff` to set one)")
 
@@ -197,6 +203,14 @@ def _orient_cwd() -> int:
     print(f"Snapshot: {now}")
     print(_bottom_rule())
     return 0
+
+
+def _is_closed(state: Optional[str]) -> bool:
+    return (state or "").upper() in ("CLOSED", "MERGED")
+
+
+def _state_suffix(state: Optional[str]) -> str:
+    return "  (closed)" if _is_closed(state) else ""
 
 
 def _top_rule(slug: str) -> str:

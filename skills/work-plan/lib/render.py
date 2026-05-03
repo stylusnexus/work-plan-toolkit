@@ -38,6 +38,12 @@ def render_track_row(t: dict) -> str:
             label = f"#{item['number']} {item['title']} ({item['priority']}, {item['state']})"
             prefix = "    Up next:    " if idx == 0 else "                "
             lines.append(prefix + label)
+    elif t.get("next_up_stale_closed_count"):
+        n = t["next_up_stale_closed_count"]
+        slug = t.get("track_slug") or t["name"]
+        plural = "item has" if n == 1 else "items have"
+        lines.append(f"    Up next:    <all {n} {plural} shipped — "
+                     f"run /work-plan handoff {slug} to rotate>")
     else:
         lines.append("    Up next:    <empty — set 'next_up:' or all items show backlog>")
 

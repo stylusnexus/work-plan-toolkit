@@ -228,6 +228,63 @@ class WhereWasINoLocalPathCase(unittest.TestCase):
         self.assertNotIn("Local: on ", out)
 
 
+class WhereWasIClosedNextUpCase(unittest.TestCase):
+    """next_up references issues that have shipped — orient must surface (closed)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.notes_root = Path(self.tmp.name) / "notes_root"
+        self.repo_dir = self.notes_root / "demo"
+        self.repo_dir.mkdir(parents=True)
+        self.track_path = _make_track_file(self.repo_dir, next_up=[4348, 4349])
+
+        self.cfg = {
+            "notes_root": str(self.notes_root),
+            "repos": {"demo": {"github": "stylusnexus/Demo"}},
+        }
+
+        def _closed_issues(repo, nums):
+            return [{"number": n, "title": f"shipped spec {n}", "state": "CLOSED",
+                     "labels": [], "milestone": None, "url": "", "closedAt": "2026-05-02",
+                     "body": ""} for n in nums]
+
+        self._patches = [
+            mock.patch("commands.where_was_i.load_config", return_value=self.cfg),
+            mock.patch("commands.where_was_i.fetch_issues", side_effect=_closed_issues),
+            mock.patch("commands.where_was_i.find_new_issues_for_tracks", return_value={}),
+            mock.patch("commands.where_was_i.current_branch", return_value=None),
+            mock.patch("commands.where_was_i.commits_ahead", return_value=0),
+            mock.patch("commands.where_was_i.uncommitted_file_count", return_value=0),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_closed_next_up_annotated_inline(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = where_was_i.run(["demo-track"])
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn("Next pick: #4348", out)
+        self.assertIn("(closed)", out)
+        # Behind-it line should also pick up state.
+        self.assertIn("#4349", out)
+        self.assertEqual(out.count("(closed)"), 2)
+
+    def test_closed_next_pick_shows_rotate_hint(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            where_was_i.run(["demo-track"])
+        out = buf.getvalue()
+        self.assertIn("next_up:[0] has shipped", out)
+        self.assertIn("/work-plan handoff demo-track", out)
+
+
 class WhereWasINoSessionLogCase(unittest.TestCase):
     """No prior `### Session — …` block — print '(none yet)' fallback."""
 
