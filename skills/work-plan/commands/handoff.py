@@ -20,7 +20,7 @@ from lib.git_state import (
     has_uncommitted, current_branch, parse_iso_timestamp,
     gap_seconds_to_label, uncommitted_file_count, commits_ahead,
 )
-from lib.github_state import fetch_issues, state_to_status_label, extract_priority
+from lib.github_state import fetch_issues, state_to_status_label, extract_priority, short_milestone
 from lib.status_table import update_row_status, find_canonical_status_tables, ISSUE_NUM_RE
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.next_up import suggest_next_up
@@ -138,7 +138,8 @@ def _apply_auto_next(track, cfg: dict) -> int:
 
     issues = fetch_issues(track.repo, issue_nums)
     blocker_nums = track.meta.get("blockers") or []
-    raw_suggestion = suggest_next_up(issues, blocker_nums)
+    track_milestone = track.meta.get("milestone_alignment") or None
+    raw_suggestion = suggest_next_up(issues, blocker_nums, track_milestone=track_milestone)
     if not raw_suggestion:
         print(f"No open, non-blocker issues for {track.name}; next_up unchanged.")
         return 0
@@ -157,13 +158,15 @@ def _apply_auto_next(track, cfg: dict) -> int:
         print(f"All suggested issues are already next_up on sibling tracks; next_up unchanged.")
         return 0
 
-    # Decorate with title + priority for the preview.
+    # Decorate with title + priority + milestone for the preview.
     by_num = {i["number"]: i for i in issues}
     print(f"\nSuggested next_up for {track.name}:")
     for num in suggestion:
         i = by_num.get(num, {})
         pri = extract_priority(i.get("labels", []))
-        print(f"  #{num}  [{pri}]  {i.get('title', '')}")
+        ms = short_milestone(i.get("milestone"))
+        ms_tag = f"  [{ms}]" if ms else ""
+        print(f"  #{num}  [{pri}]{ms_tag}  {i.get('title', '')}")
 
     answer = prompt_input("\nApply this list to next_up? [Y/n/edit] ").strip().lower()
     if answer in ("", "y", "yes"):
@@ -336,14 +339,17 @@ def _derived_handoff(track) -> int:
     open_items = []
     if open_from_github:
         open_source = "GitHub"
-        open_items = [(i["number"], i.get("title", "")) for i in open_from_github]
+        open_items = [(i["number"], i.get("title", ""),
+                       short_milestone(i.get("milestone"))) for i in open_from_github]
     elif open_from_body:
         open_source = "markdown (canonical table)"
-        open_items = open_from_body
+        # Body source has no milestone data — pad with empty string for shape parity.
+        open_items = [(num, title, "") for num, title in open_from_body]
     if open_items:
         print(f"  ({len(open_items)} item(s), source: {open_source})")
-        for num, title in open_items[:8]:
-            print(f"    🔲 #{num} {title}")
+        for num, title, ms in open_items[:8]:
+            ms_tag = f"[{ms}] " if ms else ""
+            print(f"    🔲 #{num} {ms_tag}{title}")
         if len(open_items) > 8:
             print(f"    ... and {len(open_items) - 8} more  (full list: /work-plan orient {slug})")
     else:
@@ -356,7 +362,9 @@ def _derived_handoff(track) -> int:
         for num in next_up:
             i = issues_by_num.get(num)
             if i and i.get("state") not in ("CLOSED", "MERGED"):
-                print(f"  → #{num} {i.get('title', '')}")
+                ms = short_milestone(i.get("milestone"))
+                ms_tag = f"[{ms}] " if ms else ""
+                print(f"  → #{num} {ms_tag}{i.get('title', '')}")
             elif i:
                 print(f"    (#{num} is now closed — consider updating next_up)")
             else:
@@ -647,8 +655,9 @@ def _build_fresh_session_prompt(track, commits, uncommitted, last_session,
 
     if open_items:
         lines.append(f"## What's still open ({len(open_items)} from {open_source})")
-        for num, title in open_items[:10]:
-            lines.append(f"- #{num} {title}")
+        for num, title, ms in open_items[:10]:
+            ms_tag = f"[{ms}] " if ms else ""
+            lines.append(f"- #{num} {ms_tag}{title}")
         if len(open_items) > 10:
             lines.append(f"- ... and {len(open_items) - 10} more")
         lines.append("")
@@ -680,7 +689,7 @@ def _build_fresh_session_prompt(track, commits, uncommitted, last_session,
             if i:
                 lines.append(f"- #{num} {i.get('title', '')}  (state: {i.get('state','?').lower()})")
             else:
-                title = next((t for n, t in open_items if n == num), "")
+                title = next((t for n, t, _ in open_items if n == num), "")
                 lines.append(f"- #{num} {title}".rstrip())
         lines.append("")
 

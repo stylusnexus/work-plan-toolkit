@@ -27,7 +27,7 @@ from typing import Optional
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name
 from lib.prompts import prompt_input, parse_flags
-from lib.github_state import fetch_issues
+from lib.github_state import fetch_issues, short_milestone
 from lib.git_state import (
     parse_iso_timestamp,
     current_branch, uncommitted_file_count, commits_ahead,
@@ -103,12 +103,14 @@ def _orient_track(track) -> int:
     issue_nums = track.meta.get("github", {}).get("issues") or []
     titles_by_num: dict[int, str] = {}
     states_by_num: dict[int, str] = {}
+    milestones_by_num: dict[int, str] = {}
     if track.repo and next_up:
         wanted = next_up[:4]
         fetched = fetch_issues(track.repo, wanted)
         for i in fetched:
             titles_by_num[i["number"]] = i.get("title", "")
             states_by_num[i["number"]] = (i.get("state") or "").upper()
+            milestones_by_num[i["number"]] = short_milestone(i.get("milestone"))
 
     print(_top_rule(slug))
     print(f"Priority: {priority}  ·  Milestone: {milestone}  ·  Repo: {repo}")
@@ -129,7 +131,8 @@ def _orient_track(track) -> int:
         pick_num = next_up[0]
         pick_title = titles_by_num.get(pick_num, "")
         pick_suffix = _state_suffix(states_by_num.get(pick_num))
-        print(f"Next pick: #{pick_num}  {pick_title}{pick_suffix}".rstrip())
+        pick_ms = _milestone_prefix(milestones_by_num.get(pick_num))
+        print(f"Next pick: #{pick_num}  {pick_ms}{pick_title}{pick_suffix}".rstrip())
         if _is_closed(states_by_num.get(pick_num)):
             print(f"  ⚠  next_up:[0] has shipped — run `/work-plan handoff {slug}` to rotate")
         rest = next_up[1:4]
@@ -139,7 +142,8 @@ def _orient_track(track) -> int:
             for num in rest:
                 title = titles_by_num.get(num, "")
                 suffix = _state_suffix(states_by_num.get(num))
-                print(f"  #{num}  {title}{suffix}".rstrip())
+                ms = _milestone_prefix(milestones_by_num.get(num))
+                print(f"  #{num}  {ms}{title}{suffix}".rstrip())
     else:
         print("Next pick: (none set — run `/work-plan handoff` to set one)")
 
@@ -211,6 +215,10 @@ def _is_closed(state: Optional[str]) -> bool:
 
 def _state_suffix(state: Optional[str]) -> str:
     return "  (closed)" if _is_closed(state) else ""
+
+
+def _milestone_prefix(ms: Optional[str]) -> str:
+    return f"[{ms}] " if ms else ""
 
 
 def _top_rule(slug: str) -> str:

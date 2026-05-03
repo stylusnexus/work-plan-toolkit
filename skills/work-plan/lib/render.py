@@ -35,7 +35,10 @@ def render_track_row(t: dict) -> str:
 
     if t["next_up"]:
         for idx, item in enumerate(t["next_up"]):
-            label = f"#{item['number']} {item['title']} ({item['priority']}, {item['state']})"
+            bits = [item["priority"], item["state"]]
+            if item.get("milestone"):
+                bits.append(item["milestone"])
+            label = f"#{item['number']} {item['title']} ({', '.join(bits)})"
             prefix = "    Up next:    " if idx == 0 else "                "
             lines.append(prefix + label)
     elif t.get("next_up_stale_closed_count"):

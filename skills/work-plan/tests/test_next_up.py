@@ -16,12 +16,15 @@ sys.path.insert(0, str(SKILL_ROOT))
 from lib.next_up import suggest_next_up
 
 
-def _issue(num, *, state="OPEN", priority=None, updated="2026-01-01T00:00:00Z", title=""):
+def _issue(num, *, state="OPEN", priority=None, updated="2026-01-01T00:00:00Z",
+           title="", milestone=None):
     """Build a minimal issue dict matching gh's --json output."""
     labels = [{"name": f"priority/{priority}"}] if priority else []
+    ms_obj = {"title": milestone} if milestone else None
     return {
         "number": num, "state": state, "labels": labels,
         "updatedAt": updated, "title": title or f"issue #{num}",
+        "milestone": ms_obj,
     }
 
 
@@ -102,6 +105,35 @@ class SuggestNextUpTest(unittest.TestCase):
         result = suggest_next_up(issues, [])
         self.assertEqual(result[0], 3)  # newest first
         self.assertEqual(result[-1], 2)  # missing-updated last
+
+    def test_track_milestone_aligned_outranks_other_milestone(self):
+        # Track is gated by v0.4.0. A P0 on v2.0.0 must sort BEHIND a P3 on v0.4.0
+        # because milestone alignment dominates priority — keeps post-launch
+        # work from polluting a launch-window auto-next.
+        issues = [
+            _issue(1, priority="P0", milestone="v2.0.0 — Post-Launch",
+                   updated="2026-04-30T00:00:00Z"),
+            _issue(2, priority="P3", milestone="v0.4.0 — MVP",
+                   updated="2026-01-01T00:00:00Z"),
+        ]
+        self.assertEqual(suggest_next_up(issues, [], track_milestone="v0.4.0"), [2, 1])
+
+    def test_track_milestone_unmilestoned_sorts_last(self):
+        # Items with no milestone fall behind any milestoned item.
+        issues = [
+            _issue(1, priority="P0", milestone=None),
+            _issue(2, priority="P3", milestone="v2.0.0"),
+        ]
+        self.assertEqual(suggest_next_up(issues, [], track_milestone="v0.4.0"), [2, 1])
+
+    def test_no_track_milestone_preserves_priority_order(self):
+        # Without a track milestone, behavior matches the legacy priority+recency sort:
+        # all milestone buckets collapse to "OTHER" so they tie, leaving priority to decide.
+        issues = [
+            _issue(1, priority="P0", milestone="v2.0.0"),
+            _issue(2, priority="P3", milestone="v0.4.0"),
+        ]
+        self.assertEqual(suggest_next_up(issues, []), [1, 2])
 
     def test_unparsable_updatedAt_falls_back_gracefully(self):
         # A garbage timestamp string should be treated like missing — not crash.

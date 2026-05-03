@@ -4,7 +4,7 @@ from pathlib import Path
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, discover_archived_tracks, filter_tracks_by_repo
-from lib.github_state import fetch_issues, extract_priority
+from lib.github_state import fetch_issues, extract_priority, short_milestone
 from lib.prompts import parse_flags
 from lib.git_state import (
     parse_iso_timestamp, gap_seconds_to_label,
@@ -115,9 +115,10 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     # reading the stored `next_up`. The track's persisted list is ignored
     # for display purposes — useful for tracks where you don't want to
     # hand-curate but still want a sensible "what's next" surfaced.
+    track_milestone = meta.get("milestone_alignment") or None
     if meta.get("next_up_auto") and issues:
         blocker_nums = meta.get("blockers") or []
-        next_up_nums = suggest_next_up(issues, blocker_nums)
+        next_up_nums = suggest_next_up(issues, blocker_nums, track_milestone=track_milestone)
     else:
         next_up_nums = stored_next_up
 
@@ -135,6 +136,7 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
             "number": num, "title": i.get("title", ""),
             "priority": extract_priority(i.get("labels", [])),
             "state": state.lower() or "open",
+            "milestone": short_milestone(i.get("milestone")),
         })
 
     branch_names = meta.get("github", {}).get("branches") or []

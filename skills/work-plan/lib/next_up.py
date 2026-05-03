@@ -21,10 +21,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Iterable
 
-from lib.github_state import extract_priority
+from lib.github_state import extract_priority, short_milestone
 
 PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_TOP_N = 3
+
+# Milestone alignment ranks: items on the track's declared milestone come
+# first, items on a different milestone next, items with no milestone last.
+MILESTONE_ALIGNED = 0
+MILESTONE_OTHER = 1
+MILESTONE_NONE = 2
 
 
 def _updated_unix(issue: dict) -> float:
@@ -48,15 +54,21 @@ def suggest_next_up(
     issues: list[dict],
     blocker_nums: Iterable[int] | None = None,
     n: int = DEFAULT_TOP_N,
+    track_milestone: str | None = None,
 ) -> list[int]:
     """Return up to `n` issue numbers ranked for "what to work on next."
 
     Args:
         issues: issue dicts as returned by `gh issue list --json
-            number,state,labels,updatedAt,...`.
+            number,state,labels,milestone,updatedAt,...`.
         blocker_nums: iterable of issue numbers to exclude (a track's
             manually-flagged blockers).
         n: maximum items to return. Default is DEFAULT_TOP_N.
+        track_milestone: optional `milestone_alignment:` value from the
+            track's frontmatter (e.g. `"v0.4.0"`). When provided, issues
+            on this milestone rank above items on any other milestone,
+            which in turn rank above items with no milestone — keeps
+            post-launch deferrals from polluting a launch-window list.
 
     Returns:
         List of issue numbers, highest-ranked first. Empty if nothing
@@ -69,10 +81,18 @@ def suggest_next_up(
         and i.get("number") not in blockers
     ]
 
-    def sort_key(issue: dict) -> tuple[int, float]:
+    def milestone_rank(issue: dict) -> int:
+        ms = short_milestone(issue.get("milestone"))
+        if not ms:
+            return MILESTONE_NONE
+        if track_milestone and ms == track_milestone:
+            return MILESTONE_ALIGNED
+        return MILESTONE_OTHER
+
+    def sort_key(issue: dict) -> tuple[int, int, float]:
         pri = extract_priority(issue.get("labels", []))
         # Negate timestamp so newer comes first within a priority bucket.
-        return (PRIORITY_RANK.get(pri, 3), -_updated_unix(issue))
+        return (milestone_rank(issue), PRIORITY_RANK.get(pri, 3), -_updated_unix(issue))
 
     candidates.sort(key=sort_key)
     return [i["number"] for i in candidates[:n]]

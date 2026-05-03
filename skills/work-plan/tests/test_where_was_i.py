@@ -56,15 +56,16 @@ def _make_track_file(dir_path: Path, slug: str = "demo-track",
     return path
 
 
-def _fake_issues(nums: list[int]) -> list[dict]:
+def _fake_issues(nums: list[int], milestone: str | None = None) -> list[dict]:
     titles = {
         4167: "feat(library): Armory Slice 3 — ArmoryCard + data-source cutover",
         4148: "fix(dashboard): CreditsPill shows '0 left' for super admin",
         4149: "fix(dashboard): Studio tier should show 'Unlimited'",
         4150: "fix(error): /contact 404 — replace with form",
     }
+    ms_obj = {"title": milestone} if milestone else None
     return [{"number": n, "title": titles.get(n, f"issue {n}"), "state": "OPEN",
-             "labels": [], "milestone": None, "url": "", "closedAt": None,
+             "labels": [], "milestone": ms_obj, "url": "", "closedAt": None,
              "body": ""} for n in nums]
 
 
@@ -283,6 +284,56 @@ class WhereWasIClosedNextUpCase(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("next_up:[0] has shipped", out)
         self.assertIn("/work-plan handoff demo-track", out)
+
+
+class WhereWasIMilestoneTagCase(unittest.TestCase):
+    """next_up issues with milestones — orient must surface [vX.Y.Z] inline."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.notes_root = Path(self.tmp.name) / "notes_root"
+        self.repo_dir = self.notes_root / "demo"
+        self.repo_dir.mkdir(parents=True)
+        self.track_path = _make_track_file(self.repo_dir, next_up=[4167, 4148])
+
+        self.cfg = {
+            "notes_root": str(self.notes_root),
+            "repos": {"demo": {"github": "stylusnexus/Demo"}},
+        }
+
+        def _milestoned(repo, nums):
+            issues = _fake_issues(list(nums))
+            for i in issues:
+                if i["number"] == 4167:
+                    i["milestone"] = {"title": "v0.4.0 — MVP Go-Live Gate"}
+                elif i["number"] == 4148:
+                    i["milestone"] = {"title": "v2.0.0 — Post-Launch"}
+            return issues
+
+        self._patches = [
+            mock.patch("commands.where_was_i.load_config", return_value=self.cfg),
+            mock.patch("commands.where_was_i.fetch_issues", side_effect=_milestoned),
+            mock.patch("commands.where_was_i.find_new_issues_for_tracks", return_value={}),
+            mock.patch("commands.where_was_i.current_branch", return_value=None),
+            mock.patch("commands.where_was_i.commits_ahead", return_value=0),
+            mock.patch("commands.where_was_i.uncommitted_file_count", return_value=0),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_milestone_prefix_on_next_pick_and_behind_it(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = where_was_i.run(["demo-track"])
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn("Next pick: #4167  [v0.4.0]", out)
+        self.assertIn("#4148  [v2.0.0]", out)
 
 
 class WhereWasINoSessionLogCase(unittest.TestCase):
