@@ -103,7 +103,11 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     local = track.local_path
 
     issue_nums = meta.get("github", {}).get("issues") or []
-    issues = fetch_issues(repo, issue_nums) if (repo and issue_nums) else []
+    stored_next_up = meta.get("next_up") or []
+    # Fetch state for stored next_up issues even if they're not in github.issues,
+    # so stale closed entries surface as a clear signal rather than vanishing.
+    fetch_nums = sorted(set(issue_nums) | set(stored_next_up))
+    issues = fetch_issues(repo, fetch_nums) if (repo and fetch_nums) else []
     issues_by_num = {i["number"]: i for i in issues}
 
     # When `next_up_auto: true` is set in track frontmatter, derive the list
@@ -115,17 +119,23 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
         blocker_nums = meta.get("blockers") or []
         next_up_nums = suggest_next_up(issues, blocker_nums)
     else:
-        next_up_nums = meta.get("next_up") or []
+        next_up_nums = stored_next_up
 
     next_up_items = []
+    next_up_closed_count = 0
     for num in next_up_nums:
         i = issues_by_num.get(num)
-        if i:
-            next_up_items.append({
-                "number": num, "title": i.get("title", ""),
-                "priority": extract_priority(i.get("labels", [])),
-                "state": i.get("state", "?").lower(),
-            })
+        if not i:
+            continue
+        state = (i.get("state") or "").upper()
+        if state in ("CLOSED", "MERGED"):
+            next_up_closed_count += 1
+            continue
+        next_up_items.append({
+            "number": num, "title": i.get("title", ""),
+            "priority": extract_priority(i.get("labels", [])),
+            "state": state.lower() or "open",
+        })
 
     branch_names = meta.get("github", {}).get("branches") or []
     active_branches = []
@@ -195,6 +205,10 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
         "last_touched_label": lbl("last_touched"),
         "last_handoff_label": lbl("last_handoff"),
         "next_up": next_up_items,
+        "next_up_stale_closed_count": (
+            next_up_closed_count if not next_up_items and next_up_nums else 0
+        ),
+        "track_slug": meta.get("track", track.name),
         "active_branches": active_branches,
         "new_issues": new_issues,
         "blockers": blockers,

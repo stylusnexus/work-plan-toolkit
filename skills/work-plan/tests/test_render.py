@@ -69,6 +69,27 @@ class RenderTrackRowTest(unittest.TestCase):
     def test_closure_ready_shown(self):
         self.assertIn("Closure?:   YES", render_track_row(self._data(closure_ready=True)))
 
+    def test_empty_next_up_default_message(self):
+        row = render_track_row(self._data(next_up=[]))
+        self.assertIn("<empty — set 'next_up:'", row)
+
+    def test_next_up_all_closed_message(self):
+        row = render_track_row(self._data(
+            next_up=[],
+            next_up_stale_closed_count=2,
+            track_slug="ux-redesign",
+        ))
+        self.assertIn("all 2 items have shipped", row)
+        self.assertIn("/work-plan handoff ux-redesign", row)
+
+    def test_next_up_single_closed_uses_singular(self):
+        row = render_track_row(self._data(
+            next_up=[],
+            next_up_stale_closed_count=1,
+            track_slug="ux-redesign",
+        ))
+        self.assertIn("all 1 item has shipped", row)
+
 
 if __name__ == "__main__":
     unittest.main()
