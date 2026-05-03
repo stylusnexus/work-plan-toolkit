@@ -7,7 +7,7 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
-from lib.github_state import fetch_issues, extract_priority, fetch_recent_issues
+from lib.github_state import fetch_issues, extract_priority, fetch_recent_issues, short_milestone
 
 
 class ExtractPriorityTest(unittest.TestCase):
@@ -20,6 +20,24 @@ class ExtractPriorityTest(unittest.TestCase):
 
     def test_p2_label(self):
         self.assertEqual(extract_priority([{"name": "priority/P2"}]), "P2")
+
+
+class ShortMilestoneTest(unittest.TestCase):
+    def test_strips_dash_suffix(self):
+        self.assertEqual(short_milestone({"title": "v0.4.0 — MVP Go-Live Gate"}), "v0.4.0")
+
+    def test_returns_full_title_when_single_word(self):
+        self.assertEqual(short_milestone({"title": "v1.0.0"}), "v1.0.0")
+
+    def test_returns_empty_for_none(self):
+        self.assertEqual(short_milestone(None), "")
+
+    def test_returns_empty_for_missing_title(self):
+        self.assertEqual(short_milestone({}), "")
+        self.assertEqual(short_milestone({"title": ""}), "")
+
+    def test_returns_empty_for_non_dict(self):
+        self.assertEqual(short_milestone("v0.4.0"), "")
 
 
 class FetchIssuesTest(unittest.TestCase):

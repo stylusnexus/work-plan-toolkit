@@ -90,6 +90,21 @@ class RenderTrackRowTest(unittest.TestCase):
         ))
         self.assertIn("all 1 item has shipped", row)
 
+    def test_next_up_includes_milestone_when_present(self):
+        row = render_track_row(self._data(next_up=[
+            {"number": 4155, "title": "Armory batch multi-select",
+             "priority": "P3", "state": "open", "milestone": "v0.4.0"},
+        ]))
+        self.assertIn("(P3, open, v0.4.0)", row)
+
+    def test_next_up_omits_milestone_when_absent(self):
+        row = render_track_row(self._data(next_up=[
+            {"number": 4155, "title": "Armory batch multi-select",
+             "priority": "P3", "state": "open", "milestone": ""},
+        ]))
+        self.assertIn("(P3, open)", row)
+        self.assertNotIn("(P3, open, ", row)
+
 
 if __name__ == "__main__":
     unittest.main()

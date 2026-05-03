@@ -51,6 +51,22 @@ def extract_priority(labels: list[dict]) -> str:
     return DEFAULT_PRIORITY
 
 
+def short_milestone(milestone) -> str:
+    """Extract a compact milestone tag from a gh milestone object.
+
+    gh returns milestone as `{"title": "v0.4.0 — MVP Go-Live Gate", ...}` or null.
+    The leading token (e.g. `v0.4.0`) is what tracks declare in
+    `milestone_alignment:`, so it's the natural form to show in tight per-issue
+    lines. Returns "" when milestone is missing or has no title.
+    """
+    if not milestone:
+        return ""
+    title = milestone.get("title") if isinstance(milestone, dict) else None
+    if not title:
+        return ""
+    return title.split()[0] if title.split() else ""
+
+
 def state_to_status_label(state: str) -> str:
     """Map a GitHub issue/PR state to a human-readable status label.
 
