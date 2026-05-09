@@ -5,18 +5,22 @@ For a given track:
     By default `track/<slug>`. Override per-track via frontmatter:
       github:
         labels: [storytelling, campaigns]   # OR semantics — match if any present
-  - Fetch all issues with any of those labels from the repo.
+  - Fetch all issues AND pull requests with any of those labels from the repo,
+    in any state (open/closed/merged). PRs are included because frontmatter
+    `github.issues` lists may reference PR numbers, and closed-state coverage
+    keeps the FLAG count tied to actual frontmatter-vs-labels drift instead
+    of "anything closed looks unlabeled."
   - Compare against frontmatter `github.issues`.
   - Propose ADDS (labeled in GitHub but missing from frontmatter).
   - Propose FLAGS (in frontmatter but no longer labeled — possible move out).
   - User confirms before writing to the LOCAL frontmatter file.
 
 READ-ONLY GITHUB CONTRACT
-  reconcile only READS GitHub via `gh issue list`. It NEVER writes labels,
-  edits issues, or modifies remote state. The only writes are to the local
-  track .md frontmatter, and only with explicit user confirmation. Any future
-  change must preserve this property — write paths to GitHub belong in
-  `suggest-priorities --apply` or `group --apply`, not here.
+  reconcile only READS GitHub via `gh issue list` and `gh pr list`. It NEVER
+  writes labels, edits issues, or modifies remote state. The only writes are
+  to the local track .md frontmatter, and only with explicit user confirmation.
+  Any future change must preserve this property — write paths to GitHub belong
+  in `suggest-priorities --apply` or `group --apply`, not here.
 
 Run with --all to reconcile every active track in one pass.
 """
@@ -45,20 +49,29 @@ def _resolve_labels(track) -> list[str]:
 
 
 def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
-    """Read-only fetch of issues matching ANY of `labels`. Unions the results."""
+    """Read-only fetch of issues + PRs matching ANY of `labels`. Unions the results.
+
+    Issues and PRs share the same numeric namespace in a GitHub repo, so a
+    single `seen` dict keyed on `number` is correct. Both kinds use
+    `--state all` so the FLAG count reflects frontmatter-vs-labels drift
+    rather than "anything closed/merged looks unlabeled."
+    """
     seen: dict[int, dict] = {}
     for lab in labels:
-        proc = subprocess.run(
-            ["gh", "issue", "list", "--repo", repo,
-             "--label", lab,
-             "--state", "all", "--limit", "200",
-             "--json", "number,title,state"],
-            capture_output=True, text=True,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(f"gh query failed for label '{lab}': {proc.stderr.strip()}")
-        for issue in (json.loads(proc.stdout) if proc.stdout.strip() else []):
-            seen.setdefault(issue["number"], issue)
+        for kind in ("issue", "pr"):
+            proc = subprocess.run(
+                ["gh", kind, "list", "--repo", repo,
+                 "--label", lab,
+                 "--state", "all", "--limit", "200",
+                 "--json", "number,title,state"],
+                capture_output=True, text=True,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"gh {kind} query failed for label '{lab}': {proc.stderr.strip()}"
+                )
+            for item in (json.loads(proc.stdout) if proc.stdout.strip() else []):
+                seen.setdefault(item["number"], item)
     return list(seen.values())
 
 

@@ -31,6 +31,8 @@ from commands import reconcile
 READ_ONLY_GH_VERBS = {
     ("issue", "list"),
     ("issue", "view"),
+    ("pr", "list"),
+    ("pr", "view"),
 }
 
 
@@ -105,7 +107,9 @@ class ReadOnlyContractTest(unittest.TestCase):
 
     def test_label_override_path_is_read_only(self):
         # Track WITH `github.labels` override (the new feature from #32).
-        # Each label produces a separate `gh issue list` — all must be read-only.
+        # Each label produces a `gh issue list` AND a `gh pr list` — all must
+        # be read-only. PRs are queried so frontmatter entries pointing at
+        # labeled PRs aren't spuriously FLAGged.
         track = _fake_track(slug="beta", repo="ok/ok",
                             labels=["storytelling", "campaigns"], issues=[10])
         gh_response = [{"number": 10, "title": "x", "state": "OPEN"}]
@@ -114,10 +118,13 @@ class ReadOnlyContractTest(unittest.TestCase):
         )
         self.assertEqual(rc, 0)
         self._assert_read_only(captured)
-        # Two configured labels → two gh invocations
+        # Two configured labels × two kinds (issue + pr) → four gh invocations
         gh_calls = [a for a in captured if a and a[0] == "gh"]
-        self.assertEqual(len(gh_calls), 2,
-                         f"expected one gh call per label, got {len(gh_calls)}")
+        self.assertEqual(len(gh_calls), 4,
+                         f"expected one gh issue + one gh pr call per label, got {len(gh_calls)}")
+        kinds = sorted(c[1] for c in gh_calls)
+        self.assertEqual(kinds, ["issue", "issue", "pr", "pr"],
+                         f"expected two issue + two pr calls, got {kinds}")
 
     def test_user_accept_writes_local_file_only_not_gh(self):
         # Even when the user accepts the proposed ADDs, the only write should
