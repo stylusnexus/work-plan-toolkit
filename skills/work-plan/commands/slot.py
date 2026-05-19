@@ -8,6 +8,21 @@ from lib.frontmatter import write_file
 from lib.prompts import parse_flags, prompt_input
 
 
+def _find_prior_owners(issue_num: int, repo: str, target_name: str, tracks):
+    """Active tracks in `repo` (excluding `target_name`) whose frontmatter
+    already lists `issue_num`. Lets slot offer a move when GitHub labels
+    moved an issue across tracks but the old frontmatter still claims it."""
+    owners = []
+    for t in tracks:
+        if not t.has_frontmatter or t.name == target_name or t.repo != repo:
+            continue
+        if t.meta.get("status") not in ("active", "in-progress", "blocked"):
+            continue
+        if issue_num in (t.meta.get("github", {}).get("issues") or []):
+            owners.append(t)
+    return owners
+
+
 def run(args: list[str]) -> int:
     _, positional = parse_flags(args, set())
     if not positional:
@@ -61,6 +76,18 @@ def run(args: list[str]) -> int:
     if issue_num in issues:
         print(f"#{issue_num} already in track '{target.name}'.")
         return 0
+
+    sources = _find_prior_owners(issue_num, target.repo, target.name, tracks)
+    move_from = []
+    if sources:
+        names = ", ".join(f"'{t.name}'" for t in sources)
+        ans = prompt_input(
+            f"#{issue_num} is already in {names}. "
+            f"Move to '{target.name}' (remove from there)? [y/N]"
+        ).lower()
+        if ans == "y":
+            move_from = sources
+
     issues.append(issue_num)
     target.meta.setdefault("github", {})["issues"] = sorted(issues)
 
@@ -75,6 +102,13 @@ def run(args: list[str]) -> int:
         if m and m.get("title") and m["title"] != target.meta.get("milestone_alignment"):
             print(f"⚠  #{issue_num} is on milestone '{m['title']}', "
                   f"track '{target.name}' aligned to '{target.meta.get('milestone_alignment')}'.")
+
+    for src in move_from:
+        src_issues = [n for n in (src.meta.get("github", {}).get("issues") or [])
+                      if n != issue_num]
+        src.meta.setdefault("github", {})["issues"] = src_issues
+        write_file(src.path, src.meta, src.body)
+        print(f"  ✓ Removed #{issue_num} from '{src.name}'.")
 
     write_file(target.path, target.meta, target.body)
     print(f"✓ Slotted #{issue_num} into '{target.name}'.")
