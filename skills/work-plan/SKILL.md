@@ -16,7 +16,7 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | `/work-plan handoff [track] [--auto-next \| --set-next 1,2,3]` | Wrapping up a work block. Captures touched + next + blockers; writes session log. Add `--auto-next` to suggest a priority-sorted next_up list from open issues (interactive: apply / edit / skip). Tracks with `next_up_auto: true` in frontmatter get the auto-derived list surfaced in `brief` automatically. |
 | `/work-plan orient [track]` (alias `where-was-i`) | Re-orienting. With a track: ~15-line track paste-block. Without: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `/work-plan hygiene` | Weekly all-in-one cleanup: refresh-md --all + reconcile --all + duplicates. |
-| `/work-plan slot <issue-num> [track]` | A new GitHub issue should belong to a track. |
+| `/work-plan slot <issue-num> [track]` | A new GitHub issue should belong to a track. If the issue is already listed in another active track's frontmatter, you'll be prompted to move it (remove from source) instead of duplicating. |
 | `/work-plan close [track]` | Track is done (shipped) / paused (parked) / won't ship (abandoned). |
 | `/work-plan refresh-md <track> \| --all` | Status icons drifted from GitHub state. **You usually don't need to call this directly:** `handoff` already rewrites the body table for its own track on every run, and `brief` reads GitHub live. Reach for `refresh-md` (or `--all`) when a sibling track has drifted because you haven't `handoff`'d it lately. |
 | `/work-plan list [--all]` | List active tracks (or all including parked/archived). |
