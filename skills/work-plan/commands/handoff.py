@@ -715,12 +715,32 @@ def _build_fresh_session_prompt(track, commits, uncommitted, last_session,
     if uncommitted:
         lines.append("Resume the uncommitted work above. Check `git status` first.")
     elif next_up:
-        lines.append(f"Pick up #{next_up[0]} from the `next_up` list.")
+        first_actionable = _first_actionable_next_up(next_up, issues_by_num)
+        if first_actionable is not None:
+            lines.append(f"Pick up #{first_actionable} from the `next_up` list.")
+        else:
+            lines.append(
+                f"All `next_up` items are closed — run `/work-plan handoff {slug}` to rotate."
+            )
     elif open_items:
         lines.append(f"No `next_up` set. Pick from the {len(open_items)} open items above.")
     else:
         lines.append("Run `/work-plan orient " + slug + "` to see all open issues for this track and pick one.")
     return "\n".join(lines)
+
+
+def _first_actionable_next_up(next_up: list, issues_by_num: dict):
+    """Return the first next_up issue number whose GitHub state is not closed
+    or merged. Unknown numbers (no fetched issue data) are returned as-is —
+    we can't verify, so we prefer to surface rather than silently skip.
+    Returns None only when every entry is verified-closed."""
+    for num in next_up:
+        i = issues_by_num.get(num)
+        if i is None:
+            return num
+        if i.get("state") not in ("CLOSED", "MERGED"):
+            return num
+    return None
 
 
 def _extract_last_session(body: str) -> str:
