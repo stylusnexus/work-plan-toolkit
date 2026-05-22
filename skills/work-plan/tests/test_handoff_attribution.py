@@ -36,8 +36,10 @@ class RecentCommitsPathGlobsTest(unittest.TestCase):
         whose changed paths match `github.paths` should be attributed."""
         log_output = (
             "---COMMIT---\nabc1234|fix(useToast): debounce stacking|2026-04-30T10:00:00+00:00\n"
+            "---BODY---\n\n---ENDBODY---\n"
             "apps/web/src/hooks/useToast.tsx\napps/web/src/hooks/useToast.test.tsx\n\n"
             "---COMMIT---\ndef5678|chore: bump deps|2026-04-30T09:00:00+00:00\n"
+            "---BODY---\n\n---ENDBODY---\n"
             "package.json\n"
         )
         track = _track({
@@ -54,6 +56,7 @@ class RecentCommitsPathGlobsTest(unittest.TestCase):
         """Issue-ref attribution and path attribution are an OR, not AND."""
         log_output = (
             "---COMMIT---\nabc1234|fix #4148: tighten guardrails|2026-04-30T10:00:00+00:00\n"
+            "---BODY---\n\n---ENDBODY---\n"
             "infra/iam/policy.tf\n"
         )
         track = _track({
@@ -65,6 +68,38 @@ class RecentCommitsPathGlobsTest(unittest.TestCase):
             commits = handoff._recent_commits(track, SINCE)
         self.assertEqual(len(commits), 1)
         self.assertEqual(commits[0]["sha"], "abc1234")
+
+    def test_body_issue_ref_attributes_squash_merge_commit(self):
+        """Squash-merged PRs use Conventional Commit subjects with the issue
+        ref in the body (e.g. 'Closes #4148'). Subject scanning alone misses
+        these; body scanning must catch them."""
+        log_output = (
+            "---COMMIT---\nabc1234|feat(adventure): cache regen prompts|2026-04-30T10:00:00+00:00\n"
+            "---BODY---\n"
+            "Reduce duplicate LLM calls when artifacts regenerate.\n"
+            "\n"
+            "Closes #4148\n"
+            "---ENDBODY---\n"
+        )
+        track = _track({"issues": [4148]})
+        with mock.patch("commands.handoff.subprocess.run",
+                        return_value=_proc(stdout=log_output)):
+            commits = handoff._recent_commits(track, SINCE)
+        self.assertEqual(len(commits), 1)
+        self.assertEqual(commits[0]["sha"], "abc1234")
+
+    def test_body_ref_to_untracked_issue_does_not_attribute(self):
+        """A body that references an issue NOT in github.issues must not
+        attribute — otherwise any commit citing any issue would get picked up."""
+        log_output = (
+            "---COMMIT---\nabc1234|chore: unrelated|2026-04-30T10:00:00+00:00\n"
+            "---BODY---\nCloses #9999\n---ENDBODY---\n"
+        )
+        track = _track({"issues": [4148]})
+        with mock.patch("commands.handoff.subprocess.run",
+                        return_value=_proc(stdout=log_output)):
+            commits = handoff._recent_commits(track, SINCE)
+        self.assertEqual(commits, [])
 
     def test_no_paths_no_issues_returns_empty(self):
         """A track with neither tracked issues nor path globs gets nothing."""
