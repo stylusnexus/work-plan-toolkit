@@ -386,8 +386,8 @@ def _derived_handoff(track) -> int:
     elif repo_wide_commits > 0:
         print(f"RECENT COMMITS: 0 attributed to this track  "
               f"({repo_wide_commits} repo-wide since last handoff)")
-        print("  Attribution: subject must reference an issue in `github.issues`,")
-        print("  or a changed path must match a glob in `github.paths`.")
+        print("  Attribution: commit message (subject or body) must reference an issue")
+        print("  in `github.issues`, or a changed path must match a glob in `github.paths`.")
         print()
 
     # SUPPLEMENT 2: Uncommitted (if current branch belongs to this track)
@@ -476,8 +476,11 @@ def _recent_commits(track, since_dt) -> list[dict]:
       1. If track has explicit `github.branches`, use those branches' history.
          Path globs do not apply here — explicit branches are the contract.
       2. Otherwise, scan ALL recent commits across the repo and keep those:
-           - whose subject mentions an issue number (#NNNN) in `github.issues`, OR
-           - whose changed paths match any glob in `github.paths` (fnmatch
+           - whose commit message (subject OR body) mentions an issue number
+             (#NNNN) in `github.issues`. Squash-merged PRs typically carry
+             the issue ref in the body (e.g. "Closes #1234"), so scanning
+             both is required for conventional-commit subjects to attribute.
+           - OR whose changed paths match any glob in `github.paths` (fnmatch
              syntax, e.g. "apps/web/src/components/ux/**", "**/useToast*").
       3. If neither yields anything, return empty (don't fall back to current
          branch — that's almost always wrong for multi-track repos).
@@ -519,7 +522,7 @@ def _recent_commits(track, since_dt) -> list[dict]:
     if not track_issues and not path_globs:
         return []
 
-    pretty = "format:---COMMIT---%n%H|%s|%cI"
+    pretty = "format:---COMMIT---%n%H|%s|%cI%n---BODY---%n%b%n---ENDBODY---"
     cmd = ["git", "-C", str(track.local_path), "log", "--all",
            f"--since={since_iso}", f"--pretty={pretty}"]
     if path_globs:
@@ -537,8 +540,23 @@ def _recent_commits(track, since_dt) -> list[dict]:
             continue
         if sha in seen:
             continue
-        files = [ln for ln in block_lines[1:] if ln]
-        mentioned = {int(m) for m in issue_re.findall(subject)}
+        body_lines: list[str] = []
+        files: list[str] = []
+        in_body = False
+        for ln in block_lines[1:]:
+            if ln == "---BODY---":
+                in_body = True
+                continue
+            if ln == "---ENDBODY---":
+                in_body = False
+                continue
+            if in_body:
+                body_lines.append(ln)
+            elif ln:
+                files.append(ln)
+        body = "\n".join(body_lines)
+        message = subject + "\n" + body
+        mentioned = {int(m) for m in issue_re.findall(message)}
         match_issue = bool(mentioned & track_issues)
         match_path = bool(path_globs) and any(
             fnmatch.fnmatch(f, pat) for f in files for pat in path_globs
@@ -671,8 +689,8 @@ def _build_fresh_session_prompt(track, commits, uncommitted, last_session,
         lines.append("## Recent commits")
         lines.append(
             f"0 attributed to this track ({repo_wide_commits} repo-wide since last handoff). "
-            "Attribution requires an issue ref in the commit subject or a path match "
-            "against `github.paths`."
+            "Attribution requires an issue ref in the commit message (subject or body) "
+            "or a path match against `github.paths`."
         )
         lines.append("")
 

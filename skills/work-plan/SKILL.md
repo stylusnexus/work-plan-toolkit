@@ -84,7 +84,7 @@ This is read-only on GitHub: the skill never adds, removes, or rewrites labels o
 `handoff` shows commits attributed to a track since the last handoff. Attribution rules (in order):
 
 1. **Explicit branches** — if frontmatter has `github.branches: [feature/x, ...]`, only commits on those branches count. Path globs do not apply.
-2. **Issue mention OR path glob** — otherwise, scan all branches and keep commits whose subject mentions an issue in `github.issues`, OR whose changed paths match any glob in `github.paths` (fnmatch syntax — `*`, `?`, `**`, `[seq]`).
+2. **Issue mention OR path glob** — otherwise, scan all branches and keep commits whose message (subject OR body) mentions an issue in `github.issues`, OR whose changed paths match any glob in `github.paths` (fnmatch syntax — `*`, `?`, `**`, `[seq]`). Scanning the body matters for squash-merged PRs whose subjects follow Conventional Commits (e.g. `feat(scope): description`) and carry the issue ref in the body (`Closes #1234`).
 
 ```yaml
 github:
