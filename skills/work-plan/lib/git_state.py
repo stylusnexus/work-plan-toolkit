@@ -148,12 +148,20 @@ def path_last_commit_date(rel_path: str, repo_path: Path) -> Optional[datetime]:
 
 
 def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
-    """True if `rel_path` has any commit on/after `since` (a datetime.date)."""
+    """True if `rel_path` has any commit on/around `since` or later (a datetime.date).
+
+    `git log --since` resolves to local midnight and can drop commits made on the
+    plan date itself (timezone-dependent) — the common case where a plan is written
+    and its files land the same day. We widen the window by one day so same-day
+    Modify commits are reliably counted; including the prior day is an acceptable
+    cost for a liveness heuristic.
+    """
     if not repo_path or not Path(repo_path).exists():
         return False
+    window_start = since - timedelta(days=1)
     proc = subprocess.run(
         ["git", "-C", str(repo_path), "log",
-         f"--since={since.isoformat()}", "--pretty=format:%H", "--", rel_path],
+         f"--since={window_start.isoformat()}", "--pretty=format:%H", "--", rel_path],
         capture_output=True, text=True,
     )
     return proc.returncode == 0 and bool(proc.stdout.strip())

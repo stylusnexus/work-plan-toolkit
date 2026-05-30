@@ -88,6 +88,10 @@ def score_manifest(
         exists = lambda rel: (Path(repo_root) / rel).exists()
     if committed_since is None:
         from lib import git_state
+        # Deliberate degradation: with no plan date we can't ask "committed since
+        # when?", so a Modify falls back to mere existence. This can over-count an
+        # undated plan's Modify targets — accepted because superpowers plans carry a
+        # YYYY-MM-DD filename prefix, so the dateless path is rare in practice.
         committed_since = (
             (lambda rel: git_state.path_committed_since(rel, plan_date, repo_root))
             if plan_date is not None

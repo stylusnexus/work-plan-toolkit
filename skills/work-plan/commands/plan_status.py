@@ -81,7 +81,14 @@ def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
     raw_days = flags.get("--since-days")
-    dead_days = int(raw_days) if raw_days not in (None, True) else verdict_mod.DEAD_DAYS
+    if raw_days in (None, True):
+        dead_days = verdict_mod.DEAD_DAYS
+    else:
+        try:
+            dead_days = int(raw_days)
+        except ValueError:
+            print(f"--since-days must be an integer, got '{raw_days}'", file=sys.stderr)
+            return 2
     today = date.today()
 
     docs = doc_discovery.discover_docs(repo_root)
