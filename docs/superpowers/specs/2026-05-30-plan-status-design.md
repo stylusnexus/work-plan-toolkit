@@ -103,6 +103,11 @@ files that must exist when it's complete.
 - **Not** a replacement for GitHub issue state. Issues remain canonical for tracked work.
 - **Not** a VS Code extension or MCP server in v1. Those are deferred delivery skins (Phase 4).
 - **Not** a generic documentation linter. Scope is plan/spec/design liveness.
+- **Not** a prescriber of automation. The tool exposes a fast, scriptable command; *how* it
+  gets triggered (git hook, manual) is the user's choice (see "Prevention").
+
+This tool is **git-native by design** — it lives in `work-plan-toolkit`, whose entire model
+assumes git + GitHub. Git is a hard dependency here, not an enhancement.
 
 ---
 
@@ -139,11 +144,11 @@ For each plan:
    - `Create:` → **exists on disk now?** (clean yes/no)
    - `Test:` → exists on disk now?
    - `Modify:` → **was the path committed *after* the plan's reference date?** (`git log
-     --since`/path) — existence proves nothing for a pre-existing file.
+     --since -- path`) — existence proves nothing for a pre-existing file.
 4. **Completion %** = satisfied paths ÷ declared paths, reported with the Create/Modify/Test
    breakdown so a Modify-heavy plan isn't misread.
-5. **Liveness** = max commit recency across declared paths (dead = 0 satisfied AND no
-   referenced path touched in N days; N configurable).
+5. **Liveness** = newest last-commit date across declared paths (dead = 0 satisfied AND no
+   referenced path committed in N days; N configurable).
 
 > The 2026-05-30 probe scored Create/Test by existence only and still cleanly classified
 > 150/152 plans, because these plans are Create-heavy. The shipped tool adds the `Modify:`
@@ -224,6 +229,32 @@ work-plan plan-status [--repo <key>] [--json] [--apply] [--draft] [--since-days 
 
 Hard constraints honored: **pure Python 3.9+ stdlib**, all git/GitHub via `git`/`gh`
 subprocess, tests mock all subprocess calls (offline), `yq` = mikefarah/yq.
+
+---
+
+## Prevention — keeping docs alive (the other half)
+
+Detection (above) is the *cure*. Prevention is stopping the graveyard from growing. Two
+principles, both preserved:
+
+1. **Never modify the user's instruction files.** `CLAUDE.md` / `AGENTS.md` are user-owned;
+   documented best practice is that tooling *complements* them, never scribbles into them.
+   The tool writes its verdicts into the *plan docs* (the stamp header), never into
+   instruction files.
+2. **Run the tool, not the agent's discipline.** Whatever the trigger, it invokes the
+   command — never relies on an agent hand-ticking boxes (measured failing ~96% of the
+   time).
+
+Since this tool is git-native, the natural, self-contained trigger is a **git `post-merge`
+hook** that runs `plan-status` (Phase 1) / the stamp (Phase 2) on the repo. `post-merge` is
+a sharp signal — "a branch just merged" is exactly when a plan typically completes. It lives
+in git plumbing, touches no instruction file, and is opt-in (offered by the tool's install /
+`init-repo`, wiring `core.hooksPath`; never auto-installed). The skill's own `SKILL.md`
+description supplies the soft, zero-footprint nudge for interactive Claude sessions ("use
+when starting or ending a work session"). A Claude `SessionEnd` hook is an optional
+convenience layer, not the backbone.
+
+Prevention is its own small piece built alongside Phase 2 — **not part of Phase 1**.
 
 ---
 
