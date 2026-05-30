@@ -1,6 +1,6 @@
 """Local git queries + time helpers."""
 import subprocess
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -128,3 +128,32 @@ def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:
         return datetime.fromisoformat(s)
     except (ValueError, IndexError):
         return None
+
+
+def path_last_commit_date(rel_path: str, repo_path: Path) -> Optional[datetime]:
+    """Timestamp of the most recent commit touching `rel_path` (naive datetime)."""
+    if not repo_path or not Path(repo_path).exists():
+        return None
+    proc = subprocess.run(
+        ["git", "-C", str(repo_path), "log", "-1", "--pretty=format:%cI", "--", rel_path],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        s = proc.stdout.strip().split("+")[0].split("Z")[0]
+        return datetime.fromisoformat(s)
+    except (ValueError, IndexError):
+        return None
+
+
+def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
+    """True if `rel_path` has any commit on/after `since` (a datetime.date)."""
+    if not repo_path or not Path(repo_path).exists():
+        return False
+    proc = subprocess.run(
+        ["git", "-C", str(repo_path), "log",
+         f"--since={since.isoformat()}", "--pretty=format:%H", "--", rel_path],
+        capture_output=True, text=True,
+    )
+    return proc.returncode == 0 and bool(proc.stdout.strip())
