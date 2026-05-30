@@ -16,9 +16,10 @@ if str(SKILL_ROOT) not in sys.path:
 from lib import config as config_mod
 from lib import doc_discovery, manifest, git_state
 from lib import verdict as verdict_mod
+from lib import status_header
 from lib.prompts import parse_flags
 
-KNOWN = {"--repo", "--json", "--since-days", "--type"}
+KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft"}
 _ORDER = ["shipped", "partial", "dead", "manifest-less"]
 
 
@@ -77,6 +78,21 @@ def _render(rows, repo_root) -> None:
         print()
 
 
+def _stamp_docs(docs, rows, draft: bool) -> None:
+    changed = []
+    for doc, row in zip(docs, rows):
+        text = doc.path.read_text(encoding="utf-8", errors="replace")
+        new = status_header.stamp(text, row)
+        if new != text:
+            changed.append(doc.rel)
+            if not draft:
+                doc.path.write_text(new, encoding="utf-8")
+    verb = "would stamp" if draft else "stamped"
+    print(f"\n{verb} {len(changed)} doc(s):")
+    for rel in changed:
+        print(f"  {rel}")
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
@@ -102,4 +118,6 @@ def run(args: list) -> int:
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))
         return 0
     _render(rows, repo_root)
+    if flags.get("--stamp"):
+        _stamp_docs(docs, rows, draft=bool(flags.get("--draft")))
     return 0
