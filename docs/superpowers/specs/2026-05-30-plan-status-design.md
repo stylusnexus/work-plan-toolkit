@@ -267,6 +267,19 @@ Prevention is its own small piece built alongside Phase 2 — **not part of Phas
 | **3** | Gated reconcile actions (archive, open issues). | Each action requires confirmation; dry-run (`--draft`) preview available; CritForge graveyard reconciled. |
 | **4 (deferred)** | JSON consumers: MCP server / VS Code panel. | Out of scope for now; `--json` contract is the seam. |
 
+### Packaging as a plugin (deferred, no-rework)
+
+`plan-status` is built as subcommands *inside the existing `work-plan` skill* — code lives in
+`skills/work-plan/commands/` + `lib/`. It is **not** a new skill or plugin; it extends the
+one that already ships.
+
+When/if the toolkit is packaged as a distributable **plugin** (the "sellable later" path),
+this requires **no file moves and no rework**: the repo layout is already
+`skills/work-plan/SKILL.md`, exactly the structure a plugin bundles. Packaging is just
+adding a `.claude-plugin/plugin.json` wrapper around what exists. Skills live *inside*
+plugins; the current placement is already plugin-compatible. This is the deferred delivery
+layer that pairs with the Phase 4 JSON consumers.
+
 ---
 
 ## Test cases (plain English)
