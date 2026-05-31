@@ -55,6 +55,25 @@ class StampTest(unittest.TestCase):
         out = stamp("no heading here\n", ROW)
         self.assertTrue(out.startswith(BEGIN))
 
+    def test_duplicate_blocks_collapse_to_one_fresh(self):
+        # Two stale blocks (e.g. from a bad merge) -> one fresh, no stale leftover.
+        block = render_block(dict(ROW, verdict="partial", files_present=1))
+        doc = f"# Plan\n\n{block}\n\nbody\n\n{block}\n"
+        out = stamp(doc, ROW)
+        self.assertEqual(out.count(BEGIN), 1)
+        self.assertEqual(out.count(END), 1)
+        self.assertIn("shipped", out)
+        self.assertNotIn("partial", out)
+        self.assertEqual(out, stamp(out, ROW))   # stable on re-run
+
+    def test_dangling_begin_does_not_duplicate(self):
+        # An orphan BEGIN (no END) must not cause a second block to be stacked.
+        doc = f"# Plan\n\n{BEGIN}\n> **Status:** truncated\n\nbody\n"
+        out = stamp(doc, ROW)
+        self.assertEqual(out.count(BEGIN), 1)
+        self.assertEqual(out.count(END), 1)
+        self.assertEqual(out, stamp(out, ROW))   # idempotent afterward
+
 
 if __name__ == "__main__":
     unittest.main()
