@@ -9,6 +9,11 @@ BEGIN = "<!-- plan-status: BEGIN -->"
 END = "<!-- plan-status: END -->"
 
 _BLOCK_RE = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.DOTALL)
+# Orphan (unpaired) BEGIN/END markers left by a truncated edit or bad merge.
+_ORPHAN_RE = re.compile(
+    r"^[ \t]*(?:" + re.escape(BEGIN) + r"|" + re.escape(END) + r")[ \t]*\n?",
+    re.MULTILINE,
+)
 
 
 def render_block(row: dict) -> str:
@@ -23,10 +28,30 @@ def render_block(row: dict) -> str:
 
 
 def stamp(text: str, row: dict) -> str:
-    """Insert or replace the status block. Idempotent for unchanged evidence."""
+    """Insert or replace the status block. Idempotent for unchanged evidence.
+
+    Hardening: if a doc somehow contains multiple complete blocks, the first is
+    refreshed in place and the rest are removed (no permanently-stale duplicate).
+    If it contains an orphan (unpaired) marker, that is stripped before inserting
+    so a second block can't be stacked on top.
+    """
     block = render_block(row)
     if _BLOCK_RE.search(text):
-        return _BLOCK_RE.sub(lambda _m: block, text, count=1)
+        # Replace the first block in place (preserving surrounding whitespace),
+        # and drop any additional blocks so none goes stale.
+        seen = {"first": False}
+
+        def _sub(_m):
+            if not seen["first"]:
+                seen["first"] = True
+                return block
+            return ""
+
+        return _BLOCK_RE.sub(_sub, text)
+
+    # No complete block. Clear any orphan markers (corrupted/dangling) so we
+    # don't stack a duplicate block on top. No-op on well-formed docs.
+    text = _ORPHAN_RE.sub("", text)
     lines = text.splitlines(keepends=True)
     for i, ln in enumerate(lines):
         if ln.startswith("# "):
