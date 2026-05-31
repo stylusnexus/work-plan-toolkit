@@ -9,10 +9,6 @@ import sys
 from datetime import date
 from pathlib import Path
 
-SKILL_ROOT = Path(__file__).resolve().parents[1]
-if str(SKILL_ROOT) not in sys.path:
-    sys.path.insert(0, str(SKILL_ROOT))
-
 from lib import config as config_mod
 from lib import doc_discovery, manifest, git_state
 from lib import verdict as verdict_mod
