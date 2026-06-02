@@ -16,6 +16,8 @@ The five essentials you'll use 80% of the time are:
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
 
+Beyond issue tracking, **`plan-status`** answers a different question — *which of your accumulated plan/spec docs actually shipped, half-shipped, or died*. It correlates each plan's declared file-manifest (`Create:`/`Modify:`/`Test:` paths) against git and the filesystem rather than trusting checkboxes (which are routinely left unchecked even for shipped work). Read-only by default; `--stamp` writes an idempotent status header into each doc.
+
 ## How it works
 
 The toolkit treats GitHub as the canonical source of issue state and never tries to mirror it. Track markdown files are lightweight references — they list issue numbers and a few pieces of derived metadata (priority, milestone, `next_up`, last session timestamp). The CLI re-derives everything else live from `gh`, `git`, and the markdown body.
@@ -177,9 +179,9 @@ work-plan-toolkit/
 │   ├── work-plan/
 │   │   ├── SKILL.md
 │   │   ├── work_plan.py                # CLI entry
-│   │   ├── commands/                   # 15 subcommand modules
+│   │   ├── commands/                   # 16 subcommand modules
 │   │   ├── lib/                        # config, frontmatter, gh, git, prompts, …
-│   │   └── tests/                      # 69 unittest cases
+│   │   └── tests/                      # 202 unittest cases
 │   └── repo-activity-summary/
 │       └── SKILL.md                    # bundled companion skill
 ├── commands/
@@ -267,7 +269,7 @@ The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key
 ## Security & data handling
 
 - **No credentials stored.** All GitHub access goes through your existing `gh auth`. This toolkit never reads, writes, or stores GitHub tokens.
-- **Local-only writes.** The skill writes to `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and your `notes_root`. Nothing else.
+- **Local-only writes.** The skill writes to `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and your `notes_root`. The one exception is `plan-status --stamp`, which writes an idempotent status-header block into the plan/spec docs it discovers **inside the repo you point it at** (confined to that repo's tree; `--draft` previews without writing). Nothing else.
 - **No telemetry, no network calls beyond `gh`.** All GitHub operations go through `gh` (your authenticated session); no direct HTTP requests are made.
 - **AI subcommands (`group`, `suggest-priorities`) send issue titles to Claude** via Claude Code's existing integration. Body content, code, and PR contents are NOT sent. If your repo is private and you're cautious about what reaches the model, skip these subcommands.
 - **`init-repo` writes to your config via `yq -i`.** Inputs are JSON-encoded before being passed to `yq`, so a maliciously crafted `--github=` value can't break out of the YAML edit.
@@ -298,6 +300,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
+| `plan-status [--repo=<key>] [--json] [--stamp [--draft]]` | Reach a verdict on every plan/spec doc in a repo by correlating its declared file-manifest against git + the filesystem: ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. Read-only by default; `--stamp` writes an idempotent status header into each doc (`--draft` previews without writing); `--json` for machine output. |
 
 Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list with examples.
 
@@ -329,7 +332,7 @@ cd skills/work-plan
 python3 -m unittest discover tests
 ```
 
-69 tests, no external dependencies (mocks `gh`/`git` calls).
+202 tests, no external dependencies (mocks `gh`/`git` calls).
 
 ## License
 
