@@ -13,9 +13,11 @@ from lib import config as config_mod
 from lib import doc_discovery, manifest, git_state
 from lib import verdict as verdict_mod
 from lib import status_header
+from lib import llm_evidence
+from lib.scratch import cache_dir
 from lib.prompts import parse_flags
 
-KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft"}
+KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft", "--llm", "--apply"}
 _ORDER = ["shipped", "partial", "dead", "manifest-less"]
 
 
@@ -89,6 +91,84 @@ def _stamp_docs(docs, rows, draft: bool) -> None:
         print(f"  {rel}")
 
 
+_LLM_VERDICTS = {"shipped", "partial", "dead"}
+_LLM_GLYPH = {"shipped": "✅", "partial": "🟡", "dead": "💀"}
+
+_LLM_PROMPT = """\
+You are judging whether each doc below represents work that SHIPPED, is PARTIAL
+(in progress), or is DEAD (abandoned). These are docs mechanical scoring could
+not resolve: prose specs with no file list, or plans whose files look absent.
+Use the title, kind, last-touched date, and excerpt. Return ONLY a JSON array:
+[{"rel": "...", "verdict": "shipped|partial|dead", "confidence": 0.0-1.0,
+  "rationale": "one short line"}]
+"""
+
+
+def _llm_prepare(docs, rows, repo_root) -> int:
+    by_rel = {d.rel: d for d in docs}
+    candidates = llm_evidence.select_candidates(rows)
+    if not candidates:
+        print("No docs need an LLM verdict — mechanical scoring resolved them all.")
+        return 0
+    evidence = [llm_evidence.gather_evidence(by_rel[r["rel"]], repo_root)
+                for r in candidates if r["rel"] in by_rel]
+    batch_path = cache_dir() / "plan_status.json"
+    batch_path.write_text(
+        json.dumps({"repo_root": str(repo_root), "docs": evidence}, indent=2))
+    answers_path = batch_path.with_suffix(".answers.json")
+    print(f"Wrote {len(evidence)} candidate doc(s) to {batch_path}\n")
+    print("=" * 60)
+    print(_LLM_PROMPT)
+    for e in evidence:
+        print(f"\n--- {e['rel']} ({e['kind']}, last touched {e['last_touched'] or 'unknown'}) ---")
+        print(f"title: {e['title']}")
+        print(e["excerpt"])
+    print("=" * 60)
+    print(f"\nSave the JSON array to {answers_path}")
+    print("Then run: python3 ~/.claude/skills/work-plan/work_plan.py "
+          "plan-status --repo=<key> --llm --apply")
+    return 0
+
+
+def _llm_apply(docs, rows, repo_root, stamp: bool, draft: bool) -> int:
+    batch_path = cache_dir() / "plan_status.json"
+    answers_path = batch_path.with_suffix(".answers.json")
+    if not batch_path.exists() or not answers_path.exists():
+        print(f"ERROR: run `--llm` first; expected {answers_path}")
+        return 1
+    batch = json.loads(batch_path.read_text())
+    if batch.get("repo_root") != str(repo_root):
+        print(f"ERROR: batch repo_root '{batch.get('repo_root')}' != current "
+              f"'{repo_root}' — refusing to apply a batch from another repo.")
+        return 1
+    allowed = {d["rel"] for d in batch.get("docs", [])}
+    answers = json.loads(answers_path.read_text())
+
+    verdicts = {}
+    for ans in answers:
+        rel = ans.get("rel")
+        verdict = ans.get("verdict")
+        if rel not in allowed:
+            print(f"  SKIP '{rel}': not in the prepared batch (possible injection).")
+            continue
+        if verdict not in _LLM_VERDICTS:
+            print(f"  SKIP '{rel}': invalid verdict '{verdict}'.")
+            continue
+        verdicts[rel] = ans
+
+    for r in rows:
+        ans = verdicts.get(r["rel"])
+        if ans:
+            r["verdict"] = ans["verdict"]
+            r["glyph"] = _LLM_GLYPH[ans["verdict"]]
+            r["rationale"] = f"{ans.get('rationale', '').strip()} (LLM)"
+
+    _render(rows, repo_root)
+    if stamp:
+        _stamp_docs(docs, rows, draft=draft)
+    return 0
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
@@ -109,6 +189,13 @@ def run(args: list) -> int:
         docs = [d for d in docs if d.kind == type_filter]
 
     rows = [_evaluate(d, repo_root, today, dead_days) for d in docs]
+
+    if flags.get("--llm"):
+        if flags.get("--apply"):
+            return _llm_apply(docs, rows, repo_root,
+                              stamp=bool(flags.get("--stamp")),
+                              draft=bool(flags.get("--draft")))
+        return _llm_prepare(docs, rows, repo_root)
 
     if flags.get("--json"):
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))
