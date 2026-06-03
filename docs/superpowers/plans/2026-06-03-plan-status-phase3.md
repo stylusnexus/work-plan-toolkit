@@ -336,6 +336,7 @@ import io
 import unittest
 import sys
 import tempfile
+from datetime import datetime
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -345,7 +346,7 @@ sys.path.insert(0, str(SKILL_ROOT))
 
 from commands import plan_status
 
-# A plan whose declared file is absent + old date -> classified dead.
+# A plan whose declared file is absent + a stale last-commit -> classified dead.
 DEAD_PLAN = "# Dead Plan\n\n- Create: `src/never.ts`\n"
 
 
@@ -358,9 +359,9 @@ class ArchiveTest(unittest.TestCase):
         return root
 
     def _run(self, root, args, mv_ok=True):
-        # old plan date + no git activity -> dead
+        # stale last-commit (well beyond DEAD_DAYS) so the absent-file plan is dead
         with mock.patch("commands.plan_status.git_state.path_last_commit_date",
-                        return_value=None), \
+                        return_value=datetime(2026, 1, 1)), \
              mock.patch("commands.plan_status.Path.cwd", return_value=root), \
              mock.patch("commands.plan_status.git_state.git_mv",
                         return_value=mv_ok) as mv, \

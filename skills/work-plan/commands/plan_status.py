@@ -14,10 +14,12 @@ from lib import doc_discovery, manifest, git_state
 from lib import verdict as verdict_mod
 from lib import status_header
 from lib import llm_evidence
+from lib import reconcile_actions
 from lib.scratch import cache_dir
-from lib.prompts import parse_flags
+from lib.prompts import parse_flags, prompt_yes_no
 
-KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft", "--llm", "--apply"}
+KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
+         "--llm", "--apply", "--archive", "--issues"}
 _ORDER = ["shipped", "partial", "dead", "manifest-less"]
 
 
@@ -169,6 +171,31 @@ def _llm_apply(docs, rows, repo_root, stamp: bool, draft: bool) -> int:
     return 0
 
 
+def _archive_dead(docs, rows, repo_root, draft: bool) -> int:
+    dead = reconcile_actions.dead_rows(rows)
+    if not dead:
+        print("No dead plans to archive.")
+        return 0
+    print(f"\n{'Would archive' if draft else 'Archive'} {len(dead)} dead plan(s):")
+    for r in dead:
+        print(f"  {r['rel']}  ->  {reconcile_actions.archive_dest(r['rel'])}")
+    if draft:
+        return 0
+    if not prompt_yes_no(f"Move {len(dead)} plan(s) to archive/abandoned/? [y/N]"):
+        print("Skipped.")
+        return 0
+    moved = 0
+    for r in dead:
+        dest = reconcile_actions.archive_dest(r["rel"])
+        if git_state.git_mv(r["rel"], dest, repo_root):
+            moved += 1
+            print(f"  ✓ {r['rel']}")
+        else:
+            print(f"  ✗ {r['rel']} (git mv failed)")
+    print(f"Archived {moved}/{len(dead)}.")
+    return 0
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
@@ -196,6 +223,9 @@ def run(args: list) -> int:
                               stamp=bool(flags.get("--stamp")),
                               draft=bool(flags.get("--draft")))
         return _llm_prepare(docs, rows, repo_root)
+
+    if flags.get("--archive"):
+        return _archive_dead(docs, rows, repo_root, draft=bool(flags.get("--draft")))
 
     if flags.get("--json"):
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))
