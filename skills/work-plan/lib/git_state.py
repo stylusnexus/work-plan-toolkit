@@ -165,3 +165,16 @@ def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
         capture_output=True, text=True,
     )
     return proc.returncode == 0 and bool(proc.stdout.strip())
+
+
+def git_mv(src_rel: str, dst_rel: str, repo_path: Path) -> bool:
+    """git-mv `src_rel` -> `dst_rel` (both repo-relative), creating the dest
+    directory first. Returns True on success. History-preserving."""
+    if not repo_path or not Path(repo_path).exists():
+        return False
+    (Path(repo_path) / dst_rel).parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["git", "-C", str(repo_path), "mv", src_rel, dst_rel],
+        capture_output=True, text=True,
+    )
+    return proc.returncode == 0

@@ -69,6 +69,10 @@ class ManifestScore:
         return (self.satisfied / self.total * 100.0) if self.total else None
 
 
+def _path_satisfied(d, exists, committed_since) -> bool:
+    return committed_since(d.path) if d.kind == "modify" else exists(d.path)
+
+
 def score_manifest(
     decls: list,
     repo_root: Path,
@@ -102,8 +106,7 @@ def score_manifest(
     satisfied = 0
     for d in decls:
         by[d.kind][1] += 1
-        ok = committed_since(d.path) if d.kind == "modify" else exists(d.path)
-        if ok:
+        if _path_satisfied(d, exists, committed_since):
             by[d.kind][0] += 1
             satisfied += 1
     return ManifestScore(
@@ -111,3 +114,27 @@ def score_manifest(
         satisfied=satisfied,
         by_kind={k: tuple(v) for k, v in by.items()},
     )
+
+
+def unsatisfied_paths(
+    decls: list,
+    repo_root: Path,
+    plan_date: Optional[date],
+    *,
+    exists: Optional[Callable] = None,
+    committed_since: Optional[Callable] = None,
+) -> list:
+    """Return the declared paths that are NOT satisfied (missing / not committed).
+
+    Same satisfaction rule and injectable predicates as `score_manifest`.
+    """
+    if exists is None:
+        exists = lambda rel: (Path(repo_root) / rel).exists()
+    if committed_since is None:
+        from lib import git_state
+        committed_since = (
+            (lambda rel: git_state.path_committed_since(rel, plan_date, repo_root))
+            if plan_date is not None
+            else (lambda rel: (Path(repo_root) / rel).exists())
+        )
+    return [d for d in decls if not _path_satisfied(d, exists, committed_since)]
