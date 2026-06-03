@@ -59,6 +59,29 @@ def plan_date_from_filename(filename: str) -> Optional[date]:
         return None
 
 
+def is_in_tree(path: str, repo_root) -> bool:
+    """True if a declared path resolves inside repo_root. A '~'-rooted path, an
+    absolute path elsewhere, or a '..'-escaping path is out-of-tree."""
+    if path.startswith("~"):
+        return False
+    root = Path(repo_root).resolve()
+    p = Path(path)
+    target = p.resolve() if p.is_absolute() else (root / p).resolve()
+    try:
+        target.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def out_of_tree_ratio(decls: list, repo_root) -> float:
+    """Fraction of declared paths resolving outside repo_root (0.0 if none declared)."""
+    if not decls:
+        return 0.0
+    out = sum(1 for d in decls if not is_in_tree(d.path, repo_root))
+    return out / len(decls)
+
+
 @dataclass
 class ManifestScore:
     total: int
