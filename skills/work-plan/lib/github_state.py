@@ -1,7 +1,7 @@
 """Query GitHub via `gh`."""
 import json
 import subprocess
-from typing import Iterable
+from typing import Iterable, Optional
 
 PRIORITY_LABELS = ("priority/P0", "priority/P1", "priority/P2", "priority/P3")
 DEFAULT_PRIORITY = "P3"
@@ -77,3 +77,15 @@ def state_to_status_label(state: str) -> str:
     if s in ("CLOSED", "MERGED"):
         return "✅ Shipped"
     return "🔲 Open"
+
+
+def create_issue(repo: str, title: str, body: str) -> Optional[str]:
+    """Open a GitHub issue via `gh issue create`. Returns the issue URL, or None
+    on failure. Reuses the user's `gh` auth; never touches tokens."""
+    proc = subprocess.run(
+        ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None

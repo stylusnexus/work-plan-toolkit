@@ -10,14 +10,16 @@ from datetime import date
 from pathlib import Path
 
 from lib import config as config_mod
-from lib import doc_discovery, manifest, git_state
+from lib import doc_discovery, manifest, git_state, github_state
 from lib import verdict as verdict_mod
 from lib import status_header
 from lib import llm_evidence
+from lib import reconcile_actions
 from lib.scratch import cache_dir
-from lib.prompts import parse_flags
+from lib.prompts import parse_flags, prompt_yes_no
 
-KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft", "--llm", "--apply"}
+KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
+         "--llm", "--apply", "--archive", "--issues"}
 _ORDER = ["shipped", "partial", "dead", "manifest-less"]
 
 
@@ -169,6 +171,83 @@ def _llm_apply(docs, rows, repo_root, stamp: bool, draft: bool) -> int:
     return 0
 
 
+def _archive_dead(docs, rows, repo_root, draft: bool) -> int:
+    dead = reconcile_actions.dead_rows(rows)
+    if not dead:
+        print("No dead plans to archive.")
+        return 0
+    print(f"\n{'Would archive' if draft else 'Archive'} {len(dead)} dead plan(s):")
+    for r in dead:
+        print(f"  {r['rel']}  ->  {reconcile_actions.archive_dest(r['rel'])}")
+    if draft:
+        return 0
+    if not prompt_yes_no(f"Move {len(dead)} plan(s) to archive/abandoned/? [y/N]"):
+        print("Skipped.")
+        return 0
+    moved = 0
+    for r in dead:
+        dest = reconcile_actions.archive_dest(r["rel"])
+        if git_state.git_mv(r["rel"], dest, repo_root):
+            moved += 1
+            print(f"  ✓ {r['rel']}")
+        else:
+            print(f"  ✗ {r['rel']} (git mv failed)")
+    print(f"Archived {moved}/{len(dead)}.")
+    return 0
+
+
+def _repo_slug(flags):
+    """Resolve the org/repo GitHub slug for the --repo key (for issue creation)."""
+    repo = flags.get("--repo")
+    if not repo or repo is True:
+        return None
+    return config_mod.resolve_github_for_folder(repo, config_mod.load_config())
+
+
+def _issues_for_partials(docs, rows, repo_root, repo_slug, draft: bool) -> int:
+    by_rel = {d.rel: d for d in docs}
+    partials = reconcile_actions.partial_rows(rows)
+    if not partials:
+        print("No partial plans to open issues for.")
+        return 0
+    items = []
+    for r in partials:
+        doc = by_rel.get(r["rel"])
+        if not doc:
+            continue
+        text = doc.path.read_text(encoding="utf-8", errors="replace")
+        decls = manifest.parse_declared_paths(text)
+        pdate = manifest.plan_date_from_filename(doc.path.name)
+        missing = manifest.unsatisfied_paths(decls, repo_root, pdate)
+        title, body = reconcile_actions.issue_for(doc, r, missing)
+        items.append((title, body))
+
+    print(f"\n{'Would open' if draft else 'Open'} {len(items)} issue(s) for partial plans:")
+    for title, body in items:
+        print(f"  • {title}")
+        for line in body.splitlines():
+            if line.startswith("- [ ]"):
+                print(f"      {line}")
+    if draft:
+        return 0
+    if not repo_slug:
+        print("ERROR: --issues needs --repo=<key> with a github slug in config.")
+        return 1
+    if not prompt_yes_no(f"Open {len(items)} GitHub issue(s) in {repo_slug}? [y/N]"):
+        print("Skipped.")
+        return 0
+    opened = 0
+    for title, body in items:
+        url = github_state.create_issue(repo_slug, title, body)
+        if url:
+            opened += 1
+            print(f"  ✓ {url}")
+        else:
+            print(f"  ✗ failed: {title}")
+    print(f"Opened {opened}/{len(items)}.")
+    return 0
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
@@ -196,6 +275,13 @@ def run(args: list) -> int:
                               stamp=bool(flags.get("--stamp")),
                               draft=bool(flags.get("--draft")))
         return _llm_prepare(docs, rows, repo_root)
+
+    if flags.get("--archive"):
+        return _archive_dead(docs, rows, repo_root, draft=bool(flags.get("--draft")))
+
+    if flags.get("--issues"):
+        return _issues_for_partials(docs, rows, repo_root, _repo_slug(flags),
+                                    draft=bool(flags.get("--draft")))
 
     if flags.get("--json"):
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))

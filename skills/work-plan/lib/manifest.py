@@ -10,7 +10,8 @@ from typing import Callable, Optional
 
 # Matches:  Create: `path`  /  Modify: `path:120-145`  /  Test: `path`
 PATH_RE = re.compile(r"\b(Create|Modify|Test):\s*`([^`]+)`")
-_RANGE_RE = re.compile(r":\d+(?:-\d+)?$")
+# Trailing line spec: ':120', ':120-145', or comma-joined ':104-115,217-247'
+_RANGE_RE = re.compile(r":\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
 _CHK_DONE = re.compile(r"^\s*- \[x\]", re.I | re.M)
 _CHK_TODO = re.compile(r"^\s*- \[ \]", re.M)
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
@@ -69,6 +70,10 @@ class ManifestScore:
         return (self.satisfied / self.total * 100.0) if self.total else None
 
 
+def _path_satisfied(d, exists, committed_since) -> bool:
+    return committed_since(d.path) if d.kind == "modify" else exists(d.path)
+
+
 def score_manifest(
     decls: list,
     repo_root: Path,
@@ -102,8 +107,7 @@ def score_manifest(
     satisfied = 0
     for d in decls:
         by[d.kind][1] += 1
-        ok = committed_since(d.path) if d.kind == "modify" else exists(d.path)
-        if ok:
+        if _path_satisfied(d, exists, committed_since):
             by[d.kind][0] += 1
             satisfied += 1
     return ManifestScore(
@@ -111,3 +115,27 @@ def score_manifest(
         satisfied=satisfied,
         by_kind={k: tuple(v) for k, v in by.items()},
     )
+
+
+def unsatisfied_paths(
+    decls: list,
+    repo_root: Path,
+    plan_date: Optional[date],
+    *,
+    exists: Optional[Callable] = None,
+    committed_since: Optional[Callable] = None,
+) -> list:
+    """Return the declared paths that are NOT satisfied (missing / not committed).
+
+    Same satisfaction rule and injectable predicates as `score_manifest`.
+    """
+    if exists is None:
+        exists = lambda rel: (Path(repo_root) / rel).exists()
+    if committed_since is None:
+        from lib import git_state
+        committed_since = (
+            (lambda rel: git_state.path_committed_since(rel, plan_date, repo_root))
+            if plan_date is not None
+            else (lambda rel: (Path(repo_root) / rel).exists())
+        )
+    return [d for d in decls if not _path_satisfied(d, exists, committed_since)]

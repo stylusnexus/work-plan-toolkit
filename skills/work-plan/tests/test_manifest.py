@@ -21,6 +21,9 @@ class StripRangeTest(unittest.TestCase):
     def test_strips_single_line(self):
         self.assertEqual(strip_range("src/foo.ts:12"), "src/foo.ts")
 
+    def test_strips_multi_range(self):
+        self.assertEqual(strip_range("src/foo.tsx:104-115,217-247"), "src/foo.tsx")
+
     def test_leaves_bare_path(self):
         self.assertEqual(strip_range("src/foo.ts"), "src/foo.ts")
 
