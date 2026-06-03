@@ -10,7 +10,8 @@ from typing import Callable, Optional
 
 # Matches:  Create: `path`  /  Modify: `path:120-145`  /  Test: `path`
 PATH_RE = re.compile(r"\b(Create|Modify|Test):\s*`([^`]+)`")
-_RANGE_RE = re.compile(r":\d+(?:-\d+)?$")
+# Trailing line spec: ':120', ':120-145', or comma-joined ':104-115,217-247'
+_RANGE_RE = re.compile(r":\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
 _CHK_DONE = re.compile(r"^\s*- \[x\]", re.I | re.M)
 _CHK_TODO = re.compile(r"^\s*- \[ \]", re.M)
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")

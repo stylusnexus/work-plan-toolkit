@@ -201,9 +201,7 @@ def _repo_slug(flags):
     repo = flags.get("--repo")
     if not repo or repo is True:
         return None
-    cfg = config_mod.load_config()
-    entry = cfg.get("repos", {}).get(repo)
-    return entry.get("github") if entry else None
+    return config_mod.resolve_github_for_folder(repo, config_mod.load_config())
 
 
 def _issues_for_partials(docs, rows, repo_root, repo_slug, draft: bool) -> int:
