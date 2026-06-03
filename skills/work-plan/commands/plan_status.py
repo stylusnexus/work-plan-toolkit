@@ -20,7 +20,7 @@ from lib.prompts import parse_flags, prompt_yes_no
 
 KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
          "--llm", "--apply", "--archive", "--issues"}
-_ORDER = ["shipped", "partial", "dead", "manifest-less"]
+_ORDER = ["shipped", "partial", "dead", "foreign", "manifest-less"]
 
 
 def _resolve_repo_root(flags) -> Path:
@@ -43,7 +43,11 @@ def _evaluate(doc, repo_root, today, dead_days) -> dict:
     done, total_chk = manifest.count_checkboxes(text)
     last_dt = git_state.path_last_commit_date(doc.rel, repo_root)
     last_d = last_dt.date() if last_dt else None
-    v = verdict_mod.classify(score, done, total_chk, last_d, today, dead_days)
+    if decls and manifest.out_of_tree_ratio(decls, repo_root) >= verdict_mod.FOREIGN_RATIO:
+        v = verdict_mod.Verdict(
+            "foreign", "🧳", "declared paths point outside this repo — misfiled?")
+    else:
+        v = verdict_mod.classify(score, done, total_chk, last_d, today, dead_days)
     return {
         "rel": doc.rel, "kind": doc.kind,
         "verdict": v.label, "glyph": v.glyph, "rationale": v.rationale,

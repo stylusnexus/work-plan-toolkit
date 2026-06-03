@@ -11,7 +11,42 @@ from lib.manifest import (
     DeclaredPath, strip_range, parse_declared_paths,
     count_checkboxes, plan_date_from_filename,
     ManifestScore, score_manifest,
+    is_in_tree, out_of_tree_ratio,
 )
+
+
+class InTreeTest(unittest.TestCase):
+    ROOT = Path("/repo")
+
+    def test_relative_is_in_tree(self):
+        self.assertTrue(is_in_tree("src/foo.ts", self.ROOT))
+
+    def test_tilde_is_out_of_tree(self):
+        self.assertFalse(is_in_tree("~/.claude/skills/x.py", self.ROOT))
+
+    def test_absolute_elsewhere_is_out_of_tree(self):
+        self.assertFalse(is_in_tree("/Applications/other/x.ts", self.ROOT))
+
+    def test_absolute_under_root_is_in_tree(self):
+        self.assertTrue(is_in_tree("/repo/src/x.ts", self.ROOT))
+
+    def test_dotdot_escape_is_out_of_tree(self):
+        self.assertFalse(is_in_tree("../sibling/x.ts", self.ROOT))
+
+
+class OutOfTreeRatioTest(unittest.TestCase):
+    def test_all_foreign(self):
+        decls = [DeclaredPath("create", "~/.claude/a.py"),
+                 DeclaredPath("create", "/Applications/other/b.ts")]
+        self.assertEqual(out_of_tree_ratio(decls, Path("/repo")), 1.0)
+
+    def test_mixed(self):
+        decls = [DeclaredPath("create", "src/a.ts"),
+                 DeclaredPath("create", "~/b.py")]
+        self.assertEqual(out_of_tree_ratio(decls, Path("/repo")), 0.5)
+
+    def test_empty_is_zero(self):
+        self.assertEqual(out_of_tree_ratio([], Path("/repo")), 0.0)
 
 
 class StripRangeTest(unittest.TestCase):
