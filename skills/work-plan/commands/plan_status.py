@@ -17,7 +17,7 @@ from lib import llm_evidence
 from lib.scratch import cache_dir
 from lib.prompts import parse_flags
 
-KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft", "--llm"}
+KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft", "--llm", "--apply"}
 _ORDER = ["shipped", "partial", "dead", "manifest-less"]
 
 
@@ -130,6 +130,45 @@ def _llm_prepare(docs, rows, repo_root) -> int:
     return 0
 
 
+def _llm_apply(docs, rows, repo_root, stamp: bool, draft: bool) -> int:
+    batch_path = cache_dir() / "plan_status.json"
+    answers_path = batch_path.with_suffix(".answers.json")
+    if not batch_path.exists() or not answers_path.exists():
+        print(f"ERROR: run `--llm` first; expected {answers_path}")
+        return 1
+    batch = json.loads(batch_path.read_text())
+    if batch.get("repo_root") != str(repo_root):
+        print(f"ERROR: batch repo_root '{batch.get('repo_root')}' != current "
+              f"'{repo_root}' — refusing to apply a batch from another repo.")
+        return 1
+    allowed = {d["rel"] for d in batch.get("docs", [])}
+    answers = json.loads(answers_path.read_text())
+
+    verdicts = {}
+    for ans in answers:
+        rel = ans.get("rel")
+        verdict = ans.get("verdict")
+        if rel not in allowed:
+            print(f"  SKIP '{rel}': not in the prepared batch (possible injection).")
+            continue
+        if verdict not in _LLM_VERDICTS:
+            print(f"  SKIP '{rel}': invalid verdict '{verdict}'.")
+            continue
+        verdicts[rel] = ans
+
+    for r in rows:
+        ans = verdicts.get(r["rel"])
+        if ans:
+            r["verdict"] = ans["verdict"]
+            r["glyph"] = _LLM_GLYPH[ans["verdict"]]
+            r["rationale"] = f"{ans.get('rationale', '').strip()} (LLM)"
+
+    _render(rows, repo_root)
+    if stamp:
+        _stamp_docs(docs, rows, draft=draft)
+    return 0
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
@@ -151,7 +190,11 @@ def run(args: list) -> int:
 
     rows = [_evaluate(d, repo_root, today, dead_days) for d in docs]
 
-    if flags.get("--llm") and not flags.get("--apply"):
+    if flags.get("--llm"):
+        if flags.get("--apply"):
+            return _llm_apply(docs, rows, repo_root,
+                              stamp=bool(flags.get("--stamp")),
+                              draft=bool(flags.get("--draft")))
         return _llm_prepare(docs, rows, repo_root)
 
     if flags.get("--json"):
