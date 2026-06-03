@@ -235,8 +235,9 @@ class LlmPrepareTest(unittest.TestCase):
             (root / "docs/superpowers/plans").mkdir(parents=True)
             # a fully-shipped plan -> not a candidate
             (root / "docs/superpowers/plans/2026-01-01-done.md").write_text(
-                "# Done\n- Create: `a.py`\n")
-            (root / "a.py").write_text("x")
+                "# Done\n- Create: `src/a.py`\n")
+            (root / "src").mkdir()
+            (root / "src/a.py").write_text("x")
             with mock.patch("commands.plan_status.git_state.path_last_commit_date",
                             return_value=None), \
                  mock.patch("commands.plan_status.Path.cwd", return_value=root), \

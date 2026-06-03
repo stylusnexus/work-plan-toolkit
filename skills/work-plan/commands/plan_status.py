@@ -13,9 +13,11 @@ from lib import config as config_mod
 from lib import doc_discovery, manifest, git_state
 from lib import verdict as verdict_mod
 from lib import status_header
+from lib import llm_evidence
+from lib.scratch import cache_dir
 from lib.prompts import parse_flags
 
-KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft"}
+KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft", "--llm"}
 _ORDER = ["shipped", "partial", "dead", "manifest-less"]
 
 
@@ -89,6 +91,45 @@ def _stamp_docs(docs, rows, draft: bool) -> None:
         print(f"  {rel}")
 
 
+_LLM_VERDICTS = {"shipped", "partial", "dead"}
+_LLM_GLYPH = {"shipped": "✅", "partial": "🟡", "dead": "💀"}
+
+_LLM_PROMPT = """\
+You are judging whether each doc below represents work that SHIPPED, is PARTIAL
+(in progress), or is DEAD (abandoned). These are docs mechanical scoring could
+not resolve: prose specs with no file list, or plans whose files look absent.
+Use the title, kind, last-touched date, and excerpt. Return ONLY a JSON array:
+[{"rel": "...", "verdict": "shipped|partial|dead", "confidence": 0.0-1.0,
+  "rationale": "one short line"}]
+"""
+
+
+def _llm_prepare(docs, rows, repo_root) -> int:
+    by_rel = {d.rel: d for d in docs}
+    candidates = llm_evidence.select_candidates(rows)
+    if not candidates:
+        print("No docs need an LLM verdict — mechanical scoring resolved them all.")
+        return 0
+    evidence = [llm_evidence.gather_evidence(by_rel[r["rel"]], repo_root)
+                for r in candidates if r["rel"] in by_rel]
+    batch_path = cache_dir() / "plan_status.json"
+    batch_path.write_text(
+        json.dumps({"repo_root": str(repo_root), "docs": evidence}, indent=2))
+    answers_path = batch_path.with_suffix(".answers.json")
+    print(f"Wrote {len(evidence)} candidate doc(s) to {batch_path}\n")
+    print("=" * 60)
+    print(_LLM_PROMPT)
+    for e in evidence:
+        print(f"\n--- {e['rel']} ({e['kind']}, last touched {e['last_touched'] or 'unknown'}) ---")
+        print(f"title: {e['title']}")
+        print(e["excerpt"])
+    print("=" * 60)
+    print(f"\nSave the JSON array to {answers_path}")
+    print("Then run: python3 ~/.claude/skills/work-plan/work_plan.py "
+          "plan-status --repo=<key> --llm --apply")
+    return 0
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
@@ -109,6 +150,9 @@ def run(args: list) -> int:
         docs = [d for d in docs if d.kind == type_filter]
 
     rows = [_evaluate(d, repo_root, today, dead_days) for d in docs]
+
+    if flags.get("--llm") and not flags.get("--apply"):
+        return _llm_prepare(docs, rows, repo_root)
 
     if flags.get("--json"):
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))
