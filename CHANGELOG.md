@@ -1,0 +1,54 @@
+# Changelog
+
+Production deploys, newest first. Entries below the marker are written
+automatically by `.github/workflows/version-bump.yml` when a deploy PR merges
+to `main` — from that PR's title and body. Don't hand-edit below the marker.
+
+<!-- new entries inserted below -->
+
+## 2026.06.04 — 2026-06-04 (#74)
+
+feat(plan-status): doc/plan liveness tracking (report, stamp, LLM, reconcile, foreign)
+
+Shipped the complete `work-plan plan-status` capability: a read-only liveness report (✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less / 🧳 foreign), idempotent status-header stamping (`--stamp`), two-step LLM verdicts for prose/ambiguous docs (`--llm`), and gated reconcile actions (`--archive`, `--issues`). Phases #68, #70, #71, #72, #73.
+
+---
+
+### Backfilled history
+
+_Pre-#74 deploys, reconstructed from merged PR titles._
+
+- **2026-05-22** (#67) — fix(handoff): filter closed next_up entries from Suggested first action
+- **2026-05-22** (#65) — fix(handoff): attribute commits via body issue refs, not just subject
+- **2026-05-19** (#63) — feat(slot): detect prior ownership and prompt to move (#62)
+- **2026-05-09** (#61) — fix(reconcile,hygiene): include PRs in label query; graceful multi-repo dupes
+- **2026-05-03** (#60) — feat(brief,handoff,orient): surface milestone alongside priority (#58)
+- **2026-05-03** (#59) — fix(brief,orient): surface stale closed next_up entries (#57)
+- **2026-05-02** (#56) — feat(brief): scope brief and hygiene to one repo via --repo=<key>
+- **2026-05-02** (#55) — docs: clarify when refresh-md is actually needed
+- **2026-05-01** (#54) — feat(handoff): auto-next skips sibling-claimed issues silently
+- **2026-05-01** (#52) — feat(handoff): warn on cross-track next_up collisions
+- **2026-05-01** (#49) — ci: add workflow_dispatch to Tests workflow
+- **2026-05-01** (#47) — feat(reconcile): clarify vs refresh-md and hint when track looks hand-curated
+- **2026-05-01** (#46) — feat(handoff): attribute commits via github.paths globs + soft signal when 0 attributed
+- **2026-04-30** (#45) — docs(readme): update for today's surface changes
+- **2026-04-30** (#43) — feat(handoff,brief): auto-suggest next_up via --auto-next + next_up_auto
+- **2026-04-30** (#40) — feat(reconcile): add --draft for non-interactive preview
+- **2026-04-30** (#38) — docs(skill): add reconcile to argument-hint, bump 4→5 essentials
+- **2026-04-30** (#36) — chore(reconcile,ci): lock read-only contract + Python 3.9 lint guard
+- **2026-04-30** (#33) — feat(reconcile): per-track github.labels override + --reconcile short flag
+- **2026-04-30** (#31) — chore(release): wire VERSION constant to a file with auto-bump on main
+- **2026-04-30** (#29) — test: assert --version writes only to stdout (not stderr)
+- **2026-04-30** (#27) — ci: add windows-latest runner and concurrency cancellation to Tests workflow
+- **2026-04-30** (#21) — feat(work-plan): add --version/-v flag
+- **2026-04-29** (#20) — docs: add SECURITY.md with reporting policy, threat model, and advisories
+- **2026-04-29** (#19) — fix(security): move two-step AI subcommand state out of /tmp (#18)
+- **2026-04-29** (#16) — ci: add macos-latest runner to Tests workflow
+- **2026-04-29** (#12) — ci: pin mikefarah/yq to v4.53.2 in test workflow and README
+- **2026-04-29** (#13) — fix(tests): use future annotations in test_where_was_i for Python 3.9
+- **2026-04-29** (#10) — ci: add work-plan unittest workflow
+- **2026-04-29** (#9) — docs: honest cross-LLM compatibility matrix + Cursor/Copilot shims
+- **2026-04-29** (#8) — docs: add CODE_OF_CONDUCT.md (Contributor Covenant 2.1) (closes #7)
+- **2026-04-29** (#2) — docs: add 'How it works' Mermaid diagram + daily rhythm
+- **2026-04-29** (#1) — docs: add PR template
+
