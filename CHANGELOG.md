@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.04+38a551f — 2026-06-04 (#76)
+
+fix(ci): deploy automation — version-bump on PR-merge, auto-CHANGELOG, docs refresh
+
+## Deploy — fix the version-bump trigger + add auto-CHANGELOG
+
+- **CI fix:** `version-bump.yml` now fires on `pull_request: closed (merged)` (a `gh --admin` merge doesn't emit a `push` event, which is why VERSION stalled at 2026.04.30 since deploys #65/#67/#74) + a `workflow_dispatch` manual fallback.
+- **CHANGELOG:** the workflow now prepends an entry from each deploy PR's title/body; `CHANGELOG.md` seeded with the full 34-deploy backfilled history.
+- **Docs:** README/SECURITY refreshed for the full plan-status surface (`--llm`, `--archive`, `--issues`, 🧳 foreign), test count 202 → 234.
+
+Once this lands on `main`, the new trigger governs future deploys (auto VERSION bump + CHANGELOG). A manual `workflow_dispatch` will stamp today's VERSION immediately after merge.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.04 — 2026-06-04 (#74)
 
 feat(plan-status): doc/plan liveness tracking (report, stamp, LLM, reconcile, foreign)
