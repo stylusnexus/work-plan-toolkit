@@ -16,7 +16,7 @@ The five essentials you'll use 80% of the time are:
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
 
-Beyond issue tracking, **`plan-status`** answers a different question — *which of your accumulated plan/spec docs actually shipped, half-shipped, or died*. It correlates each plan's declared file-manifest (`Create:`/`Modify:`/`Test:` paths) against git and the filesystem rather than trusting checkboxes (which are routinely left unchecked even for shipped work). Read-only by default; `--stamp` writes an idempotent status header into each doc.
+Beyond issue tracking, **`plan-status`** answers a different question — *which of your accumulated plan/spec docs actually shipped, half-shipped, or died*. It correlates each plan's declared file-manifest (`Create:`/`Modify:`/`Test:` paths) against git and the filesystem rather than trusting checkboxes (which are routinely left unchecked even for shipped work). Read-only by default; optionally stamp the verdict into each doc (`--stamp`), get an AI verdict on prose/ambiguous docs (`--llm`), and act on the results behind confirmation gates (`--archive` dead plans, `--issues` for partial ones). See [Plan & doc liveness](#plan--doc-liveness-plan-status).
 
 ## How it works
 
@@ -87,7 +87,7 @@ lie-gap (shipped but <25% boxes checked): 134
   ...
 ```
 
-Each doc reaches one of four verdicts:
+Each doc reaches one of these verdicts:
 
 | Verdict | Meaning |
 |---|---|
@@ -95,6 +95,15 @@ Each doc reaches one of four verdicts:
 | 🟡 **partial** | some files present — genuinely in progress; *this is your to-do list* |
 | 💀 **dead** | no files, long untouched — an abandonment candidate |
 | 👻 **manifest-less** | a prose doc with no file-manifest (e.g. a design spec) — needs a judgment call |
+| 🧳 **foreign** | a misfiled plan whose declared files live in *another* repo — not this repo's work at all |
+
+**Judging the ambiguous ones (`--llm`).** Prose specs (no manifest) and plans whose files look absent get a two-step AI pass: `--llm` gathers each candidate plus its git evidence and prints a prompt; you save the model's JSON verdicts to the cache; `--llm --apply` merges them in. The CLI never calls an LLM itself — same two-step contract as `group`/`suggest-priorities`.
+
+**Acting on the results (gated).** Once you trust the verdicts:
+- `--archive` moves 💀 dead plans into `archive/abandoned/` (history-preserving `git mv`).
+- `--issues` opens a GitHub issue per 🟡 partial plan, listing its unsatisfied files.
+
+Both are confirmation-gated and honor `--draft` (preview, zero side effects).
 
 **Stamping (`--stamp`).** Add `--stamp` and the verdict is written *into the doc itself* as a small, idempotent header, so the truth lives next to the plan:
 
@@ -108,7 +117,7 @@ Each doc reaches one of four verdicts:
 
 The block is derived entirely from evidence (no timestamp), so re-stamping unchanged docs produces zero diff — run it as often as you like. `--draft` previews exactly which docs would change and writes nothing.
 
-**Safety:** read-only by default — it mutates nothing unless you pass `--stamp`. Git is the only state it touches, so every stamp is reversible with `git restore`. Point it at a repo with `--repo=<key>` (from your config) or just run it from inside the repo. In a Claude session you don't need the flags — ask in plain language ("*which plans in this repo are done vs unfinished?*", "*stamp the plan statuses*") and the skill maps it to the right command.
+**Safety:** read-only by default — it mutates nothing unless you pass `--stamp`, `--archive`, or `--issues`, and those last two prompt before acting. Git is the only local state it touches, so stamps and archives are reversible with `git restore`. Point it at a repo with `--repo=<key>` (from your config) or just run it from inside the repo. In a Claude session you don't need the flags — ask in plain language ("*which plans in this repo are done vs unfinished?*", "*stamp the plan statuses*", "*archive the dead plans*") and the skill maps it to the right command.
 
 ## Requirements
 
@@ -229,7 +238,7 @@ work-plan-toolkit/
 │   │   ├── work_plan.py                # CLI entry
 │   │   ├── commands/                   # 16 subcommand modules
 │   │   ├── lib/                        # config, frontmatter, gh, git, prompts, …
-│   │   └── tests/                      # 202 unittest cases
+│   │   └── tests/                      # 234 unittest cases
 │   └── repo-activity-summary/
 │       └── SKILL.md                    # bundled companion skill
 ├── commands/
@@ -317,7 +326,7 @@ The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key
 ## Security & data handling
 
 - **No credentials stored.** All GitHub access goes through your existing `gh auth`. This toolkit never reads, writes, or stores GitHub tokens.
-- **Local-only writes.** The skill writes to `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and your `notes_root`. The one exception is `plan-status --stamp`, which writes an idempotent status-header block into the plan/spec docs it discovers **inside the repo you point it at** (confined to that repo's tree; `--draft` previews without writing). Nothing else.
+- **Local-only writes.** The skill writes to `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and your `notes_root`. The exceptions are the `plan-status` action flags, all confined to the repo you point it at and all opt-in: `--stamp` writes a status header into discovered plan docs; `--archive` `git mv`s dead plans into `archive/abandoned/`; `--issues` opens GitHub issues for partial plans (via `gh`). All honor `--draft` (preview, no writes) and the two mutating actions prompt for confirmation. Nothing else.
 - **No telemetry, no network calls beyond `gh`.** All GitHub operations go through `gh` (your authenticated session); no direct HTTP requests are made.
 - **AI subcommands (`group`, `suggest-priorities`) send issue titles to Claude** via Claude Code's existing integration. Body content, code, and PR contents are NOT sent. If your repo is private and you're cautious about what reaches the model, skip these subcommands.
 - **`init-repo` writes to your config via `yq -i`.** Inputs are JSON-encoded before being passed to `yq`, so a maliciously crafted `--github=` value can't break out of the YAML edit.
@@ -348,7 +357,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
-| `plan-status [--repo=<key>] [--json] [--stamp [--draft]]` | Reach a verdict on every plan/spec doc in a repo by correlating its declared file-manifest against git + the filesystem: ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. Read-only by default; `--stamp` writes an idempotent status header into each doc (`--draft` previews without writing); `--json` for machine output. |
+| `plan-status [--repo=<key>] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive \| --issues] [--draft]` | Reach a verdict on every plan/spec doc in a repo by correlating its declared file-manifest against git + the filesystem: ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less / 🧳 foreign. Read-only by default. `--stamp` writes an idempotent status header into each doc (`--draft` previews); `--llm` runs a two-step AI verdict on prose/ambiguous docs; `--archive` moves dead plans to `archive/abandoned/` and `--issues` opens issues for partial plans (both gated, both honor `--draft`); `--json` for machine output. |
 
 Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list with examples.
 
@@ -380,7 +389,7 @@ cd skills/work-plan
 python3 -m unittest discover tests
 ```
 
-202 tests, no external dependencies (mocks `gh`/`git` calls).
+234 tests, no external dependencies (mocks `gh`/`git` calls).
 
 ## License
 

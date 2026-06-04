@@ -1,21 +1,25 @@
 name: Bump VERSION
 
+# Fires when a deploy PR is MERGED into main, plus a manual fallback.
+#
+# Why pull_request (not push: main): a `push` to main produced by a PR merge
+# via the API / `gh pr merge --admin` does NOT generate a push event that
+# triggers workflows (observed 2026-04-30 onward: deploys #65/#67/#74 merged
+# to main but the old `push: branches:[main]` trigger never fired, so VERSION
+# stalled). The `pull_request: closed` event IS reliably emitted by the merge
+# itself, so it catches every deploy. workflow_dispatch gives a manual path
+# (e.g. to bump after a deploy that predates this fix).
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
 
-# Serialize bump runs so two near-simultaneous pushes to main can't both
-# attempt to write VERSION concurrently. cancel-in-progress: false ensures
-# the queued run still completes — we want to bump for every push, not
-# just the latest.
+# Serialize bump runs so two near-simultaneous merges can't both write VERSION.
 concurrency:
   group: version-bump-main
   cancel-in-progress: false
 
-# Skip if the triggering commit is the bump itself, in case a future change
-# adopts a PAT (which would re-trigger workflows). Pushes via GITHUB_TOKEN
-# already don't trigger downstream workflows, but this is belt-and-suspenders.
 permissions:
   contents: write
 
@@ -23,10 +27,17 @@ jobs:
   bump:
     name: Bump VERSION to <date>+<sha>
     runs-on: ubuntu-latest
-    if: github.actor != 'github-actions[bot]'
+    # Only on a real merge to main (not a closed-without-merge PR) or a manual
+    # run, and never re-entrant from the bot's own [skip ci] commit.
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
     steps:
-      - name: Check out repository
+      - name: Check out main
         uses: actions/checkout@v4
+        with:
+          ref: main          # pull_request checks out a merge ref by default; we want main's tip
+          fetch-depth: 0
 
       - name: Compute and write VERSION
         id: compute
@@ -49,7 +60,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add VERSION
           git commit -m "chore(version): bump to $NEW_VERSION [skip ci]"
-          # Defensive against races even though concurrency:group serializes —
-          # absorbs anything that landed on main while this job was queueing.
+          # Absorb anything that landed on main while this job was queueing.
           git pull --rebase origin main
-          git push
+          git push origin main
