@@ -16,6 +16,8 @@ The five essentials you'll use 80% of the time are:
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
 
+Beyond issue tracking, **`plan-status`** answers a different question — *which of your accumulated plan/spec docs actually shipped, half-shipped, or died*. It correlates each plan's declared file-manifest (`Create:`/`Modify:`/`Test:` paths) against git and the filesystem rather than trusting checkboxes (which are routinely left unchecked even for shipped work). Read-only by default; `--stamp` writes an idempotent status header into each doc.
+
 ## How it works
 
 The toolkit treats GitHub as the canonical source of issue state and never tries to mirror it. Track markdown files are lightweight references — they list issue numbers and a few pieces of derived metadata (priority, milestone, `next_up`, last session timestamp). The CLI re-derives everything else live from `gh`, `git`, and the markdown body.
@@ -57,8 +59,56 @@ flowchart TB
   - `handoff <track> --set-next 4167,4148` — explicit numbers when you know exactly which issues are next.
   - Free-form via Claude in your agent session, which can review project memory and write a curated list back. The two `--*-next` flags are the no-LLM paths.
   - For tracks where you don't want to bother curating at all, set `next_up_auto: true` in the track's frontmatter — `brief` will then derive the list live each invocation, ignoring whatever's stored.
-- **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.aude
+- **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.
 > **When does the body status table get refreshed?** `handoff` already rewrites the ✅/🔲 icons for its own track on every run (live `gh` fetch → `update_row_status`). `brief` reads GitHub state live and never relies on the body table, so it's always accurate. The only drift `refresh-md` exists to fix is *cross-track*: a track you haven't `handoff`'d recently whose icons fell behind because issues moved while you were heads-down on a sibling track. That's why `hygiene --all` sweeps it weekly.
+
+## Plan & doc liveness (`plan-status`)
+
+The track commands above are about *issues*. `plan-status` is about *documents* — the plans, specs, and design docs that pile up in a repo (especially the ones planning workflows like Superpowers generate) and then quietly **go to die**. Months later, nobody can tell what actually got built, what's half-done, and what was abandoned.
+
+**The problem is specific and measurable: the checkboxes lie.** A plan's `- [ ]` / `- [x]` boxes are supposed to track completion, but the agent executing the plan tracks progress in its own scratchpad and rarely edits the file. So boxes stay empty even when the whole feature shipped. On one real repo, **134 of 140 shipped plans showed fewer than 25% of their boxes checked** — they looked abandoned; they were done.
+
+`plan-status` ignores the checkboxes and reads a quieter, honest signal. A well-formed plan declares the **exact files it will create, modify, and test** — so every plan is really a *manifest of files that should exist*. The tool asks git and the filesystem: *of the files this plan promised, how many now exist and were committed?* That number is the real completion.
+
+```
+$ /work-plan plan-status --repo=myproject
+
+# plan-status — /path/to/myproject
+332 docs · 140 shipped · 20 partial · 172 manifest-less
+lie-gap (shipped but <25% boxes checked): 134
+
+## ✅ shipped (140)
+  docs/plans/2026-03-16-idea-mode-ui.md
+      9/9 declared files present (boxes stale)
+  ...
+## 🟡 partial (20)
+  docs/plans/2026-05-01-v0.4.0-one-week-closeout.md
+      19/40 declared files present
+  ...
+```
+
+Each doc reaches one of four verdicts:
+
+| Verdict | Meaning |
+|---|---|
+| ✅ **shipped** | (nearly) all declared files present — done, even if the boxes say otherwise |
+| 🟡 **partial** | some files present — genuinely in progress; *this is your to-do list* |
+| 💀 **dead** | no files, long untouched — an abandonment candidate |
+| 👻 **manifest-less** | a prose doc with no file-manifest (e.g. a design spec) — needs a judgment call |
+
+**Stamping (`--stamp`).** Add `--stamp` and the verdict is written *into the doc itself* as a small, idempotent header, so the truth lives next to the plan:
+
+```markdown
+# Idea Mode UI — Implementation Plan
+
+<!-- plan-status: BEGIN -->
+> **Status:** ✅ shipped · 9/9 files · last touched 2026-03-20
+<!-- plan-status: END -->
+```
+
+The block is derived entirely from evidence (no timestamp), so re-stamping unchanged docs produces zero diff — run it as often as you like. `--draft` previews exactly which docs would change and writes nothing.
+
+**Safety:** read-only by default — it mutates nothing unless you pass `--stamp`. Git is the only state it touches, so every stamp is reversible with `git restore`. Point it at a repo with `--repo=<key>` (from your config) or just run it from inside the repo. In a Claude session you don't need the flags — ask in plain language ("*which plans in this repo are done vs unfinished?*", "*stamp the plan statuses*") and the skill maps it to the right command.
 
 ## Requirements
 
@@ -177,9 +227,9 @@ work-plan-toolkit/
 │   ├── work-plan/
 │   │   ├── SKILL.md
 │   │   ├── work_plan.py                # CLI entry
-│   │   ├── commands/                   # 15 subcommand modules
+│   │   ├── commands/                   # 16 subcommand modules
 │   │   ├── lib/                        # config, frontmatter, gh, git, prompts, …
-│   │   └── tests/                      # 69 unittest cases
+│   │   └── tests/                      # 202 unittest cases
 │   └── repo-activity-summary/
 │       └── SKILL.md                    # bundled companion skill
 ├── commands/
@@ -267,7 +317,7 @@ The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key
 ## Security & data handling
 
 - **No credentials stored.** All GitHub access goes through your existing `gh auth`. This toolkit never reads, writes, or stores GitHub tokens.
-- **Local-only writes.** The skill writes to `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and your `notes_root`. Nothing else.
+- **Local-only writes.** The skill writes to `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and your `notes_root`. The one exception is `plan-status --stamp`, which writes an idempotent status-header block into the plan/spec docs it discovers **inside the repo you point it at** (confined to that repo's tree; `--draft` previews without writing). Nothing else.
 - **No telemetry, no network calls beyond `gh`.** All GitHub operations go through `gh` (your authenticated session); no direct HTTP requests are made.
 - **AI subcommands (`group`, `suggest-priorities`) send issue titles to Claude** via Claude Code's existing integration. Body content, code, and PR contents are NOT sent. If your repo is private and you're cautious about what reaches the model, skip these subcommands.
 - **`init-repo` writes to your config via `yq -i`.** Inputs are JSON-encoded before being passed to `yq`, so a maliciously crafted `--github=` value can't break out of the YAML edit.
@@ -298,6 +348,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
+| `plan-status [--repo=<key>] [--json] [--stamp [--draft]]` | Reach a verdict on every plan/spec doc in a repo by correlating its declared file-manifest against git + the filesystem: ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. Read-only by default; `--stamp` writes an idempotent status header into each doc (`--draft` previews without writing); `--json` for machine output. |
 
 Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list with examples.
 
@@ -329,7 +380,7 @@ cd skills/work-plan
 python3 -m unittest discover tests
 ```
 
-69 tests, no external dependencies (mocks `gh`/`git` calls).
+202 tests, no external dependencies (mocks `gh`/`git` calls).
 
 ## License
 

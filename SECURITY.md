@@ -20,6 +20,7 @@ The toolkit is a local CLI for a single user on a single workstation. The trust 
 **In scope:**
 - Subprocess argument injection / shell injection in calls to `gh`, `git`, `yq`.
 - Path traversal in user-supplied or batch-file-supplied paths under `notes_root/` and `~/.claude/work-plan/`.
+- `plan-status` reads, and with `--stamp` writes, plan/spec docs **inside the repo it is pointed at** (`--repo=<key>` resolved from config, or cwd). Writes are confined to docs discovered under that repo root. File paths declared inside a plan flow to `git log` only after a `--` pathspec separator and via list-form `subprocess` (no shell), so a hostile path in a plan doc cannot inject `git` flags or shell commands.
 - Cross-UID attacks: another local user (or a same-UID malicious process) planting state files the toolkit reads back. The cache directory at `~/.claude/work-plan/cache/` is mode 0700, and batch state files have validated provenance fields.
 - YAML / markdown frontmatter parsing edge cases routed through `yq`.
 
