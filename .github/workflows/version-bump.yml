@@ -48,17 +48,50 @@ jobs:
           echo "$NEW" > VERSION
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
 
-      - name: Commit and push if VERSION changed
+      # Prepend a CHANGELOG entry from the merged deploy PR's title + body.
+      # Only on a real PR merge (workflow_dispatch has no PR context).
+      - name: Prepend CHANGELOG entry
+        if: github.event_name == 'pull_request'
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+        run: |
+          python3 - <<'PY'
+          import os
+          ver = os.environ["NEW_VERSION"]
+          date = ver.split("+")[0].replace(".", "-")  # 2026.06.04 -> 2026-06-04
+          title = os.environ.get("PR_TITLE", "").strip()
+          body = os.environ.get("PR_BODY", "").strip()
+          num = os.environ.get("PR_NUM", "")
+          entry = f"## {ver} — {date} (#{num})\n\n{title}\n"
+          if body:
+              entry += "\n" + body + "\n"
+          entry += "\n"
+          marker = "<!-- new entries inserted below -->\n"
+          path = "CHANGELOG.md"
+          cl = open(path).read() if os.path.exists(path) else "# Changelog\n\n" + marker
+          if marker in cl:
+              head, _, tail = cl.partition(marker)
+              cl = head + marker + "\n" + entry + tail.lstrip("\n")
+          else:
+              cl = cl.rstrip() + "\n\n" + entry
+          open(path, "w").write(cl)
+          print(f"CHANGELOG: prepended {ver}")
+          PY
+
+      - name: Commit and push if anything changed
         env:
           NEW_VERSION: ${{ steps.compute.outputs.new_version }}
         run: |
-          if git diff --quiet VERSION; then
-            echo "VERSION already at $NEW_VERSION — nothing to commit."
+          if git diff --quiet VERSION CHANGELOG.md; then
+            echo "VERSION/CHANGELOG already current — nothing to commit."
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add VERSION
+          git add VERSION CHANGELOG.md
           git commit -m "chore(version): bump to $NEW_VERSION [skip ci]"
           # Absorb anything that landed on main while this job was queueing.
           git pull --rebase origin main
