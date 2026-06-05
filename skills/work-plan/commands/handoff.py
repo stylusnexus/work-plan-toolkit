@@ -21,7 +21,7 @@ from lib.git_state import (
     gap_seconds_to_label, uncommitted_file_count, commits_ahead,
 )
 from lib.github_state import fetch_issues, state_to_status_label, extract_priority, short_milestone
-from lib.status_table import update_row_status, find_canonical_status_tables, ISSUE_NUM_RE
+from lib.status_table import update_row_status, sync_missing_rows, find_canonical_status_tables, ISSUE_NUM_RE
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.next_up import suggest_next_up
 from lib.prompts import prompt_lines, parse_flags, prompt_input
@@ -451,10 +451,13 @@ def _derived_handoff(track) -> int:
         blockers=[],
     )
 
-    # Update body status table from current GitHub state
+    # Update body status table from current GitHub state, then self-heal any
+    # membership drift: append rows for frontmatter issues missing from the
+    # canonical table (issue #77).
     if issues:
         for i in issues:
             new_body = update_row_status(new_body, i["number"], state_to_status_label(i.get("state")))
+        new_body, _ = sync_missing_rows(new_body, issue_nums, issues_by_num)
 
     # Update frontmatter timestamps
     track.meta["last_touched"] = iso_now
@@ -845,6 +848,7 @@ def _interactive_handoff(track) -> int:
         issues = fetch_issues(track.repo, issue_nums)
         for i in issues:
             new_body = update_row_status(new_body, i["number"], state_to_status_label(i.get("state")))
+        new_body, _ = sync_missing_rows(new_body, issue_nums, {i["number"]: i for i in issues})
 
     write_file(track.path, track.meta, new_body)
     print(f"\n✓ Updated {track.path.name}")

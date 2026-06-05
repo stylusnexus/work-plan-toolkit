@@ -8,9 +8,9 @@ Use --all to canonicalize every active track that doesn't yet have one.
 """
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name
-from lib.github_state import fetch_issues, state_to_status_label
+from lib.github_state import fetch_issues, state_to_status_label, format_assignees
 from lib.frontmatter import write_file
-from lib.status_table import CANONICAL_MARKER, find_canonical_status_tables
+from lib.status_table import CANONICAL_MARKER, find_canonical_status_tables, render_issue_row
 from lib.prompts import parse_flags
 
 
@@ -96,11 +96,10 @@ def _render_canonical_table(issue_nums: list[int], issues_by_num: dict) -> str:
     ]
     for num in sorted(issue_nums):
         i = issues_by_num.get(num, {})
-        title = i.get("title", "(not fetched)")
-        assignees = i.get("assignees") or []
-        assignee_str = ", ".join(f"@{a['login']}" for a in assignees) if assignees else "—"
-        status_str = state_to_status_label(i.get("state"))
-        lines.append(f"| #{num} | {title} | {assignee_str} | {status_str} |")
+        lines.append(render_issue_row(
+            num, i.get("title", "(not fetched)"),
+            format_assignees(i), state_to_status_label(i.get("state")),
+        ))
     lines.append("")
     return "\n".join(lines)
 

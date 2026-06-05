@@ -17,7 +17,7 @@ def fetch_issues(repo: str, issue_numbers: Iterable[int]) -> list[dict]:
         proc = subprocess.run(
             ["gh", "issue", "view", str(num),
              "--repo", repo,
-             "--json", "number,state,labels,title,milestone,url,closedAt,body,updatedAt"],
+             "--json", "number,state,labels,title,milestone,url,closedAt,body,updatedAt,assignees"],
             capture_output=True, text=True,
         )
         if proc.returncode != 0:
@@ -65,6 +65,18 @@ def short_milestone(milestone) -> str:
     if not title:
         return ""
     return title.split()[0] if title.split() else ""
+
+
+def format_assignees(issue: dict) -> str:
+    """Render a canonical-table assignee cell from an issue's assignees.
+
+    Returns `@login, @login` for one or more assignees, or `—` when there are
+    none (or the issue dict is missing). Matches the placeholder used by
+    canonicalize so appended rows are visually consistent.
+    """
+    assignees = (issue or {}).get("assignees") or []
+    logins = [f"@{a['login']}" for a in assignees if a.get("login")]
+    return ", ".join(logins) if logins else "—"
 
 
 def state_to_status_label(state: str) -> str:
