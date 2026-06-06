@@ -4,317 +4,342 @@
 > plan. The bite-sized *how* gets written next via the writing-plans skill into
 > `docs/superpowers/plans/`. This is the **first of two** org-sharing specs. This one covers
 > *tool-sharing* (everyone runs the same skill version). The sibling spec covers *data-sharing*
-> (everyone sees the same plans/tracks via a shared/committed `notes_root` convention) and is a
+> (everyone sees the same plans/tracks via a per-repo committed `.work-plan/` convention) and is a
 > declared non-goal here.
 
 **Date:** 2026-06-05
-**Status:** Drafted — awaiting review
+**Status:** Revised after Codex spec-review (2026-06-05) — awaiting re-review
 **Owner:** Eve McGivern (Stylus Nexus)
-**Feature home:** `work-plan-toolkit` (repo root) + a new marketplace repo `stylusnexus/agent-plugins`
+**Feature home:** `work-plan-toolkit` (repo root) + a new public marketplace repo `stylusnexus/agent-plugins`
+
+---
+
+## Revision note (what changed after the second-model review)
+
+A Codex spec-review of the first draft returned DO NOT SHIP and was largely right. Primary-doc
+verification then corrected several load-bearing claims. This revision reflects all of it:
+
+- **`bin/` wrapper replaces the env-var path probe.** Claude plugins auto-add a plugin's `bin/`
+  to PATH; a `bin/work-plan` wrapper resolves the CLI relative to *itself*, which is robust where
+  `${CLAUDE_PLUGIN_ROOT}`-in-command-markdown was unverified.
+- **Command names are namespaced.** Claude plugin skills/commands are *always* `/plugin:name`
+  ([docs](https://code.claude.com/docs/en/plugins)). We turn that into a feature: a namespaced
+  **command suite** (`/work-plan:brief`, `:handoff`, …) for the plugin; `install.sh` keeps the
+  single bare `/work-plan`.
+- **Versioning stays CalVer.** "Codex requires semver" was *unproven*; Claude treats `version` as
+  a free string (omit it and the commit SHA is used, so every commit is a new version). The
+  semver migration is dropped.
+- **One marketplace index, not two.** Codex reads *both* `.agents/plugins/marketplace.json` **and**
+  a legacy-compatible `.claude-plugin/marketplace.json`
+  ([Codex docs](https://developers.openai.com/codex/plugins/build)), so a single
+  `.claude-plugin/marketplace.json` serves both hosts.
+- **"travels via git pull" was overstated.** `plan-status` writes files / `git mv`; it does **not**
+  commit or push (verified: no commit/push in `plan_status.py` or `lib/git_state.py`). The user
+  commits. Corrected throughout (and in spec #2).
+- **Surface + drift claims narrowed.** Plugins target terminal + IDE extensions (not web /
+  desktop-remote, which lack user plugins and `gh`); updates are explicit/version-gated
+  (`/plugin update`), not silent — so this is "easy updates," not "no drift."
 
 ---
 
 ## Plain-English summary (read this even if you never read code)
 
-Today, to use `/work-plan` a developer clones this repo and runs `./install.sh`, which copies
-the skill files into their `~/.claude/` (or `~/.agents/` for Codex). It works once. The problem
-is what happens *after*: when the repo changes, their copy doesn't. There's no "update" button —
-they have to remember to `git pull` and re-run the installer. Across an org, everyone drifts to a
-slightly different version, and nobody knows it.
+Spec-in-one-line: make `/work-plan` installable and updatable like a real plugin, instead of a
+clone-and-run script that silently goes stale.
 
-The fix is to publish the toolkit the way modern agent tools expect: as a **plugin** listed in a
-**marketplace**. A developer adds the marketplace once, runs one install command, and from then
-on a single update command pulls the latest version. No clone, no script, no drift.
+Today a developer clones this repo and runs `./install.sh`, which copies the files into their
+`~/.claude/`. It works once; there's no update button, so across people (or across your own
+machines) versions drift with no signal. The fix is to publish the toolkit as a **plugin** listed
+in a small **public marketplace**: add the marketplace once, install once, and `/plugin update`
+pulls the latest after that. `install.sh` stays for tools without a plugin system (Cursor, plain
+terminal use).
 
-There's a wrinkle worth stating plainly, because an earlier assumption was too rosy. Both
-Anthropic's **Claude Code** and OpenAI's **Codex** now have plugin systems — but they are
-**separate**. A Claude marketplace listing is not readable by Codex's installer, and vice versa.
-What they *do* share is the actual skill content: the `SKILL.md` file and our Python CLI are an
-open, portable standard both tools understand. So the plan is: **two thin packaging wrappers
-around one shared body of code.** We add a small manifest file for each tool, list the toolkit in
-one marketplace repo that carries both tools' index files, and keep `install.sh` alive only for
-the tools that have no plugin system (Cursor, plain terminal use).
-
-The bulk of the work is not "packaging" — it's making *one* set of files work in *both* plugin
-worlds *and* the old installer world at the same time: the file path the slash command uses to
-find the CLI, where the config file gets created, and keeping one version number in sync across
-three places.
+Both Claude Code and Codex have plugin systems. They're *separate* (different manifests), but they
+share the same underlying skill files and Python CLI, and — usefully — Codex can read Claude's
+marketplace index, so one index file serves both. The real work isn't "packaging"; it's making
+*one* set of files behave correctly across the plugin world *and* the old installer world: how the
+command finds the CLI, where config is created, and the command names users actually type.
 
 ---
 
 ## Problem statement
 
-`install.sh` is a **point-in-time copy** with no update channel. The README tells users to
-"re-run after `git pull` to refresh" — an instruction nobody follows reliably. The consequence
-for an org is silent version skew: two developers on `/work-plan` may be running materially
-different behavior, and there is no surfaced signal that they have drifted.
+`install.sh` is a **point-in-time copy** with no update channel ("re-run after `git pull`" —
+which nobody does reliably). For an org, that means silent version skew with no surfaced signal.
 
-### What the prior spec assumed (and where it was optimistic)
+### What the prior `plan-status` spec assumed (and where it was optimistic)
 
-The `plan-status` spec (2026-05-30, "Packaging as a plugin (deferred, no-rework)") claimed
-packaging would require *"no file moves and no rework — just adding a `.claude-plugin/plugin.json`
-wrapper."* The first half holds: **no files move.** The second half does not. The slash command
-and `SKILL.md` **hardcode** `~/.claude/skills/work-plan/work_plan.py`. A plugin installs to a
-**versioned cache** (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`), not to
-`~/.claude/skills/`, so that hardcoded path resolves to nothing under a plugin install. Fixing
-path resolution, config seeding (no install hook exists), and versioning *is* the rework — modest,
-but real.
+The `plan-status` spec (2026-05-30) claimed packaging would be *"no file moves and no rework — just
+add `.claude-plugin/plugin.json`."* **No files move** holds. **No rework** does not: the slash
+command and `SKILL.md` hardcode `~/.claude/skills/work-plan/work_plan.py`, but a plugin installs to
+a **versioned cache** (`~/.claude/plugins/cache/…`), so that path resolves to nothing. Path
+resolution, config seeding, command namespacing, and a marketplace are the (modest, real) work.
 
-### Distribution facts established during design (cited)
+### Distribution facts established + verified (cited)
 
-- **Claude Code plugins** work across every Claude Code surface — terminal, **VS Code and
-  JetBrains IDE extensions** (plugin config is shared with the CLI), desktop, web.
-  ([ide-integrations](https://code.claude.com/docs/en/ide-integrations.md), [plugins-reference](https://code.claude.com/docs/en/plugins-reference.md))
-- **Codex** has its **own** plugin system + marketplace browser (`/plugins`, `codex plugin
-  marketplace add owner/repo`) and consumes `SKILL.md` skills, installing to `~/.agents/skills`.
-  ([codex/plugins](https://developers.openai.com/codex/plugins), [codex/skills](https://developers.openai.com/codex/skills), [codex/plugins/build](https://developers.openai.com/codex/plugins/build))
-- **`SKILL.md` is an open standard** ("Agent Skills", agentskills.io) consumed by both tools —
-  the portable layer. ([skills](https://code.claude.com/docs/en/skills.md))
-- **The two plugin registries are NOT cross-compatible.** Codex's docs make no mention of
-  `.claude-plugin` support; Anthropic's make no mention of Codex. Manifests live at distinct
-  paths (`.claude-plugin/plugin.json` vs `.codex-plugin/plugin.json`).
-- **The "ChatGPT in VS Code" extension (`openai.chatgpt`) is Codex.** ChatGPT-the-consumer-app
-  (GPTs/connectors) is a separate ecosystem that does not install coding-agent skills.
+- **Claude plugins** work across terminal and the **VS Code / JetBrains extensions** (plugin config
+  shared with the CLI). Skills/commands are **always namespaced** `/<plugin>:<name>`; `version` is
+  optional (omitted → commit SHA, every commit a new version). `bin/` is auto-added to PATH while a
+  plugin is enabled. ([create plugins](https://code.claude.com/docs/en/plugins),
+  [reference](https://code.claude.com/docs/en/plugins-reference))
+- **Codex** has its own plugin system (`.codex-plugin/plugin.json`), consumes `SKILL.md`, and reads
+  marketplace indexes from **both** `.agents/plugins/marketplace.json` and a **legacy-compatible
+  `.claude-plugin/marketplace.json`**. ([codex/plugins/build](https://developers.openai.com/codex/plugins/build))
+- **`SKILL.md`** is an open standard both hosts consume — the portable layer.
+- **`plan-status` does not commit/push** (verified in code) — files travel only after the user commits.
+- **Unverified / must-confirm in implementation:** whether `${CLAUDE_PLUGIN_ROOT}`/`PLUGIN_ROOT`
+  are available to *command/skill* runtime under Codex (documented for hook processes), and whether
+  Codex honors a Claude-style plugin `bin/`. The `bin/` wrapper's *self-relative* resolution is
+  designed to not depend on either.
 
 ---
 
 ## Goals
 
-1. A Claude Code user installs and updates the toolkit with `/plugin install` + `/plugin update`
-   — no clone, no `install.sh`.
-2. A Codex user does the same via Codex's plugin mechanism.
-3. **One** set of skill files and **one** `work_plan.py` serve both plugins and the legacy
-   installer — no forks, no duplicated logic.
-4. The slash command resolves the CLI path correctly in all install modes (Claude plugin, Codex
-   plugin, `install.sh`→`~/.claude`, `install.sh`→`~/.agents`).
-5. Config is seeded automatically on first run (no install hook exists in either plugin system).
-6. One version number, synced by CI into every manifest that needs it.
-7. A single marketplace repo (`stylusnexus/agent-plugins`) that scales to future Stylus Nexus
-   plugins and carries both tools' index files.
+1. A Claude Code user installs + updates via `/plugin install` / `/plugin update` — no clone.
+2. A Codex user installs + updates via Codex's plugin mechanism — no clone.
+3. **One** set of skill files + **one** `work_plan.py` serve both plugins and `install.sh`.
+4. The command finds the CLI in every mode (Claude plugin cache, Codex plugin, `install.sh`→`~/.claude`,
+   `install.sh`→`~/.agents`) — via a self-locating `bin/work-plan` wrapper, not a hardcoded path.
+5. Config seeds automatically on first run (no install hook exists in either plugin system), at a
+   single, documented, install-mode-independent location.
+6. One version string (CalVer, the existing scheme), written into the manifest(s) by CI.
+7. A single public marketplace repo (`stylusnexus/agent-plugins`) that serves both hosts and scales
+   to future Stylus Nexus plugins.
+8. Under the plugin, a discoverable **namespaced command suite**; under `install.sh`, the existing
+   single `/work-plan`.
 
 ## Non-goals
 
-- **Data-sharing / shared `notes_root`** — the second org-sharing spec. `plan-status` already
-  derives verdicts live from each repo's git and `--stamp`/`--archive` commit into the repo so
-  they travel via `git pull`; the gap is the per-user `work-plan` track config. Out of scope here.
-- **Publishing to the official Codex Plugin Directory** — self-serve publishing is "coming soon"
-  per OpenAI docs. This spec uses the repo/team marketplace path that works today; the official
-  directory is a later, no-rework follow-on.
-- **Deprecating `install.sh`** — it stays for Cursor / plain-CLI / direct users.
-- **Changing any `work-plan` subcommand behavior.** Packaging only.
+- **Data-sharing / per-repo `.work-plan/`** — spec #2.
+- **Publishing to the official Codex Plugin Directory** — self-serve is "coming soon"; we use the
+  repo marketplace path that works today.
+- **Deprecating `install.sh`** — kept for Cursor / plain-CLI / direct users.
+- **Changing any `work-plan` subcommand's behavior.** Packaging + command surface only.
+- **Web / desktop-remote support.** Out of scope (no user plugins / no `gh` there).
 
 ---
 
 ## Design
 
-### Repo shape: two manifests, one body
+### Repo shape
 
-Add two files at the repo root; move nothing:
+Add, at the repo root (move nothing existing):
 
 ```
 work-plan-toolkit/
-├── .claude-plugin/plugin.json     ← NEW (Claude Code manifest)
-├── .codex-plugin/plugin.json      ← NEW (Codex manifest)
-├── commands/work-plan.md          ← edited (path resolution, §path)
-├── skills/work-plan/SKILL.md      ← edited (path resolution docs)
-├── skills/work-plan/work_plan.py  ← unchanged CLI substrate
-├── VERSION                        ← role clarified (§version)
-├── install.sh / install.ps1       ← retained, seed step delegates to CLI
-└── …
+├── .claude-plugin/plugin.json     ← NEW Claude manifest (name, version=CalVer, desc, meta)
+├── .codex-plugin/plugin.json      ← NEW Codex manifest (same body + interface block)
+├── bin/work-plan                  ← NEW self-locating wrapper → python3 <resolved>/work_plan.py
+├── commands/                      ← suite of thin wrappers (plugin) + the single dispatcher
+│   ├── work-plan.md               ← existing dispatcher (the ONLY file install.sh copies)
+│   ├── brief.md  handoff.md  orient.md  hygiene.md  status.md   ← NEW (plugin suite)
+│   └── run.md                     ← NEW catch-all → work-plan <subcommand ...>
+├── skills/work-plan/…             ← unchanged CLI + SKILL.md (path-doc edit only)
+├── install.sh / install.ps1       ← copy ONLY commands/work-plan.md; delegate config seed
+└── VERSION                        ← unchanged CalVer
 ```
 
-Both manifests point at the same `commands/` and `skills/` (identical `skills/<name>/SKILL.md`
-layout is what both tools expect). Distinct manifest directories (`.claude-plugin/` vs
-`.codex-plugin/`) coexist without conflict. Each manifest carries `name`, `version` (semver,
-see §version), `description`, `author`, `repository`, `license`. Codex requires all three of
-name/version/description; Claude requires only `name`. We populate the full set in both.
+### CLI resolution — a self-locating `bin/` wrapper
 
-### Path resolution — the core dual-track problem
+Ship `bin/work-plan` (bash). It resolves `work_plan.py` **relative to its own location** first,
+then falls back to known install paths, and never depends on an env var being present:
 
-The slash command must find `work_plan.py` regardless of how it was installed. A **candidate-path
-probe** in the command's bash block, first existing wins:
-
-```bash
+```sh
+#!/usr/bin/env bash
+# Resolve work_plan.py relative to this wrapper, then fall back.
+here="$(cd "$(dirname "$0")" && pwd)"
 for c in \
+  "$here/skills/work-plan/work_plan.py" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
-  "${PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
   "$HOME/.claude/skills/work-plan/work_plan.py" \
   "$HOME/.agents/skills/work-plan/work_plan.py"; do
-  if [ -n "$c" ] && [ -f "$c" ]; then WORK_PLAN="$c"; break; fi
+  [ -n "$c" ] && [ -f "$c" ] && exec python3 "$c" "$@"
 done
-python3 "$WORK_PLAN" $ARGUMENTS
+echo "work-plan: CLI not found (looked next to bin/, CLAUDE_PLUGIN_ROOT, ~/.claude, ~/.agents)." >&2
+exit 1
 ```
 
-This works because:
-- **Claude plugin** sets `CLAUDE_PLUGIN_ROOT` (substituted inline in command content).
-- **Codex plugin** sets `PLUGIN_ROOT` **and** `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA` for
-  backward compatibility — so the first candidate already resolves under Codex too; `PLUGIN_ROOT`
-  is a belt-and-suspenders fallback.
-- **`install.sh`** copies into `~/.claude/skills/` or `~/.agents/skills/`; the unset env vars
-  expand to a non-existent leading-slash path that fails `-f` and falls through.
+- **Claude plugin:** `bin/` is on PATH; `$here` is the plugin root → first candidate resolves.
+- **`install.sh`:** the wrapper is copied next to the skill (or PATH-linked); self-relative or the
+  `~/.claude`/`~/.agents` fallbacks resolve.
+- **Codex:** if Codex honors `bin/`, self-relative resolves; if not, the command wrappers fall back
+  to a documented invocation — **to be confirmed in Phase 2** (this is the one genuinely-unverified
+  runtime detail; the design isolates it to a single wrapper + a Phase-2 acceptance test).
 
-`SKILL.md` documents the same resolution order in its "how to run the CLI" section (today it lists
-three hardcoded paths; it gains the env-var-first forms).
+Command/skill files invoke `work-plan <args>` (PATH) rather than a hardcoded python path.
 
-### Config seeding — lazy, single-sourced
+### Command surface — namespaced suite (plugin) + single dispatcher (install.sh)
 
-Neither plugin system runs an install script, and neither can write to the user's home dir at
-install time. Config must be seeded **lazily by the CLI on first run.** Today `install.sh` writes
-the two-line `~/.claude/work-plan/config.yml`. We move that seed content into `lib/config.py` as
-the single source of truth:
+Plugin skills/commands are always namespaced `/<plugin>:<name>`. We use that for a discoverable
+**plan-management suite**, each a thin wrapper calling `work-plan <subcommand> $ARGUMENTS`:
 
-- `load_config()` (or a new `ensure_config()` it calls) writes the default `config.yml` if the
-  file is absent, then proceeds. The path stays `~/.claude/work-plan/config.yml` (its current
-  `DEFAULT_CONFIG_PATH`).
-- `install.sh` / `install.ps1` drop their inline heredoc seed and instead invoke the CLI's seed
-  path (so first-run feels instant for installer users, with zero duplicated content).
-- Config lives **outside** the plugin cache, so it survives `/plugin update` in both ecosystems.
+- `/work-plan:brief` · `/work-plan:handoff` · `/work-plan:orient` · `/work-plan:hygiene` ·
+  `/work-plan:status` (→ `plan-status`)
+- `/work-plan:run <subcommand …>` — catch-all for the long tail (`slot`, `close`, `reconcile`,
+  `group`, `suggest-priorities`, `init-repo`, `refresh-md`, `duplicates`, `canonicalize`, `list`).
+- The model-invoked `SKILL.md` (`/work-plan:work-plan`) remains for natural-language entry.
 
-One config location for every install mode; one place the seed text lives.
+**`install.sh` copies ONLY `commands/work-plan.md`** → the bare `/work-plan` dispatcher, so a
+standalone install does **not** pollute the global command namespace with `/brief`, `/handoff`, etc.
+The per-verb wrappers only materialize (namespaced, safe) inside the plugin.
 
-### Versioning — semver canonical
+Each wrapper handles arguments correctly (fixes carried from the review): **quote `"$ARGUMENTS"`**
+so multiword values (e.g. a milestone) don't split, and the dispatcher maps **empty args → `--help`**
+explicitly (the CLI exits 2 on no args, so the wrapper must special-case it).
 
-Codex **requires** semver (`"1.0.0"`); Claude **accepts** any string. The common denominator is
-**semver**, derived from Conventional Commit types (`feat`→minor, `fix`→patch). `version-bump.yml`
-writes the same semver into `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` on each
-qualifying merge. Update detection in both tools is by version-string change, so a bump is what
-tells installed copies an update exists.
+### Config seeding — lazy, single-sourced, install-mode-independent
 
-**Open item (deferred to the implementation plan / spec #2):** the existing CalVer `VERSION`
-(`2026.06.04+5d7962f`) that `--version` reports today. Options recorded, not decided here: replace
-CalVer with semver everywhere; or keep CalVer for `--version`/build provenance alongside semver in
-the manifests. The spec locks only the *requirement*: **manifests carry a valid semver synced by
-CI.** `_load_version()`'s upward walk already finds `VERSION` inside the plugin cache, so
-`--version` keeps working regardless of which option wins.
+No plugin system runs an install hook, and neither can write to `$HOME` at install time. The CLI
+self-seeds on first run:
 
-### Marketplaces — one repo, two index files
+- `lib/config.py` gains `ensure_config()` — the **single source** of the seed content — called by
+  `load_config()` when the file is absent. It writes `notes_root: ~/.claude/work-plan/notes`
+  (a stable path outside any plugin cache) and creates that dir.
+- **Config location is fixed at `~/.claude/work-plan/config.yml`** for all hosts (the CLI already
+  reads only that path). The review flagged that `install.sh --target=~/.agents` currently seeds a
+  *different* `~/.agents/work-plan/config.yml` the CLI never reads — a pre-existing latent bug. This
+  spec resolves it explicitly: **there is one config home, `~/.claude/work-plan/`, regardless of
+  skill install location**; `install.sh` stops seeding `~/.agents/work-plan/` and lets the CLI seed
+  the canonical path. (Acceptance: a `--target=~/.agents` install reads/writes the same config a
+  default install does.)
+- `install.sh` / `install.ps1` drop their inline seed heredocs and run the **same** CLI seed step
+  (identical behavior, lockstep) — fixing the review's "sh uses `--version` (no seed) / ps1 uses
+  `list` (seeds)" divergence: both call a command that triggers `load_config()`.
 
-New **public** repo `stylusnexus/agent-plugins`, tool-neutral because it carries both indexes and
-will hold future plugins:
+### Versioning — CalVer, written into the manifest by CI
+
+Keep the existing CalVer `VERSION` (`<date>+<sha>`, auto-bumped on each deploy by
+`version-bump.yml`). Claude accepts any `version` string and a bump every deploy gives update
+detection; Codex has no proven semver constraint. `version-bump.yml` gains one step: after writing
+`VERSION`, copy the same string into `.claude-plugin/plugin.json` (and `.codex-plugin/plugin.json`),
+and stage them in the existing commit. `--version` keeps working via the upward-walk (`_load_version`
+finds root `VERSION` inside the plugin cache too — verified).
+
+### Marketplace — one shared index
+
+New **public** repo `stylusnexus/agent-plugins` with a **single** index that both hosts read:
 
 ```
 agent-plugins/
-├── .claude-plugin/marketplace.json   ← Claude index
-└── .agents/plugins/marketplace.json  ← Codex index
+└── .claude-plugin/marketplace.json   ← Claude reads natively; Codex reads it legacy-compatible
 ```
 
-Each lists the toolkit as an **external** plugin (the code stays in `work-plan-toolkit`):
-
 ```json
-// .claude-plugin/marketplace.json
 {
   "name": "stylus-nexus",
   "owner": { "name": "Stylus Nexus" },
   "plugins": [
     { "name": "work-plan",
-      "source": { "source": "github", "repo": "stylusnexus/work-plan-toolkit", "ref": "main" },
-      "description": "Track-aware daily planning over GitHub issues, plus plan-status doc liveness." }
+      "source": { "source": "github", "repo": "stylusnexus/work-plan-toolkit", "ref": "v<tag>" },
+      "description": "Track-aware daily planning over GitHub issues, plus plan-status doc/plan liveness." }
   ]
 }
 ```
 
-The Codex index mirrors this in Codex's marketplace schema. `ref: main` tracks latest; the
-per-manifest semver gates whether an installed copy sees an update.
+If a Codex-native index is later required (richer `policy.*`/`category`/`url`/`git-subdir` schema),
+it's additive (`.agents/plugins/marketplace.json`) — but Phase-2 verification determines whether the
+legacy-compatible read suffices, avoiding a second index by default.
 
-### User-facing install flows (documented in README)
+**Rollback / mutable-`main` safety (review fix):** the marketplace pins a **release tag** (`ref:
+v<tag>`), not bare `main`, so a bad commit on `main` does not auto-ship to every installer. A
+release = tag the toolkit repo + bump the marketplace `ref`. Rollback = point `ref` at the prior
+tag. The README documents the disable/revoke path (`/plugin uninstall`, marketplace `ref` revert).
 
-- **Claude Code:** `/plugin marketplace add stylusnexus/agent-plugins` → `/plugin install
-  work-plan@stylus-nexus` → `/plugin update work-plan@stylus-nexus`. Works in CLI and IDE
-  extensions identically.
-- **Codex:** `codex plugin marketplace add stylusnexus/agent-plugins` → install via `/plugins`
-  browser / CLI → update via Codex's update command. (Note the official-directory caveat.)
-- **Cursor / direct / other:** clone + `./install.sh` (unchanged), or drop `SKILL.md` per the
-  open Agent Skills standard.
+### Install flows (documented in README — corrected names)
 
-### Architecture fit
-
-No change to the CLI's dispatcher/`commands/`/`lib/` design. The plugin layer is *strictly*
-additive: two manifests, one edited slash command, one edited `SKILL.md`, a relocated config seed,
-and a CI step. The "CLI is the substrate, SKILL.md is the prompt layer" invariant is preserved;
-plugins are just a fourth way to deliver the same substrate.
+- **Claude Code (recommended):** `/plugin marketplace add stylusnexus/agent-plugins` →
+  `/plugin install work-plan@stylus-nexus` → commands appear as `/work-plan:brief`, `/work-plan:run`,
+  etc.; update with `/plugin update work-plan@stylus-nexus`. Works in CLI + IDE extensions.
+- **Codex:** `codex plugin marketplace add stylusnexus/agent-plugins`, then install **work-plan**
+  via `/plugins`; skills are invoked per Codex's convention (`@`/`/skills`) — exact invocation
+  confirmed in Phase 2.
+- **Cursor / direct / other:** `git clone … && ./install.sh` → bare `/work-plan`. Re-run after pull.
 
 ---
 
 ## Phasing
 
-**Phase 1 — Claude plugin, end to end.** `.claude-plugin/plugin.json`; candidate-path probe in
-`commands/work-plan.md` + `SKILL.md`; CLI self-seed config; stand up `stylusnexus/agent-plugins`
-with the Claude index; verify install + update on a clean machine/profile. Exit: a Claude Code
-user installs and updates with no clone.
+**Phase 1 — Claude plugin, end to end (verified after publish).**
+`.claude-plugin/plugin.json`; `bin/work-plan` wrapper; the namespaced command suite + `run` catch-all;
+`install.sh` copies only the dispatcher; CLI self-seed (`ensure_config`); single config home;
+`stylusnexus/agent-plugins` with the shared index pinned to a release tag. **Verification ordering
+fix:** merge the manifests to `main` and cut the tag *first*, then install from the tagged ref and
+confirm `/work-plan:brief` runs and config self-seeds (test a **config-dependent** command from a
+clean `$HOME`, not `--version`). Exit: clean install + a second-tag update both verified.
 
-**Phase 2 — Codex plugin.** `.codex-plugin/plugin.json`; Codex index file in the marketplace
-repo; verify the same `work_plan.py` resolves under a Codex plugin install (via the shared
-`CLAUDE_PLUGIN_ROOT` back-compat). Exit: a Codex user installs and updates with no clone.
+**Phase 2 — Codex plugin.** `.codex-plugin/plugin.json`; confirm Codex resolves the CLI (the `bin/`
+self-relative path or a documented fallback) and the skill-invocation contract; confirm the
+legacy-compatible marketplace read works (else add the native index). Exit: Codex install + update
+verified on a clean profile.
 
-**Phase 3 — Versioning + docs + lockstep.** Semver in both manifests; `version-bump.yml` syncs it;
-README three-path install section; `install.ps1`/`uninstall.*` follow the config-seed move. Exit:
-one merge bumps semver in both manifests; installer parity on Windows/macOS/Linux.
+**Phase 3 — Versioning + docs + lockstep.** `version-bump.yml` writes CalVer into the manifest(s);
+README updated (three install paths, namespaced command names, **CalVer** — not semver); `install.ps1`
+/`uninstall.*` follow the seed/copy changes in lockstep.
 
-Each phase is a commit/PR boundary (code → feature branch → PR to `dev`, per repo convention).
-The marketplace repo is its own repo with its own trivial history.
+Each phase is a commit/PR boundary (code → feature branch → PR to `dev`; squash-merge). The deploy
+PR `dev`→`main` is what triggers `version-bump.yml`. The marketplace repo has its own history.
 
 ---
 
 ## Test / verification cases (plain English)
 
-**Path resolution**
-- Claude plugin install: `/work-plan --help` runs; the probe selects the `CLAUDE_PLUGIN_ROOT`
-  candidate.
-- Codex plugin install: `/work-plan --help` runs; resolves via the shared back-compat env var.
-- `install.sh`→`~/.claude`: resolves the `~/.claude` candidate (env vars unset).
-- `install.sh`→`~/.agents`: resolves the `~/.agents` candidate.
-- No candidate exists → a clear error naming the four locations searched (not a silent failure).
+**CLI resolution**
+- `bin/work-plan` resolves the CLI from inside a plugin cache (self-relative), from `~/.claude`, and
+  from `~/.agents`; with no candidate it prints a four-location error and exits 1.
+
+**Command surface**
+- Under the plugin, `/work-plan:brief` runs `work-plan brief`; `/work-plan:run reconcile --all`
+  reaches the catch-all.
+- `install.sh` installs only `/work-plan` (no bare `/brief` etc. appear).
+- A multiword arg (`group --milestone='v1 — Launch'`) is passed intact (quoting); empty args → `--help`.
 
 **Config seeding**
-- First run with no `~/.claude/work-plan/config.yml` creates a valid two-key file, then the
-  command proceeds.
-- Second run leaves the existing config byte-identical (no clobber).
-- The seed text exists in exactly one place in the codebase (CLI), not duplicated in `install.sh`.
+- First run with no `~/.claude/work-plan/config.yml` (clean `$HOME`) creates a valid file via a
+  config-dependent command, then proceeds; second run is byte-identical.
+- A `--target=~/.agents` install reads/writes the **same** `~/.claude/work-plan/config.yml`.
+- The seed text exists in exactly one place (CLI), not duplicated in `install.sh`/`install.ps1`.
 
 **Versioning**
-- `--version` reports a value under a plugin install (upward walk finds `VERSION` in the cache).
-- A `feat:`-typed merge bumps the minor; a `fix:` bumps the patch; both manifests carry the same
-  semver after the bump workflow runs.
+- `--version` reports the CalVer string under a plugin install.
+- A deploy bump writes the same CalVer into `VERSION` and the manifest(s).
 
-**Marketplace / install**
-- `marketplace add` then `install` then `update` succeeds on Claude Code (CLI and IDE extension).
-- The Codex index installs the same plugin via Codex's mechanism.
-- A version bump on `main` makes `/plugin update` report and apply an update.
+**Marketplace / install / update**
+- `marketplace add` → `install work-plan@stylus-nexus` → `/work-plan:brief` works (Claude, CLI + IDE).
+- Cutting a new tag + bumping the marketplace `ref` makes `/plugin update` apply it.
+- Rollback: pointing `ref` back at the prior tag is reflected on next update.
+- Codex install via the same marketplace repo succeeds (Phase 2).
 
 **Non-regression**
-- Existing `install.sh` users see identical behavior (skills + command + config present; smoke
-  test passes).
-- No `work-plan` subcommand changes behavior; the full offline `unittest` suite stays green.
+- `install.sh` users keep identical behavior + bare `/work-plan`; full offline `unittest` suite green.
 
 ---
 
 ## Risks & open questions
 
-- **CalVer ↔ semver reconciliation** — deferred (see §version). Risk: a half-migrated state where
-  `--version` and the manifests disagree. Mitigation: implementation plan decides the CalVer fate
-  before the CI sync ships.
-- **Dual-manifest coexistence** — structurally fine (distinct paths) but not explicitly documented
-  by either vendor. Mitigation: Phase-1/2 verification on real installs; low blast radius.
-- **`${CLAUDE_PLUGIN_ROOT}` substitution in *command* markdown** — confirmed for skill/agent
-  content and hooks; commands are markdown too, but if a surface ever fails to substitute, the
-  probe's `~/.claude` fallback still catches plugin installs under the default profile. Verify on
-  a real Claude plugin install in Phase 1.
-- **Codex official-directory timing** — self-serve publishing "coming soon." We ship via repo
-  marketplace now; the official listing is additive later.
-- **Cache ephemerality** — plugin cache dirs are version-scoped and GC'd ~7 days after update.
-  We never write state there (config lives in `~/.claude/work-plan/`), so this is informational.
-- **Marketplace repo bootstrap** — `stylusnexus/agent-plugins` is a new public repo; creating it
-  and its two index files is part of Phase 1, outside this code repo's history.
+- **Codex command/skill runtime path + invocation contract** — the one genuinely-unverified area.
+  Mitigated by the self-relative `bin/` wrapper and an explicit Phase-2 acceptance test; if Codex
+  ignores `bin/`, fall back to a documented `python3 <path>` form discovered at install.
+- **`${CLAUDE_PLUGIN_ROOT}` in command markdown** — not relied upon (the `bin/` wrapper replaces it);
+  retained only as a wrapper fallback.
+- **Tag-pinned marketplace cadence** — pinning to tags (not `main`) adds a "tag + bump ref" release
+  step; accepted for rollback safety. Document it so releases don't stall.
+- **Codex legacy marketplace read fidelity** — Codex reads `.claude-plugin/marketplace.json`, but
+  whether it accepts Claude-schema entries verbatim is confirmed in Phase 2; native index is the
+  additive fallback.
+- **Namespaced names in muscle memory** — `/work-plan:brief` differs from today's `/work-plan brief`.
+  Documented; `install.sh` users keep the old form.
 
 ---
 
 ## Decisions locked (this session)
 
-1. **Marketplace:** dedicated **public** repo, named **`stylusnexus/agent-plugins`**, carrying
-   both Claude and Codex index files.
-2. **`install.sh`:** kept (dual-track), narrowed to Cursor/direct now that both plugins are
-   first-class.
-3. **Codex packaging:** **dual plugins in this spec** — Claude *and* Codex, sharing one
-   `SKILL.md` + CLI.
-4. **Versioning:** **semver** in the manifests (Codex requirement); CalVer reconciliation is an
-   explicit open item for the implementation plan / spec #2.
+1. **Marketplace:** one public repo **`stylusnexus/agent-plugins`** with a **single**
+   `.claude-plugin/marketplace.json` (Codex reads it legacy-compatible), pinned to a **release tag**.
+2. **`install.sh`:** kept (dual-track), copies only the single dispatcher command.
+3. **Codex packaging:** dual plugins (Claude + Codex manifests), one shared body + marketplace.
+4. **Versioning:** **keep CalVer** (semver requirement was unproven); CI writes it into the manifest(s).
+5. **CLI resolution:** self-locating **`bin/work-plan`** wrapper (not an env-var markdown probe).
+6. **Command surface:** namespaced **suite** (`brief/handoff/orient/hygiene/status` + `run` catch-all)
+   for the plugin; bare `/work-plan` for `install.sh`.
+7. **Config:** one home `~/.claude/work-plan/config.yml` for all hosts; CLI self-seeds; installers delegate.
