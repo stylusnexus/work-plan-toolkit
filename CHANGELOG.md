@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.06+7909ca5 — 2026-06-06 (#82)
+
+feat(status-table): sync missing canonical rows and slot them in frontmatter order (#77, #79)
+
+Production deploy: dev → main. Ships two stacked changes to the canonical issue-table sync.
+
+## What's shipping
+
+- **#77 (#78)** — `refresh-md` and `handoff` now diff frontmatter `github.issues` against the status table and append a row for every newly-slotted issue (previously they only rewrote status cells of existing rows, so the body table drifted from frontmatter silently). Adds `render_issue_row`, `append_rows`, `sync_missing_rows`; live assignee fetch.
+- **#79 (#81)** — `sync_missing_rows` now slots each missing row into its frontmatter-order position instead of tacking it onto the end, so the rendered table matches frontmatter ordering (Option A). Existing rows are re-emitted verbatim (minimal diff).
+
+## Files (8)
+
+`commands/canonicalize.py`, `commands/handoff.py`, `commands/refresh_md.py`, `lib/github_state.py`, `lib/status_table.py`, `tests/test_handoff_append_rows.py`, `tests/test_refresh_md.py`, `tests/test_status_table.py`
+
+(The `main..dev` first-parent list shows ~40 commits — phantom diff from prior squash-merges. The genuine deploy is the 8 files above = #77 ∪ #79.)
+
+## Tests
+
+Full suite green (245). `cd skills/work-plan && python3 -m unittest discover tests`
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.04+38a551f — 2026-06-04 (#76)
 
 fix(ci): deploy automation — version-bump on PR-merge, auto-CHANGELOG, docs refresh
