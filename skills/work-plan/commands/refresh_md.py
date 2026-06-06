@@ -104,9 +104,9 @@ def _refresh_many(tracks: list, yes: bool) -> int:
                     cell_updates += 1
 
         new_body = "\n".join(lines)
-        # Append rows for frontmatter issues missing from the table. Cell
-        # updates above preserve the line count, so the table's line indices
-        # stay valid for sync_missing_rows.
+        # Slot in rows for frontmatter issues missing from the table, each at
+        # its frontmatter-order position. Cell updates above preserve the line
+        # count, so the table's line indices stay valid for sync_missing_rows.
         new_body, rows_added = sync_missing_rows(new_body, frontmatter_nums, issues_by_num)
 
         if new_body == track.body:
