@@ -104,6 +104,111 @@ def update_row_status(body: str, issue_num: int, new_status: str) -> str:
     return "\n".join(lines)
 
 
+def render_issue_row(num: int, title: str, assignee: str, status: str) -> str:
+    """Render a canonical issue-table row: `| #N | title | assignee | status |`.
+
+    Single source of truth for the canonical row shape — used by canonicalize
+    (initial table) and by sync_missing_rows (drift-healing appends)."""
+    return f"| #{num} | {title} | {assignee} | {status} |"
+
+
+def append_rows(body: str, table: dict, row_lines: list[str]) -> str:
+    """Insert pre-rendered `row_lines` after the last data row of `table`.
+
+    `table` is a dict from find_*_status_tables. New rows land directly below
+    the table's existing rows (or after the header separator if the table has
+    none), so any narrative content below the table is preserved. The table's
+    line indices must still be valid for `body` (callers that rewrite cells in
+    place keep the line count stable, so this holds)."""
+    if not row_lines:
+        return body
+    lines = body.split("\n")
+    if table["rows"]:
+        insert_at = table["rows"][-1]["line_idx"] + 1
+    else:
+        insert_at = table["header_line_idx"] + 2  # past header + separator
+    lines[insert_at:insert_at] = row_lines
+    return "\n".join(lines)
+
+
+def _row_primary_num(row: dict) -> Optional[int]:
+    """First `#NNNN` issue ref in a row, or None. A row's frontmatter-order
+    anchor for ordered inserts."""
+    for cell in row["cells"]:
+        m = ISSUE_NUM_RE.search(cell)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def sync_missing_rows(body: str, frontmatter_nums: list, issues_by_num: dict):
+    """Insert a canonical row for every frontmatter issue missing from the table.
+
+    Picks the canonical table when present (else the first status table),
+    diffs `frontmatter_nums` against the issue numbers already in that table,
+    and slots a row for each missing number into its FRONTMATTER-ORDER
+    position — a missing #487 lands above an existing #678 if frontmatter
+    lists 487 first, rather than tacking onto the end (issue #79). Existing
+    rows keep their relative order and are re-emitted verbatim, so the diff
+    only shows the inserted lines. Live title/assignee/status come from
+    `issues_by_num` (a {num: gh-issue-dict} map); a number with no fetched
+    data still gets a placeholder row so membership never silently drifts.
+
+    Returns `(new_body, rows_added)`. No-ops (returns body unchanged, 0) when
+    there is no table or nothing is missing."""
+    from lib.github_state import state_to_status_label, format_assignees
+
+    canonical = find_canonical_status_tables(body)
+    tables = canonical if canonical else find_all_status_tables(body)
+    if not tables:
+        return body, 0
+    table = tables[0]
+
+    existing = set()
+    for row in table["rows"]:
+        for cell in row["cells"]:
+            existing.update(int(m) for m in ISSUE_NUM_RE.findall(cell))
+
+    # frontmatter order is the canonical ranking; missing keeps that order.
+    rank = {n: i for i, n in enumerate(frontmatter_nums)}
+    missing = [n for n in frontmatter_nums if n not in existing]
+    if not missing:
+        return body, 0
+
+    new_row = {}
+    for num in missing:
+        issue = issues_by_num.get(num) or {}
+        new_row[num] = render_issue_row(
+            num, issue.get("title", "(not fetched)"),
+            format_assignees(issue),
+            state_to_status_label(issue.get("state")),
+        )
+
+    # No existing rows: nothing to interleave against — drop them all in
+    # frontmatter order after the header separator.
+    if not table["rows"]:
+        return append_rows(body, table, [new_row[n] for n in missing]), len(missing)
+
+    # Interleave: walk existing rows in place, flushing each pending missing
+    # row before the first existing row that outranks it. Existing rows with
+    # no frontmatter rank impose no constraint, so they never trigger a flush.
+    out, mi = [], 0
+    for row in table["rows"]:
+        r_rank = rank.get(_row_primary_num(row))
+        if r_rank is not None:
+            while mi < len(missing) and rank[missing[mi]] < r_rank:
+                out.append(new_row[missing[mi]])
+                mi += 1
+        out.append(row["raw"])
+    out.extend(new_row[n] for n in missing[mi:])
+
+    lines = body.split("\n")
+    first = table["rows"][0]["line_idx"]
+    last = table["rows"][-1]["line_idx"]
+    lines[first:last + 1] = out
+    return "\n".join(lines), len(missing)
+
+
 def _parse_row(line: str) -> list[str]:
     s = line.strip()
     if "|" not in s:
