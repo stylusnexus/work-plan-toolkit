@@ -102,6 +102,49 @@ class SyncMissingRowsTest(unittest.TestCase):
         self.assertIn("| #5195 | newer | @bob | 🔲 Open |", new)
         self.assertIn("| #487 | older | — | ✅ Shipped |", new)
 
+    def test_slots_low_rank_row_above_existing(self):
+        # The #79 case: frontmatter lists #487 first, but it's missing from a
+        # table whose existing rows start at #678. Option A slots #487 to the
+        # top instead of tacking it onto the end.
+        body = _canonical_body([
+            "| #678 | first | — | 🔲 Open |",
+            "| #2528 | last | — | ✅ Shipped |",
+        ])
+        frontmatter_nums = [487, 678, 1556, 2528, 5195]
+        issues_by_num = {
+            487: {"number": 487, "title": "earliest", "state": "OPEN", "assignees": []},
+            1556: {"number": 1556, "title": "middle", "state": "OPEN", "assignees": []},
+            5195: {"number": 5195, "title": "newest", "state": "OPEN", "assignees": []},
+        }
+        new, added = sync_missing_rows(body, frontmatter_nums, issues_by_num)
+        self.assertEqual(added, 3)
+        table = find_canonical_status_tables(new)[0]
+        nums = [int(ISSUE_NUM_RE.search(r["cells"][0]).group(1)) for r in table["rows"]]
+        # Full table order now mirrors frontmatter: #487 at top, #1556 between
+        # #678 and #2528, #5195 at the end.
+        self.assertEqual(nums, frontmatter_nums)
+        # Existing rows are re-emitted verbatim (minimal diff).
+        self.assertIn("| #678 | first | — | 🔲 Open |", new)
+        self.assertIn("| #2528 | last | — | ✅ Shipped |", new)
+
+    def test_unranked_existing_row_imposes_no_constraint(self):
+        # A row whose issue isn't in frontmatter (manual addition) shouldn't
+        # block a missing row from slotting past it.
+        body = _canonical_body([
+            "| #9001 | manual | — | 🔲 Open |",
+            "| #678 | tracked | — | 🔲 Open |",
+        ])
+        new, added = sync_missing_rows(
+            body, [487, 678],
+            {487: {"number": 487, "title": "early", "state": "OPEN", "assignees": []}},
+        )
+        self.assertEqual(added, 1)
+        table = find_canonical_status_tables(new)[0]
+        nums = [int(ISSUE_NUM_RE.search(r["cells"][0]).group(1)) for r in table["rows"]]
+        # #487 slots immediately before #678 (its frontmatter successor),
+        # leaving the unranked #9001 put.
+        self.assertEqual(nums, [9001, 487, 678])
+
     def test_no_drift_is_noop(self):
         body = _canonical_body(["| #678 | first | — | 🔲 Open |"])
         new, added = sync_missing_rows(body, [678], {678: {"number": 678}})
