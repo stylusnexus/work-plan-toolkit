@@ -3,7 +3,7 @@ from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo
 from lib.github_state import fetch_issues, state_to_status_label
 from lib.frontmatter import write_file
-from lib.status_table import find_all_status_tables, find_canonical_status_tables, ISSUE_NUM_RE
+from lib.status_table import find_all_status_tables, find_canonical_status_tables, sync_missing_rows, ISSUE_NUM_RE
 from lib.prompts import prompt_yes_no, parse_flags
 
 
@@ -65,10 +65,17 @@ def _refresh_many(tracks: list, yes: bool) -> int:
                 for cell in row["cells"]:
                     for m in ISSUE_NUM_RE.findall(cell):
                         all_issue_nums.add(int(m))
-        if not all_issue_nums:
+
+        # Frontmatter is canonical for membership: issues listed there but
+        # missing from the table need a fresh row (issue #77). Fetch the union
+        # so appended rows carry live title/assignee/status too.
+        frontmatter_nums = track.meta.get("github", {}).get("issues") or []
+        fetch_nums = sorted(all_issue_nums | set(frontmatter_nums))
+        if not fetch_nums:
             continue
 
-        issues = fetch_issues(track.repo, sorted(all_issue_nums))
+        issues = fetch_issues(track.repo, fetch_nums)
+        issues_by_num = {i["number"]: i for i in issues}
         state_by_num = {i["number"]: state_to_status_label(i.get("state")) for i in issues}
 
         lines = track.body.split("\n")
@@ -97,23 +104,29 @@ def _refresh_many(tracks: list, yes: bool) -> int:
                     cell_updates += 1
 
         new_body = "\n".join(lines)
+        # Append rows for frontmatter issues missing from the table. Cell
+        # updates above preserve the line count, so the table's line indices
+        # stay valid for sync_missing_rows.
+        new_body, rows_added = sync_missing_rows(new_body, frontmatter_nums, issues_by_num)
+
         if new_body == track.body:
             continue
-        pending.append((track, new_body, cell_updates))
+        pending.append((track, new_body, cell_updates, rows_added))
 
     if not pending:
         print("All tracks in sync.")
         return 0
 
     print(f"Pending updates across {len(pending)} track(s):\n")
-    for track, _, cells in pending:
-        print(f"  {track.path.name:50}  {cells} cell(s)")
+    for track, _, cells, added in pending:
+        added_str = f", {added} row(s) added" if added else ""
+        print(f"  {track.path.name:50}  {cells} cell(s){added_str}")
 
     if not yes and not prompt_yes_no("\nApply all? [y/N]"):
         print("Cancelled.")
         return 0
 
-    for track, new_body, _ in pending:
+    for track, new_body, _, _ in pending:
         write_file(track.path, track.meta, new_body)
     print(f"\n✓ Updated {len(pending)} file(s).")
     return 0

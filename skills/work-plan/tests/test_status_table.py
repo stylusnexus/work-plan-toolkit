@@ -6,9 +6,33 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
-from lib.status_table import find_status_table, update_row_status, ISSUE_NUM_RE
+from lib.status_table import (
+    find_status_table, update_row_status, ISSUE_NUM_RE,
+    render_issue_row, append_rows, sync_missing_rows,
+    find_canonical_status_tables, CANONICAL_MARKER,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _canonical_body(rows):
+    """Build a body with a canonical issue table containing the given rows.
+
+    `rows` is a list of pre-rendered row strings (without leading/trailing
+    newline). A trailing narrative section is included to prove appends land
+    before it, not at end-of-body.
+    """
+    lines = [
+        "## Issues (canonical)",
+        "",
+        f"{CANONICAL_MARKER} — auto-managed. -->",
+        "",
+        "| # | Title | Assignee | Status |",
+        "|---|---|---|---|",
+    ]
+    lines.extend(rows)
+    lines.extend(["", "---", "", "## Notes", "", "Some narrative here."])
+    return "\n".join(lines)
 
 
 class FindStatusTableTest(unittest.TestCase):
@@ -29,6 +53,66 @@ class UpdateRowStatusTest(unittest.TestCase):
         new = update_row_status(body, 4254, "✅ Shipped (PR #9999)")
         self.assertIn("✅ Shipped (PR #9999)", new)
         self.assertIn("✅ Shipped ", new)
+
+
+class RenderIssueRowTest(unittest.TestCase):
+    def test_renders_canonical_row_shape(self):
+        row = render_issue_row(487, "fix the thing", "@alice", "🔲 Open")
+        self.assertEqual(row, "| #487 | fix the thing | @alice | 🔲 Open |")
+
+
+class AppendRowsTest(unittest.TestCase):
+    def test_inserts_after_last_row_before_narrative(self):
+        body = _canonical_body(["| #678 | a | — | 🔲 Open |"])
+        table = find_canonical_status_tables(body)[0]
+        new = append_rows(body, table, ["| #999 | b | — | 🔲 Open |"])
+        lines = new.split("\n")
+        # New row sits directly after the existing data row...
+        self.assertEqual(lines[7], "| #999 | b | — | 🔲 Open |")
+        # ...and the narrative section survives below it.
+        self.assertIn("## Notes", new)
+        self.assertLess(new.index("#999"), new.index("## Notes"))
+
+    def test_no_rows_is_noop(self):
+        body = _canonical_body(["| #678 | a | — | 🔲 Open |"])
+        table = find_canonical_status_tables(body)[0]
+        self.assertEqual(append_rows(body, table, []), body)
+
+
+class SyncMissingRowsTest(unittest.TestCase):
+    def test_appends_missing_in_frontmatter_order(self):
+        body = _canonical_body([
+            "| #678 | first | — | 🔲 Open |",
+            "| #925 | second | — | ✅ Shipped |",
+        ])
+        # Frontmatter lists three more than the table, deliberately out of
+        # numeric order to prove frontmatter order (not sort) is honored.
+        frontmatter_nums = [678, 925, 5195, 487, 2196]
+        issues_by_num = {
+            5195: {"number": 5195, "title": "newer", "state": "OPEN",
+                   "assignees": [{"login": "bob"}]},
+            487: {"number": 487, "title": "older", "state": "CLOSED", "assignees": []},
+            2196: {"number": 2196, "title": "mid", "state": "OPEN", "assignees": []},
+        }
+        new, added = sync_missing_rows(body, frontmatter_nums, issues_by_num)
+        self.assertEqual(added, 3)
+        table = find_canonical_status_tables(new)[0]
+        nums = [int(ISSUE_NUM_RE.search(r["cells"][0]).group(1)) for r in table["rows"]]
+        self.assertEqual(nums, [678, 925, 5195, 487, 2196])
+        self.assertIn("| #5195 | newer | @bob | 🔲 Open |", new)
+        self.assertIn("| #487 | older | — | ✅ Shipped |", new)
+
+    def test_no_drift_is_noop(self):
+        body = _canonical_body(["| #678 | first | — | 🔲 Open |"])
+        new, added = sync_missing_rows(body, [678], {678: {"number": 678}})
+        self.assertEqual(added, 0)
+        self.assertEqual(new, body)
+
+    def test_missing_issue_without_fetched_data_still_appends(self):
+        body = _canonical_body(["| #678 | first | — | 🔲 Open |"])
+        new, added = sync_missing_rows(body, [678, 999], {})
+        self.assertEqual(added, 1)
+        self.assertIn("#999", new)
 
 
 if __name__ == "__main__":
