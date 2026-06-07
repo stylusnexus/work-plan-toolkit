@@ -1,6 +1,6 @@
 # Shims for non-skill-aware agent tools
 
-The work-plan toolkit's primary deliverable is a Claude Code / Codex skill (loaded via SKILL.md). Tools that don't support that format — **Cursor**, **GitHub Copilot**, and most others — can still use the underlying CLI, but the prompt-engineering instructions (when to relay output verbatim, how to handle two-step AI subcommands, etc.) won't auto-load.
+The work-plan toolkit is distributed as a **plugin for Claude Code and Codex** (`/plugin install work-plan@stylus-nexus` / `codex plugin add …`; the skill rides inside the plugin via SKILL.md). Tools without that plugin system — **Cursor**, **GitHub Copilot**, and most others — can still use the underlying CLI, but the prompt-engineering instructions (when to relay output verbatim, how to handle two-step AI subcommands, etc.) won't auto-load.
 
 These shims solve that. Each one is a drop-in file in the format the target tool expects, containing a condensed version of the SKILL.md instructions.
 

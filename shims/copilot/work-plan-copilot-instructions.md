@@ -19,7 +19,9 @@ This project has access to a Python CLI installed at `<toolkit-path>/skills/work
 - `work_plan.py orient [<track>]` — re-orient. With a track: paste-block of track state. Without: cwd snapshot
 - `work_plan.py hygiene` — weekly drift + label sync + duplicate scan
 
-Plus `slot`, `close`, `init`, `init-repo`, `list`, `refresh-md`, `reconcile`, `duplicates`, `suggest-priorities`, `group`. The full reference is `python3 work_plan.py --help`.
+- `work_plan.py plan-status` — which of your plan/spec docs actually shipped vs. died (correlates declared file-manifests against git + the filesystem)
+
+Plus `slot`, `close`, `init`, `init-repo`, `list`, `refresh-md`, `reconcile`, `canonicalize`, `duplicates`, `suggest-priorities`, `group`. The full reference is `python3 work_plan.py --help`.
 
 ### Invocation
 

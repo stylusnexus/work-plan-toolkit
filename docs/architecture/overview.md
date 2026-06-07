@@ -5,7 +5,14 @@
 
 ## What this is
 
-A Python CLI delivered as a Claude Code skill (`/work-plan`). The CLI does the work; a `SKILL.md` file teaches the LLM client when to invoke it and how to relay output. The CLI is portable to any shell; the skill discovery is specific to Claude Code (with adapter shims for Codex, Cursor, Copilot).
+A pure-Python CLI with multiple delivery faces. The **CLI is the single engine**; everything else is a face on it:
+
+- a **Claude Code plugin** and a **Codex plugin** (one repo, two manifests — `.claude-plugin/` and `.codex-plugin/`), distributed via the `stylusnexus/agent-plugins` marketplace;
+- a **`SKILL.md`** that teaches the LLM when to invoke the CLI and how to relay output;
+- the legacy **`install.sh`/`install.ps1`** script path for Cursor / Copilot / direct-CLI users;
+- a **planned VS Code viewer** (issue #87) that reads `work-plan export --json` and writes by shelling to the CLI.
+
+The CLI is portable to any shell; the plugin/skill discovery layers on top. Whatever the face, the rules (tier choice, the public-repo heads-up, frontmatter↔table sync, GitHub-as-canonical) live in the one CLI — no logic is duplicated per face.
 
 ## Technology stack
 
@@ -16,8 +23,10 @@ A Python CLI delivered as a Claude Code skill (`/work-plan`). The CLI does the w
 | Git access | Shells out to `git` (`lib/git_state.py`). |
 | GitHub access | Shells out to `gh` CLI (`lib/github_state.py`, `lib/new_issues.py`). The toolkit never calls the GitHub REST API directly — `gh auth` is the only credential surface. |
 | LLM access | None directly. Two-step subcommands (`group`, `suggest-priorities`) print a prompt to the terminal and rely on the surrounding agent (Claude Code, Codex, etc.) to write JSON to `/tmp/`. The CLI then re-reads it on `--apply`. |
-| Installer | `install.sh` (bash, macOS / Linux / WSL) + `install.ps1` (PowerShell, Windows). Copies (not symlinks) into `~/.claude/skills/`. |
-| Tests | `unittest` from stdlib. 69 cases under `skills/work-plan/tests/`. All `gh` / `git` calls are mocked. |
+| Distribution | **Plugin (recommended):** `stylusnexus/agent-plugins` marketplace with a per-host index — `.claude-plugin/marketplace.json` (Claude) and `.agents/plugins/marketplace.json` (Codex; Codex can't parse Claude's source form, so it needs its own). Manifests `.claude-plugin/plugin.json` + `.codex-plugin/plugin.json`, version = CalVer synced by `version-bump.yml`. |
+| Installer (script path) | `install.sh` (bash) + `install.ps1` (PowerShell), in lockstep. Copies skills into `~/.claude/skills/`, installs the `bin/work-plan` launcher (+ `bin/work-plan.cmd` on Windows), copies the standalone dispatcher from `installer/work-plan.md`, and **self-seeds** config via the CLI (one home: `~/.claude/work-plan/`). |
+| CLI launcher | `bin/work-plan` — resolves `work_plan.py` relative to itself (works in the plugin cache, `~/.claude`, `~/.agents`). Plugin installs get `bin/` on PATH automatically. |
+| Tests | `unittest` from stdlib. **~250 cases across ~42 files** under `skills/work-plan/tests/`, plus `tests/test_bin_wrapper.py` at the repo root. All `gh` / `git` calls are mocked; offline. |
 
 ## High-level architecture
 
@@ -37,13 +46,15 @@ flowchart TB
         bhoh["brief · handoff · orient · hygiene<br/><i>verbatim-relay outputs</i>"]
         edit["slot · close · refresh-md · reconcile · canonicalize<br/><i>edit track frontmatter / body</i>"]
         ai["group · suggest-priorities<br/><i>two-step LLM-in-the-loop</i>"]
+        ps["plan-status<br/><i>doc/plan liveness vs git+fs</i>"]
         admin["init · init-repo · list · duplicates"]
     end
 
-    subgraph lib["lib/ (13 helpers, no third-party deps)"]
+    subgraph lib["lib/ (20 helpers, no third-party deps)"]
         config["config.py<br/>tracks.py<br/>frontmatter.py"]
-        derive["github_state.py<br/>git_state.py<br/>new_issues.py"]
+        derive["github_state.py<br/>git_state.py<br/>new_issues.py · next_up.py"]
         body["status_table.py<br/>session_log.py<br/>drift.py · closure.py"]
+        plan["manifest.py · verdict.py<br/>doc_discovery.py · status_header.py<br/>llm_evidence.py · reconcile_actions.py"]
         present["render.py · prompts.py"]
     end
 
@@ -70,9 +81,21 @@ flowchart TB
     lib <--> state
 ```
 
-## Two distinct lifecycles
+## Delivery modes
 
-The toolkit has a meaningful gap between **source** and **runtime**:
+There are three ways the CLI reaches a user; all run the same `work_plan.py`:
+
+| Mode | Install | Where the code lives | Invoke |
+|---|---|---|---|
+| **Claude plugin** (recommended) | `/plugin install work-plan@stylus-nexus` | `~/.claude/plugins/cache/stylus-nexus/work-plan/<ver>/` | `/work-plan:brief` … `/work-plan:run <sub>` (namespaced) |
+| **Codex plugin** | `codex plugin add work-plan@stylus-nexus` | `~/.codex/plugins/cache/…` | `@work-plan` / `/skills` |
+| **Script** (Cursor/direct) | `./install.sh` / `.\install.ps1` | `~/.claude/skills/work-plan/` | bare `/work-plan <sub>` or `python3 …/work_plan.py` |
+
+The `bin/work-plan` launcher resolves the CLI in any of these layouts. The `export --json` read surface (planned, spec #2) is what the VS Code viewer (#87) will consume.
+
+## Source vs runtime (script-install gap)
+
+The toolkit has a meaningful gap between **source** and **runtime** for the script path:
 
 ```mermaid
 flowchart LR
@@ -123,7 +146,7 @@ For tools without a native skill system (Cursor, GitHub Copilot), the `shims/` d
 
 - No tokens stored. All GitHub access is through the user's existing `gh auth` session.
 - No telemetry. No HTTP calls outside `gh`.
-- Local-only writes: `~/.claude/skills/work-plan/`, `~/.claude/skills/repo-activity-summary/`, `~/.claude/commands/work-plan.md`, `~/.claude/work-plan/config.yml`, and the configured `notes_root`.
+- Local-only writes: the skills dirs (`~/.claude/skills/…` for the script path, or the plugin cache for plugin installs), the `bin/work-plan` launcher, `~/.claude/commands/work-plan.md` (script path only), `~/.claude/work-plan/config.yml` (one config home, self-seeded), and the configured `notes_root`.
 - `init-repo` writes to config via `yq -i` with JSON-encoded inputs to prevent YAML injection from `--github=` values.
 - Installers touch only user-owned dirs; no `sudo`, no privilege escalation.
 - Two-step AI subcommands send issue **titles only** to the model (not bodies, code, or PR contents).
