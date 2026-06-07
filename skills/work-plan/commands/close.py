@@ -47,7 +47,7 @@ def run(args: list[str]) -> int:
     # Public-repo confirm gate (the extension surfaces this as a modal).
     # Placed after track resolution but before any write/move.
     confirm = flags.get("--confirm")
-    if track.repo and needs_confirm(track.repo) and not (
+    if track.repo and needs_confirm(track.repo, cfg) and not (
         isinstance(confirm, str) and valid_token(confirm, track.repo, track.name)
     ):
         print(json.dumps({

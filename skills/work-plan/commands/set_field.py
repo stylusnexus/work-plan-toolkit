@@ -43,7 +43,7 @@ def run(args: list[str]) -> int:
         print(f"No track matching {name!r}."); return 1
     # Public-repo confirm gate (the extension surfaces this as a modal).
     confirm = flags.get("--confirm")
-    if track.repo and needs_confirm(track.repo) and not (isinstance(confirm, str) and valid_token(confirm, track.repo, track.name)):
+    if track.repo and needs_confirm(track.repo, cfg) and not (isinstance(confirm, str) and valid_token(confirm, track.repo, track.name)):
         print(json.dumps({"needs_confirm": True,
                           "reason": f"{track.repo} is PUBLIC (or visibility unknown); edit will be written there.",
                           "token": make_token(track.repo, track.name)}))
