@@ -133,6 +133,9 @@ planning into a public history. Visibility, not team-merge semantics, is the dom
 7. Shared-track identity, ownership, archive, and resolution are unambiguous across repos.
 8. Commit/push responsibility is explicit (no false "auto-travel").
 9. No new required config key; no caching of GitHub state; pure-stdlib (3.9, no `match`).
+10. **Viewer-ready export (for [#87](https://github.com/stylusnexus/work-plan-toolkit/issues/87)):**
+    the CLI exposes a stable machine-readable (JSON) read surface so a UI (the planned VS Code viewer)
+    consumes structured data instead of re-parsing markdown or re-deriving state.
 
 ## Non-goals
 
@@ -255,8 +258,38 @@ work-plan tracks; GitHub canonical for issue state), that tracks here are the **
 | `github_state.repo_visibility` | one `gh` call → `Optional[str]`; memoized | `gh` |
 | `lib/notes_readme.py` (new) | render + first-creation-only seed of `.work-plan/README.md` | — |
 | write commands | tier choice (default shared iff valid clone / `--private`), fail-closed heads-up, README on folder creation, optional `--commit` | the above |
+| `commands/export.py` (new) | emit the viewer-ready JSON (below) | `tracks`, `github_state` |
 
 All independently testable with mocked `gh`/filesystem (offline).
+
+### Viewer-ready export ([#87](https://github.com/stylusnexus/work-plan-toolkit/issues/87))
+
+A new `work-plan export --json` emits a **versioned, stable** structure the VS Code viewer renders
+without re-parsing markdown or re-deriving state (CLI stays the single source of logic; GitHub
+canonical, no cache). Built on the same `discover_tracks` model, so tier/owner/visibility are free.
+
+```json
+{
+  "schema": 1,
+  "generated_at": "<iso8601>",
+  "tracks": [
+    {
+      "name": "platform-health", "repo": "stylusnexus/CritForge", "tier": "shared",
+      "path": "<abs>", "status": "active", "launch_priority": "P1",
+      "milestone_alignment": "v0.4.0", "visibility": "PRIVATE",
+      "issues": [ { "number": 487, "title": "…", "state": "open", "assignee": "@x", "milestone": "v0.4.0" } ],
+      "blockers": [4821], "next_up": [487, 1556],
+      "rollup": { "open": 12, "closed": 8 }
+    }
+  ]
+}
+```
+
+- **Edges for the graph:** `blockers` + `next_up` are the dependency/flow edges; nodes are tracks (or
+  issues). The viewer builds the DAG from these.
+- **Stability:** `schema` is bumped on breaking changes; additive fields don't bump it.
+- **Scope guard:** export is **read-only** (no writes, no heads-up); it's the consume side of the
+  two-tier model. Verdict/liveness (`plan-status`) can be a later additive field, not v1.
 
 ---
 
