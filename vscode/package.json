@@ -74,6 +74,18 @@
       {
         "command": "workPlan.hygiene",
         "title": "Work Plan: Run Hygiene"
+      },
+      {
+        "command": "workPlan.slot",
+        "title": "Work Plan: Slot Issue into Track"
+      },
+      {
+        "command": "workPlan.close",
+        "title": "Work Plan: Close Track"
+      },
+      {
+        "command": "workPlan.newTrack",
+        "title": "Work Plan: New Track"
       }
     ],
     "menus": {
@@ -97,6 +109,11 @@
           "command": "workPlan.hygiene",
           "when": "view == workPlan.tree",
           "group": "9_maintenance"
+        },
+        {
+          "command": "workPlan.newTrack",
+          "when": "view == workPlan.tree",
+          "group": "2_workPlanCreate"
         }
       ],
       "view/item/context": [
@@ -119,6 +136,16 @@
           "command": "workPlan.reconcile",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanWrite@4"
+        },
+        {
+          "command": "workPlan.slot",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@5"
+        },
+        {
+          "command": "workPlan.close",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@6"
         }
       ]
     },
