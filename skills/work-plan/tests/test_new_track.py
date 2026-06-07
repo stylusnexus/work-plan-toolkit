@@ -407,6 +407,39 @@ class NewTrackCommandTest(unittest.TestCase):
         mw.assert_not_called()
         mmkdir.assert_not_called()
 
+    # ------------------------------------------------------------------
+    # No input() on non-interactive paths
+    # ------------------------------------------------------------------
+
+    def test_no_input_called_on_private_repo(self):
+        """Private repo with valid flags never calls input() or prompt_input —
+        proving no prompt is hit on the non-interactive code path."""
+        cfg = _make_cfg()
+
+        def _raise(*a, **kw):
+            raise AssertionError("input() must not be called — command must be non-interactive")
+
+        def _path_exists(self):
+            s = str(self)
+            if s == NOTES_ROOT:
+                return True
+            if s.endswith(".md"):
+                return False
+            return True
+
+        with patch("builtins.input", side_effect=_raise), \
+             patch("lib.prompts.prompt_input", side_effect=_raise):
+            with patch("commands.new_track.load_config", return_value=cfg), \
+                 patch("commands.new_track.write_file") as mw, \
+                 patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
+                 patch("pathlib.Path.exists", _path_exists), \
+                 patch("pathlib.Path.mkdir"):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = new_track.run(["myrepo", "my-feature"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -85,7 +85,7 @@ DESCRIPTIONS = [
      "Add frontmatter to an existing track .md file.",
      "After moving/creating a new .md file in Project Notes/<repo>/ that has no frontmatter.",
      "/work-plan init '<notes_root>/<repo-key>/foo.md'"),
-    ("init-repo", "<key> [--github=<org/repo>] [--local=<path>]",
+    ("init-repo", "<key> --github=<org/repo> [--local=<path>]",
      "Bootstrap a new repo: create <notes_root>/<key>/archive/{shipped,abandoned}/ and add the repo block to your config.",
      "When you start tracking a new GitHub repo. Replaces the old 'copy the example folder' setup.",
      "/work-plan init-repo myproject --github=your-org/myproject"),

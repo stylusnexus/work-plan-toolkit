@@ -14,7 +14,7 @@ from lib.prompts import parse_flags
 def run(args: list[str]) -> int:
     flags, positional = parse_flags(args, {"--github", "--local"})
     if not positional:
-        print("usage: work_plan.py init-repo <key> [--github=<org/repo>] [--local=<path>]")
+        print("usage: work_plan.py init-repo <key> --github=<org/repo> [--local=<path>]")
         return 2
 
     key = positional[0]
