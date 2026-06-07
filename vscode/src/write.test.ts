@@ -126,6 +126,92 @@ describe("actionToArgs", () => {
     const action: WriteAction = { kind: "hygiene" };
     assert.deepEqual(actionToArgs(action), ["hygiene", "--yes"]);
   });
+
+  test("slot → ['slot', issue, track, '--no-move']", () => {
+    const action: WriteAction = { kind: "slot", issue: 4234, track: "tabletop" };
+    assert.deepEqual(actionToArgs(action), ["slot", "4234", "tabletop", "--no-move"]);
+  });
+
+  test("close without note → ['close', track, '--state=shipped']", () => {
+    const action: WriteAction = { kind: "close", track: "ph", state: "shipped" };
+    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=shipped"]);
+  });
+
+  test("close with note → includes '--note=wrapped up' in equals form", () => {
+    const action: WriteAction = { kind: "close", track: "ph", state: "shipped", note: "wrapped up" };
+    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=shipped", "--note=wrapped up"]);
+  });
+
+  test("close with state 'parked' → '--state=parked'", () => {
+    const action: WriteAction = { kind: "close", track: "ph", state: "parked" };
+    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=parked"]);
+  });
+
+  test("close with state 'abandoned' → '--state=abandoned'", () => {
+    const action: WriteAction = { kind: "close", track: "ph", state: "abandoned" };
+    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=abandoned"]);
+  });
+
+  test("newTrack without optional flags → ['new-track', repo, slug]", () => {
+    const action: WriteAction = {
+      kind: "newTrack",
+      repo: "stylusnexus/work-plan-toolkit",
+      slug: "my-feature",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "new-track",
+      "stylusnexus/work-plan-toolkit",
+      "my-feature",
+    ]);
+  });
+
+  test("newTrack with priority and milestone → includes '--priority=P1' and '--milestone=v2'", () => {
+    const action: WriteAction = {
+      kind: "newTrack",
+      repo: "stylusnexus/work-plan-toolkit",
+      slug: "my-feature",
+      priority: "P1",
+      milestone: "v2",
+    };
+    const result = actionToArgs(action);
+    assert.deepEqual(result, [
+      "new-track",
+      "stylusnexus/work-plan-toolkit",
+      "my-feature",
+      "--priority=P1",
+      "--milestone=v2",
+    ]);
+  });
+
+  test("newTrack with only priority omits milestone", () => {
+    const action: WriteAction = {
+      kind: "newTrack",
+      repo: "stylusnexus/work-plan-toolkit",
+      slug: "my-feature",
+      priority: "P0",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "new-track",
+      "stylusnexus/work-plan-toolkit",
+      "my-feature",
+      "--priority=P0",
+    ]);
+  });
+
+  test("newTrack with only milestone omits priority", () => {
+    const action: WriteAction = {
+      kind: "newTrack",
+      repo: "stylusnexus/work-plan-toolkit",
+      slug: "my-feature",
+      milestone: "v3",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "new-track",
+      "stylusnexus/work-plan-toolkit",
+      "my-feature",
+      "--milestone=v3",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -377,6 +463,66 @@ describe("executeWrite — defensive reason/token fallbacks", () => {
       secondArgs.includes("--confirm="),
       "should still append --confirm= even with empty token"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeWrite — confirm flow for new verbs (slot/close/newTrack inherit it)
+// ---------------------------------------------------------------------------
+
+describe("executeWrite — new verbs inherit the confirm-token flow", () => {
+  const TOKEN = "abc123def456";
+  const REASON = "tabletop is PUBLIC (or visibility unknown); edit will be written there.";
+
+  const needsConfirmResult: CliResult = {
+    code: 0,
+    stdout: JSON.stringify({
+      needs_confirm: true,
+      reason: REASON,
+      token: TOKEN,
+    }),
+    stderr: "",
+  };
+  const successResult: CliResult = {
+    code: 0,
+    stdout: "✓ closed ph",
+    stderr: "",
+  };
+
+  test("close: needs_confirm → writeAnyway → second call has close args + --confirm=<token>", async () => {
+    const action: WriteAction = {
+      kind: "close",
+      track: "ph",
+      state: "shipped",
+    };
+    const { run, calls } = recordingRunner([needsConfirmResult, successResult]);
+
+    const outcome = await executeWrite(run, action, alwaysConfirm("writeAnyway"));
+
+    assert.equal(calls.length, 2, "should invoke runWrite exactly twice");
+
+    // First call: close args without confirm
+    assert.deepEqual(calls[0], ["close", "ph", "--state=shipped"]);
+
+    // Second call: same args with --confirm=<token> appended in equals form
+    assert.deepEqual(calls[1], ["close", "ph", "--state=shipped", `--confirm=${TOKEN}`]);
+
+    // Outcome is from second call
+    assert.deepEqual(outcome, { status: "written", stdout: "✓ closed ph" });
+  });
+
+  test("close: needs_confirm → cancel → exactly ONE runWrite call, outcome cancelled", async () => {
+    const action: WriteAction = {
+      kind: "close",
+      track: "ph",
+      state: "parked",
+    };
+    const { run, calls } = recordingRunner([needsConfirmResult]);
+
+    const outcome = await executeWrite(run, action, alwaysConfirm("cancel"));
+
+    assert.equal(calls.length, 1, "should NOT make a second runWrite call on cancel");
+    assert.deepEqual(outcome, { status: "cancelled" });
   });
 });
 

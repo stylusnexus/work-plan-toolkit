@@ -11,7 +11,10 @@ export type WriteAction =
   | { kind: "setNext"; track: string; issues: number[] }
   | { kind: "refresh"; track: string }
   | { kind: "reconcileDraft"; track: string }
-  | { kind: "hygiene" };
+  | { kind: "hygiene" }
+  | { kind: "slot"; track: string; issue: number }
+  | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
+  | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -37,6 +40,9 @@ export type WriteOutcome =
  *   refresh         → ["refresh-md", track, "--yes"]
  *   reconcileDraft  → ["reconcile", track, "--draft"]
  *   hygiene         → ["hygiene", "--yes"]
+ *   slot            → ["slot", issue, track, "--no-move"]
+ *   close           → ["close", track, "--state=<state>", ..."--note=<text>"]
+ *   newTrack        → ["new-track", repo, slug, ..."--priority=<p>", ..."--milestone=<m>"]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -62,6 +68,26 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "hygiene":
       return ["hygiene", "--yes"];
+
+    case "slot":
+      return ["slot", String(action.issue), action.track, "--no-move"];
+
+    case "close":
+      return [
+        "close",
+        action.track,
+        `--state=${action.state}`,
+        ...(action.note ? [`--note=${action.note}`] : []),
+      ];
+
+    case "newTrack":
+      return [
+        "new-track",
+        action.repo,
+        action.slug,
+        ...(action.priority ? [`--priority=${action.priority}`] : []),
+        ...(action.milestone ? [`--milestone=${action.milestone}`] : []),
+      ];
   }
 }
 
