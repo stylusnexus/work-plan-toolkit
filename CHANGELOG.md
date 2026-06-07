@@ -6,6 +6,19 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.07+46f9db9 — 2026-06-07 (#89)
+
+feat(plugin): Codex plugin manifest + install-paths docs/CI
+
+Production deploy carrying Phase 2 + Phase 3 leftovers.
+
+- **Codex plugin manifest (#86):** `.codex-plugin/plugin.json` (with `"skills": "./skills/"`), so Codex users get a native manifest. Verified: `codex plugin add` installs it (enabled) with both skills in the cache.
+- **Install docs + CI (#88):** README three-install-paths section (Claude plugin / Codex plugin / install.sh); `tests/test_bin_wrapper.py` wired into CI (Linux/macOS).
+
+`version-bump.yml` will bump VERSION and sync **both** manifests (`.claude-plugin` + `.codex-plugin`) on merge. After this, the next tag + marketplace `ref` bump publishes the Codex manifest to installed users.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.07+80c7f8c — 2026-06-07 (#85)
 
 feat(plugin): Claude Code plugin packaging (Phase 1) + org-sharing specs
