@@ -1,0 +1,223 @@
+{
+  "name": "work-plan-viewer",
+  "displayName": "Work Plan",
+  "publisher": "stylusnexus",
+  "version": "0.1.0",
+  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks) and Mermaid dependency graph.",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "workPlan",
+          "title": "Work Plan",
+          "icon": "media/work-plan.svg"
+        }
+      ]
+    },
+    "views": {
+      "workPlan": [
+        {
+          "id": "workPlan.tree",
+          "name": "Tracks"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "workPlan.refresh",
+        "title": "Work Plan: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "workPlan.selectView",
+        "title": "Work Plan: Select View",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "workPlan.sortTracks",
+        "title": "Work Plan: Sort Tracks",
+        "icon": "$(sort-precedence)"
+      },
+      {
+        "command": "workPlan.openTrack",
+        "title": "Open Track"
+      },
+      {
+        "command": "workPlan.openIssue",
+        "title": "Open Issue"
+      },
+      {
+        "command": "workPlan.editFields",
+        "title": "Work Plan: Edit Track Fields"
+      },
+      {
+        "command": "workPlan.setNext",
+        "title": "Work Plan: Set Next-Up"
+      },
+      {
+        "command": "workPlan.refreshMd",
+        "title": "Work Plan: Refresh Track Body"
+      },
+      {
+        "command": "workPlan.reconcile",
+        "title": "Work Plan: Reconcile (preview)"
+      },
+      {
+        "command": "workPlan.hygiene",
+        "title": "Work Plan: Run Hygiene"
+      },
+      {
+        "command": "workPlan.slot",
+        "title": "Work Plan: Slot Issue into Track"
+      },
+      {
+        "command": "workPlan.close",
+        "title": "Work Plan: Close Track"
+      },
+      {
+        "command": "workPlan.newTrack",
+        "title": "Work Plan: New Track"
+      },
+      {
+        "command": "workPlan.addRepo",
+        "title": "Work Plan: Add Repo"
+      },
+      {
+        "command": "workPlan.setNotesLocation",
+        "title": "Work Plan: Set Notes Location"
+      },
+      {
+        "command": "workPlan.slotUntracked",
+        "title": "Work Plan: Slot Untracked Issue into Track"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "workPlan.refresh",
+          "when": "view == workPlan.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.selectView",
+          "when": "view == workPlan.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.sortTracks",
+          "when": "view == workPlan.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.hygiene",
+          "when": "view == workPlan.tree",
+          "group": "9_maintenance"
+        },
+        {
+          "command": "workPlan.newTrack",
+          "when": "view == workPlan.tree",
+          "group": "2_workPlanCreate"
+        },
+        {
+          "command": "workPlan.addRepo",
+          "when": "view == workPlan.tree",
+          "group": "2_workPlanCreate@2"
+        },
+        {
+          "command": "workPlan.setNotesLocation",
+          "when": "view == workPlan.tree",
+          "group": "8_workPlanConfig"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "workPlan.editFields",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.setNext",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@2"
+        },
+        {
+          "command": "workPlan.refreshMd",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@3"
+        },
+        {
+          "command": "workPlan.reconcile",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@4"
+        },
+        {
+          "command": "workPlan.slot",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@5"
+        },
+        {
+          "command": "workPlan.close",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@6"
+        },
+        {
+          "command": "workPlan.slotUntracked",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedIssue",
+          "group": "1_workPlanWrite@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "workPlan.slotUntracked",
+          "when": "false"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "workPlan.tree",
+        "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
+      }
+    ],
+    "configuration": {
+      "title": "Work Plan",
+      "properties": {
+        "workPlan.cliPath": {
+          "type": "string",
+          "default": "work-plan",
+          "description": "Path to the work-plan CLI launcher (on PATH by default)."
+        },
+        "workPlan.expandReposByDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expand all repo groups in the Tracks view on load. Off by default (repos start collapsed); a single-repo workspace always expands."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit -p ./",
+    "test": "node --test --experimental-strip-types --no-warnings=MODULE_TYPELESS_PACKAGE_JSON \"src/**/*.test.ts\"",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "mermaid": "^11.15.0"
+  }
+}

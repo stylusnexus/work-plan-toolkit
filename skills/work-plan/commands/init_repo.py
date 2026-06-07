@@ -1,22 +1,34 @@
-"""init-repo subcommand — bootstrap a new repo block + notes folder."""
+"""init-repo subcommand — bootstrap a new repo block + notes folder.
+
+Non-interactive: --github is required; --local is optional (no prompts).
+"""
 import json
 import re
 import subprocess
 from pathlib import Path
 
 from lib.config import load_config, ConfigError, DEFAULT_CONFIG_PATH
-from lib.prompts import prompt_input, parse_flags
+from lib.prompts import parse_flags
 
 
 def run(args: list[str]) -> int:
     flags, positional = parse_flags(args, {"--github", "--local"})
     if not positional:
-        print("usage: work_plan.py init-repo <key> [--github=<org/repo>] [--local=<path>]")
+        print("usage: work_plan.py init-repo <key> --github=<org/repo> [--local=<path>]")
         return 2
 
     key = positional[0]
     if not re.fullmatch(r"[a-z][a-z0-9-]*", key):
         print(f"ERROR: '{key}' is not a valid key. Use lowercase letters, digits, hyphens; must start with a letter.")
+        return 2
+
+    # --github is required; no prompt fallback
+    github = flags.get("--github")
+    if not github or "/" not in github:
+        if not github:
+            print("ERROR: --github is required (e.g. --github=org/repo).")
+        else:
+            print("ERROR: github slug must be in the form 'org/repo'.")
         return 2
 
     try:
@@ -31,24 +43,12 @@ def run(args: list[str]) -> int:
         print("Edit it manually, or pick a different key.")
         return 1
 
-    github = flags.get("--github") or prompt_input(
-        f"GitHub slug for '{key}' (e.g. your-org/{key}):"
-    )
-    if not github or "/" not in github:
-        print("ERROR: github slug must be in the form 'org/repo'.")
-        return 2
-
-    local = flags.get("--local")
-    if local is None:
-        local = prompt_input(
-            f"Local checkout path for '{key}' (optional, blank to skip):"
-        ) or ""
+    # --local is optional; if absent, skip (no prompt)
+    local = flags.get("--local") or None
     if local:
         local_path = Path(local).expanduser()
         if not local_path.exists():
             print(f"WARN: {local_path} does not exist. Saving anyway — fix later if wrong.")
-    else:
-        local = None
 
     notes_root = Path(cfg["notes_root"]).expanduser()
     if not notes_root.exists():

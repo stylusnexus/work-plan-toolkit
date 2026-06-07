@@ -5,6 +5,7 @@ import subprocess
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name
 from lib.frontmatter import write_file
+from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags, prompt_input
 
 
@@ -24,7 +25,9 @@ def _find_prior_owners(issue_num: int, repo: str, target_name: str, tracks):
 
 
 def run(args: list[str]) -> int:
-    _, positional = parse_flags(args, set())
+    # --confirm uses equals form: --confirm=<token>
+    # --move / --no-move are bare flags
+    flags, positional = parse_flags(args, {"--confirm", "--move", "--no-move"})
     if not positional:
         print("usage: work_plan.py slot <issue-num> [track-name]")
         return 2
@@ -34,6 +37,10 @@ def run(args: list[str]) -> int:
         print(f"ERROR: '{positional[0]}' is not an issue number.")
         return 2
     target_name = positional[1] if len(positional) > 1 else None
+
+    if "--move" in flags and "--no-move" in flags:
+        print("ERROR: --move and --no-move are mutually exclusive.")
+        return 2
 
     try:
         cfg = load_config()
@@ -77,16 +84,29 @@ def run(args: list[str]) -> int:
         print(f"#{issue_num} already in track '{target.name}'.")
         return 0
 
+    # Public-repo confirm gate (the extension surfaces this as a modal).
+    # Placed after target resolution and the "already in track" no-op so we
+    # don't gate a no-op write.
+    confirm = flags.get("--confirm")
+    if target.repo and needs_confirm(target.repo, cfg) and not (
+        isinstance(confirm, str) and valid_token(confirm, target.repo, target.name)
+    ):
+        print(json.dumps({
+            "needs_confirm": True,
+            "reason": (
+                f"{target.repo} is PUBLIC (or visibility unknown); "
+                f"slotting #{issue_num} will be written there."
+            ),
+            "token": make_token(target.repo, target.name),
+        }))
+        return 0
+
+    # Determine move behavior from flags.
+    # --move: remove issue from prior owners.
+    # Default / --no-move: add-only; print a note naming prior owners.
+    do_move = "--move" in flags
+
     sources = _find_prior_owners(issue_num, target.repo, target.name, tracks)
-    move_from = []
-    if sources:
-        names = ", ".join(f"'{t.name}'" for t in sources)
-        ans = prompt_input(
-            f"#{issue_num} is already in {names}. "
-            f"Move to '{target.name}' (remove from there)? [y/N]"
-        ).lower()
-        if ans == "y":
-            move_from = sources
 
     issues.append(issue_num)
     target.meta.setdefault("github", {})["issues"] = sorted(issues)
@@ -103,12 +123,16 @@ def run(args: list[str]) -> int:
             print(f"⚠  #{issue_num} is on milestone '{m['title']}', "
                   f"track '{target.name}' aligned to '{target.meta.get('milestone_alignment')}'.")
 
-    for src in move_from:
-        src_issues = [n for n in (src.meta.get("github", {}).get("issues") or [])
-                      if n != issue_num]
-        src.meta.setdefault("github", {})["issues"] = src_issues
-        write_file(src.path, src.meta, src.body)
-        print(f"  ✓ Removed #{issue_num} from '{src.name}'.")
+    if sources and do_move:
+        for src in sources:
+            src_issues = [n for n in (src.meta.get("github", {}).get("issues") or [])
+                          if n != issue_num]
+            src.meta.setdefault("github", {})["issues"] = src_issues
+            write_file(src.path, src.meta, src.body)
+            print(f"  ✓ Removed #{issue_num} from '{src.name}'.")
+    elif sources and not do_move:
+        names = ", ".join(f"'{t.name}'" for t in sources)
+        print(f"ℹ #{issue_num} still listed in {names} — re-run with --move to relocate.")
 
     write_file(target.path, target.meta, target.body)
     print(f"✓ Slotted #{issue_num} into '{target.name}'.")
