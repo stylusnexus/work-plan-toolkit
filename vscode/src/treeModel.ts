@@ -36,6 +36,20 @@ export interface RepoNode {
 // ---------------------------------------------------------------------------
 
 /**
+ * The repo-row description text.
+ *
+ * Tier and GitHub visibility are orthogonal axes that happen to share the
+ * "private"/"public" vocabulary, so rendering them together reads as a
+ * contradiction (e.g. "private ⚠ public"). For a PUBLIC repo the visibility
+ * warning is what matters, so we surface only the `⚠ public` badge; otherwise
+ * we show the tier (today always "private"; forward-compat for when the
+ * two-tier model lands and a repo can be "shared").
+ */
+export function repoDescription(node: RepoNode): string {
+  return node.isPublic ? "⚠ public" : node.tier;
+}
+
+/**
  * Derives a StatusCategory for a track.
  * Blocker presence (array non-empty) OR status === "blocked" → "blocked";
  * this override takes priority over every other status value.
