@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Export } from "./model.ts";
-import { buildTree } from "./treeModel.ts";
+import { buildTree, shouldExpandRepos } from "./treeModel.ts";
 import type { RepoNode, TrackNode, StatusCategory } from "./treeModel.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
@@ -82,9 +82,17 @@ export class WorkPlanTreeProvider
   // ---------------------------------------------------------------------------
 
   private _repoTreeItem(node: RepoNode): vscode.TreeItem {
+    const expand = shouldExpandRepos(
+      this.roots.length,
+      vscode.workspace
+        .getConfiguration("workPlan")
+        .get<boolean>("expandReposByDefault", false)
+    );
     const item = new vscode.TreeItem(
       node.repo,
-      vscode.TreeItemCollapsibleState.Expanded
+      expand
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed
     );
     item.description = node.isPublic
       ? `${node.tier} ⚠ public`

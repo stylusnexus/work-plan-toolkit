@@ -117,3 +117,14 @@ export function buildTree(exp: Export): RepoNode[] {
 
   return Array.from(repoMap.values());
 }
+
+/**
+ * Whether repo nodes should render expanded.
+ *
+ * Default is collapsed (so a many-track repo doesn't flood the sidebar), with
+ * two ways to expand: the `workPlan.expandReposByDefault` setting, or a
+ * single-repo workspace (forcing a lone user to click one node adds no value).
+ */
+export function shouldExpandRepos(repoCount: number, expandSetting: boolean): boolean {
+  return expandSetting || repoCount <= 1;
+}
