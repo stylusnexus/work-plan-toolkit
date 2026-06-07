@@ -6,6 +6,19 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.07+4777cca — 2026-06-07 (#90)
+
+chore: untrack internal planning docs from public repo + plugin-first README
+
+Production deploy. Two things:
+
+- **Remove `docs/superpowers/` from the public repo.** Internal planning (specs/plans/mockups) is kept local going forward — `.gitignore` now excludes `docs/superpowers/`, `docs/specs/`, `docs/plans/`. This untracks the previously-committed files from `main` (local copies retained on disk; they remain in git history, not purged).
+- **Plugin-first README** — badges, quick-install (Claude/Codex plugin + script), namespacing note (`/work-plan X` → `/work-plan:X`), marketplace link.
+
+No code changes; full offline suite green (250 + bin test). `version-bump.yml` will bump CalVer + sync the manifests on merge.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.07+46f9db9 — 2026-06-07 (#89)
 
 feat(plugin): Codex plugin manifest + install-paths docs/CI
