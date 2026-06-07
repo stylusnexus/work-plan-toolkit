@@ -6,6 +6,38 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.07+e972a11 — 2026-06-07 (#122)
+
+feat: ship the VS Code viewer (Phases 1–3) — see, write, and onboard work-plan tracks (#87)
+
+First production ship of the **`work-plan` VS Code viewer** — the human face of the CLI. Everything below was merged to `dev` incrementally (each PR reviewed + tested); this deploy promotes the whole viewer (Phases 1–3) plus its CLI seam to `main`.
+
+## The viewer (`vscode/`)
+**See** — a sidebar tree (repos → tracks: status dot, open count, blocked/next hints, ⚠ badge on public repos), a Mermaid dependency graph + per-track detail panel (focus toggle), **lenses** (filter by repo / milestone / blocked), **sort** (default / blocked / most-open / name), and an **Untracked bucket** per repo (open GitHub issues that no track references — click to open, right-click to slot).
+
+**Act** — edit fields, set-next, slot, close, refresh, reconcile (draft preview), hygiene, and new-track — every action shells to the CLI. A **public-repo confirm modal** ("Write anyway / Keep private") fires before any write into a public (or unknown-visibility) repo and re-invokes with a confirm token; private repos write straight through.
+
+**Onboard** — a cold-start a new user can drive without the CLI: an empty-state welcome with **Add a repo** and **Set notes location** buttons. Config is auto-seeded by the CLI on first run; a loading bar shows during fetches and concurrent refreshes are coalesced (single-flight).
+
+## The CLI seam (`skills/work-plan/`)
+- **`export --json`** (schema 1) — the viewer's read surface: every frontmatter'd track + an additive `untracked` list of open-issues-in-no-track per repo; batched GraphQL issue fetch for speed.
+- Generic **`set <track> field=value`**, and a **non-interactive + confirm-token mode** for `slot` / `close` / `init` / `init-repo` (explicit flags instead of `input()` prompts), plus new one-shot **`new-track`** and **`set-notes-root`** commands — so the extension drives every write headlessly.
+- **`lib/write_guard`** confirm-token gate; `assume_private_when_unknown` config opt-out for all-private teams (public repos always prompt).
+
+## Notable fixes this cycle
+- **#112** repo row read "private ⚠ public" (tier + visibility conflated) → fixed.
+- **#95** tree loading indicator + single-flight refresh.
+- **#99** Untracked bucket (CLI + viewer).
+- **#113** opt out of the confirm gate on *unknown* visibility (PUBLIC never suppressed).
+- An `applyLens` fix so additive export fields (like `untracked`) survive lens filtering.
+
+## Tests
+**448** offline Python (`unittest`) + **275** TS (`node --test`) green; build clean. The Python CI matrix (3.9–3.12 × ubuntu/macos/windows) runs on this PR. A dedicated `vscode/` CI job + Marketplace / Open VSX publishing are **Phase 4** (next).
+
+Issues shipped: #87 (Phases 1–3), #92, #93, #94, #95, #96, #99, #104, #105, #107, #108, #110, #112, #113.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.07+9f049ec — 2026-06-07 (#91)
 
 docs+chore: public-repo doc refresh + broaden .gitignore
