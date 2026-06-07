@@ -43,6 +43,11 @@ export class WorkPlanTreeProvider
 
   constructor(private readonly load: () => Promise<Export>) {}
 
+  /** Returns the last successfully loaded export, or null before first refresh. */
+  get currentExport(): Export | null {
+    return this.cache;
+  }
+
   /**
    * Fetches fresh data from the CLI and fires a tree refresh.
    * Errors propagate to the caller (extension.ts / Task 8 wraps with showErrorMessage).

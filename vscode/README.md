@@ -19,15 +19,35 @@ All data flows through `work-plan export --json` (schema 1). The extension is re
 
 ## Status
 
-**Phase 2 — read-only viewer (in development)**
+**Phase 2 — read-only viewer (Tasks 5–8 complete)**
 
-The scaffold is in place. Tree provider, webview, and detail panels are being built in Tasks 6–8.
+Tree provider, Mermaid graph webview, and per-track detail panels are fully implemented. Click any track in the sidebar to open the dependency graph with the selected track highlighted.
 
 ## Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `workPlan.cliPath` | `"work-plan"` | Path to the work-plan CLI launcher. |
+
+## Build & run
+
+```bash
+# From the vscode/ directory:
+npm install          # installs esbuild, TypeScript, @types/vscode, mermaid
+npm run build        # compiles extension + copies Mermaid bundle into dist/
+```
+
+Then launch the extension host to try it live:
+
+```bash
+code --extensionDevelopmentPath=./vscode
+```
+
+The `build` step copies `node_modules/mermaid/dist/mermaid.min.js` into `dist/` automatically. The `dist/` folder is gitignored — the Mermaid file is never committed.
+
+### How Mermaid is loaded
+
+The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 11 (`mermaid@^11.15.0`). It is a single self-contained file (~3.2 MB) that exposes a global `mermaid` object when loaded via a classic `<script nonce="…" src="…">` tag. The extension does NOT use the ESM build (which requires ~160 chunk files). If the graph fails to render in the host, verify that `dist/mermaid.min.js` was copied (`ls vscode/dist/`) and that the CSP in the webview html allows `'wasm-unsafe-eval'` (Mermaid needs it).
 
 ## Development
 
