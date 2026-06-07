@@ -1,8 +1,27 @@
 # work-plan toolkit
 
-Track-aware daily work planning for developers running parallel Claude Code sessions across many GitHub issues.
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+![Python 3.9+ stdlib](https://img.shields.io/badge/python-3.9%2B%20stdlib-3776AB)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)
+![Codex](https://img.shields.io/badge/Codex-plugin-10A37F)
 
-`work-plan` is a Claude Code skill that wraps a small Python CLI. It treats your daily work as a set of *tracks* — each track is a markdown file with YAML frontmatter listing its priority, milestone, GitHub issue numbers, and current status. The skill derives state live from GitHub (`gh`), git, and the markdown body, so the markdown stays light (it references issues by ID rather than duplicating their state).
+Track-aware daily work planning for developers running parallel Claude Code / Codex sessions across many GitHub issues.
+
+`work-plan` is a CLI-backed agent skill (a pure-Python-stdlib CLI + `SKILL.md`). It treats your daily work as a set of *tracks* — each track is a markdown file with YAML frontmatter listing its priority, milestone, GitHub issue numbers, and current status. The skill derives state live from GitHub (`gh`), git, and the markdown body, so the markdown stays light (it references issues by ID rather than duplicating their state).
+
+## Quick install
+
+**Claude Code (recommended):**
+```
+/plugin marketplace add stylusnexus/agent-plugins
+/plugin install work-plan@stylus-nexus
+```
+**Codex:** `codex plugin marketplace add stylusnexus/agent-plugins` → `codex plugin add work-plan@stylus-nexus`
+**Cursor / Copilot / direct:** clone + `./install.sh` (see [Install](#install)).
+
+Full multi-agent guide: the [**agent-plugins** marketplace README](https://github.com/stylusnexus/agent-plugins). See [Install](#install) below for details and the script path.
+
+> **Command names:** examples below use the standalone form `/work-plan <subcommand>` (what `install.sh` gives you). **Installed as a plugin, commands are namespaced** — `/work-plan brief` → `/work-plan:brief`, `/work-plan handoff` → `/work-plan:handoff`, and the long tail is `/work-plan:run <subcommand>`. On Codex, invoke via `@work-plan` / `/skills`.
 
 The five essentials you'll use 80% of the time are:
 
@@ -170,8 +189,8 @@ A skill has two distinct contracts: (1) the underlying **CLI** that does the wor
 
 | Tool | Install command | Then invoke as |
 |---|---|---|
-| **Claude Code** | `./install.sh` (macOS / Linux / WSL) or `.\install.ps1` (Windows) | `/work-plan <subcommand>` |
-| **Codex** | `./install.sh --target=$HOME/.agents` or `.\install.ps1 -Target "$env:USERPROFILE\.agents"` | `/work-plan <subcommand>` (slash command if Codex picks up the skill) or direct CLI |
+| **Claude Code** | **Plugin (recommended):** `/plugin marketplace add stylusnexus/agent-plugins` → `/plugin install work-plan@stylus-nexus`. Or script: `./install.sh` / `.\install.ps1` | Plugin: `/work-plan:brief` … `/work-plan:run <sub>`. Script: bare `/work-plan <subcommand>` |
+| **Codex** | **Plugin:** `codex plugin marketplace add stylusnexus/agent-plugins` → `codex plugin add work-plan@stylus-nexus`. Or script: `./install.sh --target=$HOME/.agents` | Plugin: `@work-plan` / `/skills`. Script: direct CLI |
 | **Cursor** | Skip installer. Clone repo + copy `shims/cursor/work-plan.cursorrules` into your project's `.cursorrules` (or merge it in) | `python3 <toolkit>/skills/work-plan/work_plan.py <sub>` — alias `wp` recommended |
 | **GitHub Copilot** | Skip installer. Clone repo + copy `shims/copilot/work-plan-copilot-instructions.md` into your project's `.github/copilot-instructions.md` (merge if it already exists) | Direct CLI as above |
 | **Any other tool** | Skip installer. Just `git clone`. | Direct CLI |

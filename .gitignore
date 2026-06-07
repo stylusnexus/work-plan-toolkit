@@ -10,3 +10,8 @@ work-plan-toolkit.code-workspace
 CLAUDE.md
 .claude/settings.local.json
 .serena/
+
+# Internal planning artifacts — kept local, not published (public repo).
+docs/superpowers/
+docs/specs/
+docs/plans/
