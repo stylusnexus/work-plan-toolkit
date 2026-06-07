@@ -6,6 +6,22 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.07+80c7f8c — 2026-06-07 (#85)
+
+feat(plugin): Claude Code plugin packaging (Phase 1) + org-sharing specs
+
+Production deploy of the org-sharing work. Ships:
+
+- **Phase 1 plugin packaging (#83):** `bin/work-plan` launcher, `.claude-plugin/plugin.json` (CalVer), namespaced command suite (`/work-plan:brief` …), self-seeding config, dispatcher-only `install.sh`/`install.ps1` (lockstep), Windows `.cmd` launcher.
+- **version-bump manifest sync (#84):** deploys now write CalVer into the plugin manifest(s) alongside VERSION.
+- **Org-sharing specs + plans + repo-local `AGENTS.md`** (docs already on dev).
+
+Verified: 250 unit tests + bin test green; real local `marketplace add → install → details` confirmed the namespaced suite with no name collision; CalVer passes `claude plugin validate`.
+
+Post-merge: `version-bump.yml` will bump VERSION + sync the manifest; then this work becomes taggable for the `stylusnexus/agent-plugins` marketplace.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.06+7909ca5 — 2026-06-06 (#82)
 
 feat(status-table): sync missing canonical rows and slot them in frontmatter order (#77, #79)
