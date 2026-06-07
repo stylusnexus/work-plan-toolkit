@@ -212,6 +212,38 @@ describe("actionToArgs", () => {
       "--milestone=v3",
     ]);
   });
+
+  test("addRepo without local → ['init-repo', key, '--github=org/myrepo']", () => {
+    const action: WriteAction = {
+      kind: "addRepo",
+      key: "myrepo",
+      github: "org/myrepo",
+    };
+    assert.deepEqual(actionToArgs(action), ["init-repo", "myrepo", "--github=org/myrepo"]);
+  });
+
+  test("addRepo with local → includes '--local=/path/to/repo' in equals form", () => {
+    const action: WriteAction = {
+      kind: "addRepo",
+      key: "myrepo",
+      github: "org/myrepo",
+      local: "/path/to/repo",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "init-repo",
+      "myrepo",
+      "--github=org/myrepo",
+      "--local=/path/to/repo",
+    ]);
+  });
+
+  test("setNotesRoot → ['set-notes-root', path]", () => {
+    const action: WriteAction = {
+      kind: "setNotesRoot",
+      path: "/Users/eve/notes",
+    };
+    assert.deepEqual(actionToArgs(action), ["set-notes-root", "/Users/eve/notes"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

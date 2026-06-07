@@ -86,6 +86,14 @@
       {
         "command": "workPlan.newTrack",
         "title": "Work Plan: New Track"
+      },
+      {
+        "command": "workPlan.addRepo",
+        "title": "Work Plan: Add Repo"
+      },
+      {
+        "command": "workPlan.setNotesLocation",
+        "title": "Work Plan: Set Notes Location"
       }
     ],
     "menus": {
@@ -114,6 +122,16 @@
           "command": "workPlan.newTrack",
           "when": "view == workPlan.tree",
           "group": "2_workPlanCreate"
+        },
+        {
+          "command": "workPlan.addRepo",
+          "when": "view == workPlan.tree",
+          "group": "2_workPlanCreate@2"
+        },
+        {
+          "command": "workPlan.setNotesLocation",
+          "when": "view == workPlan.tree",
+          "group": "8_workPlanConfig"
         }
       ],
       "view/item/context": [
@@ -149,6 +167,12 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "workPlan.tree",
+        "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
+      }
+    ],
     "configuration": {
       "title": "Work Plan",
       "properties": {
