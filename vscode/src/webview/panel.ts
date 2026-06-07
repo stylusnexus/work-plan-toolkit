@@ -41,7 +41,12 @@ interface OpenIssueMessage {
   number: number;
 }
 
-type WebviewMessage = SelectTrackMessage | OpenIssueMessage;
+interface SetFocusMessage {
+  type: "setFocus";
+  focus: boolean;
+}
+
+type WebviewMessage = SelectTrackMessage | OpenIssueMessage | SetFocusMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -55,6 +60,8 @@ export class WorkPlanPanel {
   private readonly _extensionUri: vscode.Uri;
   private _currentExport: Export | null = null;
   private _currentTrackName: string | null = null;
+  /** Whether the graph is in focused mode (show only selected track's neighbourhood). */
+  private _focused = true;
 
   /** The track name most recently passed to render(), or null before first render. */
   get currentTrackName(): string | null {
@@ -130,6 +137,11 @@ export class WorkPlanPanel {
    * @param selectedTrackName - The track to highlight and show in the detail panel.
    */
   render(exp: Export, selectedTrackName: string): void {
+    // Reset focus to true whenever a new track is selected.
+    if (selectedTrackName !== this._currentTrackName) {
+      this._focused = true;
+    }
+
     this._currentExport = exp;
     this._currentTrackName = selectedTrackName;
 
@@ -147,7 +159,7 @@ export class WorkPlanPanel {
       .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "dist", MERMAID_FILE))
       .toString();
 
-    const graphDef = toMermaid(exp, selectedTrackName);
+    const graphDef = toMermaid(exp, selectedTrackName, { focus: this._focused });
     const detailHtml = renderDetail(track);
 
     const html = buildHtml({
@@ -158,6 +170,7 @@ export class WorkPlanPanel {
       detailHtml,
       trackName: selectedTrackName,
       isModule: false, // UMD bundle → global mermaid
+      focused: this._focused,
     });
 
     webview.html = html;
@@ -176,6 +189,15 @@ export class WorkPlanPanel {
       case "selectTrack": {
         if (this._currentExport) {
           this.render(this._currentExport, raw.name);
+        }
+        break;
+      }
+      case "setFocus": {
+        this._focused = raw.focus;
+        if (this._currentExport && this._currentTrackName) {
+          // Re-render the current track. Safe to delegate: the track is
+          // unchanged, so render()'s _focused reset guard does not fire.
+          this.render(this._currentExport, this._currentTrackName);
         }
         break;
       }
@@ -245,6 +267,8 @@ function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
         && (msg["number"] as number) > 0;
+    case "setFocus":
+      return typeof msg["focus"] === "boolean";
     default:
       return false;
   }

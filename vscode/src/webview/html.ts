@@ -32,6 +32,13 @@ export interface WebviewHtmlOptions {
    * The flag is kept for forward-compatibility and test coverage.
    */
   isModule: boolean;
+  /**
+   * Whether the graph is currently in focused mode (showing only the selected
+   * track's dependency neighbourhood).
+   * true  → button label is "Show full map"  (click reveals full graph)
+   * false → button label is "Focus on track" (click zooms in on selection)
+   */
+  focused: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +57,7 @@ export interface WebviewHtmlOptions {
  *  - trackName is escaped here at the call-site boundary.
  */
 export function buildHtml(o: WebviewHtmlOptions): string {
-  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule } = o;
+  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused } = o;
   const trackNameEsc = esc(o.trackName);
 
   // CSP: no network; scripts only via nonce or from cspSource; wasm for mermaid.
@@ -85,13 +92,27 @@ mermaid.run();
 </script>`;
   }
 
+  // Toggle button label depends on focused state.
+  const toggleLabel = focused ? "Show full map" : "Focus on track";
+  const nextFocus = focused ? "false" : "true";
+
   // Message-passing script: click handlers → postMessage to extension host.
+  // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the focus
+  // toggle wiring lives here alongside the track/issue handlers.
   const messagingScript = `<script nonce="${nonce}">
 (function () {
   var vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
 
   function post(msg) {
     if (vscode) { vscode.postMessage(msg); }
+  }
+
+  // Focus toggle button
+  var btn = document.getElementById("work-plan-focus-toggle");
+  if (btn) {
+    btn.addEventListener("click", function () {
+      post({ type: "setFocus", focus: ${nextFocus} });
+    });
   }
 
   // Track selector buttons
@@ -154,6 +175,25 @@ mermaid.run();
     }
     h1 { font-size: 1.1em; margin: 0 0 12px 0; }
     h2 { font-size: 1em; margin: 16px 0 8px 0; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    .graph-header {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 16px 0 8px 0;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+    }
+    .graph-header h2 { margin: 0; border: none; padding: 0; }
+    .focus-toggle {
+      font-size: 0.8em;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--link);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
     .mermaid {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -216,7 +256,10 @@ mermaid.run();
 <body>
   <h1>Track: ${trackNameEsc}</h1>
 
-  <h2>Dependency graph</h2>
+  <div class="graph-header">
+    <h2>Dependency graph</h2>
+    <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
+  </div>
   <pre class="mermaid">${graphDef}</pre>
 
   <h2>Detail</h2>
