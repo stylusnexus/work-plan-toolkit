@@ -1,0 +1,85 @@
+{
+  "name": "work-plan-viewer",
+  "displayName": "Work Plan",
+  "publisher": "stylusnexus",
+  "version": "0.1.0",
+  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks) and Mermaid dependency graph.",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:workPlan.tree"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "workPlan",
+          "title": "Work Plan",
+          "icon": "media/work-plan.svg"
+        }
+      ]
+    },
+    "views": {
+      "workPlan": [
+        {
+          "id": "workPlan.tree",
+          "name": "Tracks"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "workPlan.refresh",
+        "title": "Work Plan: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "workPlan.openTrack",
+        "title": "Open Track"
+      },
+      {
+        "command": "workPlan.openIssue",
+        "title": "Open Issue"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "workPlan.refresh",
+          "when": "view == workPlan.tree",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Work Plan",
+      "properties": {
+        "workPlan.cliPath": {
+          "type": "string",
+          "default": "work-plan",
+          "description": "Path to the work-plan CLI launcher (on PATH by default)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit -p ./",
+    "test": "node --test --experimental-strip-types --no-warnings=MODULE_TYPELESS_PACKAGE_JSON \"src/**/*.test.ts\"",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}
