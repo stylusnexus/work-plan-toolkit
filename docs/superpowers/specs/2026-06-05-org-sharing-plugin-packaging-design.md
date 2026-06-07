@@ -242,33 +242,41 @@ verified live). **CI gate:** `claude plugin validate --strict <plugin>` runs on 
 
 ### Marketplace — one shared index (spike-verified for BOTH hosts)
 
-New **public** repo `stylusnexus/agent-plugins` with a **single** index that both hosts read:
+New **public** repo `stylusnexus/agent-plugins` with **two index files** — one per host:
 
 ```
 agent-plugins/
-└── .claude-plugin/marketplace.json   ← Claude reads natively; Codex reads it legacy-compatible
+├── .claude-plugin/marketplace.json    ← Claude  (source: github, repo)
+└── .agents/plugins/marketplace.json   ← Codex   (source: url + policy + category)
 ```
 
 ```json
-{
-  "name": "stylus-nexus",
-  "owner": { "name": "Stylus Nexus" },
+// .claude-plugin/marketplace.json (Claude)
+{ "name": "stylus-nexus", "owner": { "name": "Stylus Nexus" },
   "description": "Stylus Nexus plugins for Claude Code + Codex.",
-  "plugins": [
-    { "name": "work-plan",
-      "source": { "source": "github", "repo": "stylusnexus/work-plan-toolkit", "ref": "<release-tag>" },
-      "description": "Track-aware daily planning over GitHub issues, plus plan-status doc/plan liveness." }
-  ]
-}
+  "plugins": [ { "name": "work-plan",
+    "source": { "source": "github", "repo": "stylusnexus/work-plan-toolkit", "ref": "<tag>" },
+    "description": "…" } ] }
+
+// .agents/plugins/marketplace.json (Codex)
+{ "name": "stylus-nexus", "owner": { "name": "Stylus Nexus" },
+  "description": "Stylus Nexus plugins for Claude Code + Codex.",
+  "plugins": [ { "name": "work-plan",
+    "source": { "source": "url", "url": "https://github.com/stylusnexus/work-plan-toolkit.git", "ref": "<tag>" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+    "category": "Productivity", "description": "…" } ] }
 ```
 
-**Spike result:** a single `.claude-plugin/marketplace.json` installed end-to-end on **Claude**
-(`marketplace add` → `install` → `details`) **and** on **Codex** (`codex plugin marketplace add` →
-`codex plugin add work-plan@stylus-nexus` → installed/enabled). **One index, no second file** — the
-earlier "fallback second index" idea is dropped (it also contradicted the locked single-index
-decision). The `description` field is required to avoid a validate warning. Note: a **local** test
-marketplace uses a relative-path `source` (`"./work-plan"`); the published one uses the `github`
-source above.
+**CORRECTION (verified at publish, 2026-06-07):** the earlier "one index serves both hosts" claim is
+**FALSE for a published (git) source.** Codex reads the `.claude-plugin/marketplace.json` *location*
+legacy-compatibly, but **cannot parse Claude's `{source: github, repo}` plugin-source** — `codex
+plugin list` showed nothing and `codex plugin add` returned "plugin not found." Codex needs its **own**
+`.agents/plugins/marketplace.json` with its native schema (`source: url`/`git-subdir` + `policy` +
+`category`). The spike's "Codex installed from one index" used a *relative-path local* source, which
+Codex *does* parse — masking the github-source gap. With both index files present and pinned to the
+same tag, **both hosts install end-to-end** (verified: Claude `/plugin update` → `2026.06.07+46f9db9`;
+`codex plugin add work-plan@stylus-nexus` → `2026.06.07+46f9db9`). The `description` field is required
+on the Claude index to avoid a validate warning.
 
 **Rollback / mutable-`main` safety:** the marketplace pins a **release tag** (`ref: <tag>`), not bare
 `main`, so a bad commit on `main` does not auto-ship. **Release ordering (review fix):** merge to
