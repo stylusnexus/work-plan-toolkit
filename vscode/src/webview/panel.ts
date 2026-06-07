@@ -176,6 +176,14 @@ export class WorkPlanPanel {
     webview.html = html;
   }
 
+  /**
+   * Renders an empty-state message in the panel.
+   * Used when a lens filters out every track while the panel is open.
+   */
+  renderEmpty(message: string): void {
+    this._panel.webview.html = this._buildEmptyHtml(message);
+  }
+
   // ---------------------------------------------------------------------------
   // Message handler
   // ---------------------------------------------------------------------------

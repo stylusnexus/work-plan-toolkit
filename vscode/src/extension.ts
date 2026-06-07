@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
 import { exportJson, makeSpawnRunner, checkVersion, CliError } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
+import type { Lens } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
+import { availableLenses } from "./webview/lenses.ts";
 
 // URL shown in "Update" notification and in CLI-not-found errors.
 const TOOLKIT_URL = "https://github.com/stylusnexus/work-plan-toolkit";
@@ -50,6 +52,84 @@ export function activate(context: vscode.ExtensionContext): void {
             : `Work Plan: refresh failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       });
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.selectView — quick-pick a lens to filter tree + graph.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.selectView", async () => {
+      // Ensure we have data to derive lenses from.
+      if (!provider.rawExport) {
+        try {
+          await provider.refresh();
+        } catch (err: unknown) {
+          const msg =
+            err instanceof CliError
+              ? `Work Plan: ${err.message}`
+              : `Work Plan: failed to load — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+          return;
+        }
+      }
+
+      const raw = provider.rawExport;
+      if (!raw) {
+        vscode.window.showErrorMessage("Work Plan: No data loaded.");
+        return;
+      }
+
+      const lensChoices = availableLenses(raw);
+      const activeLens = provider.activeLens;
+
+      // Build the quick-pick items, marking the active one.
+      type QuickPickLensItem = vscode.QuickPickItem & { lens: Lens };
+      const items: QuickPickLensItem[] = lensChoices.map(c => {
+        const isActive =
+          c.lens.kind === activeLens.kind &&
+          (c.lens.kind === "repo"
+            ? activeLens.kind === "repo" && c.lens.repo === activeLens.repo
+            : c.lens.kind === "milestone"
+            ? activeLens.kind === "milestone" && c.lens.milestone === activeLens.milestone
+            : true);
+        return {
+          label: c.label,
+          description: isActive ? "active" : undefined,
+          lens: c.lens,
+        };
+      });
+
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: "Filter the Work Plan view",
+      });
+
+      if (!pick) {
+        return;
+      }
+
+      provider.setLens(pick.lens);
+
+      // If the panel is open, re-render it from the (now-filtered) export.
+      const panel = WorkPlanPanel.getCurrent();
+      const filteredExp = provider.currentExport;
+      if (panel && filteredExp) {
+        const currentTrack = panel.currentTrackName;
+        // If the current track was filtered out, fall back to the first visible one.
+        const trackStillVisible =
+          currentTrack !== null &&
+          filteredExp.tracks.some(t => t.name === currentTrack);
+        const trackToRender = trackStillVisible
+          ? currentTrack!
+          : filteredExp.tracks[0]?.name ?? null;
+        if (trackToRender) {
+          panel.render(filteredExp, trackToRender);
+        } else {
+          // Lens filtered out every track — replace stale content with an empty state.
+          panel.renderEmpty("No tracks match the selected view.");
+        }
+      }
     }),
   );
 

@@ -2,9 +2,13 @@ import * as vscode from "vscode";
 import type { Export } from "./model.ts";
 import { buildTree, shouldExpandRepos } from "./treeModel.ts";
 import type { RepoNode, TrackNode, StatusCategory } from "./treeModel.ts";
+import { applyLens } from "./webview/lenses.ts";
+import type { Lens } from "./webview/lenses.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
 export type { RepoNode, TrackNode };
+// Re-export Lens so extension.ts only needs to import from tree.ts.
+export type { Lens };
 
 // ---------------------------------------------------------------------------
 // Icon helper (pure mapping — kept in tree.ts because it references vscode)
@@ -39,22 +43,49 @@ export class WorkPlanTreeProvider
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private cache: Export | null = null;
+  private _filteredCache: Export | null = null;
   private roots: RepoNode[] = [];
+  private _activeLens: Lens = { kind: "all" };
 
   constructor(private readonly load: () => Promise<Export>) {}
 
-  /** Returns the last successfully loaded export, or null before first refresh. */
+  /**
+   * Returns the lens-filtered export (what the tree and panel currently show).
+   * Returns null before first refresh. Cached — computed once per refresh/setLens.
+   */
   get currentExport(): Export | null {
+    return this._filteredCache;
+  }
+
+  /** Returns the raw unfiltered export. Use to populate lens choices. */
+  get rawExport(): Export | null {
     return this.cache;
+  }
+
+  /** Returns the currently active lens. */
+  get activeLens(): Lens {
+    return this._activeLens;
+  }
+
+  /**
+   * Applies a new lens and re-renders the tree.
+   * Does not re-fetch from the CLI — works off the cached export.
+   */
+  setLens(lens: Lens): void {
+    this._activeLens = lens;
+    this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
+    this.roots = this._filteredCache ? buildTree(this._filteredCache) : [];
+    this._onDidChangeTreeData.fire();
   }
 
   /**
    * Fetches fresh data from the CLI and fires a tree refresh.
-   * Errors propagate to the caller (extension.ts / Task 8 wraps with showErrorMessage).
+   * Errors propagate to the caller (extension.ts wraps with showErrorMessage).
    */
   async refresh(): Promise<void> {
     this.cache = await this.load();
-    this.roots = buildTree(this.cache);
+    this._filteredCache = applyLens(this.cache, this._activeLens);
+    this.roots = buildTree(this._filteredCache);
     this._onDidChangeTreeData.fire();
   }
 
