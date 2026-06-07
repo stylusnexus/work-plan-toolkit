@@ -103,3 +103,9 @@ jobs:
           # mode, which can't encode unicode chars used in _print_help().
           PYTHONUTF8: "1"
         run: python -m unittest discover tests
+
+      # The bin/work-plan launcher is a bash script; this test execs it, so it
+      # runs on Linux/macOS only (Windows uses bin/work-plan.cmd, not covered here).
+      - name: Run bin/work-plan launcher test (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: python3 tests/test_bin_wrapper.py

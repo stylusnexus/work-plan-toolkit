@@ -196,30 +196,49 @@ The shims are **per-project** — copy them into each repo where you want the wo
 
 ## Install
 
-**macOS / Linux / WSL:**
-```bash
-git clone <this-repo> work-plan-toolkit
-cd work-plan-toolkit
-./install.sh
+Pick the path for your tool. All three install the same CLI + skills.
+
+### Claude Code (recommended) — plugin, easy updates
+
+```
+/plugin marketplace add stylusnexus/agent-plugins
+/plugin install work-plan@stylus-nexus
 ```
 
-**Windows (native PowerShell):**
-```powershell
-git clone <this-repo> work-plan-toolkit
-cd work-plan-toolkit
-.\install.ps1
+Commands are namespaced under the plugin: `/work-plan:brief`, `/work-plan:handoff`,
+`/work-plan:orient`, `/work-plan:hygiene`, `/work-plan:status`, and
+`/work-plan:run <subcommand>` for everything else. Update with
+`/plugin update work-plan@stylus-nexus`. Works in the CLI and the VS Code / JetBrains extensions.
+
+### Codex — plugin
+
 ```
+codex plugin marketplace add stylusnexus/agent-plugins
+codex plugin add work-plan@stylus-nexus
+```
+
+### Cursor / direct / other — script
+
+```bash
+git clone <this-repo> work-plan-toolkit
+cd work-plan-toolkit && ./install.sh          # macOS / Linux / WSL
+# or, on Windows native PowerShell:  .\install.ps1
+# or, for Codex's skills dir:        ./install.sh --target=$HOME/.agents
+```
+
+Gives the single bare `/work-plan <subcommand>` (no namespace). Re-run after `git pull` to refresh
+(the plugin paths above update themselves).
 
 The installer:
 
 - **Copies** (not symlinks — for Windows compatibility) `skills/work-plan` and `skills/repo-activity-summary` into `~/.claude/skills/`
-- Copies `commands/work-plan.md` into `~/.claude/commands/`
-- Creates `~/.claude/work-plan/config.yml` from the bundled template (only if no config exists), with `notes_root` pointing at the toolkit's bundled `notes/` folder so it works out of the box
+- Installs the `work-plan` launcher (`bin/work-plan` + `bin/work-plan.cmd` on Windows) and copies the standalone dispatcher (`installer/work-plan.md`) into `~/.claude/commands/work-plan.md` (the per-verb suite is plugin-only)
+- **Self-seeds** `~/.claude/work-plan/config.yml` on first run if absent (one config home for every install mode), with `notes_root` at `~/.claude/work-plan/notes`
 - Drops a `.installed-from` marker so `uninstall` knows what's safe to remove
 
-Re-run `install.sh` (or `install.ps1`) after `git pull` to refresh.
-
 External dependencies (verified by the installer): `gh`, `git`, `yq`, `python3`.
+
+> **Versioning:** releases use CalVer (`YYYY.MM.DD+<sha>`, auto-bumped on deploy and synced into the plugin manifests) — not SemVer.
 
 ### What gets created
 
