@@ -201,6 +201,15 @@ class SlotNonInteractiveTest(unittest.TestCase):
         self.assertEqual(rc, 2)
         mw.assert_not_called()
 
+    def test_move_and_no_move_together_returns_rc2(self):
+        """Passing both --move and --no-move → rc 2, write_file NOT called."""
+        track = _track(name="alpha", repo="ok/repo", issues=[42])
+        rc, mw, out = _drive(["42", "alpha", "--move", "--no-move"], tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 2)
+        mw.assert_not_called()
+        self.assertIn("ERROR", out)
+        self.assertIn("mutually exclusive", out)
+
     # ------------------------------------------------------------------
     # No input() on non-interactive paths
     # ------------------------------------------------------------------

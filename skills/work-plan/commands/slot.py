@@ -38,6 +38,10 @@ def run(args: list[str]) -> int:
         return 2
     target_name = positional[1] if len(positional) > 1 else None
 
+    if "--move" in flags and "--no-move" in flags:
+        print("ERROR: --move and --no-move are mutually exclusive.")
+        return 2
+
     try:
         cfg = load_config()
     except ConfigError as e:
