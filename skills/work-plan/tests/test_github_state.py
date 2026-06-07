@@ -7,7 +7,7 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
-from lib.github_state import fetch_issues, extract_priority, fetch_recent_issues, short_milestone
+from lib.github_state import fetch_issues, extract_priority, fetch_recent_issues, short_milestone, repo_visibility, _VIS_CACHE
 
 
 class ExtractPriorityTest(unittest.TestCase):
@@ -67,6 +67,33 @@ class FetchRecentIssuesTest(unittest.TestCase):
         self.assertEqual(result[0]["number"], 9999)
         called_args = mock_run.call_args[0][0]
         self.assertIn("created:>=2026-04-27", " ".join(called_args))
+
+
+class RepoVisibilityTest(unittest.TestCase):
+    @patch("lib.github_state.subprocess.run")
+    def test_returns_public(self, m):
+        _VIS_CACHE.clear()
+        m.return_value = MagicMock(returncode=0, stdout='{"visibility":"PUBLIC"}')
+        self.assertEqual(repo_visibility("o/r"), "PUBLIC")
+
+    @patch("lib.github_state.subprocess.run")
+    def test_none_on_failure(self, m):
+        _VIS_CACHE.clear()
+        m.return_value = MagicMock(returncode=1, stdout="", stderr="x")
+        self.assertIsNone(repo_visibility("o/r"))
+
+    def test_none_for_empty_repo(self):
+        _VIS_CACHE.clear()
+        self.assertIsNone(repo_visibility(""))
+        self.assertIsNone(repo_visibility(None))
+
+    @patch("lib.github_state.subprocess.run")
+    def test_memoizes_result(self, m):
+        _VIS_CACHE.clear()
+        m.return_value = MagicMock(returncode=0, stdout='{"visibility":"PRIVATE"}')
+        repo_visibility("o/r")
+        repo_visibility("o/r")
+        self.assertEqual(m.call_count, 1)
 
 
 if __name__ == "__main__":

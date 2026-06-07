@@ -43,6 +43,30 @@ def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = Non
     return json.loads(proc.stdout) if proc.stdout.strip() else []
 
 
+_VIS_CACHE: dict = {}
+
+
+def repo_visibility(repo: str) -> Optional[str]:
+    """Best-effort repo visibility ('PUBLIC'/'PRIVATE') via gh; None if unknown.
+    Memoized per process. Never raises — unknown visibility is a valid answer."""
+    if not repo:
+        return None
+    if repo in _VIS_CACHE:
+        return _VIS_CACHE[repo]
+    proc = subprocess.run(
+        ["gh", "repo", "view", repo, "--json", "visibility"],
+        capture_output=True, text=True,
+    )
+    vis = None
+    if proc.returncode == 0 and proc.stdout.strip():
+        try:
+            vis = json.loads(proc.stdout).get("visibility")
+        except json.JSONDecodeError:
+            vis = None
+    _VIS_CACHE[repo] = vis
+    return vis
+
+
 def extract_priority(labels: list[dict]) -> str:
     label_names = {l["name"] for l in labels}
     for p in PRIORITY_LABELS:
