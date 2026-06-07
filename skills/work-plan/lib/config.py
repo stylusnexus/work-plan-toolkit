@@ -5,24 +5,47 @@ from pathlib import Path
 from typing import Optional
 
 DEFAULT_CONFIG_PATH = Path.home() / ".claude" / "work-plan" / "config.yml"
+DEFAULT_NOTES_ROOT = Path.home() / ".claude" / "work-plan" / "notes"
+
+_SEED_TEMPLATE = (
+    "# work-plan config — auto-seeded on first run. Edit to customize.\n"
+    "# Run /work-plan init-repo <key> --github=<org/repo> to populate repos:.\n"
+    "notes_root: {notes_root}\n"
+    "repos: {{}}\n"
+)
 
 
 class ConfigError(Exception):
     pass
 
 
-def load_config(path: Path = DEFAULT_CONFIG_PATH) -> dict:
-    """Load and validate. Normalizes string-shape repo entries to dicts."""
+def ensure_config(path: Path = DEFAULT_CONFIG_PATH,
+                  notes_root: Path = DEFAULT_NOTES_ROOT) -> bool:
+    """Create a default config.yml (and notes_root dir) if absent.
+
+    Single source of the seed content — install.sh/install.ps1 delegate here, so
+    plugin installs (which run no install hook) and script installs behave
+    identically. `notes_root` is written as an ABSOLUTE path (never a literal
+    `~`, which downstream `Path(...)` would not expand). Returns True if it
+    created the file, False if it already existed.
+    """
+    path = Path(path)
+    if path.exists():
+        return False
+    notes_root = Path(notes_root).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    notes_root.mkdir(parents=True, exist_ok=True)
+    path.write_text(_SEED_TEMPLATE.format(notes_root=notes_root), encoding="utf-8")
+    return True
+
+
+def load_config(path: Path = DEFAULT_CONFIG_PATH,
+                notes_root: Path = DEFAULT_NOTES_ROOT) -> dict:
+    """Load and validate. Self-seeds a default config if absent (no install hook
+    exists for plugin installs). Normalizes string-shape repo entries to dicts."""
     path = Path(path)
     if not path.exists():
-        raise ConfigError(
-            f"config.yml not found at {path}. Create it with:\n"
-            "  notes_root: /Applications/Development/Projects/Project Notes/\n"
-            "  repos:\n"
-            "    <folder-name>:\n"
-            "      github: <org>/<repo>\n"
-            "      local: <absolute-path-to-clone>\n"
-        )
+        ensure_config(path, notes_root)
     text = path.read_text(encoding="utf-8")
     proc = subprocess.run(
         ["yq", "-o=json", "."], input=text,

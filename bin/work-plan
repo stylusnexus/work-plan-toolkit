@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# work-plan CLI launcher. Resolves work_plan.py relative to this wrapper's PARENT
+# (the wrapper lives at <root>/bin/work-plan, so the CLI is <root>/skills/...),
+# then falls back to plugin-root env vars and the install.sh locations.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+for c in \
+  "$root/skills/work-plan/work_plan.py" \
+  "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
+  "${PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
+  "$HOME/.claude/skills/work-plan/work_plan.py" \
+  "$HOME/.agents/skills/work-plan/work_plan.py"; do
+  [ -n "$c" ] && [ -f "$c" ] && exec python3 "$c" "$@"
+done
+echo "work-plan: CLI not found (looked next to bin/.., CLAUDE_PLUGIN_ROOT, PLUGIN_ROOT, ~/.claude, ~/.agents)." >&2
+exit 1

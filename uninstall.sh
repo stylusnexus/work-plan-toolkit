@@ -60,7 +60,7 @@ remove_skill() {
 remove_skill "work-plan"
 remove_skill "repo-activity-summary"
 
-cmd_src="${TOOLKIT_DIR}/commands/work-plan.md"
+cmd_src="${TOOLKIT_DIR}/installer/work-plan.md"
 cmd_dst="${COMMANDS_DIR}/work-plan.md"
 if [ -f "${cmd_dst}" ] && cmp -s "${cmd_src}" "${cmd_dst}"; then
     rm -f "${cmd_dst}"
@@ -70,6 +70,11 @@ elif [ -f "${cmd_dst}" ]; then
 else
     ok "command already absent"
 fi
+
+# Remove the bin launcher(s) installed by install.sh
+for f in "${BASE_DIR}/bin/work-plan" "${BASE_DIR}/bin/work-plan.cmd"; do
+    if [ -f "${f}" ]; then rm -f "${f}" && ok "removed $(basename "${f}") launcher"; fi
+done
 
 echo
 bold "Done."

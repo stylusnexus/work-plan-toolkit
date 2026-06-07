@@ -125,8 +125,21 @@ else
     warn "no VERSION file at toolkit root — --version will report 'unknown'"
 fi
 
-# 4. Copy slash command (no marker file — single file)
-cmd_src="${TOOLKIT_DIR}/commands/work-plan.md"
+# 3.6 Install the bin/work-plan launcher (resolves the CLI relative to itself).
+# Plugin installs get bin/ on PATH automatically; for install.sh we drop the
+# launcher next to the skills tree and (best-effort) into the target's bin/.
+if [ -f "${TOOLKIT_DIR}/bin/work-plan" ]; then
+    install -m 0755 "${TOOLKIT_DIR}/bin/work-plan" "${SKILLS_DIR}/work-plan/work-plan" 2>/dev/null || true
+    mkdir -p "${BASE_DIR}/bin"
+    install -m 0755 "${TOOLKIT_DIR}/bin/work-plan" "${BASE_DIR}/bin/work-plan" \
+        && ok "installed bin/work-plan launcher (${BASE_DIR}/bin)" \
+        || warn "could not install bin/work-plan launcher"
+fi
+
+# 4. Copy the standalone dispatcher command (bare /work-plan). NOTE: only the
+# single dispatcher is copied — the per-verb suite under commands/ is plugin-only
+# (namespaced /work-plan:brief …); copying it here would create bare /brief etc.
+cmd_src="${TOOLKIT_DIR}/installer/work-plan.md"
 cmd_dst="${COMMANDS_DIR}/work-plan.md"
 if [ -e "${cmd_dst}" ]; then
     if cmp -s "${cmd_src}" "${cmd_dst}"; then
@@ -146,18 +159,19 @@ else
     ok "copied command"
 fi
 
-# 5. Seed config — only if it doesn't already exist
-if [ -f "${CONFIG_FILE}" ]; then
-    ok "config already exists, leaving alone (${CONFIG_FILE})"
+# 5. Seed config via the CLI — single source of seed content (see lib/config.py).
+# The CLI always reads/writes ONE config home (~/.claude/work-plan/config.yml),
+# regardless of install target, so we delegate rather than write it here. A
+# config-dependent command (`list`) triggers load_config → ensure_config.
+CANON_CONFIG="${HOME}/.claude/work-plan/config.yml"
+if [ -f "${CANON_CONFIG}" ]; then
+    ok "config already exists, leaving alone (${CANON_CONFIG})"
 else
-    abs_notes="${TOOLKIT_DIR}/notes"
-    cat > "${CONFIG_FILE}" <<EOF
-# work-plan config — created by install.sh. Edit this file to customize.
-# Run /work-plan init-repo <key> --github=<org/repo> to populate repos:.
-notes_root: ${abs_notes}
-repos: {}
-EOF
-    ok "seeded ${CONFIG_FILE} (notes_root: ${abs_notes})"
+    if python3 "${SKILLS_DIR}/work-plan/work_plan.py" list >/dev/null 2>&1; then
+        ok "seeded ${CANON_CONFIG}"
+    else
+        warn "could not seed config via the CLI — check python3 (${CANON_CONFIG})"
+    fi
 fi
 
 # 6. Smoke test
