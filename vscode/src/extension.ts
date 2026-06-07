@@ -577,7 +577,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!state) return; // cancelled
 
         const noteRaw = await vscode.window.showInputBox({
-          prompt: "Wrap-up note (optional — press Enter to skip, Escape to cancel)",
+          prompt: "Wrap-up note (optional — press Enter or Escape to skip)",
         });
         // undefined = Esc = proceed with no note (don't hard-cancel on optional field)
         const note = noteRaw && noteRaw.trim() !== "" ? noteRaw.trim() : undefined;
