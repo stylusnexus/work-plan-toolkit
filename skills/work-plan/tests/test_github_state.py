@@ -1,4 +1,5 @@
 """Tests for GitHub state — uses mocks (gh requires auth)."""
+import json
 import unittest
 from unittest.mock import patch, MagicMock, call
 import sys
@@ -9,6 +10,7 @@ sys.path.insert(0, str(SKILL_ROOT))
 
 from lib.github_state import (
     fetch_issues, fetch_issue, fetch_issues_concurrent,
+    fetch_repo_issues_graphql, fetch_export_issues, _normalize_gql_node,
     extract_priority, fetch_recent_issues, short_milestone,
     repo_visibility, _VIS_CACHE,
 )
@@ -234,6 +236,205 @@ class FetchIssuesAfterRefactorTest(unittest.TestCase):
 
     def test_empty_returns_empty(self):
         self.assertEqual(fetch_issues("org/repo", []), [])
+
+
+def _gql_response(nodes: dict) -> str:
+    """Build a GraphQL JSON response string from a {alias: node|None} dict."""
+    return json.dumps({"data": {"repository": nodes}})
+
+
+# A canned mixed response: an Issue, a MERGED PullRequest, and a null node.
+_GQL_NODES = {
+    "i487": {"number": 487, "title": "An issue", "state": "OPEN",
+             "assignees": {"nodes": [{"login": "x"}]},
+             "milestone": {"title": "v1.0 — gate"}},
+    "i99": {"number": 99, "title": "A PR", "state": "MERGED",
+            "assignees": {"nodes": []}, "milestone": None},
+    "i1556": None,
+}
+
+
+class NormalizeGqlNodeTest(unittest.TestCase):
+    """Unit tests for _normalize_gql_node()."""
+
+    def test_none_node_returns_none(self):
+        self.assertIsNone(_normalize_gql_node(None))
+
+    def test_issue_node_normalized(self):
+        out = _normalize_gql_node(_GQL_NODES["i487"])
+        self.assertEqual(out["number"], 487)
+        self.assertEqual(out["title"], "An issue")
+        self.assertEqual(out["state"], "OPEN")
+        self.assertEqual(out["assignees"], [{"login": "x"}])
+        self.assertEqual(out["milestone"], {"title": "v1.0 — gate"})
+
+    def test_pr_state_preserved(self):
+        out = _normalize_gql_node(_GQL_NODES["i99"])
+        self.assertEqual(out["state"], "MERGED")
+        self.assertEqual(out["assignees"], [])
+        self.assertIsNone(out["milestone"])
+
+    def test_missing_milestone_is_none(self):
+        out = _normalize_gql_node({"number": 1, "title": "t", "state": "OPEN"})
+        self.assertIsNone(out["milestone"])
+
+
+class FetchRepoIssuesGraphqlTest(unittest.TestCase):
+    """Unit tests for the batched GraphQL primitive fetch_repo_issues_graphql()."""
+
+    @patch("lib.github_state.subprocess.run")
+    def test_returns_normalized_keyed_dict_null_omitted(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout=_gql_response(_GQL_NODES))
+        result = fetch_repo_issues_graphql("org/repo", [487, 99, 1556])
+        # null i1556 omitted
+        self.assertEqual(set(result.keys()), {487, 99})
+        # normalized shapes
+        self.assertEqual(result[487]["assignees"], [{"login": "x"}])
+        self.assertEqual(result[487]["milestone"], {"title": "v1.0 — gate"})
+        # PR state preserved
+        self.assertEqual(result[99]["state"], "MERGED")
+        self.assertIsNone(result[99]["milestone"])
+
+    @patch("lib.github_state.subprocess.run")
+    def test_uses_gh_api_graphql(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout=_gql_response({}))
+        fetch_repo_issues_graphql("org/repo", [1])
+        args = mock_run.call_args[0][0]
+        self.assertEqual(args[:3], ["gh", "api", "graphql"])
+
+    @patch("lib.github_state.subprocess.run")
+    def test_chunks_into_multiple_calls(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout=_gql_response({}))
+        # 5 numbers, chunk=2 → 3 chunks → 3 subprocess calls
+        fetch_repo_issues_graphql("org/repo", [1, 2, 3, 4, 5], chunk=2)
+        self.assertEqual(mock_run.call_count, 3)
+
+    @patch("lib.github_state.subprocess.run")
+    def test_nonzero_returncode_chunk_yields_empty(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="err")
+        self.assertEqual(fetch_repo_issues_graphql("org/repo", [1, 2]), {})
+
+    @patch("lib.github_state.subprocess.run")
+    def test_empty_stdout_chunk_yields_empty(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="   ")
+        self.assertEqual(fetch_repo_issues_graphql("org/repo", [1, 2]), {})
+
+    @patch("lib.github_state.subprocess.run")
+    def test_non_json_chunk_yields_empty(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="not-json{{{")
+        self.assertEqual(fetch_repo_issues_graphql("org/repo", [1, 2]), {})
+
+    @patch("lib.github_state.subprocess.run", side_effect=FileNotFoundError("gh not found"))
+    def test_subprocess_exception_yields_empty(self, _):
+        self.assertEqual(fetch_repo_issues_graphql("org/repo", [1, 2]), {})
+
+    @patch("lib.github_state.subprocess.run")
+    def test_invalid_repo_no_gh_call(self, mock_run):
+        result = fetch_repo_issues_graphql("not-a-repo", [1, 2])
+        self.assertEqual(result, {})
+        mock_run.assert_not_called()
+
+    @patch("lib.github_state.subprocess.run")
+    def test_empty_numbers_no_gh_call(self, mock_run):
+        result = fetch_repo_issues_graphql("org/repo", [])
+        self.assertEqual(result, {})
+        mock_run.assert_not_called()
+
+    @patch("lib.github_state.subprocess.run")
+    def test_non_int_numbers_yields_empty(self, mock_run):
+        self.assertEqual(fetch_repo_issues_graphql("org/repo", ["not-a-number"]), {})
+        mock_run.assert_not_called()
+
+
+class FetchExportIssuesTest(unittest.TestCase):
+    """Unit tests for the GraphQL-primary + per-issue fallback fetch_export_issues()."""
+
+    def _make_map(self, *issues):
+        """Build a {number: issue} map from a list of issue dicts."""
+        return {i["number"]: i for i in issues}
+
+    _ISSUE_1 = {"number": 1, "title": "First", "state": "OPEN", "assignees": [], "milestone": None}
+    _ISSUE_2 = {"number": 2, "title": "Second", "state": "CLOSED", "assignees": [], "milestone": None}
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_graphql_called_once_per_repo(self, mock_gql, mock_fic):
+        """fetch_repo_issues_graphql must be called ONCE per repo, not once per issue."""
+        mock_gql.return_value = self._make_map(self._ISSUE_1, self._ISSUE_2)
+        mock_fic.return_value = {}
+        fetch_export_issues({"org/repo": [1, 2]})
+        self.assertEqual(mock_gql.call_count, 1)
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_result_keyed_by_repo_number_tuple(self, mock_gql, mock_fic):
+        mock_gql.return_value = self._make_map(self._ISSUE_1, self._ISSUE_2)
+        mock_fic.return_value = {}
+        result = fetch_export_issues({"org/repo": [1, 2]})
+        self.assertIn(("org/repo", 1), result)
+        self.assertIn(("org/repo", 2), result)
+        self.assertEqual(result[("org/repo", 1)]["title"], "First")
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_missing_number_triggers_fallback(self, mock_gql, mock_fic):
+        """A number absent from the GraphQL result goes to fetch_issues_concurrent."""
+        mock_gql.return_value = self._make_map(self._ISSUE_1)  # only issue 1
+        mock_fic.return_value = {("org/repo", 99): {"number": 99, "title": "Issue99",
+                                                     "state": "CLOSED", "assignees": [],
+                                                     "milestone": None}}
+        result = fetch_export_issues({"org/repo": [1, 99]})
+        self.assertIn(("org/repo", 1), result)        # from GraphQL
+        self.assertIn(("org/repo", 99), result)       # from fallback
+        self.assertEqual(result[("org/repo", 99)]["title"], "Issue99")
+        mock_fic.assert_called_once()
+        fallback_jobs = list(mock_fic.call_args[0][0])
+        self.assertEqual(fallback_jobs, [("org/repo", 99)])
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_no_fallback_when_graphql_covers_all(self, mock_gql, mock_fic):
+        mock_gql.return_value = self._make_map(self._ISSUE_1, self._ISSUE_2)
+        mock_fic.return_value = {}
+        fetch_export_issues({"org/repo": [1, 2]})
+        mock_fic.assert_not_called()
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_multiple_repos_graphql_called_once_each(self, mock_gql, mock_fic):
+        def _side(repo, numbers, max_workers=8):
+            if repo == "org/repoA":
+                return self._make_map(self._ISSUE_1)
+            return self._make_map(self._ISSUE_2)
+        mock_gql.side_effect = _side
+        mock_fic.return_value = {}
+        result = fetch_export_issues({"org/repoA": [1], "org/repoB": [2]})
+        self.assertEqual(mock_gql.call_count, 2)
+        self.assertIn(("org/repoA", 1), result)
+        self.assertIn(("org/repoB", 2), result)
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_empty_input_returns_empty(self, mock_gql, mock_fic):
+        result = fetch_export_issues({})
+        self.assertEqual(result, {})
+        mock_gql.assert_not_called()
+        mock_fic.assert_not_called()
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_repo_with_empty_numbers_skipped(self, mock_gql, mock_fic):
+        result = fetch_export_issues({"org/repo": []})
+        self.assertEqual(result, {})
+        mock_gql.assert_not_called()
+        mock_fic.assert_not_called()
+
+    @patch("lib.github_state.fetch_issues_concurrent")
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    def test_none_repo_skipped(self, mock_gql, mock_fic):
+        result = fetch_export_issues({None: [1, 2]})
+        self.assertEqual(result, {})
+        mock_gql.assert_not_called()
 
 
 if __name__ == "__main__":

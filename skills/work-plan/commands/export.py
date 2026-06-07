@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks
-from lib.github_state import fetch_issues_concurrent, repo_visibility
+from lib.github_state import fetch_export_issues, repo_visibility
 from lib.export_model import build_export
 from lib.prompts import parse_flags
 
@@ -17,18 +17,23 @@ def run(args: list[str]) -> int:
         print(json.dumps({"error": str(e)})); return 1
     tracks = [t for t in discover_tracks(cfg) if t.has_frontmatter]
 
-    # Build a flat, deduped list of (repo, number) jobs across all tracks.
-    seen: dict[tuple, None] = {}
+    # Build repo_to_numbers: {repo: [number, ...]} deduped per repo, first-seen order.
+    repo_to_numbers: dict[str, list[int]] = {}
     for t in tracks:
         if not t.repo:
             continue
         nums = (t.meta.get("github", {}).get("issues")) or []
+        if not nums:
+            continue
+        seen_for_repo = repo_to_numbers.setdefault(t.repo, [])
+        seen_set = set(seen_for_repo)
         for n in nums:
-            seen[(t.repo, n)] = None
-    jobs = list(seen.keys())
+            if n not in seen_set:
+                seen_for_repo.append(n)
+                seen_set.add(n)
 
-    # Fetch all issues concurrently in a single pass.
-    issue_map = fetch_issues_concurrent(jobs)
+    # Bulk-fetch per repo (one gh call per repo) with per-issue fallback for misses.
+    issue_map = fetch_export_issues(repo_to_numbers)
 
     # Reassemble per-track lists, preserving each track's declared issue order.
     issues_by_track: dict[str, list] = {}

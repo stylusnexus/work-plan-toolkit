@@ -1,9 +1,9 @@
 # tests/test_export_command.py
-"""Tests for the export command's concurrent fetch path."""
+"""Tests for the export command's bulk fetch path."""
 import sys, json, unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
@@ -29,21 +29,15 @@ def _track(name, repo, issues, *, has_frontmatter=True, status="active"):
 
 
 _ISSUE_A = {"number": 1, "title": "Alpha", "state": "OPEN",
-            "labels": [], "milestone": None, "url": "u/1",
-            "closedAt": None, "body": "", "updatedAt": "2026-01-01T00:00:00Z",
-            "assignees": [{"login": "eve"}]}
+            "assignees": [{"login": "eve"}], "milestone": None}
 _ISSUE_B = {"number": 2, "title": "Beta", "state": "CLOSED",
-            "labels": [], "milestone": None, "url": "u/2",
-            "closedAt": "2026-01-02T00:00:00Z", "body": "", "updatedAt": "2026-01-02T00:00:00Z",
-            "assignees": []}
+            "assignees": [], "milestone": None}
 _ISSUE_C = {"number": 3, "title": "Gamma", "state": "OPEN",
-            "labels": [], "milestone": None, "url": "u/3",
-            "closedAt": None, "body": "", "updatedAt": "2026-01-03T00:00:00Z",
-            "assignees": []}
+            "assignees": [], "milestone": None}
 
 # Shared issue key — issue 1 is referenced by BOTH tracks
 _SHARED_REPO = "org/shared"
-_CONCURRENT_MAP = {
+_EXPORT_MAP = {
     (_SHARED_REPO, 1): _ISSUE_A,
     (_SHARED_REPO, 2): _ISSUE_B,
     (_SHARED_REPO, 3): _ISSUE_C,
@@ -53,7 +47,7 @@ _CONCURRENT_MAP = {
 class ExportRunJsonTest(unittest.TestCase):
     """Drive export.run(["--json"]) with mocked deps; verify schema + assembly."""
 
-    def _run_with_mocks(self, tracks, concurrent_map, vis=None):
+    def _run_with_mocks(self, tracks, export_map, vis=None):
         """Helper: run the export command with controlled mocks, capture stdout."""
         import io
         from contextlib import redirect_stdout
@@ -62,25 +56,25 @@ class ExportRunJsonTest(unittest.TestCase):
 
         with patch("commands.export.load_config", return_value={}), \
              patch("commands.export.discover_tracks", return_value=tracks), \
-             patch("commands.export.fetch_issues_concurrent", return_value=concurrent_map) as mock_fic, \
+             patch("commands.export.fetch_export_issues", return_value=export_map) as mock_fei, \
              patch("commands.export.repo_visibility", side_effect=lambda r: vis.get(r)), \
              patch("commands.export.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
             buf = io.StringIO()
             with redirect_stdout(buf):
                 rc = export_cmd.run(["--json"])
-            return rc, json.loads(buf.getvalue()), mock_fic
+            return rc, json.loads(buf.getvalue()), mock_fei
 
     def test_schema_is_1(self):
         tracks = [_track("alpha", _SHARED_REPO, [1, 2])]
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         self.assertEqual(out["schema"], 1)
 
     def test_track_issues_assembled_in_declared_order(self):
         # Track declares [2, 1] — output order must match declaration, not map-insertion order
         tracks = [_track("alpha", _SHARED_REPO, [2, 1])]
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         issue_nums = [i["number"] for i in out["tracks"][0]["issues"]]
         self.assertEqual(issue_nums, [2, 1])
@@ -90,30 +84,32 @@ class ExportRunJsonTest(unittest.TestCase):
             _track("alpha", _SHARED_REPO, [1, 2]),
             _track("beta",  _SHARED_REPO, [1, 3]),
         ]
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         alpha_nums = {i["number"] for i in out["tracks"][0]["issues"]}
         beta_nums  = {i["number"] for i in out["tracks"][1]["issues"]}
         self.assertIn(1, alpha_nums)
         self.assertIn(1, beta_nums)
 
-    def test_deduped_jobs_passed_to_concurrent(self):
-        # Issues 1 is shared by both tracks → jobs must contain it only ONCE
+    def test_deduped_repo_to_numbers_passed_to_bulk_fetch(self):
+        """Issues shared by two tracks in the same repo should be in the
+        repo_to_numbers dict only ONCE per repo (deduplication)."""
         tracks = [
             _track("alpha", _SHARED_REPO, [1, 2]),
             _track("beta",  _SHARED_REPO, [1, 3]),
         ]
-        rc, out, mock_fic = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, mock_fei = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
-        jobs_passed = mock_fic.call_args[0][0]  # first positional arg
-        job_list = list(jobs_passed)
-        # (shared_repo, 1) should appear exactly once
-        self.assertEqual(job_list.count((_SHARED_REPO, 1)), 1)
-        # Total unique: 1, 2, 3
-        self.assertEqual(len(job_list), 3)
+        # fetch_export_issues called with repo_to_numbers dict
+        repo_to_numbers = mock_fei.call_args[0][0]
+        nums = repo_to_numbers.get(_SHARED_REPO, [])
+        # issue 1 should appear exactly once
+        self.assertEqual(nums.count(1), 1)
+        # total unique: 1, 2, 3
+        self.assertEqual(sorted(nums), [1, 2, 3])
 
     def test_missing_fetch_result_is_skipped(self):
-        # Issue 99 is in the track but not in the concurrent map (simulates failure)
+        # Issue 99 is in the track but not in the export map (simulates PR/miss)
         track = _track("alpha", _SHARED_REPO, [1, 99])
         partial_map = {(_SHARED_REPO, 1): _ISSUE_A}  # 99 absent
         rc, out, _ = self._run_with_mocks([track], partial_map)
@@ -123,27 +119,27 @@ class ExportRunJsonTest(unittest.TestCase):
 
     def test_track_without_repo_gets_empty_issues(self):
         track = _track("norep", None, [1, 2])
-        rc, out, mock_fic = self._run_with_mocks([track], {})
+        rc, out, mock_fei = self._run_with_mocks([track], {})
         self.assertEqual(rc, 0)
         self.assertEqual(out["tracks"][0]["issues"], [])
-        # No jobs submitted for this track
-        jobs_passed = list(mock_fic.call_args[0][0])
-        self.assertEqual(jobs_passed, [])
+        # repo_to_numbers should be empty (no repo)
+        repo_to_numbers = mock_fei.call_args[0][0]
+        self.assertEqual(repo_to_numbers, {})
 
     def test_track_without_issues_gets_empty_issues(self):
         track = _track("noissues", _SHARED_REPO, [])
-        rc, out, mock_fic = self._run_with_mocks([track], {})
+        rc, out, _ = self._run_with_mocks([track], {})
         self.assertEqual(rc, 0)
         self.assertEqual(out["tracks"][0]["issues"], [])
 
     def test_visibility_included_in_output(self):
         tracks = [_track("alpha", _SHARED_REPO, [1])]
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP, vis={_SHARED_REPO: "PUBLIC"})
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP, vis={_SHARED_REPO: "PUBLIC"})
         self.assertEqual(out["tracks"][0]["visibility"], "PUBLIC")
 
     def test_rollup_counts_correct(self):
         tracks = [_track("alpha", _SHARED_REPO, [1, 2])]  # 1=OPEN, 2=CLOSED
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         rollup = out["tracks"][0]["rollup"]
         self.assertEqual(rollup["open"], 1)
         self.assertEqual(rollup["closed"], 1)
@@ -153,7 +149,7 @@ class ExportRunJsonTest(unittest.TestCase):
             _track("with_fm", _SHARED_REPO, [1], has_frontmatter=True),
             _track("without_fm", _SHARED_REPO, [2], has_frontmatter=False),
         ]
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         track_names = [t["name"] for t in out["tracks"]]
         self.assertIn("with_fm", track_names)
@@ -161,9 +157,49 @@ class ExportRunJsonTest(unittest.TestCase):
 
     def test_output_is_json_serializable(self):
         tracks = [_track("alpha", _SHARED_REPO, [1, 2])]
-        rc, out, _ = self._run_with_mocks(tracks, _CONCURRENT_MAP)
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         json.dumps(out)  # must not raise
+
+    def test_issue_absent_from_map_even_after_fallback_is_omitted(self):
+        """An issue referenced by a track but absent from the returned map
+        (simulating a PR/miss where even the fallback didn't find it) must be
+        silently omitted from that track's issues list."""
+        track = _track("alpha", _SHARED_REPO, [1, 2, 999])
+        partial_map = {(_SHARED_REPO, 1): _ISSUE_A, (_SHARED_REPO, 2): _ISSUE_B}
+        # 999 is not in the map at all
+        rc, out, _ = self._run_with_mocks([track], partial_map)
+        self.assertEqual(rc, 0)
+        issue_nums = [i["number"] for i in out["tracks"][0]["issues"]]
+        self.assertNotIn(999, issue_nums)
+        self.assertIn(1, issue_nums)
+        self.assertIn(2, issue_nums)
+
+    def test_two_repos_deduped_independently(self):
+        """Each repo's number list is deduped independently; a number shared
+        across repos is still fetched once per repo."""
+        repo_a = "org/repoA"
+        repo_b = "org/repoB"
+        tracks = [
+            _track("alpha", repo_a, [1, 2]),
+            _track("beta",  repo_a, [1, 3]),  # issue 1 shared in repoA
+            _track("gamma", repo_b, [1]),     # issue 1 in repoB is a different issue
+        ]
+        export_map = {
+            (repo_a, 1): {"number": 1, "title": "A1", "state": "OPEN", "assignees": [], "milestone": None},
+            (repo_a, 2): {"number": 2, "title": "A2", "state": "OPEN", "assignees": [], "milestone": None},
+            (repo_a, 3): {"number": 3, "title": "A3", "state": "OPEN", "assignees": [], "milestone": None},
+            (repo_b, 1): {"number": 1, "title": "B1", "state": "OPEN", "assignees": [], "milestone": None},
+        }
+        vis = {repo_a: "PUBLIC", repo_b: "PUBLIC"}
+        rc, out, mock_fei = self._run_with_mocks(tracks, export_map, vis=vis)
+        self.assertEqual(rc, 0)
+        repo_to_numbers = mock_fei.call_args[0][0]
+        # repoA: issues 1, 2, 3 — each once
+        self.assertEqual(sorted(repo_to_numbers[repo_a]), [1, 2, 3])
+        self.assertEqual(repo_to_numbers[repo_a].count(1), 1)
+        # repoB: issue 1 — once
+        self.assertEqual(repo_to_numbers[repo_b], [1])
 
 
 class ExportCommandGateTest(unittest.TestCase):
