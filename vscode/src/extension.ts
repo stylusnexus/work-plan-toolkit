@@ -779,7 +779,11 @@ export function activate(context: vscode.ExtensionContext): void {
           await refreshAndRerender();
           vscode.window.showInformationMessage(`Work Plan: notes location set to ${path}`);
           if (outcome.stdout.includes("WARN")) {
-            vscode.window.showWarningMessage(outcome.stdout.trim());
+            // Surface only the WARN line (stdout also carries the ✓ success line).
+            const warnLine = outcome.stdout
+              .split("\n")
+              .find((l) => l.includes("WARN")) ?? outcome.stdout.trim();
+            vscode.window.showWarningMessage(warnLine);
           }
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
