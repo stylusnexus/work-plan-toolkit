@@ -123,5 +123,10 @@ export function applyLens(exp: Export, lens: Lens): Export {
     schema: exp.schema,
     generated_at: exp.generated_at,
     tracks: filteredTracks,
+    // Forward untracked unchanged. The tree always renders from the filtered
+    // export, and buildTree only attaches a repo's untracked issues when that
+    // repo still has a matching (filtered) track — so dropping the field here
+    // would make the Untracked bucket vanish under EVERY lens, including "all".
+    ...(exp.untracked !== undefined && { untracked: exp.untracked }),
   };
 }

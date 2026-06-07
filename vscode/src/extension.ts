@@ -573,9 +573,10 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         const issue = node.issue.number;
 
-        // Build the track list from the current export.
+        // Build the track list from the RAW (unfiltered) export, so an active
+        // lens doesn't hide otherwise-valid target tracks from the picker.
         // Prefer tracks whose repo matches the issue's repo; fall back to all.
-        const exp = provider.currentExport;
+        const exp = provider.rawExport ?? provider.currentExport;
         if (!exp || exp.tracks.length === 0) {
           vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
           return;
