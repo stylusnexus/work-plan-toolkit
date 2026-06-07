@@ -519,6 +519,192 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.slot — slot an issue into a track (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.slot", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const raw = await vscode.window.showInputBox({
+          prompt: `Issue number to slot into ${track}`,
+          validateInput: (v) => {
+            if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
+            return "Enter a positive integer issue number (e.g. 42)";
+          },
+        });
+        if (raw === undefined) return; // cancelled
+
+        const issue = parseInt(raw, 10);
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "slot", track, issue },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: slotted #${issue} into ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: slot failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.close — close a track with a state (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.close", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const state = await vscode.window.showQuickPick(
+          ["shipped", "parked", "abandoned"],
+          { placeHolder: "Close track as…" },
+        );
+        if (!state) return; // cancelled
+
+        const noteRaw = await vscode.window.showInputBox({
+          prompt: "Wrap-up note (optional — press Enter to skip, Escape to cancel)",
+        });
+        // undefined = Esc = proceed with no note (don't hard-cancel on optional field)
+        const note = noteRaw && noteRaw.trim() !== "" ? noteRaw.trim() : undefined;
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "close", track, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: closed ${track} as ${state}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: close failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.newTrack — create a new track (view/title overflow + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.newTrack", async () => {
+      try {
+        // --- Repo selection ---
+        const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
+        const existingRepos = Array.from(
+          new Set(
+            (provider.currentExport?.tracks ?? [])
+              .map(t => t.repo)
+              .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
+          ),
+        );
+
+        type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
+        const repoItems: RepoItem[] = [
+          ...existingRepos.map(r => ({ label: r })),
+          { label: MANUAL_ENTRY_LABEL, isManual: true },
+        ];
+
+        let repo: string | undefined;
+
+        if (existingRepos.length === 0) {
+          // No repos loaded — go straight to manual entry.
+          repo = await vscode.window.showInputBox({
+            prompt: "Repo (org/repo)",
+            validateInput: (v) =>
+              /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. stylusnexus/CritForge",
+          });
+        } else {
+          const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
+            placeHolder: "Select a repo or enter a new one",
+          });
+          if (!repoPick) return; // cancelled
+
+          if (repoPick.isManual) {
+            repo = await vscode.window.showInputBox({
+              prompt: "Repo (org/repo)",
+              validateInput: (v) =>
+                /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. stylusnexus/CritForge",
+            });
+          } else {
+            repo = repoPick.label;
+          }
+        }
+        if (!repo) return; // cancelled
+
+        // --- Slug ---
+        const slug = await vscode.window.showInputBox({
+          prompt: "New track slug",
+          validateInput: (v) =>
+            /^[a-z][a-z0-9-]*$/.test(v) ? null : "Slug must be lowercase, start with a letter, e.g. my-feature",
+        });
+        if (slug === undefined) return; // cancelled
+
+        // --- Optional priority ---
+        const PRIORITY_DEFAULT = "(default P2)";
+        const priorityPick = await vscode.window.showQuickPick(
+          [PRIORITY_DEFAULT, "P0", "P1", "P2", "P3"],
+          { placeHolder: "Priority (optional)" },
+        );
+        // undefined (Esc) or "(default P2)" → omit priority
+        const priority = priorityPick && priorityPick !== PRIORITY_DEFAULT ? priorityPick : undefined;
+
+        // --- Optional milestone ---
+        const milestoneRaw = await vscode.window.showInputBox({
+          prompt: "Milestone (optional, default v1.0.0 — press Enter to skip)",
+        });
+        // undefined (Esc) or empty → proceed without milestone
+        const milestone = milestoneRaw && milestoneRaw.trim() !== "" ? milestoneRaw.trim() : undefined;
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          {
+            kind: "newTrack",
+            repo,
+            slug,
+            ...(priority ? { priority } : {}),
+            ...(milestone ? { milestone } : {}),
+          },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: created track ${slug} for ${repo}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: new-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.hygiene — run hygiene across all tracks (view/title overflow + palette)
   // -------------------------------------------------------------------------
 
