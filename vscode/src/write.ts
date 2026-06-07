@@ -95,12 +95,9 @@ export async function executeWrite(
     typeof result.json === "object" &&
     result.json.needs_confirm === true
   ) {
-    const reason = String(
-      (result.json as Record<string, unknown>).reason ?? "This write targets a public repo."
-    );
-    const token = String(
-      (result.json as Record<string, unknown>).token ?? ""
-    );
+    const blob = result.json as Record<string, unknown>;
+    const reason = String(blob.reason ?? "This write targets a public repo.");
+    const token = String(blob.token ?? "");
 
     const decision = await confirm(reason);
 

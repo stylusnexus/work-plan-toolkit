@@ -12,11 +12,6 @@ import type { WriteAction, ConfirmDecision, ConfirmPrompt } from "./write.ts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Builds a fake CliRunner that always returns the same canned result. */
-function fakeRunner(result: CliResult): CliRunner {
-  return (_args: string[]) => Promise.resolve(result);
-}
-
 /**
  * Builds a recording fake CliRunner that returns canned results in sequence.
  * Captures every args array it's called with so tests can assert call count
@@ -74,6 +69,15 @@ describe("actionToArgs", () => {
       fields: { status: "parked" },
     };
     assert.deepEqual(actionToArgs(action), ["set", "platform-health", "status=parked"]);
+  });
+
+  test("editFields with empty fields {} → ['set', track] (no key=value pairs)", () => {
+    const action: WriteAction = {
+      kind: "editFields",
+      track: "platform-health",
+      fields: {},
+    };
+    assert.deepEqual(actionToArgs(action), ["set", "platform-health"]);
   });
 
   test("editFields with multiple fields → includes each key=value in Object.entries order", () => {
