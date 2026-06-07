@@ -23,6 +23,8 @@ Run these, read the output, fix, repeat. Do not claim success without running th
 
 There is no build step, no lint config, no CI lint gate beyond a py3.9 union check + the unittest matrix (3.9–3.12 × ubuntu/macos/windows).
 
+**Python / Node boundary.** Everything under `skills/work-plan/` (the CLI) is pure-stdlib Python with **no build step** — that property is load-bearing. The **`vscode/` subdir is a separate TS/Node project** (the viewer extension) with its own `package.json`, `npm` build, and CI job (`.github/workflows/vscode.yml`: typecheck · `node --test` · esbuild · `vsce package`). It does **not** touch the CLI's no-dependency property. The Python matrix (`test.yml`) only runs `unittest discover` inside `skills/work-plan/`, so it never exercises `vscode/`; the extension's gate is its own Node job. When editing `vscode/`, use Node conventions (the local gate is `npm run typecheck && npm test && npm run build`); everywhere else, stdlib Python.
+
 ---
 
 ## Traps that bite agents here

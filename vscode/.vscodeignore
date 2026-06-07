@@ -7,3 +7,4 @@ tsconfig.json
 **/*.test.*
 .gitignore
 package-lock.json
+*.vsix
