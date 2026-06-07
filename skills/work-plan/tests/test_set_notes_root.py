@@ -97,17 +97,21 @@ class SetNotesRootTest(unittest.TestCase):
         yq_args = msub.call_args[0][0]
         self.assertEqual(yq_args[0], "yq")
         self.assertEqual(yq_args[1], "-i")
-        # Expression must set .notes_root to the absolute path
+        # Expression must set .notes_root to the absolute path. The command
+        # resolves the input to an absolute path, which on Windows uses a drive
+        # letter + backslashes — so compare against the same resolution, not the
+        # raw POSIX input string.
+        expected = str(Path("/some/new/path").expanduser().resolve())
         expr = yq_args[2]
         self.assertIn(".notes_root", expr)
-        self.assertIn("/some/new/path", expr)
+        self.assertIn(expected, expr)
 
         # mkdir must have been called (creates the dir)
         mmkdir.assert_called_once()
 
         # Success confirmation in output
         self.assertIn("✓", out)
-        self.assertIn("/some/new/path", out)
+        self.assertIn(expected, out)
 
     def test_yq_receives_config_path_as_last_arg(self):
         """yq -i call passes DEFAULT_CONFIG_PATH as the file argument."""
