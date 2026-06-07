@@ -1,0 +1,61 @@
+name: Publish VS Code Extension
+
+# Publishes vscode/ to the VS Code Marketplace + Open VSX.
+#
+# DORMANT until two repo secrets exist (Settings → Secrets → Actions):
+#   VSCE_PAT   — Azure DevOps PAT with Marketplace > Manage scope (publisher: stylusnexus)
+#   OVSX_TOKEN — open-vsx.org access token (namespace: stylusnexus)
+#
+# Trigger by publishing a GitHub Release, or run manually with dry_run=true to
+# build + validate the VSIX without publishing.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Package + validate only — do not publish'
+        type: boolean
+        default: true
+
+jobs:
+  publish:
+    name: package · publish (Marketplace + Open VSX)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run package
+
+      - name: Publish to VS Code Marketplace
+        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+        run: npm run publish:vsce
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+        run: npm run publish:ovsx
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_TOKEN }}
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-plan-viewer-vsix
+          path: vscode/work-plan-viewer.vsix
+          if-no-files-found: error
