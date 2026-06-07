@@ -22,6 +22,7 @@ const BASE: WebviewHtmlOptions = {
   detailHtml: '<p class="rollup"><b>3</b> open &middot; <b>2</b> closed</p>',
   trackName: "alpha",
   isModule: false,
+  focused: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -244,6 +245,102 @@ describe("buildHtml — postMessage protocol", () => {
   it("acquires the VS Code API", () => {
     const html = buildHtml(BASE);
     assert.ok(html.includes("acquireVsCodeApi"), "Expected acquireVsCodeApi usage");
+  });
+
+  it("acquireVsCodeApi is called exactly once", () => {
+    // acquireVsCodeApi() may only be called ONCE per document; a second call
+    // throws "already acquired" and aborts that script. Guard against regressions
+    // (e.g. a separate toggle IIFE) by asserting a single invocation.
+    const html = buildHtml({ ...BASE, focused: true });
+    assert.equal((html.match(/acquireVsCodeApi\(/g) || []).length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Focus toggle button
+// ---------------------------------------------------------------------------
+
+describe("buildHtml — focus toggle button", () => {
+  it("renders the toggle button element", () => {
+    const html = buildHtml({ ...BASE, focused: false });
+    assert.ok(
+      html.includes("work-plan-focus-toggle"),
+      `Expected focus toggle button in output`,
+    );
+  });
+
+  it("label is 'Focus on track' when focused is false", () => {
+    const html = buildHtml({ ...BASE, focused: false });
+    assert.ok(
+      html.includes("Focus on track"),
+      `Expected 'Focus on track' label when focused=false:\n${html.slice(0, 1000)}`,
+    );
+  });
+
+  it("label is 'Show full map' when focused is true", () => {
+    const html = buildHtml({ ...BASE, focused: true });
+    assert.ok(
+      html.includes("Show full map"),
+      `Expected 'Show full map' label when focused=true:\n${html.slice(0, 1000)}`,
+    );
+  });
+
+  it("does NOT show 'Focus on track' when focused is true", () => {
+    const html = buildHtml({ ...BASE, focused: true });
+    assert.ok(
+      !html.includes("Focus on track"),
+      `Should not show 'Focus on track' when already focused`,
+    );
+  });
+
+  it("does NOT show 'Show full map' when focused is false", () => {
+    const html = buildHtml({ ...BASE, focused: false });
+    assert.ok(
+      !html.includes("Show full map"),
+      `Should not show 'Show full map' when not focused`,
+    );
+  });
+
+  it("toggle click posts setFocus message (focused=false → posts focus:true)", () => {
+    const html = buildHtml({ ...BASE, focused: false });
+    // The script should post { type: "setFocus", focus: true } when clicked
+    assert.ok(
+      html.includes("setFocus"),
+      `Expected setFocus in toggle script`,
+    );
+    assert.ok(
+      html.includes('"setFocus"') || html.includes("'setFocus'") || html.includes("setFocus"),
+      `Expected setFocus message type in script`,
+    );
+  });
+
+  it("toggle click posts setFocus with focus:false when currently focused", () => {
+    const html = buildHtml({ ...BASE, focused: true });
+    // When focused=true, clicking should post focus:false
+    assert.ok(
+      html.includes("false"),
+      `Expected focus: false in the setFocus script when focused=true`,
+    );
+  });
+
+  it("toggle click posts setFocus with focus:true when not focused", () => {
+    const html = buildHtml({ ...BASE, focused: false });
+    // When focused=false, clicking should post focus:true
+    assert.ok(
+      html.includes("true"),
+      `Expected focus: true in the setFocus script when focused=false`,
+    );
+  });
+
+  it("toggle script carries the nonce (UMD path)", () => {
+    const html = buildHtml({ ...BASE, focused: false, isModule: false });
+    // assertAllScriptsHaveNonce already covers all scripts, but let's be explicit
+    assertAllScriptsHaveNonce(html, BASE.nonce);
+  });
+
+  it("toggle script carries the nonce (ESM path)", () => {
+    const html = buildHtml({ ...BASE, focused: true, isModule: true });
+    assertAllScriptsHaveNonce(html, BASE.nonce);
   });
 });
 

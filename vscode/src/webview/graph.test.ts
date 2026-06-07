@@ -352,6 +352,175 @@ describe("toMermaid — label escaping", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Focus mode tests
+// ---------------------------------------------------------------------------
+
+describe("toMermaid — focus mode: org-sharing", () => {
+  it("INCLUDES t_org_sharing and i_87 in focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    assert.ok(out.includes("t_org_sharing"), `Expected t_org_sharing:\n${out}`);
+    assert.ok(out.includes("i_87"), `Expected i_87:\n${out}`);
+  });
+
+  it("INCLUDES the next_up edge t_org_sharing → i_87", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    const lines = out.split("\n");
+    const nextUpLine = lines.find(
+      l => l.includes("t_org_sharing") && l.includes("next_up") && l.includes("i_87"),
+    );
+    assert.ok(nextUpLine !== undefined, `Expected next_up edge for org-sharing:\n${out}`);
+  });
+
+  it("EXCLUDES t_platform_health from org-sharing focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    assert.ok(!out.includes("t_platform_health"), `t_platform_health should be absent:\n${out}`);
+  });
+
+  it("EXCLUDES t_idea_mode from org-sharing focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    assert.ok(!out.includes("t_idea_mode"), `t_idea_mode should be absent:\n${out}`);
+  });
+
+  it("EXCLUDES i_4821 from org-sharing focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    assert.ok(!out.includes("i_4821"), `i_4821 should be absent:\n${out}`);
+  });
+
+  it("EXCLUDES i_487 from org-sharing focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    assert.ok(!out.includes("i_487"), `i_487 should be absent:\n${out}`);
+  });
+
+  it("EXCLUDES i_1556 from org-sharing focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    assert.ok(!out.includes("i_1556"), `i_1556 should be absent:\n${out}`);
+  });
+
+  it("assigns 'selected' class to t_org_sharing in focused output", () => {
+    const out = toMermaid(exp, "org-sharing", { focus: true });
+    const lines = out.split("\n");
+    const classLine = lines.find(
+      l => l.includes("class") && l.includes("t_org_sharing") && l.includes("selected"),
+    );
+    assert.ok(classLine !== undefined, `Expected selected class for t_org_sharing:\n${out}`);
+  });
+});
+
+describe("toMermaid — focus mode: platform-health", () => {
+  it("INCLUDES t_platform_health in focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(out.includes("t_platform_health"), `Expected t_platform_health:\n${out}`);
+  });
+
+  it("INCLUDES i_4821 (blocker) in focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(out.includes("i_4821"), `Expected i_4821:\n${out}`);
+  });
+
+  it("INCLUDES t_idea_mode (owns #4821) in focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(out.includes("t_idea_mode"), `Expected t_idea_mode (owns #4821):\n${out}`);
+  });
+
+  it("INCLUDES i_487 (next_up) in focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(out.includes("i_487"), `Expected i_487:\n${out}`);
+  });
+
+  it("INCLUDES i_1556 (next_up) in focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(out.includes("i_1556"), `Expected i_1556:\n${out}`);
+  });
+
+  it("INCLUDES the blocks edge i_4821 →|blocks| t_platform_health", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    const lines = out.split("\n");
+    const blocksLine = lines.find(
+      l => l.includes("i_4821") && l.includes("blocks") && l.includes("t_platform_health"),
+    );
+    assert.ok(blocksLine !== undefined, `Expected blocks edge:\n${out}`);
+  });
+
+  it("INCLUDES the owns edge t_idea_mode →|owns #4821| t_platform_health", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    const lines = out.split("\n");
+    const ownsLine = lines.find(
+      l => l.includes("t_idea_mode") && l.includes("owns") && l.includes("4821") && l.includes("t_platform_health"),
+    );
+    assert.ok(ownsLine !== undefined, `Expected owns edge:\n${out}`);
+  });
+
+  it("INCLUDES the next_up edge t_platform_health → i_487", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    const lines = out.split("\n");
+    const nextUpLine = lines.find(
+      l => l.includes("t_platform_health") && l.includes("next_up") && l.includes("i_487"),
+    );
+    assert.ok(nextUpLine !== undefined, `Expected next_up edge:\n${out}`);
+  });
+
+  it("INCLUDES the dashed 'then' edge i_487 → i_1556", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    const lines = out.split("\n");
+    const thenLine = lines.find(
+      l => l.includes("i_487") && l.includes("then") && l.includes("i_1556"),
+    );
+    assert.ok(thenLine !== undefined, `Expected then edge:\n${out}`);
+  });
+
+  it("EXCLUDES t_org_sharing from platform-health focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(!out.includes("t_org_sharing"), `t_org_sharing should be absent:\n${out}`);
+  });
+
+  it("EXCLUDES i_87 from platform-health focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    assert.ok(!out.includes("i_87"), `i_87 should be absent:\n${out}`);
+  });
+
+  it("assigns 'selected' class to t_platform_health in focused output", () => {
+    const out = toMermaid(exp, "platform-health", { focus: true });
+    const lines = out.split("\n");
+    const classLine = lines.find(
+      l => l.includes("class") && l.includes("t_platform_health") && l.includes("selected"),
+    );
+    assert.ok(classLine !== undefined, `Expected selected class for t_platform_health:\n${out}`);
+  });
+});
+
+describe("toMermaid — focus:false == full graph", () => {
+  it("focus:false still contains org-sharing (full graph unchanged)", () => {
+    const out = toMermaid(exp, "platform-health", { focus: false });
+    assert.ok(out.includes("t_org_sharing"), `Expected t_org_sharing in full graph:\n${out}`);
+  });
+
+  it("no opts still contains org-sharing (full graph unchanged)", () => {
+    const out = toMermaid(exp, "platform-health");
+    assert.ok(out.includes("t_org_sharing"), `Expected t_org_sharing in full graph:\n${out}`);
+  });
+
+  it("focus:false output is identical to no-opts output", () => {
+    assert.strictEqual(
+      toMermaid(exp, "platform-health", { focus: false }),
+      toMermaid(exp, "platform-health"),
+    );
+  });
+});
+
+describe("toMermaid — focus fallback on unknown track", () => {
+  it("does not throw for unknown track name with focus:true", () => {
+    assert.doesNotThrow(() => toMermaid(exp, "does-not-exist", { focus: true }));
+  });
+
+  it("falls back to full graph when selectedTrack is not found", () => {
+    const out = toMermaid(exp, "does-not-exist", { focus: true });
+    assert.ok(out.includes("t_org_sharing"), `Expected full graph fallback:\n${out}`);
+    assert.ok(out.includes("t_platform_health"), `Expected full graph fallback:\n${out}`);
+    assert.ok(out.includes("t_idea_mode"), `Expected full graph fallback:\n${out}`);
+  });
+});
+
 describe("toMermaid — next_up self-loop dedup", () => {
   const dupExp: Export = {
     schema: 1,
