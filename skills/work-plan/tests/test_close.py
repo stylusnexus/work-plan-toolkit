@@ -23,7 +23,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
@@ -67,7 +67,8 @@ def _drive(args, track=None, vis="PRIVATE"):
          patch("commands.close.find_track_by_name", return_value=track), \
          patch("lib.write_guard.repo_visibility", return_value=vis), \
          patch("commands.close.write_file") as mw, \
-         patch("commands.close.shutil") as ms:
+         patch("commands.close.shutil") as ms, \
+         patch("pathlib.Path.mkdir"):
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = close.run(args)
@@ -260,7 +261,8 @@ class CloseNonInteractiveTest(unittest.TestCase):
                  patch("commands.close.find_track_by_name", return_value=track), \
                  patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
                  patch("commands.close.write_file"), \
-                 patch("commands.close.shutil"):
+                 patch("commands.close.shutil"), \
+                 patch("pathlib.Path.mkdir"):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
                     rc = close.run(["alpha", "--state=parked", "--note=done"])
