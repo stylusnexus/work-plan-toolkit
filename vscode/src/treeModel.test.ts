@@ -6,8 +6,9 @@ import {
   buildTree,
   shouldExpandRepos,
   sortTracks,
+  repoDescription,
 } from "./treeModel.ts";
-import type { TrackNode } from "./treeModel.ts";
+import type { RepoNode, TrackNode } from "./treeModel.ts";
 import type { Export, Track, Issue } from "./model.ts";
 
 // ---------------------------------------------------------------------------
@@ -322,6 +323,33 @@ describe("buildTree", () => {
     const exp: Export = { schema: 1, generated_at: "2026-06-07T00:00:00Z", tracks: [] };
     const tree = buildTree(exp);
     assert.equal(tree.length, 0);
+  });
+});
+
+describe("repoDescription", () => {
+  function repoNode(overrides: Partial<RepoNode> = {}): RepoNode {
+    return { kind: "repo", repo: "stylusnexus/CritForge", isPublic: false, tier: "private", tracks: [], ...overrides };
+  }
+
+  test("private repo → the tier text", () => {
+    assert.equal(repoDescription(repoNode({ isPublic: false, tier: "private" })), "private");
+  });
+
+  test("public repo → '⚠ public' only (no tier prefix)", () => {
+    // Regression guard for #112: a public repo must NOT read "private ⚠ public".
+    const desc = repoDescription(repoNode({ isPublic: true, tier: "private" }));
+    assert.equal(desc, "⚠ public");
+    assert.ok(!desc.includes("private"), "public repo description must not contain the tier word");
+  });
+
+  test("drives off the live tier so a future non-'private' tier is reflected", () => {
+    assert.equal(repoDescription(repoNode({ isPublic: false, tier: "shared" })), "shared");
+  });
+
+  test("the MOCKUP fixture's public repo reads '⚠ public'", () => {
+    const tree = buildTree(MOCKUP_EXPORT);
+    assert.equal(repoDescription(tree[0]), "private");   // CritForge (private)
+    assert.equal(repoDescription(tree[1]), "⚠ public");  // work-plan-toolkit (public)
   });
 });
 

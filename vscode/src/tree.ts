@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Export } from "./model.ts";
-import { buildTree, shouldExpandRepos, sortTracks } from "./treeModel.ts";
+import { buildTree, shouldExpandRepos, sortTracks, repoDescription } from "./treeModel.ts";
 import type { RepoNode, TrackNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
@@ -159,9 +159,7 @@ export class WorkPlanTreeProvider
         ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.Collapsed
     );
-    item.description = node.isPublic
-      ? `${node.tier} ⚠ public`
-      : node.tier;
+    item.description = repoDescription(node);
     item.contextValue = "workPlanRepo";
     item.iconPath = new vscode.ThemeIcon("repo");
     return item;
