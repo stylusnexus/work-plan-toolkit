@@ -1,0 +1,16 @@
+{
+  "name": "work-plan",
+  "version": "2026.06.07+80c7f8c",
+  "description": "Track-aware daily planning over GitHub issues, plus plan-status doc/plan liveness. Pure-stdlib CLI-backed skill.",
+  "author": { "name": "Stylus Nexus", "email": "evemcgivern@gmail.com" },
+  "homepage": "https://github.com/stylusnexus/work-plan-toolkit",
+  "repository": "https://github.com/stylusnexus/work-plan-toolkit",
+  "license": "MIT",
+  "keywords": ["planning", "github-issues", "work-plan", "productivity", "agent-skill"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Work Plan",
+    "shortDescription": "Track-aware daily planning over GitHub issues.",
+    "category": "productivity"
+  }
+}
