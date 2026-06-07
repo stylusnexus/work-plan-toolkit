@@ -41,6 +41,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "workPlan.selectView",
+        "title": "Work Plan: Select View",
+        "icon": "$(filter)"
+      },
+      {
         "command": "workPlan.openTrack",
         "title": "Open Track"
       },
@@ -53,6 +58,11 @@
       "view/title": [
         {
           "command": "workPlan.refresh",
+          "when": "view == workPlan.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.selectView",
           "when": "view == workPlan.tree",
           "group": "navigation"
         }
