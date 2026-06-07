@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks
-from lib.github_state import fetch_export_issues, repo_visibility
+from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
 from lib.export_model import build_export
 from lib.prompts import parse_flags
 
@@ -51,6 +51,19 @@ def run(args: list[str]) -> int:
         if t.repo and t.repo not in visibility:
             visibility[t.repo] = repo_visibility(t.repo)
 
+    # Compute untracked: open issues not referenced by any track, per repo.
+    # One `gh issue list` call per repo — bounded by the number of tracked repos
+    # (typically a handful), not by issue count, so a serial loop is fine.
+    untracked_by_repo: dict[str, list] = {}
+    for repo in repo_to_numbers:
+        tracked = set(repo_to_numbers[repo])
+        open_rows = fetch_open_issues(repo)
+        untracked_by_repo[repo] = [r for r in open_rows if r.get("number") not in tracked]
+
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    print(json.dumps(build_export(tracks, issues_by_track, visibility, now), indent=2))
+    print(json.dumps(
+        build_export(tracks, issues_by_track, visibility, now,
+                     untracked_by_repo=untracked_by_repo),
+        indent=2,
+    ))
     return 0

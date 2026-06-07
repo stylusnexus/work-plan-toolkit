@@ -384,6 +384,38 @@ describe("applyLens — immutability", () => {
   });
 });
 
+describe("applyLens — untracked forwarding (#99 regression)", () => {
+  // The tree always renders from the lens-filtered export, so applyLens MUST
+  // forward the additive `untracked` field — otherwise the Untracked bucket
+  // vanishes under every lens, including "all".
+  const withUntracked: Export = {
+    ...exp,
+    untracked: [
+      {
+        repo: "stylusnexus/CritForge",
+        issues: [
+          { number: 999, title: "stray", state: "open", assignee: "—", milestone: null },
+        ],
+      },
+    ],
+  };
+
+  it("forwards untracked unchanged under the 'all' lens", () => {
+    const result = applyLens(withUntracked, { kind: "all" });
+    assert.deepStrictEqual(result.untracked, withUntracked.untracked);
+  });
+
+  it("forwards untracked unchanged under a 'repo' lens", () => {
+    const result = applyLens(withUntracked, { kind: "repo", repo: "stylusnexus/CritForge" });
+    assert.deepStrictEqual(result.untracked, withUntracked.untracked);
+  });
+
+  it("leaves untracked undefined when the source export has none", () => {
+    const result = applyLens(exp, { kind: "all" });
+    assert.strictEqual(result.untracked, undefined);
+  });
+});
+
 describe("applyLens — vscode-free import check", () => {
   it("applyLens and availableLenses return values (basic smoke test for import)", () => {
     // This test implicitly verifies that lenses.ts has no vscode imports:

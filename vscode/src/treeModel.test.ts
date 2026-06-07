@@ -324,11 +324,74 @@ describe("buildTree", () => {
     const tree = buildTree(exp);
     assert.equal(tree.length, 0);
   });
+
+  // --- untracked ---
+
+  test("MOCKUP_EXPORT (no untracked key) → all repo nodes have untracked:[]", () => {
+    const tree = buildTree(MOCKUP_EXPORT);
+    for (const node of tree) {
+      assert.deepEqual(node.untracked, []);
+    }
+  });
+
+  test("untracked key present: matched repo gets its issues; unmatched repo gets []", () => {
+    const untrackedIssue = makeIssue({ number: 99, title: "orphan", state: "open" });
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-07T00:00:00Z",
+      tracks: [
+        makeTrack({ name: "t1", repo: "stylusnexus/CritForge" }),
+        makeTrack({ name: "t2", repo: "stylusnexus/work-plan-toolkit" }),
+      ],
+      untracked: [
+        { repo: "stylusnexus/CritForge", issues: [untrackedIssue] },
+      ],
+    };
+    const tree = buildTree(exp);
+    const critforge = tree.find(n => n.repo === "stylusnexus/CritForge")!;
+    const wpt = tree.find(n => n.repo === "stylusnexus/work-plan-toolkit")!;
+    assert.equal(critforge.untracked.length, 1);
+    assert.strictEqual(critforge.untracked[0], untrackedIssue);
+    assert.deepEqual(wpt.untracked, []);
+  });
+
+  test("null-repo bucket always gets untracked:[]", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-07T00:00:00Z",
+      tracks: [
+        makeTrack({ name: "orphan", repo: null as unknown as string }),
+      ],
+      // Even if someone mis-keyed "(no repo)" in the export, bucket stays []
+      untracked: [{ repo: "(no repo)", issues: [makeIssue()] }],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree[0].repo, "(no repo)");
+    assert.deepEqual(tree[0].untracked, []);
+  });
+
+  test("untracked issues preserve the full Issue shape", () => {
+    const issue: Issue = {
+      number: 42,
+      title: "Fix the thing",
+      state: "open",
+      assignee: "@bob",
+      milestone: "v2",
+    };
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-07T00:00:00Z",
+      tracks: [makeTrack({ repo: "org/repo" })],
+      untracked: [{ repo: "org/repo", issues: [issue] }],
+    };
+    const tree = buildTree(exp);
+    assert.deepEqual(tree[0].untracked[0], issue);
+  });
 });
 
 describe("repoDescription", () => {
   function repoNode(overrides: Partial<RepoNode> = {}): RepoNode {
-    return { kind: "repo", repo: "stylusnexus/CritForge", isPublic: false, tier: "private", tracks: [], ...overrides };
+    return { kind: "repo", repo: "stylusnexus/CritForge", isPublic: false, tier: "private", tracks: [], untracked: [], ...overrides };
   }
 
   test("private repo → the tier text", () => {

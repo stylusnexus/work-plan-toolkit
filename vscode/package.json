@@ -94,6 +94,10 @@
       {
         "command": "workPlan.setNotesLocation",
         "title": "Work Plan: Set Notes Location"
+      },
+      {
+        "command": "workPlan.slotUntracked",
+        "title": "Work Plan: Slot Untracked Issue into Track"
       }
     ],
     "menus": {
@@ -164,6 +168,17 @@
           "command": "workPlan.close",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanWrite@6"
+        },
+        {
+          "command": "workPlan.slotUntracked",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedIssue",
+          "group": "1_workPlanWrite@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "workPlan.slotUntracked",
+          "when": "false"
         }
       ]
     },

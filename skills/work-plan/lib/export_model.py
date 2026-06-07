@@ -13,7 +13,8 @@ def _issue(i: dict) -> dict:
         "milestone": short_milestone(i.get("milestone")) or None,
     }
 
-def build_export(tracks, issues_by_track, visibility, now: str) -> dict:
+def build_export(tracks, issues_by_track, visibility, now: str,
+                 untracked_by_repo=None) -> dict:
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
         issues = [_issue(i) for i in issues_by_track.get(t.name, [])]
@@ -31,4 +32,9 @@ def build_export(tracks, issues_by_track, visibility, now: str) -> dict:
             "rollup": {"open": opened, "closed": len(issues) - opened},
             "issues": issues,
         })
+    out["untracked"] = [
+        {"repo": repo, "issues": [_issue(r) for r in rows]}
+        for repo, rows in (untracked_by_repo or {}).items()
+        if rows
+    ]
     return out

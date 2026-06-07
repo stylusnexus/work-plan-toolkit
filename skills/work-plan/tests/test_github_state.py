@@ -12,7 +12,7 @@ from lib.github_state import (
     fetch_issues, fetch_issue, fetch_issues_concurrent,
     fetch_repo_issues_graphql, fetch_export_issues, _normalize_gql_node,
     extract_priority, fetch_recent_issues, short_milestone,
-    repo_visibility, _VIS_CACHE,
+    repo_visibility, _VIS_CACHE, fetch_open_issues,
 )
 
 
@@ -435,6 +435,73 @@ class FetchExportIssuesTest(unittest.TestCase):
         result = fetch_export_issues({None: [1, 2]})
         self.assertEqual(result, {})
         mock_gql.assert_not_called()
+
+
+class FetchOpenIssuesTest(unittest.TestCase):
+    """Unit tests for fetch_open_issues() — all gh calls mocked."""
+
+    _OPEN_ROWS = [
+        {"number": 5, "title": "Open one", "state": "OPEN", "assignees": [], "milestone": None},
+        {"number": 7, "title": "Open two", "state": "OPEN", "assignees": [{"login": "eve"}], "milestone": {"title": "v1.0"}},
+    ]
+
+    @patch("lib.github_state.subprocess.run")
+    def test_returns_rows_on_success(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(self._OPEN_ROWS))
+        result = fetch_open_issues("o/r")
+        self.assertEqual(result, self._OPEN_ROWS)
+
+    @patch("lib.github_state.subprocess.run")
+    def test_calls_gh_issue_list_open(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        fetch_open_issues("o/r")
+        args = mock_run.call_args[0][0]
+        self.assertIn("gh", args)
+        self.assertIn("issue", args)
+        self.assertIn("list", args)
+        self.assertIn("--repo", args)
+        self.assertIn("o/r", args)
+        # must request open issues (flag + value, space-separated) and the JSON fields
+        self.assertIn("--state", args)
+        self.assertEqual(args[args.index("--state") + 1], "open")
+        self.assertIn("number,title,state,assignees,milestone", " ".join(args))
+
+    @patch("lib.github_state.subprocess.run")
+    def test_nonzero_returncode_returns_empty(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="error")
+        self.assertEqual(fetch_open_issues("o/r"), [])
+
+    @patch("lib.github_state.subprocess.run")
+    def test_empty_stdout_returns_empty(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="   ")
+        self.assertEqual(fetch_open_issues("o/r"), [])
+
+    @patch("lib.github_state.subprocess.run")
+    def test_bad_json_returns_empty(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="not-json{{")
+        self.assertEqual(fetch_open_issues("o/r"), [])
+
+    @patch("lib.github_state.subprocess.run", side_effect=Exception("gh missing"))
+    def test_exception_returns_empty(self, _):
+        self.assertEqual(fetch_open_issues("o/r"), [])
+
+    @patch("lib.github_state.subprocess.run")
+    def test_bad_repo_returns_empty_without_calling_gh(self, mock_run):
+        self.assertEqual(fetch_open_issues("notarepo"), [])
+        mock_run.assert_not_called()
+
+    @patch("lib.github_state.subprocess.run")
+    def test_custom_limit_passed(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        fetch_open_issues("o/r", limit=500)
+        args = mock_run.call_args[0][0]
+        self.assertIn("500", args)
+
+    @patch("lib.github_state.subprocess.run")
+    def test_returns_list_type(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(self._OPEN_ROWS))
+        result = fetch_open_issues("o/r")
+        self.assertIsInstance(result, list)
 
 
 if __name__ == "__main__":
