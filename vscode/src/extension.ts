@@ -35,20 +35,26 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // refreshAndRerender — shared helper: reload CLI data + re-render panel.
+  // Defined here so workPlan.refresh and all write commands share one copy.
+  // -------------------------------------------------------------------------
+
+  const refreshAndRerender = async (): Promise<void> => {
+    await provider.refresh();
+    const panel = WorkPlanPanel.getCurrent();
+    const exp = provider.currentExport;
+    if (panel && exp && exp.tracks.length > 0) {
+      panel.render(exp, panel.currentTrackName ?? exp.tracks[0].name);
+    }
+  };
+
+  // -------------------------------------------------------------------------
   // workPlan.refresh — reload CLI data, refresh tree, re-render panel if open.
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.refresh", () => {
-      provider.refresh().then(() => {
-        // If the panel is open, re-render it with the fresh data.
-        const panel = WorkPlanPanel.getCurrent();
-        const exp = provider.currentExport;
-        if (panel && exp && exp.tracks.length > 0) {
-          // Re-render preserving the user's selection (first track as fallback).
-          panel.render(exp, panel.currentTrackName ?? exp.tracks[0].name);
-        }
-      }).catch((err: unknown) => {
+      refreshAndRerender().catch((err: unknown) => {
         const msg =
           err instanceof CliError
             ? `Work Plan: ${err.message}`
@@ -297,16 +303,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("Work Plan");
   context.subscriptions.push(outputChannel);
 
-  // Refresh the tree provider and re-render the panel if it is open.
-  const refreshAndRerender = async (): Promise<void> => {
-    await provider.refresh();
-    const panel = WorkPlanPanel.getCurrent();
-    const exp = provider.currentExport;
-    if (panel && exp && exp.tracks.length > 0) {
-      panel.render(exp, panel.currentTrackName ?? exp.tracks[0].name);
-    }
-  };
-
   // Resolve a track name: use the node (context-menu) or fall back to a QuickPick.
   const resolveTrackName = async (node?: TrackNode): Promise<string | undefined> => {
     if (node?.name) {
@@ -408,7 +404,7 @@ export function activate(context: vscode.ExtensionContext): void {
           prompt: "Next-up issue numbers (comma-separated)",
           validateInput: (v) => {
             if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
-            return "Enter comma-separated issue numbers, e.g. 42,87";
+            return "Enter at least one issue number, comma-separated (e.g. 42,87). To clear next-up, use Edit Track Fields → next_up.";
           },
         });
         if (raw === undefined) return; // cancelled
