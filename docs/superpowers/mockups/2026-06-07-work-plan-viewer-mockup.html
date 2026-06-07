@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>work-plan viewer — mockup (#87)</title>
+<style>
+  :root{
+    --bg:#1e1e1e; --panel:#252526; --panel2:#2d2d30; --edge:#3c3c3c;
+    --text:#cccccc; --dim:#8a8a8a; --accent:#569cd6; --green:#4ec98a;
+    --red:#f14c4c; --redbg:#3a2323; --blue:#3794ff; --yellow:#d7ba7d;
+    --pill-open:#2d4a2e; --pill-open-tx:#7fd99a; --pill-closed:#3a3a3a; --pill-closed-tx:#9a9a9a;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5}
+  .banner{background:#3a3320;color:var(--yellow);padding:8px 16px;font-size:12.5px;border-bottom:1px solid #5a4d28}
+  .banner b{color:#f0d98a}
+  .app{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 37px)}
+  @media(max-width:820px){.app{grid-template-columns:1fr}}
+
+  /* Sidebar */
+  .sidebar{background:var(--panel);border-right:1px solid var(--edge);padding:8px 0}
+  .side-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:8px 14px}
+  .repo{padding:6px 12px 2px;font-size:12px;color:#bdbdbd;display:flex;align-items:center;gap:8px}
+  .repo .chev{color:var(--dim)}
+  .tier{font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid var(--edge);color:var(--dim)}
+  .tier.public{color:var(--yellow);border-color:#5a4d28}
+  .track{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 26px;cursor:pointer;border-left:2px solid transparent}
+  .track:hover{background:var(--panel2)}
+  .track.sel{background:#094771;border-left-color:var(--blue)}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .dot.blocked{background:var(--red)} .dot.active{background:var(--blue)}
+  .dot.healthy{background:var(--green)} .dot.shipped{background:#7a7a7a}
+  .tname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .count{font-size:11px;color:var(--dim)}
+  .hint{display:block;font-size:11px;color:var(--dim);padding:0 12px 6px 26px;margin-top:-4px}
+  .hint.block{color:#e08a8a}
+
+  /* Main */
+  .main{padding:16px 20px;min-width:0}
+  h2{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);margin:0 0 10px;font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:6px;padding:14px 16px;margin-bottom:18px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--dim);margin-bottom:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .lk{width:22px;height:0;border-top:2px solid var(--accent)}
+  .lk.dash{border-top:2px dashed var(--yellow)}
+  .lk.red{border-top:2px solid var(--red)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:4px 8px;border-bottom:1px solid var(--edge)}
+  td{padding:6px 8px;border-bottom:1px solid #303030}
+  .num{font-family:var(--mono);color:var(--accent)}
+  .pill{font-size:11px;padding:1px 8px;border-radius:10px}
+  .pill.open{background:var(--pill-open);color:var(--pill-open-tx)}
+  .pill.closed{background:var(--pill-closed);color:var(--pill-closed-tx)}
+  .who{color:var(--dim);font-family:var(--mono);font-size:12px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 2px}
+  .chip{font-family:var(--mono);font-size:12px;background:var(--redbg);color:#f0a0a0;border:1px solid #5a3030;border-radius:12px;padding:2px 10px;cursor:pointer}
+  .chip:hover{filter:brightness(1.2)}
+  .nextrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px}
+  .nextrow .step{background:var(--panel2);border:1px solid var(--edge);border-radius:10px;padding:2px 9px}
+  .arrow{color:var(--yellow)}
+  .sub{color:var(--dim);font-size:12px;margin:2px 0 10px}
+  .roll{font-size:12px;color:var(--dim)}
+  .roll b{color:var(--text)}
+  pre{background:#1b1b1b;border:1px solid var(--edge);border-radius:6px;padding:12px;overflow:auto;font-family:var(--mono);font-size:12px;color:#bcd}
+  .k{color:#9cdcfe}.s{color:#ce9178}.n{color:#b5cea8}.muted{color:#6a9955}
+  .flow-note{font-size:12px;color:var(--dim);margin-top:6px}
+  .detail-head{display:flex;align-items:baseline;gap:10px;margin-bottom:2px}
+  .detail-head h3{margin:0;font-size:16px}
+  .badge{font-size:11px;padding:1px 8px;border-radius:10px;border:1px solid var(--edge);color:var(--dim)}
+  .badge.blocked{color:#f0a0a0;border-color:#5a3030;background:var(--redbg)}
+</style>
+</head>
+<body>
+<div class="banner">🧪 <b>Mockup for #87</b> — not a working extension. Data is illustrative; this shows how the planned VS Code viewer would render tracks &amp; dependencies from <code>work-plan export --json</code>.</div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="side-title">Work Plan</div>
+
+    <div class="repo"><span class="chev">▾</span> stylusnexus/CritForge <span class="tier">private</span></div>
+    <div class="track" data-t="platform-health" onclick="sel(this)">
+      <span class="dot blocked"></span><span class="tname">platform-health</span><span class="count">12 open</span>
+    </div>
+    <div class="hint block">⛔ blocked by #4821</div>
+    <div class="track" data-t="idea-mode" onclick="sel(this)">
+      <span class="dot active"></span><span class="tname">idea-mode</span><span class="count">3 open</span>
+    </div>
+    <div class="hint">→ next #4821</div>
+
+    <div class="repo"><span class="chev">▾</span> stylusnexus/work-plan-toolkit <span class="tier public">public ⚠</span></div>
+    <div class="track" data-t="org-sharing" onclick="sel(this)">
+      <span class="dot active"></span><span class="tname">org-sharing</span><span class="count">2 open</span>
+    </div>
+    <div class="hint">→ next #87</div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <!-- GRAPH -->
+    <div class="card">
+      <h2>Dependencies &amp; flow</h2>
+      <div class="legend">
+        <span><i class="lk red"></i> blocks</span>
+        <span><i class="lk"></i> cross-track (owns blocker)</span>
+        <span><i class="lk dash"></i> next_up (then)</span>
+        <span><span class="dot blocked" style="display:inline-block"></span> blocked</span>
+      </div>
+      <svg viewBox="0 0 760 300" width="100%" role="img" aria-label="dependency graph">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#8a8a8a"/></marker>
+          <marker id="arR" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#f14c4c"/></marker>
+          <marker id="arY" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#d7ba7d"/></marker>
+        </defs>
+
+        <!-- edges -->
+        <!-- idea-mode (track B) -> platform-health (track A): cross-track, owns the blocker -->
+        <line x1="190" y1="78" x2="300" y2="150" stroke="#569cd6" stroke-width="2" marker-end="url(#ar)"/>
+        <text x="225" y="105" fill="#9ab" font-size="11">owns #4821</text>
+        <!-- blocker issue #4821 -> platform-health: blocks -->
+        <line x1="190" y1="220" x2="300" y2="168" stroke="#f14c4c" stroke-width="2" marker-end="url(#arR)"/>
+        <text x="205" y="205" fill="#e08a8a" font-size="11">blocks</text>
+        <!-- next_up flow inside platform-health: #487 -> #1556 -->
+        <line x1="560" y1="120" x2="560" y2="170" stroke="#d7ba7d" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arY)"/>
+        <text x="572" y="150" fill="#d7ba7d" font-size="11">then</text>
+
+        <!-- nodes -->
+        <!-- idea-mode -->
+        <g>
+          <rect x="60" y="55" width="130" height="46" rx="7" fill="#252526" stroke="#3794ff"/>
+          <text x="125" y="76" fill="#cccccc" font-size="13" text-anchor="middle">idea-mode</text>
+          <text x="125" y="92" fill="#8a8a8a" font-size="11" text-anchor="middle">track · 3 open</text>
+        </g>
+        <!-- blocker issue 4821 -->
+        <g>
+          <rect x="55" y="198" width="135" height="44" rx="7" fill="#2d2d30" stroke="#5a5a5a"/>
+          <text x="122" y="218" fill="#9cdcfe" font-size="12" text-anchor="middle">#4821 OAuth scopes</text>
+          <text x="122" y="233" fill="#8a8a8a" font-size="10" text-anchor="middle">issue · open</text>
+        </g>
+        <!-- platform-health (blocked) -->
+        <g>
+          <rect x="300" y="128" width="150" height="52" rx="7" fill="#3a2323" stroke="#f14c4c"/>
+          <text x="375" y="150" fill="#f0c0c0" font-size="13" text-anchor="middle">platform-health</text>
+          <text x="375" y="167" fill="#e08a8a" font-size="11" text-anchor="middle">track · blocked · 12 open</text>
+        </g>
+        <!-- next_up issues -->
+        <g>
+          <rect x="500" y="96" width="120" height="34" rx="7" fill="#2d2d30" stroke="#5a5a5a"/>
+          <text x="560" y="117" fill="#9cdcfe" font-size="12" text-anchor="middle">#487 rate limit</text>
+        </g>
+        <g>
+          <rect x="500" y="170" width="120" height="34" rx="7" fill="#2d2d30" stroke="#5a5a5a"/>
+          <text x="560" y="191" fill="#9cdcfe" font-size="12" text-anchor="middle">#1556 session</text>
+        </g>
+        <!-- platform-health -> its next_up #487 -->
+        <line x1="450" y1="145" x2="500" y2="120" stroke="#8a8a8a" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="455" y="128" fill="#8a8a8a" font-size="10">next_up</text>
+      </svg>
+      <div class="flow-note">Nodes = tracks &amp; blocker issues · red = blocked · solid red = <em>blocks</em> · blue = a track <em>owns</em> the blocker (cross-track dependency) · dashed = <em>next_up</em> order. The viewer derives every edge from <code>blockers</code> / <code>next_up</code> in the export — it never invents dependencies.</div>
+    </div>
+
+    <!-- DETAIL -->
+    <div class="card">
+      <div class="detail-head">
+        <h3 id="d-name">platform-health</h3>
+        <span class="badge" id="d-repo">stylusnexus/CritForge · private</span>
+        <span class="badge blocked" id="d-status">blocked</span>
+      </div>
+      <div class="roll" id="d-roll"><b>12</b> open · <b>8</b> closed</div>
+
+      <h2 style="margin-top:14px">Issues</h2>
+      <table><thead><tr><th>#</th><th>Title</th><th>State</th><th>Assignee</th></tr></thead>
+        <tbody id="d-issues"></tbody></table>
+
+      <h2 style="margin-top:16px">Blockers</h2>
+      <div class="chips" id="d-blockers"></div>
+      <div class="sub" id="d-blockers-empty" style="display:none">None.</div>
+
+      <h2 style="margin-top:14px">Next up</h2>
+      <div class="nextrow" id="d-next"></div>
+    </div>
+
+    <!-- JSON -->
+    <div class="card">
+      <h2>Data flow — <code>work-plan export --json</code> (selected track)</h2>
+      <div class="sub">The CLI is the single source of truth (GitHub canonical, no cache). The viewer is a thin renderer over this:</div>
+      <pre id="d-json"></pre>
+    </div>
+  </main>
+</div>
+
+<script>
+const DATA = {
+  "platform-health":{repo:"stylusnexus/CritForge",tier:"private",status:"blocked",statusClass:"blocked",
+    open:12,closed:8,blockers:[4821],next_up:[487,1556],
+    issues:[
+      {n:487,t:"auth rate limit",s:"open",a:"@eve"},
+      {n:1556,t:"session cache",s:"open",a:"—"},
+      {n:2196,t:"RLS audit",s:"open",a:"—"},
+      {n:2528,t:"poll schema",s:"closed",a:"—"}]},
+  "idea-mode":{repo:"stylusnexus/CritForge",tier:"private",status:"active",statusClass:"active",
+    open:3,closed:5,blockers:[],next_up:[4821],
+    issues:[
+      {n:4821,t:"OAuth scopes",s:"open",a:"@mal"},
+      {n:4830,t:"scope UI",s:"open",a:"—"}]},
+  "org-sharing":{repo:"stylusnexus/work-plan-toolkit",tier:"public ⚠",status:"active",statusClass:"active",
+    open:2,closed:6,blockers:[],next_up:[87],
+    issues:[
+      {n:87,t:"VS Code viewer",s:"open",a:"@eve"},
+      {n:74,t:"plan-status",s:"closed",a:"—"}]}
+};
+const titleOf={};Object.values(DATA).forEach(t=>t.issues.forEach(i=>titleOf[i.n]=i.t));
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+function render(name){
+  const d=DATA[name];
+  document.getElementById('d-name').textContent=name;
+  document.getElementById('d-repo').textContent=d.repo+" · "+d.tier;
+  const st=document.getElementById('d-status');st.textContent=d.status;st.className="badge"+(d.status==="blocked"?" blocked":"");
+  document.getElementById('d-roll').innerHTML="<b>"+d.open+"</b> open · <b>"+d.closed+"</b> closed";
+
+  document.getElementById('d-issues').innerHTML=d.issues.map(i=>
+    `<tr><td class="num">#${i.n}</td><td>${esc(i.t)}</td>`+
+    `<td><span class="pill ${i.s}">${i.s}</span></td><td class="who">${esc(i.a)}</td></tr>`).join("");
+
+  const bl=document.getElementById('d-blockers'),be=document.getElementById('d-blockers-empty');
+  if(d.blockers.length){bl.style.display="flex";be.style.display="none";
+    bl.innerHTML=d.blockers.map(n=>`<span class="chip" title="${esc(titleOf[n]||'')}">⛔ #${n} ${esc(titleOf[n]||'')}</span>`).join("");
+  }else{bl.style.display="none";be.style.display="block"}
+
+  const nx=document.getElementById('d-next');
+  nx.innerHTML=d.next_up.length
+    ? d.next_up.map(n=>`<span class="step">#${n} ${esc(titleOf[n]||'')}</span>`).join('<span class="arrow">→</span>')
+    : '<span class="sub">empty</span>';
+
+  // JSON (one track slice of the export)
+  const j=
+`{
+  <span class="k">"schema"</span>: <span class="n">1</span>,
+  <span class="k">"tracks"</span>: [
+    {
+      <span class="k">"name"</span>: <span class="s">"${name}"</span>,
+      <span class="k">"repo"</span>: <span class="s">"${d.repo}"</span>,
+      <span class="k">"tier"</span>: <span class="s">"${d.tier.replace(' ⚠','')}"</span>,
+      <span class="k">"status"</span>: <span class="s">"${d.status}"</span>,
+      <span class="k">"visibility"</span>: <span class="s">"${d.tier.includes('public')?'PUBLIC':'PRIVATE'}"</span>,
+      <span class="k">"blockers"</span>: [${d.blockers.join(', ')}],          <span class="muted">// graph edges (blocks)</span>
+      <span class="k">"next_up"</span>: [${d.next_up.join(', ')}],           <span class="muted">// flow edges (then)</span>
+      <span class="k">"rollup"</span>: { <span class="k">"open"</span>: <span class="n">${d.open}</span>, <span class="k">"closed"</span>: <span class="n">${d.closed}</span> },
+      <span class="k">"issues"</span>: [
+${d.issues.map(i=>`        { <span class="k">"number"</span>: <span class="n">${i.n}</span>, <span class="k">"title"</span>: <span class="s">"${esc(i.t)}"</span>, <span class="k">"state"</span>: <span class="s">"${i.s}"</span>, <span class="k">"assignee"</span>: <span class="s">"${i.a}"</span> }`).join(',\n')}
+      ]
+    }
+  ]
+}`;
+  document.getElementById('d-json').innerHTML=j;
+}
+
+function sel(el){
+  document.querySelectorAll('.track').forEach(t=>t.classList.remove('sel'));
+  el.classList.add('sel');
+  render(el.dataset.t);
+}
+// initial selection
+const first=document.querySelector('.track[data-t="platform-health"]');
+first.classList.add('sel');render('platform-health');
+</script>
+</body>
+</html>
