@@ -1,7 +1,10 @@
-# Notes Root
+# Notes Root (layout reference)
 
-This is the default `notes_root` shipped with the toolkit. If you didn't override
-`notes_root` in `~/.claude/work-plan/config.yml`, your track files live here.
+> **Note:** this bundled `notes/` dir is **not** your default `notes_root` anymore. On first run
+> the CLI **self-seeds** `notes_root` to **`~/.claude/work-plan/notes`** (one config home, all install
+> modes) — so your track files live there, not in this repo dir. This file remains as a **reference**
+> for the track-folder layout and lifecycle. *(A future per-repo committed `.work-plan/` model is
+> specced but not yet built — see the toolkit's planning docs.)*
 
 ## Bootstrap a new repo
 

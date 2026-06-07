@@ -33,7 +33,7 @@ cd skills/work-plan
 python3 -m unittest discover tests
 ```
 
-The 69-test suite uses stdlib `unittest` (no `pytest` dependency). All tests mock external `gh`/`git` calls — they run offline and finish in well under a second.
+The suite (~250 cases) uses stdlib `unittest` (no `pytest` dependency). All tests mock external `gh`/`git` calls — they run offline and finish in a couple of seconds. There's also a repo-root `tests/test_bin_wrapper.py` for the `bin/work-plan` launcher.
 
 If you add functionality, add tests. If you fix a bug, add a regression test that fails without the fix.
 
@@ -64,8 +64,8 @@ Scope is optional but encouraged when the change is localized (e.g., `feat(orien
 2. Create a feature branch: `git checkout -b feat/<short-description>`.
 3. Make your changes. Add or update tests.
 4. Run the test suite locally: `python3 -m unittest discover tests`.
-5. Open a PR against `main` with a clear description of what changed and why.
-6. CI runs on PR (currently no CI configured — tests run locally; this may change).
+5. **Open a PR against `dev`** (the integration branch) — not `main`. Docs-only changes may go straight to `dev`; code goes through a PR. `main` is the released/deploy branch (`dev`→`main` ships it and bumps the version).
+6. CI runs on every PR: a Python-3.9 union-syntax lint plus the `unittest` matrix across Python 3.9–3.12 on Ubuntu/macOS/Windows (`.github/workflows/test.yml`).
 
 ## Cross-platform considerations
 
@@ -86,7 +86,7 @@ If you're testing on one platform, please call that out in the PR — maintainer
 
 - Replacing `gh` with direct GitHub API calls (we lean on `gh auth` deliberately — see Security section in README)
 - Adding non-stdlib Python dependencies (breaks the "no pip" property)
-- Cloud sync / multi-user features (this is a single-developer tool by design)
+- A cloud-sync service or hosted multi-user backend (sharing across a team is done the git-native way — committed tracks travel via `git pull`; no server)
 - Telemetry of any kind
 
 ## Security

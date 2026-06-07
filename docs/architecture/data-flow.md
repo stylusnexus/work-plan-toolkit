@@ -9,7 +9,7 @@ Sequence diagrams for the four flows that carry the most complexity:
 3. [`orient` (track mode)](#orient--track-mode) — re-orient on a track
 4. [Two-step AI subcommands](#two-step-ai-subcommands-group--suggest-priorities) — `group` and `suggest-priorities`
 
-A brief note on the lifecycle gap is at the [end](#install-time-vs-run-time).
+A note on delivery (plugin vs script) and the source-vs-runtime gap is at the [end](#delivery--install-time).
 
 ---
 
@@ -176,31 +176,43 @@ Identical structure for `suggest-priorities`, except the JSON contains `{issue_n
 
 ---
 
-## Install-time vs run-time
+## Delivery & install-time
 
-The flows above describe **run-time** — what happens when a subcommand executes. The **install-time** path is separate and only relevant when developing the toolkit itself:
+The flows above describe **run-time**. Install is separate, and now has two shapes — a **plugin** install (recommended) and the **script** install.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant MP as agent-plugins marketplace
+    participant Cache as plugin cache (~/.claude/plugins/… or ~/.codex/…)
+    participant CLI as work_plan.py
+
+    Note over User,Cache: Plugin install (Claude or Codex)
+    User->>MP: /plugin install work-plan@stylus-nexus  (or codex plugin add)
+    MP->>Cache: fetch repo at the pinned release tag → <ver>/
+    Note over Cache: bin/ on PATH; commands/ namespaced as /work-plan:*
+    User->>CLI: /work-plan:brief  → bin/work-plan resolves work_plan.py relative to itself
+    CLI->>CLI: load_config() → ensure_config() seeds ~/.claude/work-plan/ on first run
+```
 
 ```mermaid
 sequenceDiagram
     actor Dev
     participant SH as install.sh / .ps1
-    participant Repo as ./skills/
     participant Home as ~/.claude/
     participant CLI as /work-plan slash command
 
-    Dev->>Repo: edit code in skills/work-plan/...
+    Note over Dev,CLI: Script install (Cursor / direct / dev loop)
     Dev->>SH: ./install.sh
     SH->>SH: verify gh + git + yq + python3 on PATH
-    SH->>Home: cp -R skills/work-plan ~/.claude/skills/
-    SH->>Home: drop .installed-from marker
-    SH->>Home: cp commands/work-plan.md ~/.claude/commands/
-    opt config doesn't exist
-        SH->>Home: seed ~/.claude/work-plan/config.yml
-    end
+    SH->>Home: cp -R skills/work-plan ~/.claude/skills/ (+ .installed-from marker)
+    SH->>Home: install bin/work-plan launcher (+ .cmd on Windows)
+    SH->>Home: cp installer/work-plan.md → ~/.claude/commands/work-plan.md  (dispatcher only)
+    SH->>CLI: seed config via the CLI (one home ~/.claude/work-plan/)
     SH->>SH: smoke test (work_plan.py --help)
-    Note over Dev,CLI: Now the slash command sees the new code
-
     Dev->>CLI: /work-plan brief
 ```
 
-This is what the [overview](overview.md#two-distinct-lifecycles) refers to as the source-vs-runtime gap. Direct CLI invocation (`python3 skills/work-plan/work_plan.py ...`) bypasses this gap entirely and is the recommended dev-loop shortcut.
+**Source-vs-runtime gap (script path):** editing files in the repo does not affect an installed copy — re-run `./install.sh`. Direct CLI invocation (`python3 skills/work-plan/work_plan.py …`) bypasses the gap and is the recommended dev-loop shortcut. (Plugin installs update via `/plugin update` when the marketplace tag advances.)
+
+> The two-tier `.work-plan/` shared-notes model and `work-plan export --json` (for the VS Code viewer, #87) are **specced but not yet built** — they are not reflected in the run-time flows above.

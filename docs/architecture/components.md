@@ -7,12 +7,24 @@ Per-module breakdown of `skills/work-plan/`. The full canonical user-facing desc
 ## Top-level layout
 
 ```
-skills/work-plan/
-├── work_plan.py            # Dispatcher. SUBCOMMANDS dict + DESCRIPTIONS help text.
-├── SKILL.md                # LLM-facing usage rules (verbatim relay, next_up flow, ...).
-├── commands/               # 16 subcommand modules. Each exports `run(args) -> int`.
-└── lib/                    # 13 shared helpers. Pure stdlib, importable from any command.
+work-plan-toolkit/
+├── .claude-plugin/plugin.json   # Claude plugin manifest (version = CalVer)
+├── .codex-plugin/plugin.json    # Codex plugin manifest ("skills": "./skills/")
+├── bin/work-plan(.cmd)          # self-locating CLI launcher (PATH entry under a plugin)
+├── commands/                    # plugin command suite (brief/handoff/orient/hygiene/status/run)
+├── installer/work-plan.md       # standalone dispatcher (install.sh copies this; plugin-excluded)
+├── skills/work-plan/
+│   ├── work_plan.py             # Dispatcher. SUBCOMMANDS dict + DESCRIPTIONS help text.
+│   ├── SKILL.md                 # LLM-facing usage rules (verbatim relay, next_up flow, ...).
+│   ├── commands/                # 16 subcommand modules. Each exports `run(args) -> int`.
+│   └── lib/                     # 20 shared helpers. Pure stdlib, importable from any command.
+└── skills/repo-activity-summary/SKILL.md
 ```
+
+**Two `commands/` dirs, distinct roles:** the repo-root `commands/` holds the **plugin** command
+suite (namespaced `/work-plan:brief` …, thin wrappers over the `bin/work-plan` launcher);
+`skills/work-plan/commands/` holds the **CLI subcommand modules** (the actual logic). See
+[Plugin packaging](#plugin-packaging).
 
 ## `work_plan.py` (dispatcher)
 
@@ -40,6 +52,7 @@ Each module is thin orchestration over `lib/`. Sizes are an honest signal of com
 | `refresh_md.py` | 110 | Sync canonical body status table with current GitHub state. `--all` sweeps every active track. |
 | `reconcile.py` | 98 | Sync track frontmatter with `track/<slug>` GitHub labels (label-as-source-of-truth direction). |
 | `init_repo.py` | 90 | Bootstrap: create `<notes_root>/<key>/archive/{shipped,abandoned}/` + add a repo block to `~/.claude/work-plan/config.yml` via `yq -i`. JSON-encodes inputs to prevent YAML injection. |
+| `plan_status.py` | ~210 | Doc/plan **liveness**: correlate each plan's declared file-manifest (`Create:`/`Modify:`/`Test:` paths) against git + filesystem to verdict it shipped / partial / dead / orphaned — rather than trusting checkboxes. `--stamp` writes the verdict into the doc; `--llm` is a two-step AI verdict for prose docs; `--archive`/`--issues` act behind gates. Read-only by default. Backed by the `manifest`/`verdict`/`doc_discovery`/`status_header`/`llm_evidence`/`reconcile_actions` lib modules. |
 | `slot.py` | 81 | Add an issue number to a track's `github.issues` list. Dedupes. |
 | `init.py` | 66 | Add YAML frontmatter to a brand-new track `.md` file. |
 | `close.py` | 56 | Mark a track shipped/parked/abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
@@ -62,6 +75,17 @@ Each module is thin orchestration over `lib/`. Sizes are an honest signal of com
 | `new_issues.py` | 45 | Match recent GitHub issues to existing tracks by `track/<slug>` label or title-word fuzzy match. | brief, handoff |
 | `render.py` | 74 | Output composers: `time_aware_framing`, `render_track_row`. Keeps presentation logic out of command modules. | brief |
 | `prompts.py` | 68 | `prompt_input`, `prompt_lines`, `prompt_yes_no`, `parse_flags`. **Use these — don't reinvent.** | every interactive command |
+| `next_up.py` | ~50 | `suggest_next_up` — priority-then-recency ordering of open non-blocker issues for `handoff --auto-next`. | handoff |
+| `manifest.py` | 164 | Parse a plan's declared `Create:`/`Modify:`/`Test:` file paths; score each against git + filesystem. The mechanical spine of `plan-status`. | plan-status |
+| `verdict.py` | 51 | Pure verdict logic (shipped / partial / dead / orphaned) from manifest satisfaction + checkbox/age signals. No I/O. | plan-status |
+| `doc_discovery.py` | 41 | Find plan/spec docs per configured globs; classify manifest-bearing vs prose. | plan-status |
+| `status_header.py` | 60 | Idempotent BEGIN/END verdict-header stamping into a doc (`--stamp`). | plan-status |
+| `llm_evidence.py` | 45 | Build the two-step LLM prompt + read back the verdict JSON for prose/ambiguous docs (`--llm`). | plan-status |
+| `reconcile_actions.py` | 34 | Gated archive/issue actions for dead/partial plans (`--archive`/`--issues`). | plan-status |
+
+`status_table.py` also gained `render_issue_row` / `append_rows` / `sync_missing_rows` (issue #77/#79):
+refresh-md and handoff now **append** rows for frontmatter issues missing from the canonical table
+(in frontmatter order), not just update existing cells.
 
 ## Command → lib dependency cheat-sheet
 
@@ -120,7 +144,7 @@ flowchart LR
 
 ## Tests
 
-Mirror of `commands/` and `lib/` under `skills/work-plan/tests/`. All `gh` / `git` subprocess calls are mocked via `unittest.mock`. The suite is offline, finishes in well under a second, and uses pure stdlib `unittest` (no `pytest`).
+Mirror of `commands/` and `lib/` under `skills/work-plan/tests/` — **~250 cases across ~42 files**. All `gh` / `git` subprocess calls are mocked via `unittest.mock`. The suite is offline, finishes in a couple of seconds, and uses pure stdlib `unittest` (no `pytest`). A separate repo-root `tests/test_bin_wrapper.py` exercises the `bin/work-plan` launcher (Linux/macOS in CI).
 
 Notable test files:
 
@@ -129,6 +153,17 @@ Notable test files:
 - `test_drift.py` — drift detection across emoji / text status formats.
 - `test_smoke.py` — module imports and dispatcher returns `2` on no-args.
 - `tests/fixtures/` — sample track markdown files used by table-parsing tests.
+
+## Plugin packaging
+
+The toolkit is also distributed as plugins (one repo, two manifests) — the human/agent delivery layer over the same CLI:
+
+- **`.claude-plugin/plugin.json`** / **`.codex-plugin/plugin.json`** — manifests; `version` = the CalVer `VERSION`, synced into both by `.github/workflows/version-bump.yml` on deploy. The Codex manifest declares `"skills": "./skills/"`.
+- **`bin/work-plan`** (+ `bin/work-plan.cmd` for Windows) — launcher that resolves `work_plan.py` relative to itself (plugin cache), then `${CLAUDE_PLUGIN_ROOT}`/`${PLUGIN_ROOT}`/`~/.claude`/`~/.agents`. Plugins put `bin/` on PATH automatically.
+- **`commands/*.md`** (repo root) — the namespaced command suite (`/work-plan:brief` …); each is a thin wrapper calling the launcher with unquoted `$ARGUMENTS`. The standalone dispatcher is kept **out** of this dir (in `installer/work-plan.md`) to avoid a `work-plan` command/skill name collision; `install.sh` copies only that one.
+- **Marketplace:** the separate `stylusnexus/agent-plugins` repo carries a per-host index — `.claude-plugin/marketplace.json` (Claude; `source: github`) and `.agents/plugins/marketplace.json` (Codex; `source: url` + `policy` + `category`, because Codex can't parse Claude's source form). Both pin a release tag.
+- **Config seeding** moved into the CLI (`lib/config.py::ensure_config`, called by `load_config`) so plugin installs — which run no install hook — still get a config on first run, at one home `~/.claude/work-plan/`.
+- **Planned:** `work-plan export --json` (spec #2) — the stable read surface for the VS Code viewer (#87).
 
 ## Companion skill: `skills/repo-activity-summary/`
 
