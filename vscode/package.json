@@ -65,6 +65,11 @@
           "type": "string",
           "default": "work-plan",
           "description": "Path to the work-plan CLI launcher (on PATH by default)."
+        },
+        "workPlan.expandReposByDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expand all repo groups in the Tracks view on load. Off by default (repos start collapsed); a single-repo workspace always expands."
         }
       }
     }

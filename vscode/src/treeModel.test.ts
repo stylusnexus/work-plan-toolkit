@@ -4,6 +4,7 @@ import {
   statusCategory,
   trackHint,
   buildTree,
+  shouldExpandRepos,
 } from "./treeModel.ts";
 import type { Export, Track, Issue } from "./model.ts";
 
@@ -319,5 +320,19 @@ describe("buildTree", () => {
     const exp: Export = { schema: 1, generated_at: "2026-06-07T00:00:00Z", tracks: [] };
     const tree = buildTree(exp);
     assert.equal(tree.length, 0);
+  });
+});
+
+describe("shouldExpandRepos", () => {
+  test("collapses by default with multiple repos", () => {
+    assert.equal(shouldExpandRepos(2, false), false);
+    assert.equal(shouldExpandRepos(23, false), false);
+  });
+  test("expands when the setting is on", () => {
+    assert.equal(shouldExpandRepos(5, true), true);
+  });
+  test("always expands a single repo regardless of setting", () => {
+    assert.equal(shouldExpandRepos(1, false), true);
+    assert.equal(shouldExpandRepos(0, false), true);
   });
 });
