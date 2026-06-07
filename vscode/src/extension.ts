@@ -409,7 +409,9 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (raw === undefined) return; // cancelled
 
-        const issues = raw.split(",").map(s => parseInt(s.trim(), 10));
+        if (raw.trim() === "") return;
+        const issues = raw.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
+        if (issues.length === 0) return;
 
         const outcome: WriteOutcome = await executeWrite(
           runner,
@@ -497,7 +499,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
             if (outcome.status === "written") {
               outputChannel.clear();
-              outputChannel.appendLine(outcome.stdout);
+              outputChannel.append(outcome.stdout);
               outputChannel.show(true);
               vscode.window.showInformationMessage(
                 "Work Plan: reconcile preview (draft) — see the Work Plan output channel.",
