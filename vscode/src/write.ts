@@ -14,7 +14,9 @@ export type WriteAction =
   | { kind: "hygiene" }
   | { kind: "slot"; track: string; issue: number }
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
-  | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string };
+  | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
+  | { kind: "addRepo"; key: string; github: string; local?: string }
+  | { kind: "setNotesRoot"; path: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -43,6 +45,8 @@ export type WriteOutcome =
  *   slot            → ["slot", issue, track, "--no-move"]
  *   close           → ["close", track, "--state=<state>", ..."--note=<text>"]
  *   newTrack        → ["new-track", repo, slug, ..."--priority=<p>", ..."--milestone=<m>"]
+ *   addRepo         → ["init-repo", key, "--github=<org/repo>", ..."--local=<path>"]
+ *   setNotesRoot    → ["set-notes-root", path]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -88,6 +92,17 @@ export function actionToArgs(action: WriteAction): string[] {
         ...(action.priority ? [`--priority=${action.priority}`] : []),
         ...(action.milestone ? [`--milestone=${action.milestone}`] : []),
       ];
+
+    case "addRepo":
+      return [
+        "init-repo",
+        action.key,
+        `--github=${action.github}`,
+        ...(action.local ? [`--local=${action.local}`] : []),
+      ];
+
+    case "setNotesRoot":
+      return ["set-notes-root", action.path];
   }
 }
 
