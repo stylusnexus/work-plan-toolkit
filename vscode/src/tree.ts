@@ -4,6 +4,7 @@ import { buildTree, shouldExpandRepos, sortTracks, repoDescription } from "./tre
 import type { RepoNode, TrackNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
+import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
 export type { RepoNode, TrackNode };
@@ -49,8 +50,11 @@ export class WorkPlanTreeProvider
   private roots: RepoNode[] = [];
   private _activeLens: Lens = { kind: "all" };
   private _activeSort: TrackSort = "default";
+  private readonly _refreshFlight: SingleFlight;
 
-  constructor(private readonly load: () => Promise<Export>) {}
+  constructor(private readonly load: () => Promise<Export>) {
+    this._refreshFlight = new SingleFlight(() => this._doRefresh());
+  }
 
   /**
    * Returns the lens-filtered export (what the tree and panel currently show).
@@ -114,13 +118,30 @@ export class WorkPlanTreeProvider
 
   /**
    * Fetches fresh data from the CLI and fires a tree refresh.
-   * Errors propagate to the caller (extension.ts wraps with showErrorMessage).
+   * Concurrent calls coalesce onto the in-flight run (with a trailing run so
+   * the last caller always sees fresh data). Errors propagate to the caller
+   * (extension.ts wraps with showErrorMessage).
    */
   async refresh(): Promise<void> {
-    this.cache = await this.load();
-    this._filteredCache = applyLens(this.cache, this._activeLens);
-    this.roots = this._applySortToRepos(buildTree(this._filteredCache));
-    this._onDidChangeTreeData.fire();
+    return this._refreshFlight.run();
+  }
+
+  /**
+   * The actual fetch+render work. Wrapped in a VS Code progress indicator so
+   * the Tracks view shows a native progress bar while the CLI is running.
+   * Errors propagate out of withProgress → out of this method → through
+   * SingleFlight → to the refresh() caller.
+   */
+  private async _doRefresh(): Promise<void> {
+    await vscode.window.withProgress(
+      { location: { viewId: "workPlan.tree" } },
+      async () => {
+        this.cache = await this.load();
+        this._filteredCache = applyLens(this.cache, this._activeLens);
+        this.roots = this._applySortToRepos(buildTree(this._filteredCache));
+        this._onDidChangeTreeData.fire();
+      },
+    );
   }
 
   getChildren(element?: RepoNode | TrackNode): (RepoNode | TrackNode)[] {
