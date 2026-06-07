@@ -383,13 +383,15 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `brief [--repo=<key>]` | Multi-track snapshot of all active tracks across configured repos. `--repo=<key>` filters to one project (matches the folder name under `notes_root` or the `org/repo` GitHub slug; archived-reopen callouts are also scoped). |
 | `handoff <track> [--auto-next \| --set-next 1,2,3]` | Wrap up a work block. Writes a `### Session — <ts>` entry. `--auto-next` suggests a priority-sorted top-3 from open issues (interactive: apply / edit / skip). `--set-next 1,2,3` is the explicit form. Without either flag, just captures the session summary and reads any pre-existing `next_up`. |
 | `orient [track]` (alias: `where-was-i`) | Read-only paste block. With a track name: ~15-line track summary (priority, last session, next pick, git state). With no track: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
-| `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. |
-| `close <track>` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. |
+| `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. Non-interactive flags: `--move`/`--no-move` (relocate the issue off its prior track, or leave it; default no-move), `--confirm=<token>` (public-repo gate, see below). |
+| `close <track> [--state=shipped\|parked\|abandoned] [--note=<text>]` | Mark track shipped, parked, or abandoned. Moves to `archive/<state>/` for shipped/abandoned. Pass `--state=` (and an optional `--note=`) to run without prompts. |
 | `refresh-md <track>` `\|` `--all` `\|` `--repo=<key>` | Update issue STATE (open/closed, status labels) inside the track body's status table. Does NOT change track membership — this is the right tool for "refresh the work I just completed." `--all` sweeps every active track; `--repo=<key>` scopes the sweep to one repo. |
 | `hygiene [--repo=<key>]` | Weekly all-in-one: `refresh-md` + `reconcile` + `duplicates`. With `--repo=<key>`, steps 1 and 2 scope to that repo and the global `duplicates` step is skipped. |
 | `list [--all]` | List active tracks (or all including parked/archived). |
-| `init <path>` | Add frontmatter to a brand-new track .md file. |
-| `init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
+| `init <path> [--priority=P0..P3] [--milestone=<m>]` | Add frontmatter to a brand-new track .md file (the file must already exist). Pass `--priority=`/`--milestone=` to skip the prompts. |
+| `init-repo <key> --github=<slug> [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. `--github` is required; `--local` is optional. |
+| `new-track <repo> <slug> [--priority=P0..P3] [--milestone=<m>]` | One-shot, non-interactive: create a new track file under `notes_root` for `<repo>` (a config key **or** an `org/repo` slug) with frontmatter. Unlike `init`, it makes the file for you — the headless creation path the VS Code viewer uses. |
+| `set-notes-root <path>` | Relocate where your private track notes live (updates `notes_root` in config). Does not move existing tracks — it warns if any would be orphaned. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
 | `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
@@ -398,6 +400,14 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `plan-status [--repo=<key>] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive \| --issues] [--draft]` | Reach a verdict on every plan/spec doc in a repo by correlating its declared file-manifest against git + the filesystem: ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less / 🧳 foreign. Read-only by default. `--stamp` writes an idempotent status header into each doc (`--draft` previews); `--llm` runs a two-step AI verdict on prose/ambiguous docs; `--archive` moves dead plans to `archive/abandoned/` and `--issues` opens issues for partial plans (both gated, both honor `--draft`); `--json` for machine output. |
 
 Run `python3 ~/.claude/skills/work-plan/work_plan.py --help` for the full list with examples.
+
+### Non-interactive writes & the public-repo gate
+
+Every write verb the VS Code extension drives runs **without a TTY** — explicit flags instead of prompts — and surfaces the public-repo heads-up as structured JSON instead of blocking on input. When a write targets a **public** repo (or one whose visibility `gh` can't determine), the command makes no change and prints `{"needs_confirm": true, "reason": …, "token": …}`; the caller re-invokes with `--confirm=<token>` to proceed. Private repos write straight through.
+
+`needs_confirm` fails **closed** — unknown visibility prompts too. An all-private team can opt out of the *unknown-visibility* case (e.g. when a `gh` lookup flakes) by setting `assume_private_when_unknown: true` in `~/.claude/work-plan/config.yml`; **public repos always prompt regardless.**
+
+`export --json` is the viewer's read surface (schema 1): every frontmatter'd track plus an additive `untracked` list of open issues that no track references, per repo.
 
 ## Version
 

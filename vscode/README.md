@@ -1,54 +1,76 @@
 # Work Plan — VS Code Extension
 
-The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-toolkit) CLI.
+The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-toolkit) CLI. One engine, two faces: the extension is a UI — every read goes through `work-plan export --json` and every write shells to a `work-plan` subcommand, so there's no planning logic duplicated in TypeScript and no drift from the CLI's rules.
 
 ## What it does
 
-This extension connects VS Code to your local `work-plan` installation and presents:
+**See**
 
-- A **sidebar tree** (repos → tracks) showing the live state of every tracked GitHub repo.
-- A **Mermaid dependency graph** webview — visual map of issue and track relationships.
-- **Per-track detail** panels with issue tables, rollup counts, and quick links to GitHub.
+- A **sidebar tree** (repos → tracks) showing the live state of every tracked GitHub repo — status dot, open count, blocked/next hints, a ⚠ badge on public repos.
+- A **Mermaid dependency graph** webview + **per-track detail** panel (issue table, blockers, ordered next-up) — with a focus toggle on the selected track.
+- **Lenses** (filter by repo / milestone / blocked) and **sort** (default / blocked / most-open / name).
+- An **"Untracked" bucket** under each repo: open GitHub issues that no track references — click to open on GitHub, or right-click to slot one into a track.
 
-All data flows through `work-plan export --json` (schema 1). The extension is read-only in Phase 2; write-back subcommands (refresh, transition, etc.) are planned for Phase 3.
+**Act** — every action runs the CLI under the hood:
+
+- **Edit fields** (status / priority / milestone / blockers / next-up), **Set next-up**, **Slot** an issue, **Close** a track (shipped / parked / abandoned), **Refresh** a track body, **Reconcile** (draft preview), **Run hygiene**, and **New track**.
+- **Public-repo confirm modal.** Before any write into a repo that's public (or whose visibility `gh` can't determine), the extension surfaces the CLI's heads-up as a **"Write anyway / Keep private"** dialog and re-invokes with a confirm token — the leak guard, moved from a terminal prompt to a GUI. Private repos write straight through with no friction.
+
+**Get started from empty** — a cold-start a new user can drive without the CLI:
+
+- When you have no repos yet, the tree shows a welcome with **Add a repo** and **Set notes location** buttons.
+- **Add Repo** runs `init-repo`; **Set Notes Location** runs `set-notes-root` so your private track notes live wherever you choose (not just the hidden default). Config itself is auto-seeded by the CLI on first run.
+
+A loading bar shows while the CLI fetch runs, and concurrent refreshes are coalesced (single-flight) so a burst of triggers can't spawn overlapping fetches.
 
 ## Requirements
 
-- The `work-plan` CLI must be on your `PATH` (or configure `workPlan.cliPath` in VS Code settings).
+- The `work-plan` CLI must be on your `PATH` (or set `workPlan.cliPath`). The extension checks the CLI version at activation and points you at an update if it's too old to have the read/write surface it needs.
 - VS Code 1.90.0 or later.
 
-## Status
+## Commands
 
-**Phase 2 — read-only viewer (Tasks 5–8 complete)**
+Available from the tree (right-click a track / the view's `⋯` overflow) and the command palette:
 
-Tree provider, Mermaid graph webview, and per-track detail panels are fully implemented. Click any track in the sidebar to open the dependency graph with the selected track highlighted.
+`Refresh` · `Select View` (lens) · `Sort Tracks` · `Edit Track Fields` · `Set Next-Up` · `Slot Issue into Track` · `Close Track` · `Refresh Track Body` · `Reconcile (preview)` · `Run Hygiene` · `New Track` · `Add Repo` · `Set Notes Location` · `Slot Untracked Issue into Track`.
 
 ## Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `workPlan.cliPath` | `"work-plan"` | Path to the work-plan CLI launcher. |
+| `workPlan.cliPath` | `"work-plan"` | Path to the `work-plan` CLI launcher. Read at activation — reload the window after changing it. |
+| `workPlan.expandReposByDefault` | `false` | Expand all repo groups on load (a single-repo workspace always expands). |
 
 ## Build & run
 
 ```bash
 # From the vscode/ directory:
-npm install          # installs esbuild, TypeScript, @types/vscode, mermaid
-npm run build        # compiles extension + copies Mermaid bundle into dist/
+npm install          # esbuild, TypeScript, @types/vscode, mermaid
+npm run typecheck    # tsc --noEmit
+npm test             # node --test (pure modules; no VS Code host needed)
+npm run build        # compiles extension + copies the Mermaid bundle into dist/
 ```
 
-Then launch the extension host to try it live:
+Then launch the extension host to try it live (the last arg is the workspace folder to open, which carries `workPlan.cliPath`):
 
 ```bash
-code --extensionDevelopmentPath=./vscode
+code --new-window --disable-extensions --extensionDevelopmentPath=./vscode <workspace-folder>
 ```
 
-The `build` step copies `node_modules/mermaid/dist/mermaid.min.js` into `dist/` automatically. The `dist/` folder is gitignored — the Mermaid file is never committed.
+The `build` step copies `node_modules/mermaid/dist/mermaid.min.js` into `dist/` automatically. `dist/` is gitignored — the Mermaid file is never committed.
+
+## Architecture
+
+**Pure logic lives in vscode-free modules** (`model.ts`, `cli.ts`, `treeModel.ts`, `write.ts`, `singleFlight.ts`, `webview/graph.ts`/`detail.ts`/`html.ts`/`lenses.ts`) and is unit-tested by Node's native test runner — no VS Code host required. Only `tree.ts`, `webview/panel.ts`, and `extension.ts` import `vscode`. The write layer maps a UI action to CLI argv in `write.ts` (`actionToArgs` + the confirm-token flow in `executeWrite`); `extension.ts` is the thin glue that gathers input and shows dialogs.
 
 ### How Mermaid is loaded
 
-The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 11 (`mermaid@^11.15.0`). It is a single self-contained file (~3.2 MB) that exposes a global `mermaid` object when loaded via a classic `<script nonce="…" src="…">` tag. The extension does NOT use the ESM build (which requires ~160 chunk files). If the graph fails to render in the host, verify that `dist/mermaid.min.js` was copied (`ls vscode/dist/`) and that the CSP in the webview html allows `'wasm-unsafe-eval'` (Mermaid needs it).
+The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 11 (`mermaid@^11.15.0`): a single self-contained file (~3.2 MB) that exposes a global `mermaid` via a classic `<script nonce="…" src="…">` tag (not the ESM build, which needs ~160 chunk files). If the graph fails to render, verify `dist/mermaid.min.js` was copied (`ls vscode/dist/`) and that the webview CSP allows `'wasm-unsafe-eval'` (Mermaid needs it). The webview uses a strict CSP, a per-document nonce, and a single `acquireVsCodeApi()` call.
 
-## Development
+## Status
 
-Tests run via Node's native type-stripping; the manifest stays CJS (no `"type": "module"`) because the VS Code extension host and `esbuild.js` require CommonJS — that's why the test script suppresses the `MODULE_TYPELESS_PACKAGE_JSON` warning.
+**Phases 1–3 complete** — the CLI seam, the read-only viewer, and the full write surface (write actions + public-repo confirm modal + cold-start onboarding) are all shipped. **Phase 4** (a dedicated `vscode/` CI job + publishing to the VS Code Marketplace and Open VSX) is the remaining work; until then the extension runs from source via the extension-development host above.
+
+## Development notes
+
+Tests run via Node's native type-stripping; the manifest stays CJS (no `"type": "module"`) because the VS Code extension host and `esbuild.js` require CommonJS — that's why the test script suppresses the `MODULE_TYPELESS_PACKAGE_JSON` warning. CI does not yet cover `vscode/` (Phase 4); the local gate is `npm run typecheck && npm test && npm run build`.
