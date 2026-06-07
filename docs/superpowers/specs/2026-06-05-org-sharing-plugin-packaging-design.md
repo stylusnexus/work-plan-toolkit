@@ -14,10 +14,15 @@
 
 ---
 
-## Revision note (what changed after the second-model review)
+## Revision note (what changed after the second-model review + verification spike)
 
-A Codex spec-review of the first draft returned DO NOT SHIP and was largely right. Primary-doc
-verification then corrected several load-bearing claims. This revision reflects all of it:
+A Codex spec-review (two rounds) returned DO NOT SHIP and was largely right. Primary-doc
+verification corrected several claims, and a **hands-on verification spike** (2026-06-05, against the
+real `claude`/`codex` CLIs) then settled the externals. **Spike results, all confirmed in our favor:**
+CalVer **passes `claude plugin validate --strict`**; the **`bin/` wrapper resolves** with the `../`
+fix; a **single `.claude-plugin/marketplace.json` installs end-to-end on BOTH Claude and Codex**;
+the **command suite namespaces** (`/work-plan:brief`); and the dispatcher/skill **name collision is
+real** (fix: exclude `commands/work-plan.md` from the plugin). This revision bakes all of it in:
 
 - **`bin/` wrapper replaces the env-var path probe.** Claude plugins auto-add a plugin's `bin/`
   to PATH; a `bin/work-plan` wrapper resolves the CLI relative to *itself*, which is robust where
@@ -29,10 +34,11 @@ verification then corrected several load-bearing claims. This revision reflects 
 - **Versioning stays CalVer.** "Codex requires semver" was *unproven*; Claude treats `version` as
   a free string (omit it and the commit SHA is used, so every commit is a new version). The
   semver migration is dropped.
-- **One marketplace index, not two.** Codex reads *both* `.agents/plugins/marketplace.json` **and**
-  a legacy-compatible `.claude-plugin/marketplace.json`
-  ([Codex docs](https://developers.openai.com/codex/plugins/build)), so a single
-  `.claude-plugin/marketplace.json` serves both hosts.
+- **One marketplace index, not two** (spike-verified). Codex installed from the same
+  `.claude-plugin/marketplace.json` Claude uses; the "fallback second index" is dropped.
+- **`bin/` `../` fix + unquoted `$ARGUMENTS` + collision exclusion** (round-2 review + spike): resolve
+  from the wrapper's parent; leave `$ARGUMENTS` unquoted (quoting breaks `reconcile --all`); never
+  ship `commands/work-plan.md` in the plugin.
 - **"travels via git pull" was overstated.** `plan-status` writes files / `git mv`; it does **not**
   commit or push (verified: no commit/push in `plan_status.py` or `lib/git_state.py`). The user
   commits. Corrected throughout (and in spec #2).
@@ -147,27 +153,34 @@ then falls back to known install paths, and never depends on an env var being pr
 
 ```sh
 #!/usr/bin/env bash
-# Resolve work_plan.py relative to this wrapper, then fall back.
-here="$(cd "$(dirname "$0")" && pwd)"
+# Resolve work_plan.py relative to this wrapper's PARENT (the plugin root, since
+# the wrapper lives at <root>/bin/work-plan), then fall back to install paths.
+root="$(cd "$(dirname "$0")/.." && pwd)"
 for c in \
-  "$here/skills/work-plan/work_plan.py" \
+  "$root/skills/work-plan/work_plan.py" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
+  "${PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
   "$HOME/.claude/skills/work-plan/work_plan.py" \
   "$HOME/.agents/skills/work-plan/work_plan.py"; do
   [ -n "$c" ] && [ -f "$c" ] && exec python3 "$c" "$@"
 done
-echo "work-plan: CLI not found (looked next to bin/, CLAUDE_PLUGIN_ROOT, ~/.claude, ~/.agents)." >&2
+echo "work-plan: CLI not found (looked next to bin/.., CLAUDE_PLUGIN_ROOT, PLUGIN_ROOT, ~/.claude, ~/.agents)." >&2
 exit 1
 ```
 
-- **Claude plugin:** `bin/` is on PATH; `$here` is the plugin root → first candidate resolves.
-- **`install.sh`:** the wrapper is copied next to the skill (or PATH-linked); self-relative or the
-  `~/.claude`/`~/.agents` fallbacks resolve.
-- **Codex:** if Codex honors `bin/`, self-relative resolves; if not, the command wrappers fall back
-  to a documented invocation — **to be confirmed in Phase 2** (this is the one genuinely-unverified
-  runtime detail; the design isolates it to a single wrapper + a Phase-2 acceptance test).
+> **`../` is load-bearing** (spike-verified). The wrapper is at `<root>/bin/work-plan`, so it must
+> resolve from `dirname/..`, not `dirname` — `$here/skills/...` would be `<root>/bin/skills/...` and
+> never exist. Verified working in both the Claude *and* Codex versioned caches (same layout).
 
-Command/skill files invoke `work-plan <args>` (PATH) rather than a hardcoded python path.
+- **Claude plugin / Codex plugin:** both unpack to `<cache>/<version>/{skills,bin}`; the wrapper's
+  `../` resolves the bundled CLI. (Verified: `codex plugin add` installs `skills/` + `bin/` into its
+  cache; the Claude install resolves via `bin/` on PATH.)
+- **`install.sh`:** the wrapper is copied to a known location; self-relative or the
+  `~/.claude`/`~/.agents` fallbacks resolve.
+- **Windows:** the bash wrapper does not run natively. `install.ps1` ships a `.cmd`/`.ps1` shim (or
+  the command files call `python3 <resolved>` directly) — see the plan's Windows task.
+
+Command/skill files invoke `work-plan <args>` (on PATH) rather than a hardcoded python path.
 
 ### Command surface — namespaced suite (plugin) + single dispatcher (install.sh)
 
@@ -178,15 +191,22 @@ Plugin skills/commands are always namespaced `/<plugin>:<name>`. We use that for
   `/work-plan:status` (→ `plan-status`)
 - `/work-plan:run <subcommand …>` — catch-all for the long tail (`slot`, `close`, `reconcile`,
   `group`, `suggest-priorities`, `init-repo`, `refresh-md`, `duplicates`, `canonicalize`, `list`).
-- The model-invoked `SKILL.md` (`/work-plan:work-plan`) remains for natural-language entry.
+- The model-invoked `SKILL.md` provides the `work-plan` skill for natural-language entry.
 
-**`install.sh` copies ONLY `commands/work-plan.md`** → the bare `/work-plan` dispatcher, so a
-standalone install does **not** pollute the global command namespace with `/brief`, `/handoff`, etc.
-The per-verb wrappers only materialize (namespaced, safe) inside the plugin.
+**Collision fix (spike-verified).** The plugin must **NOT** ship `commands/work-plan.md`: a
+`work-plan` command *and* the `work-plan` skill both register as the name `work-plan`, and the spike
+confirmed it — `claude plugin details` listed `work-plan` **twice** in the inventory. So
+`commands/work-plan.md` is excluded from the plugin (via the manifest's `commands` allowlist, or by
+not placing it where the plugin discovers it) and exists **only** for `install.sh` standalone, where
+there is no namespace and it provides the bare `/work-plan` dispatcher. Standalone install therefore
+copies **only** `commands/work-plan.md` — never the per-verb suite, which would pollute the global
+namespace with bare `/brief`, `/handoff`.
 
-Each wrapper handles arguments correctly (fixes carried from the review): **quote `"$ARGUMENTS"`**
-so multiword values (e.g. a milestone) don't split, and the dispatcher maps **empty args → `--help`**
-explicitly (the CLI exits 2 on no args, so the wrapper must special-case it).
+Argument handling (corrected after the second review round): **leave `$ARGUMENTS` UNQUOTED** —
+bash re-parses the substituted text and honors the user's own inline quotes, so `reconcile --all`
+splits into argv correctly while a user-quoted `--milestone='v1 — Launch'` stays intact. (Quoting the
+whole placeholder collapses `reconcile --all` into one argv element → "unknown subcommand" — verified.)
+The dispatcher special-cases **empty args → `--help`** (the CLI exits 2 on no args).
 
 ### Config seeding — lazy, single-sourced, install-mode-independent
 
@@ -194,8 +214,10 @@ No plugin system runs an install hook, and neither can write to `$HOME` at insta
 self-seeds on first run:
 
 - `lib/config.py` gains `ensure_config()` — the **single source** of the seed content — called by
-  `load_config()` when the file is absent. It writes `notes_root: ~/.claude/work-plan/notes`
-  (a stable path outside any plugin cache) and creates that dir.
+  `load_config()` when the file is absent. It writes an **absolute** `notes_root`
+  (`Path.home()/".claude"/"work-plan"/"notes"`, expanded — **not** a literal `~`, which
+  `tracks.py` does not `expanduser`) outside any plugin cache, and creates that dir. (`tracks.py`
+  also gains a defensive `expanduser()` so a hand-edited `~` config still works.)
 - **Config location is fixed at `~/.claude/work-plan/config.yml`** for all hosts (the CLI already
   reads only that path). The review flagged that `install.sh --target=~/.agents` currently seeds a
   *different* `~/.agents/work-plan/config.yml` the CLI never reads — a pre-existing latent bug. This
@@ -207,16 +229,18 @@ self-seeds on first run:
   (identical behavior, lockstep) — fixing the review's "sh uses `--version` (no seed) / ps1 uses
   `list` (seeds)" divergence: both call a command that triggers `load_config()`.
 
-### Versioning — CalVer, written into the manifest by CI
+### Versioning — CalVer, written into the manifest by CI (spike-verified)
 
 Keep the existing CalVer `VERSION` (`<date>+<sha>`, auto-bumped on each deploy by
-`version-bump.yml`). Claude accepts any `version` string and a bump every deploy gives update
-detection; Codex has no proven semver constraint. `version-bump.yml` gains one step: after writing
-`VERSION`, copy the same string into `.claude-plugin/plugin.json` (and `.codex-plugin/plugin.json`),
-and stage them in the existing commit. `--version` keeps working via the upward-walk (`_load_version`
-finds root `VERSION` inside the plugin cache too — verified).
+`version-bump.yml`). **Spike-verified:** the current CalVer `2026.06.06+7909ca5` **passes
+`claude plugin validate --strict` (exit 0)** and **Codex installs it as-is** (shown as the installed
+version), so the earlier "Codex requires semver / leading zeros fail strict" concern is refuted.
+`version-bump.yml` gains one step: after writing `VERSION`, copy the same string into
+`.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` and stage them **in the bump commit**.
+`--version` keeps working via the upward-walk (`_load_version` finds root `VERSION` inside the cache —
+verified live). **CI gate:** `claude plugin validate --strict <plugin>` runs on every PR.
 
-### Marketplace — one shared index
+### Marketplace — one shared index (spike-verified for BOTH hosts)
 
 New **public** repo `stylusnexus/agent-plugins` with a **single** index that both hosts read:
 
@@ -229,22 +253,28 @@ agent-plugins/
 {
   "name": "stylus-nexus",
   "owner": { "name": "Stylus Nexus" },
+  "description": "Stylus Nexus plugins for Claude Code + Codex.",
   "plugins": [
     { "name": "work-plan",
-      "source": { "source": "github", "repo": "stylusnexus/work-plan-toolkit", "ref": "v<tag>" },
+      "source": { "source": "github", "repo": "stylusnexus/work-plan-toolkit", "ref": "<release-tag>" },
       "description": "Track-aware daily planning over GitHub issues, plus plan-status doc/plan liveness." }
   ]
 }
 ```
 
-If a Codex-native index is later required (richer `policy.*`/`category`/`url`/`git-subdir` schema),
-it's additive (`.agents/plugins/marketplace.json`) — but Phase-2 verification determines whether the
-legacy-compatible read suffices, avoiding a second index by default.
+**Spike result:** a single `.claude-plugin/marketplace.json` installed end-to-end on **Claude**
+(`marketplace add` → `install` → `details`) **and** on **Codex** (`codex plugin marketplace add` →
+`codex plugin add work-plan@stylus-nexus` → installed/enabled). **One index, no second file** — the
+earlier "fallback second index" idea is dropped (it also contradicted the locked single-index
+decision). The `description` field is required to avoid a validate warning. Note: a **local** test
+marketplace uses a relative-path `source` (`"./work-plan"`); the published one uses the `github`
+source above.
 
-**Rollback / mutable-`main` safety (review fix):** the marketplace pins a **release tag** (`ref:
-v<tag>`), not bare `main`, so a bad commit on `main` does not auto-ship to every installer. A
-release = tag the toolkit repo + bump the marketplace `ref`. Rollback = point `ref` at the prior
-tag. The README documents the disable/revoke path (`/plugin uninstall`, marketplace `ref` revert).
+**Rollback / mutable-`main` safety:** the marketplace pins a **release tag** (`ref: <tag>`), not bare
+`main`, so a bad commit on `main` does not auto-ship. **Release ordering (review fix):** merge to
+`main` → wait for `version-bump.yml`'s bump commit (which now also syncs the manifests) → **tag that
+bump commit** → point the marketplace `ref` at the tag. Rollback = point `ref` at the prior tag.
+`claude plugin tag` validates that `plugin.json` and the marketplace entry agree.
 
 ### Install flows (documented in README — corrected names)
 
@@ -268,10 +298,12 @@ fix:** merge the manifests to `main` and cut the tag *first*, then install from 
 confirm `/work-plan:brief` runs and config self-seeds (test a **config-dependent** command from a
 clean `$HOME`, not `--version`). Exit: clean install + a second-tag update both verified.
 
-**Phase 2 — Codex plugin.** `.codex-plugin/plugin.json`; confirm Codex resolves the CLI (the `bin/`
-self-relative path or a documented fallback) and the skill-invocation contract; confirm the
-legacy-compatible marketplace read works (else add the native index). Exit: Codex install + update
-verified on a clean profile.
+**Phase 2 — Codex plugin.** `.codex-plugin/plugin.json` with `"skills": "./skills/"` (declare the
+component path; don't rely on auto-discovery). Codex install from the shared index is **already
+spike-verified**; this phase confirms the in-session **skill-invocation syntax** and whether `bin/`
+is on Codex's PATH (the wrapper's `../` self-resolution works from the cache regardless; if `bin/`
+isn't on PATH, command/skill content calls it via `${PLUGIN_ROOT}`/`${CLAUDE_PLUGIN_ROOT}`). Exit:
+Codex skill runs and a re-tag update is picked up.
 
 **Phase 3 — Versioning + docs + lockstep.** `version-bump.yml` writes CalVer into the manifest(s);
 README updated (three install paths, namespaced command names, **CalVer** — not semver); `install.ps1`
@@ -292,7 +324,10 @@ PR `dev`→`main` is what triggers `version-bump.yml`. The marketplace repo has 
 - Under the plugin, `/work-plan:brief` runs `work-plan brief`; `/work-plan:run reconcile --all`
   reaches the catch-all.
 - `install.sh` installs only `/work-plan` (no bare `/brief` etc. appear).
-- A multiword arg (`group --milestone='v1 — Launch'`) is passed intact (quoting); empty args → `--help`.
+- A multiword arg (`run group --milestone='v1 — Launch'`) is passed intact (UNQUOTED `$ARGUMENTS`,
+  bash honors the user's inline quotes); a multi-flag arg (`run reconcile --all`) splits correctly;
+  empty args → `--help`.
+- The plugin inventory lists `work-plan` exactly **once** (no command/skill duplicate).
 
 **Config seeding**
 - First run with no `~/.claude/work-plan/config.yml` (clean `$HOME`) creates a valid file via a
@@ -317,18 +352,22 @@ PR `dev`→`main` is what triggers `version-bump.yml`. The marketplace repo has 
 
 ## Risks & open questions
 
-- **Codex command/skill runtime path + invocation contract** — the one genuinely-unverified area.
-  Mitigated by the self-relative `bin/` wrapper and an explicit Phase-2 acceptance test; if Codex
-  ignores `bin/`, fall back to a documented `python3 <path>` form discovered at install.
-- **`${CLAUDE_PLUGIN_ROOT}` in command markdown** — not relied upon (the `bin/` wrapper replaces it);
-  retained only as a wrapper fallback.
-- **Tag-pinned marketplace cadence** — pinning to tags (not `main`) adds a "tag + bump ref" release
-  step; accepted for rollback safety. Document it so releases don't stall.
-- **Codex legacy marketplace read fidelity** — Codex reads `.claude-plugin/marketplace.json`, but
-  whether it accepts Claude-schema entries verbatim is confirmed in Phase 2; native index is the
-  additive fallback.
-- **Namespaced names in muscle memory** — `/work-plan:brief` differs from today's `/work-plan brief`.
-  Documented; `install.sh` users keep the old form.
+**Resolved by the 2026-06-05 spike** (was open): CalVer-strict validity ✅, `bin/` `../` resolution
+✅, single-index install on Claude **and** Codex ✅, command-suite namespacing ✅, name-collision
+reality ✅ (fix applied). These are no longer risks.
+
+Remaining:
+- **Codex in-session skill-invocation syntax** — install/layout/version all verified; the exact
+  `@`/`/skills` invocation and whether `bin/` is on Codex's PATH are confirmed in Phase 2. Cosmetic:
+  the wrapper resolves via `../` from the cache regardless, and `${PLUGIN_ROOT}` is a fallback.
+- **Windows launcher** — the bash `bin/work-plan` doesn't run natively; `install.ps1` must ship a
+  `.cmd`/`.ps1` shim (or command files call `python3` directly). Verify on the Windows CI matrix.
+- **Tag-pinned marketplace cadence** — pinning to tags adds a "tag the bump commit + point ref" step;
+  accepted for rollback safety. Document so releases don't stall.
+- **`repo-activity-summary` rides along** — the plugin bundles the whole `skills/` dir, so the second
+  skill installs too (seen in the spike inventory). Intended (it's a real toolkit skill); note it.
+- **Namespaced names in muscle memory** — `/work-plan:brief` ≠ today's `/work-plan brief`. Documented;
+  `install.sh` users keep the old form.
 
 ---
 
