@@ -122,8 +122,23 @@ if (Test-Path $versionSrc) {
     Warn "no VERSION file at toolkit root — --version will report 'unknown'"
 }
 
-# 4. Copy slash command
-$cmdSrc = Join-Path $ToolkitDir "commands\work-plan.md"
+# 3.6 Install the work-plan launcher (Windows .cmd shim + the bash wrapper).
+# Plugin installs get bin/ on PATH automatically; for install.ps1 we drop the
+# launchers into the target's bin/.
+$binSrcCmd = Join-Path $ToolkitDir "bin\work-plan.cmd"
+$binSrcSh  = Join-Path $ToolkitDir "bin\work-plan"
+$binDstDir = Join-Path $BaseDir "bin"
+if (Test-Path $binSrcCmd) {
+    New-Item -ItemType Directory -Force -Path $binDstDir | Out-Null
+    Copy-Item $binSrcCmd (Join-Path $binDstDir "work-plan.cmd") -Force
+    if (Test-Path $binSrcSh) { Copy-Item $binSrcSh (Join-Path $binDstDir "work-plan") -Force }
+    Ok "installed work-plan launcher ($binDstDir)"
+}
+
+# 4. Copy the standalone dispatcher command (bare /work-plan). Only the single
+# dispatcher is copied — the per-verb suite under commands/ is plugin-only
+# (namespaced); copying it here would create bare /brief etc.
+$cmdSrc = Join-Path $ToolkitDir "installer\work-plan.md"
 $cmdDst = Join-Path $CommandsDir "work-plan.md"
 if (Test-Path $cmdDst) {
     $srcHash = (Get-FileHash $cmdSrc).Hash
@@ -145,18 +160,17 @@ if (Test-Path $cmdDst) {
     Ok "copied command"
 }
 
-# 5. Seed config — only if it doesn't already exist
-if (Test-Path $ConfigFile) {
-    Ok "config already exists, leaving alone ($ConfigFile)"
+# 5. Seed config via the CLI — single source of seed content (see lib/config.py).
+# The CLI always reads/writes ONE config home (~/.claude/work-plan/config.yml),
+# regardless of install target, so we delegate. A config-dependent command
+# (`list`) triggers load_config -> ensure_config.
+$canonConfig = Join-Path $HOME ".claude\work-plan\config.yml"
+if (Test-Path $canonConfig) {
+    Ok "config already exists, leaving alone ($canonConfig)"
 } else {
-    $absNotes = Join-Path $ToolkitDir "notes"
-    @"
-# work-plan config — created by install.ps1. Edit this file to customize.
-# Run /work-plan init-repo <key> --github=<org/repo> to populate repos:.
-notes_root: $absNotes
-repos: {}
-"@ | Set-Content -Path $ConfigFile -Encoding UTF8
-    Ok "seeded $ConfigFile (notes_root: $absNotes)"
+    & python (Join-Path $SkillsDir "work-plan\work_plan.py") list *> $null
+    if ($LASTEXITCODE -eq 0) { Ok "seeded $canonConfig" }
+    else { Warn "could not seed config via the CLI — check python ($canonConfig)" }
 }
 
 # 6. Smoke test

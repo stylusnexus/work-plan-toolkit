@@ -46,10 +46,15 @@ class LoadConfigTest(unittest.TestCase):
             self.assertEqual(cfg["repos"]["critforge"]["github"], "stylusnexus/CritForge")
             self.assertIsNone(cfg["repos"]["critforge"]["local"])
 
-    def test_missing_file_raises(self):
-        with self.assertRaises(ConfigError) as ctx:
-            load_config(Path("/nonexistent/config.yml"))
-        self.assertIn("config.yml", str(ctx.exception))
+    def test_missing_file_self_seeds(self):
+        # No install hook exists for plugin installs, so a missing config is
+        # seeded on first load rather than raising.
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "work-plan" / "config.yml"
+            cfg = load_config(path, notes_root=Path(d) / "notes")
+            self.assertTrue(path.is_file())
+            self.assertEqual(cfg["repos"], {})
+            self.assertIn("notes_root", cfg)
 
     def test_missing_notes_root_raises(self):
         with tempfile.TemporaryDirectory() as d:

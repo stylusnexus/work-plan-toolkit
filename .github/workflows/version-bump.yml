@@ -48,6 +48,25 @@ jobs:
           echo "$NEW" > VERSION
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
 
+      - name: Sync CalVer into plugin manifest(s)
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+        run: |
+          python3 - "$NEW_VERSION" <<'PY'
+          import json, os, sys
+          new = sys.argv[1]
+          for path in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+              if not os.path.exists(path):
+                  continue
+              with open(path) as f:
+                  data = json.load(f)
+              data["version"] = new
+              with open(path, "w") as f:
+                  json.dump(data, f, indent=2)
+                  f.write("\n")
+              print(f"synced {path} -> {new}")
+          PY
+
       # Prepend a CHANGELOG entry from the merged deploy PR's title + body.
       # Only on a real PR merge (workflow_dispatch has no PR context).
       - name: Prepend CHANGELOG entry
@@ -85,13 +104,18 @@ jobs:
         env:
           NEW_VERSION: ${{ steps.compute.outputs.new_version }}
         run: |
-          if git diff --quiet VERSION CHANGELOG.md; then
-            echo "VERSION/CHANGELOG already current — nothing to commit."
+          # Only reference files that exist (.codex-plugin lands in Phase 2).
+          FILES=(VERSION CHANGELOG.md)
+          for m in .claude-plugin/plugin.json .codex-plugin/plugin.json; do
+            [ -f "$m" ] && FILES+=("$m")
+          done
+          if git diff --quiet -- "${FILES[@]}"; then
+            echo "VERSION/CHANGELOG/manifests already current — nothing to commit."
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add VERSION CHANGELOG.md
+          git add -- "${FILES[@]}"
           git commit -m "chore(version): bump to $NEW_VERSION [skip ci]"
           # Absorb anything that landed on main while this job was queueing.
           git pull --rebase origin main
