@@ -45,6 +45,8 @@ export interface Export {
   schema: number;
   generated_at: string;
   tracks: Track[];
+  /** Open issues referenced by no track, grouped by repo (CLI schema 1, additive). */
+  untracked?: { repo: string; issues: Issue[] }[];
 }
 
 // ---------------------------------------------------------------------------

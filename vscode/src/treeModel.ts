@@ -1,4 +1,4 @@
-import type { Export, Track } from "./model.ts";
+import type { Export, Issue, Track } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Node types
@@ -29,6 +29,12 @@ export interface RepoNode {
   /** Tier from the first track (today "private"). */
   tier: string;
   tracks: TrackNode[];
+  /**
+   * Open issues for this repo that are referenced by no track.
+   * Populated from `Export.untracked`; always `[]` when the repo has no
+   * untracked issues or when the CLI did not emit the field (older versions).
+   */
+  untracked: Issue[];
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +113,7 @@ export function buildTree(exp: Export): RepoNode[] {
         isPublic: false,
         tier: track.tier ?? "private",
         tracks: [],
+        untracked: [],
       });
     }
 
@@ -127,6 +134,14 @@ export function buildTree(exp: Export): RepoNode[] {
       hint: trackHint(track),
       track,
     });
+  }
+
+  // Populate untracked issues per repo from the additive export field.
+  // The null-repo bucket ("(no repo)") gets [] — untracked is always repo-keyed.
+  for (const node of repoMap.values()) {
+    if (node.repo !== "(no repo)") {
+      node.untracked = exp.untracked?.find(u => u.repo === node.repo)?.issues ?? [];
+    }
   }
 
   return Array.from(repoMap.values());
