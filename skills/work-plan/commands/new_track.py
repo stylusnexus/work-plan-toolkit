@@ -102,7 +102,7 @@ def run(args: list[str]) -> int:
     # Confirm-token gate (BEFORE creating anything)
     # Mirror the exact JSON shape used by init/slot/close/set.
     # ------------------------------------------------------------------
-    if needs_confirm(github):
+    if needs_confirm(github, cfg):
         confirm = flags.get("--confirm")
         if not (isinstance(confirm, str) and valid_token(confirm, github, slug)):
             print(json.dumps({

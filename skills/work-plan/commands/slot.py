@@ -88,7 +88,7 @@ def run(args: list[str]) -> int:
     # Placed after target resolution and the "already in track" no-op so we
     # don't gate a no-op write.
     confirm = flags.get("--confirm")
-    if target.repo and needs_confirm(target.repo) and not (
+    if target.repo and needs_confirm(target.repo, cfg) and not (
         isinstance(confirm, str) and valid_token(confirm, target.repo, target.name)
     ):
         print(json.dumps({

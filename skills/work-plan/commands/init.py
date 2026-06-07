@@ -63,7 +63,7 @@ def run(args: list[str]) -> int:
     # Confirm-token gate — only for real resolvable repos (not TBD/unknown).
     # Checked before printing the info block so the gate output is the only
     # stdout (the extension surfaces this as a modal, JSON-parse the first line).
-    if repo and repo != "TBD" and needs_confirm(repo):
+    if repo and repo != "TBD" and needs_confirm(repo, cfg):
         confirm = flags.get("--confirm")
         if not (isinstance(confirm, str) and valid_token(confirm, repo, slug)):
             print(json.dumps({

@@ -12,8 +12,11 @@ def _t(name="ph", repo="o/r"):
     return SimpleNamespace(name=name, repo=repo, path=Path(f"/tmp/{name}.md"),
         has_frontmatter=True, meta={"status":"active","github":{"repo":repo}}, body="# b")
 
-def _drive(args, vis="PRIVATE"):
-    with patch("commands.set_field.load_config", return_value={"notes_root":"/tmp"}), \
+def _drive(args, vis="PRIVATE", cfg=None):
+    base_cfg = {"notes_root": "/tmp"}
+    if cfg is not None:
+        base_cfg.update(cfg)
+    with patch("commands.set_field.load_config", return_value=base_cfg), \
          patch("commands.set_field.discover_tracks", return_value=[_t()]), \
          patch("lib.write_guard.repo_visibility", return_value=vis), \
          patch("commands.set_field.write_file") as mw:
@@ -53,3 +56,22 @@ class SetFieldTest(unittest.TestCase):
             with redirect_stdout(buf):
                 rc = set_field.run(["ph", "status=parked"])
         self.assertEqual(rc, 0); mw.assert_called_once()
+
+    # --- assume_private_when_unknown: caller-level integration ---
+    def test_unknown_vis_with_flag_writes(self):
+        """Unknown visibility + assume_private_when_unknown=True → write proceeds."""
+        rc, mw, out = _drive(
+            ["ph", "status=parked"],
+            vis=None,
+            cfg={"assume_private_when_unknown": True},
+        )
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        self.assertNotIn("needs_confirm", out)
+
+    def test_unknown_vis_without_flag_emits_needs_confirm(self):
+        """Unknown visibility + no flag → still emits needs_confirm JSON."""
+        rc, mw, out = _drive(["ph", "status=parked"], vis=None)
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        self.assertIn("needs_confirm", out)
