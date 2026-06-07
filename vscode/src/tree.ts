@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { Export } from "./model.ts";
-import { buildTree, shouldExpandRepos } from "./treeModel.ts";
-import type { RepoNode, TrackNode, StatusCategory } from "./treeModel.ts";
+import { buildTree, shouldExpandRepos, sortTracks } from "./treeModel.ts";
+import type { RepoNode, TrackNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
 
@@ -9,6 +9,8 @@ import type { Lens } from "./webview/lenses.ts";
 export type { RepoNode, TrackNode };
 // Re-export Lens so extension.ts only needs to import from tree.ts.
 export type { Lens };
+// Re-export TrackSort so extension.ts only needs to import from tree.ts.
+export type { TrackSort };
 
 // ---------------------------------------------------------------------------
 // Icon helper (pure mapping — kept in tree.ts because it references vscode)
@@ -46,6 +48,7 @@ export class WorkPlanTreeProvider
   private _filteredCache: Export | null = null;
   private roots: RepoNode[] = [];
   private _activeLens: Lens = { kind: "all" };
+  private _activeSort: TrackSort = "default";
 
   constructor(private readonly load: () => Promise<Export>) {}
 
@@ -67,6 +70,35 @@ export class WorkPlanTreeProvider
     return this._activeLens;
   }
 
+  /** Returns the currently active sort mode. */
+  get activeSort(): TrackSort {
+    return this._activeSort;
+  }
+
+  /**
+   * Applies sort to each repo's tracks. Returns a new RepoNode[] with each
+   * repo's tracks replaced by the sorted result. Does NOT mutate the input
+   * nor the RepoNodes produced by buildTree.
+   */
+  private _applySortToRepos(repos: RepoNode[]): RepoNode[] {
+    return repos.map(repo => ({
+      ...repo,
+      tracks: sortTracks(repo.tracks, this._activeSort),
+    }));
+  }
+
+  /**
+   * Changes the sort mode and re-renders the tree from the cached filtered
+   * export. Does not re-fetch from the CLI. Sort is applied to `roots` (tree)
+   * only — `currentExport`/`rawExport` are unaffected.
+   */
+  setSort(mode: TrackSort): void {
+    this._activeSort = mode;
+    const filtered = this._filteredCache ? buildTree(this._filteredCache) : [];
+    this.roots = this._applySortToRepos(filtered);
+    this._onDidChangeTreeData.fire();
+  }
+
   /**
    * Applies a new lens and re-renders the tree.
    * Does not re-fetch from the CLI — works off the cached export.
@@ -74,7 +106,9 @@ export class WorkPlanTreeProvider
   setLens(lens: Lens): void {
     this._activeLens = lens;
     this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
-    this.roots = this._filteredCache ? buildTree(this._filteredCache) : [];
+    this.roots = this._applySortToRepos(
+      this._filteredCache ? buildTree(this._filteredCache) : []
+    );
     this._onDidChangeTreeData.fire();
   }
 
@@ -85,7 +119,7 @@ export class WorkPlanTreeProvider
   async refresh(): Promise<void> {
     this.cache = await this.load();
     this._filteredCache = applyLens(this.cache, this._activeLens);
-    this.roots = buildTree(this._filteredCache);
+    this.roots = this._applySortToRepos(buildTree(this._filteredCache));
     this._onDidChangeTreeData.fire();
   }
 

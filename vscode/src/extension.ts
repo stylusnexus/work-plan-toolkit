@@ -5,6 +5,7 @@ import type { Lens } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses } from "./webview/lenses.ts";
+import type { TrackSort } from "./tree.ts";
 
 // URL shown in "Update" notification and in CLI-not-found errors.
 const TOOLKIT_URL = "https://github.com/stylusnexus/work-plan-toolkit";
@@ -130,6 +131,53 @@ export function activate(context: vscode.ExtensionContext): void {
           panel.renderEmpty("No tracks match the selected view.");
         }
       }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.sortTracks — quick-pick a sort mode for track order in the tree.
+  // Sort is a display concern; currentExport / rawExport are NOT affected.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.sortTracks", async () => {
+      type SortItem = vscode.QuickPickItem & { mode: TrackSort };
+
+      const activeSort = provider.activeSort;
+
+      const items: SortItem[] = [
+        {
+          label: "Default (discovery order)",
+          mode: "default",
+          description: activeSort === "default" ? "active" : undefined,
+        },
+        {
+          label: "Blocked first",
+          mode: "blocked",
+          description: activeSort === "blocked" ? "active" : undefined,
+        },
+        {
+          label: "Most open",
+          mode: "open",
+          description: activeSort === "open" ? "active" : undefined,
+        },
+        {
+          label: "Name (A–Z)",
+          mode: "name",
+          description: activeSort === "name" ? "active" : undefined,
+        },
+      ];
+
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: "Sort tracks within each repo",
+      });
+
+      if (!pick) {
+        return;
+      }
+
+      provider.setSort(pick.mode);
+      // No panel re-render needed — sort is tree-only.
     }),
   );
 

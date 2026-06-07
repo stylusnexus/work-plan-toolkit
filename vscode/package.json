@@ -46,6 +46,11 @@
         "icon": "$(filter)"
       },
       {
+        "command": "workPlan.sortTracks",
+        "title": "Work Plan: Sort Tracks",
+        "icon": "$(sort-precedence)"
+      },
+      {
         "command": "workPlan.openTrack",
         "title": "Open Track"
       },
@@ -63,6 +68,11 @@
         },
         {
           "command": "workPlan.selectView",
+          "when": "view == workPlan.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.sortTracks",
           "when": "view == workPlan.tree",
           "group": "navigation"
         }

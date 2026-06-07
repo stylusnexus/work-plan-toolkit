@@ -5,7 +5,9 @@ import {
   trackHint,
   buildTree,
   shouldExpandRepos,
+  sortTracks,
 } from "./treeModel.ts";
+import type { TrackNode } from "./treeModel.ts";
 import type { Export, Track, Issue } from "./model.ts";
 
 // ---------------------------------------------------------------------------
@@ -334,5 +336,120 @@ describe("shouldExpandRepos", () => {
   test("always expands a single repo regardless of setting", () => {
     assert.equal(shouldExpandRepos(1, false), true);
     assert.equal(shouldExpandRepos(0, false), true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sortTracks
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a minimal TrackNode for sort tests.
+ * Only category, open, and name matter; other fields use placeholder values.
+ */
+function makeSortTrack(
+  name: string,
+  category: TrackNode["category"],
+  open: number,
+): TrackNode {
+  return {
+    kind: "track",
+    name,
+    repo: "org/repo",
+    status: category,
+    category,
+    open,
+    hint: null,
+    track: makeTrack({ name, status: category === "blocked" ? "blocked" : category }),
+  };
+}
+
+// Fixture: varied category, open count, and name to exercise all modes.
+// Discovery order: alpha(blocked,5), charlie(active,10), bravo(blocked,5), delta(active,3)
+const SORT_FIXTURE: TrackNode[] = [
+  makeSortTrack("alpha",   "blocked", 5),
+  makeSortTrack("charlie", "active",  10),
+  makeSortTrack("bravo",   "blocked", 5),
+  makeSortTrack("delta",   "active",  3),
+];
+
+describe("sortTracks", () => {
+  test("default — returns same order, new array", () => {
+    const result = sortTracks(SORT_FIXTURE, "default");
+    const names = result.map(t => t.name);
+    assert.deepEqual(names, ["alpha", "charlie", "bravo", "delta"]);
+    // Must be a new array
+    assert.notStrictEqual(result, SORT_FIXTURE);
+  });
+
+  test("default — input is not mutated", () => {
+    const original = SORT_FIXTURE.map(t => t.name);
+    sortTracks(SORT_FIXTURE, "default");
+    assert.deepEqual(SORT_FIXTURE.map(t => t.name), original);
+  });
+
+  test("name — alphabetical ascending", () => {
+    const result = sortTracks(SORT_FIXTURE, "name");
+    assert.deepEqual(result.map(t => t.name), ["alpha", "bravo", "charlie", "delta"]);
+  });
+
+  test("open — descending by open count, tie-break by name asc", () => {
+    // charlie(10) → alpha(5) → bravo(5) → delta(3)
+    // alpha and bravo are both open=5 → tie-break by name: alpha before bravo
+    const result = sortTracks(SORT_FIXTURE, "open");
+    assert.deepEqual(result.map(t => t.name), ["charlie", "alpha", "bravo", "delta"]);
+  });
+
+  test("blocked — blocked group first, within group open desc then name asc", () => {
+    // blocked: alpha(5), bravo(5) — both open=5 → alpha before bravo (name tie-break)
+    // non-blocked: charlie(10), delta(3)
+    const result = sortTracks(SORT_FIXTURE, "blocked");
+    assert.deepEqual(result.map(t => t.name), ["alpha", "bravo", "charlie", "delta"]);
+  });
+
+  test("blocked — higher-open blocked track sorts first within group", () => {
+    const tracks: TrackNode[] = [
+      makeSortTrack("low-blocker",  "blocked", 2),
+      makeSortTrack("high-blocker", "blocked", 9),
+      makeSortTrack("active-a",     "active",  5),
+    ];
+    const result = sortTracks(tracks, "blocked");
+    assert.deepEqual(result.map(t => t.name), ["high-blocker", "low-blocker", "active-a"]);
+  });
+
+  test("blocked — non-blocked tracks sorted by open desc then name within their group", () => {
+    const tracks: TrackNode[] = [
+      makeSortTrack("blocker",   "blocked", 1),
+      makeSortTrack("beta",      "active",  7),
+      makeSortTrack("alpha",     "active",  7),
+      makeSortTrack("low",       "active",  2),
+    ];
+    const result = sortTracks(tracks, "blocked");
+    // blocker first; then active: beta(7) and alpha(7) — tie → alpha before beta; low last
+    assert.deepEqual(result.map(t => t.name), ["blocker", "alpha", "beta", "low"]);
+  });
+
+  test("input array is not mutated after any sort", () => {
+    const original = SORT_FIXTURE.map(t => t.name);
+    sortTracks(SORT_FIXTURE, "blocked");
+    sortTracks(SORT_FIXTURE, "open");
+    sortTracks(SORT_FIXTURE, "name");
+    assert.deepEqual(SORT_FIXTURE.map(t => t.name), original);
+  });
+
+  test("single-element array — all modes return a copy with that element", () => {
+    const single = [makeSortTrack("solo", "active", 3)];
+    for (const mode of ["default", "blocked", "open", "name"] as const) {
+      const result = sortTracks(single, mode);
+      assert.equal(result.length, 1);
+      assert.equal(result[0].name, "solo");
+      assert.notStrictEqual(result, single);
+    }
+  });
+
+  test("empty array — returns empty array", () => {
+    for (const mode of ["default", "blocked", "open", "name"] as const) {
+      assert.deepEqual(sortTracks([], mode), []);
+    }
   });
 });

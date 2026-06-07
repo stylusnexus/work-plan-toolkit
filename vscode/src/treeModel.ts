@@ -118,6 +118,61 @@ export function buildTree(exp: Export): RepoNode[] {
   return Array.from(repoMap.values());
 }
 
+// ---------------------------------------------------------------------------
+// Track sort
+// ---------------------------------------------------------------------------
+
+export type TrackSort = "default" | "blocked" | "open" | "name";
+
+/**
+ * Orders a repo's tracks by `mode`. Pure, non-mutating, stable, deterministic.
+ *
+ * - `"default"` → a copy in the given order (unchanged).
+ * - `"blocked"` → blocked tracks first (`category === "blocked"`), then the rest;
+ *   within each group, tie-break by `open` descending, then `name` ascending.
+ * - `"open"` → by `open` descending; tie-break `name` ascending.
+ * - `"name"` → by `name` ascending (localeCompare).
+ *
+ * Always returns a NEW array; the input is never mutated.
+ * Uses a total-order comparator (includes `name` as the final tie-break) so
+ * output is deterministic regardless of engine sort-stability.
+ */
+export function sortTracks(tracks: TrackNode[], mode: TrackSort): TrackNode[] {
+  if (mode === "default") {
+    return tracks.slice();
+  }
+
+  const copy = tracks.slice();
+
+  if (mode === "name") {
+    copy.sort((a, b) => a.name.localeCompare(b.name));
+    return copy;
+  }
+
+  if (mode === "open") {
+    copy.sort((a, b) => {
+      // open descending
+      if (b.open !== a.open) return b.open - a.open;
+      // name ascending as tie-break (total order)
+      return a.name.localeCompare(b.name);
+    });
+    return copy;
+  }
+
+  // mode === "blocked"
+  copy.sort((a, b) => {
+    const aBlocked = a.category === "blocked" ? 0 : 1;
+    const bBlocked = b.category === "blocked" ? 0 : 1;
+    // blocked group first
+    if (aBlocked !== bBlocked) return aBlocked - bBlocked;
+    // within group: open descending
+    if (b.open !== a.open) return b.open - a.open;
+    // name ascending as tie-break (total order)
+    return a.name.localeCompare(b.name);
+  });
+  return copy;
+}
+
 /**
  * Whether repo nodes should render expanded.
  *
