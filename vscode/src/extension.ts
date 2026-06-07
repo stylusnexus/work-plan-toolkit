@@ -705,6 +705,95 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.addRepo — register a new repo (view/title overflow + palette + welcome)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.addRepo", async () => {
+      try {
+        const key = await vscode.window.showInputBox({
+          prompt: "Short repo key (lowercase, e.g. my-project)",
+          validateInput: (v) =>
+            /^[a-z][a-z0-9-]*$/.test(v) ? null : "Key must be lowercase, start with a letter, e.g. my-project",
+        });
+        if (key === undefined) return; // cancelled
+
+        const github = await vscode.window.showInputBox({
+          prompt: "GitHub repo (org/repo)",
+          validateInput: (v) =>
+            /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. stylusnexus/CritForge",
+        });
+        if (github === undefined) return; // cancelled
+
+        const localRaw = await vscode.window.showInputBox({
+          prompt: "Local checkout path (optional — press Enter or Escape to skip)",
+        });
+        // undefined (Esc) or empty → omit local
+        const local = localRaw && localRaw.trim() !== "" ? localRaw.trim() : undefined;
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "addRepo", key, github, ...(local ? { local } : {}) },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: added repo ${github} (${key})`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: add-repo failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.setNotesLocation — set notes root path (view/title overflow + palette + welcome)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.setNotesLocation", async () => {
+      try {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          openLabel: "Set notes location",
+        });
+        if (!picked || picked.length === 0) return; // cancelled
+
+        const path = picked[0].fsPath;
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "setNotesRoot", path },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: notes location set to ${path}`);
+          if (outcome.stdout.includes("WARN")) {
+            vscode.window.showWarningMessage(outcome.stdout.trim());
+          }
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: set-notes-location failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.hygiene — run hygiene across all tracks (view/title overflow + palette)
   // -------------------------------------------------------------------------
 
