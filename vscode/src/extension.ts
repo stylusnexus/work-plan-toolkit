@@ -1,20 +1,45 @@
 import * as vscode from "vscode";
+import { exportJson, makeSpawnRunner, CliError } from "./cli.ts";
+import { WorkPlanTreeProvider } from "./tree.ts";
+import type { Track } from "./model.ts";
 
 export function activate(context: vscode.ExtensionContext): void {
-  // workPlan.refresh — will be wired to the tree provider in Task 6.
+  // Build the production runner from the configured CLI path.
+  const cliPath = vscode.workspace
+    .getConfiguration("workPlan")
+    .get<string>("cliPath", "work-plan");
+  const run = makeSpawnRunner(cliPath);
+
+  // Wire up the tree provider.
+  const provider = new WorkPlanTreeProvider(() => exportJson(run));
+
   context.subscriptions.push(
-    vscode.commands.registerCommand("workPlan.refresh", () => {
-      vscode.window.showInformationMessage("Work Plan: Refresh triggered.");
+    vscode.window.createTreeView("workPlan.tree", {
+      treeDataProvider: provider,
     })
   );
 
-  // workPlan.openTrack — will open a track detail webview in Task 7.
+  // workPlan.refresh — loads data from CLI and refreshes the tree.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.refresh", () => {
+      provider.refresh().catch((err: unknown) => {
+        const msg =
+          err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: refresh failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      });
+    })
+  );
+
+  // workPlan.openTrack — will open a track detail webview in Task 8.
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "workPlan.openTrack",
-      (trackName?: string) => {
+      (_track?: Track) => {
+        // Full webview implementation in Task 8.
         vscode.window.showInformationMessage(
-          `Work Plan: Open track "${trackName ?? "(none)"}" — coming in Phase 2.`
+          `Work Plan: Open track — coming in Task 8.`
         );
       }
     )
@@ -26,7 +51,7 @@ export function activate(context: vscode.ExtensionContext): void {
       "workPlan.openIssue",
       (issueNumber?: number) => {
         vscode.window.showInformationMessage(
-          `Work Plan: Open issue #${issueNumber ?? "?"} — coming in Phase 2.`
+          `Work Plan: Open issue #${issueNumber ?? "?"} — coming in Task 8.`
         );
       }
     )
