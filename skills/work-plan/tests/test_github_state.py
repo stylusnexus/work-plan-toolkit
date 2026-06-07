@@ -461,8 +461,9 @@ class FetchOpenIssuesTest(unittest.TestCase):
         self.assertIn("list", args)
         self.assertIn("--repo", args)
         self.assertIn("o/r", args)
-        # must request open issues and the needed JSON fields
-        self.assertIn("open", args)
+        # must request open issues (flag + value, space-separated) and the JSON fields
+        self.assertIn("--state", args)
+        self.assertEqual(args[args.index("--state") + 1], "open")
         self.assertIn("number,title,state,assignees,milestone", " ".join(args))
 
     @patch("lib.github_state.subprocess.run")

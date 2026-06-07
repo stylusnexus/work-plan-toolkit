@@ -52,6 +52,8 @@ def run(args: list[str]) -> int:
             visibility[t.repo] = repo_visibility(t.repo)
 
     # Compute untracked: open issues not referenced by any track, per repo.
+    # One `gh issue list` call per repo — bounded by the number of tracked repos
+    # (typically a handful), not by issue count, so a serial loop is fine.
     untracked_by_repo: dict[str, list] = {}
     for repo in repo_to_numbers:
         tracked = set(repo_to_numbers[repo])
