@@ -6,6 +6,18 @@ import type { Export, Issue, Track } from "./model.ts";
 
 export type StatusCategory = "blocked" | "active" | "shipped" | "parked";
 
+export interface UntrackedGroupNode {
+  kind: "untrackedGroup";
+  repo: string;
+  issues: Issue[];
+}
+
+export interface UntrackedIssueNode {
+  kind: "untrackedIssue";
+  repo: string;
+  issue: Issue;
+}
+
 export interface TrackNode {
   kind: "track";
   name: string;

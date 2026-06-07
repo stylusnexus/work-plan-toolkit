@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 import type { Export } from "./model.ts";
 import { buildTree, shouldExpandRepos, sortTracks, repoDescription } from "./treeModel.ts";
-import type { RepoNode, TrackNode, StatusCategory, TrackSort } from "./treeModel.ts";
+import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
-export type { RepoNode, TrackNode };
+export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode };
 // Re-export Lens so extension.ts only needs to import from tree.ts.
 export type { Lens };
 // Re-export TrackSort so extension.ts only needs to import from tree.ts.
@@ -40,7 +40,7 @@ function categoryIcon(category: StatusCategory): IconSpec {
 // ---------------------------------------------------------------------------
 
 export class WorkPlanTreeProvider
-  implements vscode.TreeDataProvider<RepoNode | TrackNode>
+  implements vscode.TreeDataProvider<RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode>
 {
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -144,21 +144,38 @@ export class WorkPlanTreeProvider
     );
   }
 
-  getChildren(element?: RepoNode | TrackNode): (RepoNode | TrackNode)[] {
+  getChildren(
+    element?: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode
+  ): (RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode)[] {
     if (!element) {
       // Root: return the cached repo nodes (empty [] before first refresh).
       return this.roots;
     }
     if (element.kind === "repo") {
-      return element.tracks;
+      const untrackedGroup: UntrackedGroupNode[] =
+        element.untracked.length > 0
+          ? [{ kind: "untrackedGroup", repo: element.repo, issues: element.untracked }]
+          : [];
+      return [...element.tracks, ...untrackedGroup];
     }
-    // TrackNode — leaf; no children.
+    if (element.kind === "untrackedGroup") {
+      return element.issues.map(
+        (issue): UntrackedIssueNode => ({ kind: "untrackedIssue", repo: element.repo, issue })
+      );
+    }
+    // TrackNode or UntrackedIssueNode — leaves; no children.
     return [];
   }
 
-  getTreeItem(node: RepoNode | TrackNode): vscode.TreeItem {
+  getTreeItem(node: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode): vscode.TreeItem {
     if (node.kind === "repo") {
       return this._repoTreeItem(node);
+    }
+    if (node.kind === "untrackedGroup") {
+      return this._untrackedGroupTreeItem(node);
+    }
+    if (node.kind === "untrackedIssue") {
+      return this._untrackedIssueTreeItem(node);
     }
     return this._trackTreeItem(node);
   }
@@ -208,6 +225,34 @@ export class WorkPlanTreeProvider
       arguments: [node.track],
     };
 
+    return item;
+  }
+
+  private _untrackedGroupTreeItem(node: UntrackedGroupNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      "Untracked",
+      vscode.TreeItemCollapsibleState.Collapsed
+    );
+    item.description = `${node.issues.length}`;
+    item.iconPath = new vscode.ThemeIcon("circle-slash");
+    item.contextValue = "workPlanUntrackedGroup";
+    item.tooltip = `${node.issues.length} open issue(s) in no track`;
+    return item;
+  }
+
+  private _untrackedIssueTreeItem(node: UntrackedIssueNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      `#${node.issue.number}  ${node.issue.title}`,
+      vscode.TreeItemCollapsibleState.None
+    );
+    item.iconPath = new vscode.ThemeIcon("issue-opened");
+    item.contextValue = "workPlanUntrackedIssue";
+    item.tooltip = node.issue.title;
+    item.command = {
+      command: "workPlan.openIssue",
+      title: "Open Issue",
+      arguments: [{ repo: node.repo, number: node.issue.number }],
+    };
     return item;
   }
 }

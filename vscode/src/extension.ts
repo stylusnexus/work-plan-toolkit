@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { exportJson, makeSpawnRunner, checkVersion, CliError } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
-import type { Lens, TrackNode } from "./tree.ts";
+import type { Lens, TrackNode, UntrackedIssueNode } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses } from "./webview/lenses.ts";
@@ -555,6 +555,57 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: slot failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.slotUntracked — slot an untracked issue into a track (context menu only)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.slotUntracked", async (node?: UntrackedIssueNode) => {
+      if (!node || node.kind !== "untrackedIssue") {
+        return;
+      }
+
+      try {
+        const issue = node.issue.number;
+
+        // Build the track list from the current export.
+        // Prefer tracks whose repo matches the issue's repo; fall back to all.
+        const exp = provider.currentExport;
+        if (!exp || exp.tracks.length === 0) {
+          vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
+          return;
+        }
+
+        const sameRepoTracks = exp.tracks.filter(t => t.repo === node.repo);
+        const candidateTracks = sameRepoTracks.length > 0 ? sameRepoTracks : exp.tracks;
+
+        const track = await vscode.window.showQuickPick(
+          candidateTracks.map(t => t.name),
+          { placeHolder: `Slot #${issue} into a track` },
+        );
+        if (!track) return; // cancelled
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "slot", track, issue },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: slotted #${issue} into ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: slot-untracked failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
