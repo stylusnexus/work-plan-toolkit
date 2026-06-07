@@ -1,29 +1,70 @@
 """Query GitHub via `gh`."""
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, Optional
 
 PRIORITY_LABELS = ("priority/P0", "priority/P1", "priority/P2", "priority/P3")
 DEFAULT_PRIORITY = "P3"
 
+MAX_FETCH_WORKERS = 8
+
+_GH_ISSUE_FIELDS = "number,state,labels,title,milestone,url,closedAt,body,updatedAt,assignees"
+
+
+def fetch_issue(repo: str, number: int) -> Optional[dict]:
+    """Fetch a single issue via gh. Returns parsed dict on success, None on failure.
+    Never raises — a missing `gh` binary or any subprocess error yields None."""
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "view", str(number),
+             "--repo", repo,
+             "--json", _GH_ISSUE_FIELDS],
+            capture_output=True, text=True,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
 
 def fetch_issues(repo: str, issue_numbers: Iterable[int]) -> list[dict]:
-    """Fetch state of multiple issues via gh."""
+    """Fetch state of multiple issues via gh (sequential). Unchanged semantics."""
     nums = list(issue_numbers)
     if not nums:
         return []
     results = []
     for num in nums:
-        proc = subprocess.run(
-            ["gh", "issue", "view", str(num),
-             "--repo", repo,
-             "--json", "number,state,labels,title,milestone,url,closedAt,body,updatedAt,assignees"],
-            capture_output=True, text=True,
-        )
-        if proc.returncode != 0:
-            continue
-        results.append(json.loads(proc.stdout))
+        result = fetch_issue(repo, num)
+        if result is not None:
+            results.append(result)
     return results
+
+
+def fetch_issues_concurrent(jobs: Iterable[tuple], max_workers: int = MAX_FETCH_WORKERS) -> dict:
+    """Fetch multiple (repo, number) pairs concurrently.
+
+    Dedupes jobs (first-seen order preserved). Returns a dict keyed by
+    (repo, number) containing only successful fetches (None results omitted).
+    Empty jobs -> {}.
+    """
+    unique_jobs = list(dict.fromkeys(jobs))
+    if not unique_jobs:
+        return {}
+    workers = min(max_workers, len(unique_jobs))
+    result: dict[tuple, dict] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(fetch_issue, repo, num): (repo, num)
+                   for repo, num in unique_jobs}
+        for future, key in futures.items():
+            issue = future.result()
+            if issue is not None:
+                result[key] = issue
+    return result
 
 
 def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = None) -> list[dict]:
