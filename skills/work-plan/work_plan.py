@@ -48,6 +48,7 @@ SUBCOMMANDS = {
     "--plan-status": "commands.plan_status",  # flag-style alias
     "export": "commands.export",
     "set": "commands.set_field",
+    "new-track": "commands.new_track",
 }
 
 DESCRIPTIONS = [
@@ -120,6 +121,10 @@ DESCRIPTIONS = [
      "Guarded edit of a track's frontmatter fields (status, launch_priority, milestone_alignment, blockers, next_up). Validates field names + status values; blockers/next_up take comma-separated issue numbers. Writes into a PUBLIC repo only with a confirm token: without one it prints {needs_confirm, reason, token} and makes no change (the VS Code viewer surfaces that as a modal, then re-invokes with --confirm=<token>).",
      "Programmatic/GUI edits that have no dedicated verb — e.g. the VS Code extension changing a status or blockers list. On the terminal you'll usually use the named verbs instead.",
      "/work-plan set ux-redesign status=parked"),
+    ("new-track", "<repo> <slug> [--priority=P0..P3] [--milestone=<m>] [--private] [--confirm=<token>]",
+     "Create a brand-new track file under notes_root in one headless call. <repo> is either a configured key (e.g. 'critforge') or a bare org/repo slug (e.g. 'stylusnexus/critforge'). Writes frontmatter with status=active and optional priority/milestone. Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=<token> to proceed.",
+     "When a new feature branch or initiative starts and you want the track file created immediately — especially from a non-terminal caller like the VS Code extension that can't interactively run init.",
+     "/work-plan new-track stylusnexus/work-plan-toolkit my-feature"),
     ("plan-status", "[--repo=<key>] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive | --issues] [--draft] [--since-days=N] [--type=plan|spec]",
      "Reach a verdict on every plan/spec doc in a repo by correlating each plan's declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes. Read-only: reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. --json for machine output. Add --stamp to write each verdict into its doc as an idempotent status header (--draft previews without writing). Add --llm for a two-step AI pass that judges prose/ambiguous docs (writes a prompt; you save JSON to the cache; re-run with --llm --apply). --archive moves dead plans to archive/abandoned/ (gated); --issues opens a GitHub issue per partial plan listing its unsatisfied files (gated). Both honor --draft.",
      "When you point at a repo and need to know what's actually done vs. half-done vs. dead among accumulated plans. Run from inside the repo, or use --repo=<key> for a configured one.",
