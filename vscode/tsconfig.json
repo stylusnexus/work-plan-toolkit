@@ -4,12 +4,16 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "lib": ["ES2022"],
-    "outDir": "out",
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "sourceMap": true
+    "sourceMap": true,
+    // Build is done by esbuild and tests run via Node's --experimental-strip-types,
+    // which resolves .ts import specifiers directly. tsc is typecheck-only (noEmit),
+    // which is what allows allowImportingTsExtensions. Do not expect tsc to emit JS.
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]
