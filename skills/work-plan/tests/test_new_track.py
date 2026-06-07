@@ -57,11 +57,13 @@ def _drive(args, *, vis="PRIVATE", notes_root_exists=True, target_path_exists=Fa
     cfg = _make_cfg()
 
     def _path_exists(self):
-        # notes_root itself → notes_root_exists; target path → target_path_exists
-        s = str(self)
-        if s == NOTES_ROOT:
+        # notes_root itself → notes_root_exists; target path → target_path_exists.
+        # Compare with Path equality (not str ==): on Windows str(Path("/tmp/x"))
+        # uses backslashes, so an exact "/tmp/fake-notes" string match never fires
+        # and the notes_root-missing case can't be simulated.
+        if self == Path(NOTES_ROOT):
             return notes_root_exists
-        if s.endswith(".md"):
+        if self.suffix == ".md":
             return target_path_exists
         # archive dirs and parent dirs default to True
         return True
@@ -388,10 +390,9 @@ class NewTrackCommandTest(unittest.TestCase):
         cfg = _make_cfg()
 
         def _path_exists(self):
-            s = str(self)
-            if s == NOTES_ROOT:
+            if self == Path(NOTES_ROOT):
                 return True
-            if s.endswith(".md"):
+            if self.suffix == ".md":
                 return False
             return True
 
@@ -420,10 +421,9 @@ class NewTrackCommandTest(unittest.TestCase):
             raise AssertionError("input() must not be called — command must be non-interactive")
 
         def _path_exists(self):
-            s = str(self)
-            if s == NOTES_ROOT:
+            if self == Path(NOTES_ROOT):
                 return True
-            if s.endswith(".md"):
+            if self.suffix == ".md":
                 return False
             return True
 
