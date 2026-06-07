@@ -36,9 +36,12 @@ export function renderDetail(track: Track): string {
   parts.push("<tbody>");
 
   for (const issue of track.issues) {
+    const numCell = track.repo
+      ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
+      : `<td class="num">#${issue.number}</td>`;
     parts.push(
       `<tr>` +
-        `<td class="num">#${issue.number}</td>` +
+        numCell +
         `<td>${esc(issue.title)}</td>` +
         `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td>` +
         `<td class="who">${esc(issue.assignee)}</td>` +

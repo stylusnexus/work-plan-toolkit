@@ -128,6 +128,34 @@ describe("renderDetail — issues table", () => {
   });
 });
 
+describe("renderDetail — clickable issue links", () => {
+  it("emits data-repo / data-issue anchors when the track has a repo", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('data-repo="stylusnexus/CritForge"'),
+      `Expected data-repo attribute:\n${html}`,
+    );
+    assert.ok(
+      html.includes('data-issue="487"'),
+      `Expected data-issue="487" for the #487 row:\n${html}`,
+    );
+  });
+
+  it("renders plain-text numbers (no anchor) when repo is null", () => {
+    const noRepoTrack: Track = {
+      ...platformHealth,
+      repo: null as unknown as string,
+    };
+    const html = renderDetail(noRepoTrack);
+    assert.ok(
+      !html.includes("data-issue="),
+      `Expected no data-issue anchors for a null-repo track:\n${html}`,
+    );
+    // The number itself should still render as plain text.
+    assert.ok(html.includes("#487"), `Expected #487 to still render:\n${html}`);
+  });
+});
+
 describe("renderDetail — blocker chips", () => {
   it("contains ⛔ blocker chip for #4821", () => {
     const html = renderDetail(platformHealth);
