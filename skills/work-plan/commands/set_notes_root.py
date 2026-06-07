@@ -3,7 +3,7 @@
 Called by the VS Code viewer's cold-start onboarding when the user picks a
 folder. Config writes stay in the CLI (the engine), not the extension.
 
-Usage: set-notes-root <path> [--yes]
+Usage: set-notes-root <path>
 """
 import subprocess
 from pathlib import Path
@@ -14,10 +14,10 @@ from lib.tracks import discover_tracks
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--yes"})
+    _, positional = parse_flags(args, set())
 
     if not positional:
-        print("usage: work_plan.py set-notes-root <path> [--yes]")
+        print("usage: work_plan.py set-notes-root <path>")
         return 2
 
     new_root = Path(positional[0]).expanduser().resolve()

@@ -128,12 +128,6 @@ class SetNotesRootTest(unittest.TestCase):
         msub.assert_not_called()
         self.assertIn("usage", out.lower())
 
-    def test_flags_only_no_positional_returns_rc2(self):
-        """--yes with no path → rc 2, yq NOT called."""
-        rc, msub, mmkdir, out = _drive(["--yes"])
-        self.assertEqual(rc, 2)
-        msub.assert_not_called()
-
     # ------------------------------------------------------------------
     # Orphan warning: tracks exist at old root
     # ------------------------------------------------------------------
