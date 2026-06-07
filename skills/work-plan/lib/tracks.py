@@ -23,7 +23,7 @@ class Track:
 
 def discover_tracks(cfg: dict) -> list[Track]:
     """Walk notes_root for active (non-archived) .md files."""
-    notes_root = Path(cfg["notes_root"])
+    notes_root = Path(cfg["notes_root"]).expanduser()
     if not notes_root.exists():
         return []
     return _walk(notes_root, cfg, include_archive=False)
@@ -56,7 +56,7 @@ def find_track_by_name(name: str, tracks: list[Track],
 
 def discover_archived_tracks(cfg: dict) -> list[Track]:
     """Walk notes_root for archived .md files only."""
-    notes_root = Path(cfg["notes_root"])
+    notes_root = Path(cfg["notes_root"]).expanduser()
     if not notes_root.exists():
         return []
     out = []
