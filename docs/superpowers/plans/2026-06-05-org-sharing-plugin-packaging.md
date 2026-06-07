@@ -27,6 +27,39 @@
 
 ---
 
+## Corrections from the verification spike (2026-06-05) — these OVERRIDE conflicting task text below
+
+A hands-on spike against the real `claude`/`codex` CLIs proved the mechanics and corrected the plan.
+Apply these everywhere they touch:
+
+1. **`bin/work-plan` resolves from the wrapper's PARENT** (`root="$(cd "$(dirname "$0")/.." && pwd)"`,
+   then `$root/skills/...`) — `$here/skills` was a real bug. Add a `${PLUGIN_ROOT:-}` candidate (Codex).
+   *(Applied in Task 2.)*
+2. **`$ARGUMENTS` stays UNQUOTED in every wrapper.** Quoting breaks `reconcile --all`. *(Applied in Task 4.)*
+3. **Never ship `commands/work-plan.md` in the plugin** — it collides with the `work-plan` skill
+   (`claude plugin details` showed `work-plan` twice). In `.claude-plugin/plugin.json` set a
+   `"commands"` allowlist of the suite + `run` only (omit `work-plan.md`); if the allowlist can't
+   exclude a file, instead keep the dispatcher OUTSIDE `commands/` and have `install.sh` copy it from
+   there. Verify with `claude plugin details work-plan` → `work-plan` appears **once**.
+4. **CalVer is fine** (passes `claude plugin validate --strict`; Codex installs it). Add
+   **`claude plugin validate --strict <plugin>`** as a CI/test gate (Task 3 + a CI step in Task 12).
+5. **One marketplace index suffices for BOTH hosts** (Claude + Codex both installed from it). No second
+   index. The marketplace.json needs a top-level `"description"` (else a validate warning). A LOCAL
+   test marketplace uses a relative `source` (`"./work-plan"`); the published one uses the `github` source.
+6. **`.codex-plugin/plugin.json` must declare `"skills": "./skills/"`** (don't rely on auto-discovery).
+   *(Add to Task 10.)*
+7. **Release ordering:** merge → let `version-bump.yml` run (it now also syncs the manifests) → **tag
+   the bump commit** → point the marketplace `ref` at that tag. Do NOT tag the merge commit (it
+   predates the manifest sync). *(Fixes Task 7.)*
+8. **Windows:** the bash `bin/work-plan` doesn't run natively — `install.ps1` ships a `.cmd`/`.ps1`
+   shim (or the command files call `python3 <resolved>` directly); verify on the Windows CI matrix.
+   *(Add to Task 13.)*
+9. **Config-seed tests run under a temporary `$HOME`** and assert the created file + parsed contents;
+   no `|| true` masking of failures in tests. `ensure_config` writes an **absolute** `notes_root`
+   (`Path.home()/...`), and `tracks.py` gains a defensive `expanduser()`.
+
+---
+
 ## File structure
 
 | File | New/Mod | Responsibility |
@@ -207,20 +240,25 @@ Expected: FAIL — `bin/work-plan` does not exist.
 
 ```sh
 #!/usr/bin/env bash
-# Resolve work_plan.py relative to this wrapper first, then known install paths.
-here="$(cd "$(dirname "$0")" && pwd)"
+# Resolve work_plan.py relative to the wrapper's PARENT (plugin root: the wrapper
+# is <root>/bin/work-plan), then known install paths. The `../` is load-bearing —
+# `$here/skills` would be `<root>/bin/skills` and never exist (spike-verified).
+root="$(cd "$(dirname "$0")/.." && pwd)"
 for c in \
-  "$here/skills/work-plan/work_plan.py" \
+  "$root/skills/work-plan/work_plan.py" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
+  "${PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
   "$HOME/.claude/skills/work-plan/work_plan.py" \
   "$HOME/.agents/skills/work-plan/work_plan.py"; do
   [ -n "$c" ] && [ -f "$c" ] && exec python3 "$c" "$@"
 done
-echo "work-plan: CLI not found (looked next to bin/, CLAUDE_PLUGIN_ROOT, ~/.claude, ~/.agents)." >&2
+echo "work-plan: CLI not found (looked next to bin/.., CLAUDE_PLUGIN_ROOT, PLUGIN_ROOT, ~/.claude, ~/.agents)." >&2
 exit 1
 ```
 
 Then: `chmod +x bin/work-plan`
+(The Step-1 test builds `<root>/bin/work-plan` + `<root>/skills/...` as siblings, so `../` resolution
+is exactly what makes it pass — spike-confirmed against both the Claude and Codex caches.)
 
 - [ ] **Step 4: Run tests — verify pass**
 
@@ -308,7 +346,12 @@ git commit -m "feat(plugin): add Claude Code plugin manifest (version = current 
 
 **Files:** Create `commands/{brief,handoff,orient,hygiene,status,run}.md`; Modify `commands/work-plan.md`
 
-- [ ] **Step 1: Rewrite the dispatcher `commands/work-plan.md`** (empty args → `--help`; quoted args)
+> **Collision (spike-confirmed):** `commands/work-plan.md` and the `work-plan` skill both register as
+> `work-plan` — `claude plugin details` listed it **twice**. So `commands/work-plan.md` must be
+> **excluded from the plugin** and exist **only** for `install.sh` standalone. Exclude it via the
+> manifest `commands` allowlist (Step 5) — list only the suite + `run`, omit `work-plan.md`.
+
+- [ ] **Step 1: Rewrite the dispatcher `commands/work-plan.md`** (empty args → `--help`; UNQUOTED args)
 
 ````markdown
 ---
@@ -340,11 +383,13 @@ work-plan brief $ARGUMENTS
 Relay the output verbatim.
 ````
 
-Create `handoff.md` (`work-plan handoff "$ARGUMENTS"` — **quote**, multiword next-up notes),
-`orient.md` (`work-plan orient $ARGUMENTS`), `hygiene.md` (`work-plan hygiene $ARGUMENTS`),
-`status.md` (`work-plan plan-status $ARGUMENTS`). Use the same frontmatter+relay shape; only the
-subcommand and `description`/`argument-hint` differ. **Quote `"$ARGUMENTS"`** in any wrapper whose
-subcommand takes free-text/multiword values (`handoff`, `status`).
+Create `handoff.md` (`work-plan handoff $ARGUMENTS`), `orient.md` (`work-plan orient $ARGUMENTS`),
+`hygiene.md` (`work-plan hygiene $ARGUMENTS`), `status.md` (`work-plan plan-status $ARGUMENTS`). Same
+frontmatter+relay shape; only the subcommand and `description`/`argument-hint` differ. **Leave
+`$ARGUMENTS` UNQUOTED everywhere** — bash re-parses the substituted text and honors the user's own
+inline quotes, so `reconcile --all` splits into argv while a user-quoted `--milestone='v1 — Launch'`
+stays intact. (Quoting `"$ARGUMENTS"` collapses `reconcile --all` into one argv → "unknown
+subcommand" — spike-verified.)
 
 - [ ] **Step 3: Create the catch-all `commands/run.md`**
 
