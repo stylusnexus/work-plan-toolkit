@@ -13,9 +13,6 @@
     "Other"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onView:workPlan.tree"
-  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
