@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import { exportJson, makeSpawnRunner, checkVersion, CliError } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
-import type { Lens } from "./tree.ts";
+import type { Lens, TrackNode } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses } from "./webview/lenses.ts";
 import type { TrackSort } from "./tree.ts";
+import { executeWrite } from "./write.ts";
+import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
 
 // URL shown in "Update" notification and in CLI-not-found errors.
 const TOOLKIT_URL = "https://github.com/stylusnexus/work-plan-toolkit";
@@ -274,6 +276,292 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
+  );
+
+  // -------------------------------------------------------------------------
+  // Write command helpers (shared across all five write verbs)
+  // -------------------------------------------------------------------------
+
+  // Confirm prompt shown when the target repo is public.
+  const confirmPublicWrite: ConfirmPrompt = async (reason: string): Promise<"writeAnyway" | "cancel"> => {
+    const choice = await vscode.window.showWarningMessage(
+      reason,
+      { modal: true },
+      "Write anyway",
+      "Keep private",
+    );
+    return choice === "Write anyway" ? "writeAnyway" : "cancel";
+  };
+
+  // Output channel for reconcile draft output (created once; disposed via subscriptions).
+  const outputChannel = vscode.window.createOutputChannel("Work Plan");
+  context.subscriptions.push(outputChannel);
+
+  // Refresh the tree provider and re-render the panel if it is open.
+  const refreshAndRerender = async (): Promise<void> => {
+    await provider.refresh();
+    const panel = WorkPlanPanel.getCurrent();
+    const exp = provider.currentExport;
+    if (panel && exp && exp.tracks.length > 0) {
+      panel.render(exp, panel.currentTrackName ?? exp.tracks[0].name);
+    }
+  };
+
+  // Resolve a track name: use the node (context-menu) or fall back to a QuickPick.
+  const resolveTrackName = async (node?: TrackNode): Promise<string | undefined> => {
+    if (node?.name) {
+      return node.name;
+    }
+    const exp = provider.currentExport;
+    if (!exp || exp.tracks.length === 0) {
+      vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
+      return undefined;
+    }
+    return vscode.window.showQuickPick(
+      exp.tracks.map(t => t.name),
+      { placeHolder: "Select a track" },
+    );
+  };
+
+  // -------------------------------------------------------------------------
+  // workPlan.editFields — edit a named field on a track (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.editFields", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        type FieldItem = vscode.QuickPickItem & { field: string };
+        const fieldPick = await vscode.window.showQuickPick<FieldItem>(
+          [
+            { label: "status",              field: "status" },
+            { label: "launch_priority",     field: "launch_priority" },
+            { label: "milestone_alignment", field: "milestone_alignment" },
+            { label: "blockers",            field: "blockers" },
+            { label: "next_up",             field: "next_up" },
+          ],
+          { placeHolder: "Field to edit" },
+        );
+        if (!fieldPick) return;
+
+        const field = fieldPick.field;
+        let value: string | undefined;
+
+        if (field === "status") {
+          value = await vscode.window.showQuickPick(
+            ["active", "in-progress", "blocked", "parked", "shipped", "abandoned"],
+            { placeHolder: "New status" },
+          );
+        } else if (field === "blockers" || field === "next_up") {
+          value = await vscode.window.showInputBox({
+            prompt: `${field} — comma-separated issue numbers (empty to clear)`,
+            validateInput: (v) => {
+              if (v.trim() === "") return null; // empty is valid (clear)
+              if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
+              return "Enter comma-separated issue numbers, e.g. 42,87";
+            },
+          });
+          if (value !== undefined) {
+            // Normalize: strip spaces, trim
+            value = value.trim() === "" ? "" : value.split(",").map(s => s.trim()).join(",");
+          }
+        } else {
+          value = await vscode.window.showInputBox({ prompt: `New value for ${field}` });
+        }
+
+        if (value === undefined) return; // cancelled
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "editFields", track, fields: { [field]: value } },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: set ${field} on ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: edit-fields failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.setNext — set the next-up issue list on a track (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.setNext", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const raw = await vscode.window.showInputBox({
+          prompt: "Next-up issue numbers (comma-separated)",
+          validateInput: (v) => {
+            if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
+            return "Enter comma-separated issue numbers, e.g. 42,87";
+          },
+        });
+        if (raw === undefined) return; // cancelled
+
+        const issues = raw.split(",").map(s => parseInt(s.trim(), 10));
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "setNext", track, issues },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: set-next failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.refreshMd — refresh a track's body markdown (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.refreshMd", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Work Plan: refreshing ${track}…`,
+            cancellable: false,
+          },
+          async () => {
+            const outcome: WriteOutcome = await executeWrite(
+              runner,
+              { kind: "refresh", track },
+              confirmPublicWrite,
+            );
+
+            if (outcome.status === "written") {
+              await refreshAndRerender();
+              vscode.window.showInformationMessage(`Work Plan: refreshed ${track}`);
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+          },
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: refresh-md failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.reconcile — draft reconcile preview (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.reconcile", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Work Plan: reconciling ${track} (draft)…`,
+            cancellable: false,
+          },
+          async () => {
+            const outcome: WriteOutcome = await executeWrite(
+              runner,
+              { kind: "reconcileDraft", track },
+              confirmPublicWrite,
+            );
+
+            if (outcome.status === "written") {
+              outputChannel.clear();
+              outputChannel.appendLine(outcome.stdout);
+              outputChannel.show(true);
+              vscode.window.showInformationMessage(
+                "Work Plan: reconcile preview (draft) — see the Work Plan output channel.",
+              );
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+          },
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: reconcile failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.hygiene — run hygiene across all tracks (view/title overflow + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.hygiene", async () => {
+      try {
+        const go = await vscode.window.showWarningMessage(
+          "Run hygiene across all tracks? Refreshes bodies and reconciles labels.",
+          { modal: true },
+          "Run hygiene",
+        );
+        if (go !== "Run hygiene") return;
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Work Plan: running hygiene…",
+            cancellable: false,
+          },
+          async () => {
+            const outcome: WriteOutcome = await executeWrite(
+              runner,
+              { kind: "hygiene" },
+              confirmPublicWrite,
+            );
+
+            if (outcome.status === "written") {
+              await refreshAndRerender();
+              vscode.window.showInformationMessage("Work Plan: hygiene complete.");
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+          },
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: hygiene failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
   );
 
   // -------------------------------------------------------------------------

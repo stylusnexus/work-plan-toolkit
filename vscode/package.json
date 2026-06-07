@@ -54,6 +54,26 @@
       {
         "command": "workPlan.openIssue",
         "title": "Open Issue"
+      },
+      {
+        "command": "workPlan.editFields",
+        "title": "Work Plan: Edit Track Fields"
+      },
+      {
+        "command": "workPlan.setNext",
+        "title": "Work Plan: Set Next-Up"
+      },
+      {
+        "command": "workPlan.refreshMd",
+        "title": "Work Plan: Refresh Track Body"
+      },
+      {
+        "command": "workPlan.reconcile",
+        "title": "Work Plan: Reconcile (preview)"
+      },
+      {
+        "command": "workPlan.hygiene",
+        "title": "Work Plan: Run Hygiene"
       }
     ],
     "menus": {
@@ -72,6 +92,33 @@
           "command": "workPlan.sortTracks",
           "when": "view == workPlan.tree",
           "group": "navigation"
+        },
+        {
+          "command": "workPlan.hygiene",
+          "when": "view == workPlan.tree",
+          "group": "9_maintenance"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "workPlan.editFields",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.setNext",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@2"
+        },
+        {
+          "command": "workPlan.refreshMd",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@3"
+        },
+        {
+          "command": "workPlan.reconcile",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@4"
         }
       ]
     },
