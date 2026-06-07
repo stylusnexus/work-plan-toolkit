@@ -1,29 +1,175 @@
 """Query GitHub via `gh`."""
 import json
+import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, Optional
 
 PRIORITY_LABELS = ("priority/P0", "priority/P1", "priority/P2", "priority/P3")
 DEFAULT_PRIORITY = "P3"
 
+MAX_FETCH_WORKERS = 8
+
+_GH_ISSUE_FIELDS = "number,state,labels,title,milestone,url,closedAt,body,updatedAt,assignees"
+
+_REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
+GQL_CHUNK = 100  # issues per GraphQL query; GitHub GraphQL complexity budget ~5000 pts/query, 100 issueOrPullRequest nodes is well within it
+
+
+def fetch_issue(repo: str, number: int) -> Optional[dict]:
+    """Fetch a single issue via gh. Returns parsed dict on success, None on failure.
+    Never raises — a missing `gh` binary or any subprocess error yields None."""
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "view", str(number),
+             "--repo", repo,
+             "--json", _GH_ISSUE_FIELDS],
+            capture_output=True, text=True,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
 
 def fetch_issues(repo: str, issue_numbers: Iterable[int]) -> list[dict]:
-    """Fetch state of multiple issues via gh."""
+    """Fetch state of multiple issues via gh (sequential). Unchanged semantics."""
     nums = list(issue_numbers)
     if not nums:
         return []
     results = []
     for num in nums:
-        proc = subprocess.run(
-            ["gh", "issue", "view", str(num),
-             "--repo", repo,
-             "--json", "number,state,labels,title,milestone,url,closedAt,body,updatedAt,assignees"],
-            capture_output=True, text=True,
-        )
-        if proc.returncode != 0:
-            continue
-        results.append(json.loads(proc.stdout))
+        result = fetch_issue(repo, num)
+        if result is not None:
+            results.append(result)
     return results
+
+
+def fetch_issues_concurrent(jobs: Iterable[tuple], max_workers: int = MAX_FETCH_WORKERS) -> dict:
+    """Fetch multiple (repo, number) pairs concurrently.
+
+    Dedupes jobs (first-seen order preserved). Returns a dict keyed by
+    (repo, number) containing only successful fetches (None results omitted).
+    Empty jobs -> {}.
+    """
+    unique_jobs = list(dict.fromkeys(jobs))
+    if not unique_jobs:
+        return {}
+    workers = min(max_workers, len(unique_jobs))
+    result: dict[tuple, dict] = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(fetch_issue, repo, num): (repo, num)
+                   for repo, num in unique_jobs}
+        for future, key in futures.items():
+            issue = future.result()
+            if issue is not None:
+                result[key] = issue
+    return result
+
+
+def _normalize_gql_node(node) -> Optional[dict]:
+    """Reshape a GraphQL issueOrPullRequest node into the REST-ish shape export_model
+    expects (assignees as [{login}], milestone as {title}|None). None for a null node.
+    On success returns a dict with keys: number, title, state, assignees, milestone."""
+    if not node:
+        return None
+    assignees = [{"login": a.get("login")} for a in
+                 ((node.get("assignees") or {}).get("nodes") or []) if a.get("login")]
+    ms = node.get("milestone")
+    return {
+        "number": node.get("number"),
+        "title": node.get("title", ""),
+        "state": node.get("state", "OPEN"),
+        "assignees": assignees,
+        "milestone": {"title": ms["title"]} if ms and ms.get("title") else None,
+    }
+
+
+def _gql_query(owner: str, name: str, numbers: list) -> str:
+    fields = ("number title state assignees(first: 10) { nodes { login } } milestone { title }")
+    aliases = "\n".join(
+        f'  i{n}: issueOrPullRequest(number: {int(n)}) {{ '
+        f'... on Issue {{ {fields} }} ... on PullRequest {{ {fields} }} }}'
+        for n in numbers
+    )
+    return f'query {{ repository(owner: "{owner}", name: "{name}") {{\n{aliases}\n}} }}'
+
+
+def fetch_repo_issues_graphql(repo: str, numbers, chunk: int = GQL_CHUNK,
+                              max_workers: int = MAX_FETCH_WORKERS) -> dict:
+    """Fetch exactly `numbers` from `repo` via batched GraphQL (issueOrPullRequest, so
+    PRs are included). Returns {number: normalized_issue} for those found. Never raises;
+    missing/null/errored numbers are simply omitted (caller may fall back per-issue)."""
+    try:
+        nums = list(dict.fromkeys(int(n) for n in numbers))
+    except (ValueError, TypeError):
+        return {}
+    if not nums or not _REPO_RE.match(repo or ""):
+        return {}
+    owner, name = repo.split("/", 1)
+    chunks = [nums[i:i + chunk] for i in range(0, len(nums), chunk)]
+
+    def _run(batch):
+        try:
+            proc = subprocess.run(
+                ["gh", "api", "graphql", "-f", "query=" + _gql_query(owner, name, batch)],
+                capture_output=True, text=True,
+            )
+        except Exception:
+            return {}
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return {}
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            return {}
+        repo_obj = ((data.get("data") or {}).get("repository") or {})
+        out = {}
+        for node in repo_obj.values():
+            norm = _normalize_gql_node(node)
+            if norm and norm.get("number") is not None:
+                out[norm["number"]] = norm
+        return out
+
+    result = {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(chunks))) as ex:
+        for part in ex.map(_run, chunks):
+            result.update(part)
+    return result
+
+
+def fetch_export_issues(repo_to_numbers: dict, max_workers: int = MAX_FETCH_WORKERS) -> dict:
+    """Fetch referenced issues for the viewer export with minimal gh calls: batched
+    GraphQL per repo (only the referenced numbers; includes PRs), run concurrently
+    across repos, with a per-issue fallback for anything GraphQL didn't return.
+    Returns {(repo, number): issue_dict}. Never raises."""
+    repos = [r for r, nums in repo_to_numbers.items() if r and nums]
+    if not repos:
+        return {}
+    try:
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(repos))) as ex:
+            gql_by_repo = dict(zip(repos, ex.map(
+                lambda r: fetch_repo_issues_graphql(r, repo_to_numbers[r], max_workers=max_workers),
+                repos)))
+    except Exception:
+        gql_by_repo = {r: {} for r in repos}
+    result, missing = {}, []
+    for repo, numbers in repo_to_numbers.items():
+        if not repo or not numbers:
+            continue
+        got = gql_by_repo.get(repo, {})
+        for n in numbers:
+            if n in got:
+                result[(repo, n)] = got[n]
+            else:
+                missing.append((repo, n))
+    if missing:
+        result.update(fetch_issues_concurrent(missing, max_workers=max_workers))
+    return result
 
 
 def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = None) -> list[dict]:
