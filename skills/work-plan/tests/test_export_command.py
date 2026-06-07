@@ -202,6 +202,90 @@ class ExportRunJsonTest(unittest.TestCase):
         self.assertEqual(repo_to_numbers[repo_b], [1])
 
 
+class ExportCommandUntrackedTest(unittest.TestCase):
+    """Verify export.run computes untracked = open issues minus tracked ones."""
+
+    def _run_with_mocks(self, tracks, export_map, open_rows_by_repo, vis=None):
+        import io
+        from contextlib import redirect_stdout
+
+        vis = vis or {_SHARED_REPO: "PUBLIC"}
+
+        def _fake_open_issues(repo, limit=1000):
+            return open_rows_by_repo.get(repo, [])
+
+        with patch("commands.export.load_config", return_value={}), \
+             patch("commands.export.discover_tracks", return_value=tracks), \
+             patch("commands.export.fetch_export_issues", return_value=export_map), \
+             patch("commands.export.fetch_open_issues", side_effect=_fake_open_issues), \
+             patch("commands.export.repo_visibility", side_effect=lambda r: vis.get(r)), \
+             patch("commands.export.datetime") as mock_dt:
+            mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = export_cmd.run(["--json"])
+            return rc, json.loads(buf.getvalue())
+
+    def test_untracked_key_present_in_output(self):
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        rc, out = self._run_with_mocks(tracks, {(_SHARED_REPO, 1): _ISSUE_A}, {})
+        self.assertEqual(rc, 0)
+        self.assertIn("untracked", out)
+
+    def test_open_minus_tracked_yields_untracked(self):
+        """Issues 1+2 are open; only 1 is tracked. Issue 2 is untracked."""
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A}
+        # gh reports issues 1 and 2 as open
+        open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_B]}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(rc, 0)
+        untracked = out["untracked"]
+        self.assertEqual(len(untracked), 1)
+        entry = untracked[0]
+        self.assertEqual(entry["repo"], _SHARED_REPO)
+        untracked_nums = [i["number"] for i in entry["issues"]]
+        self.assertNotIn(1, untracked_nums)   # tracked — must be absent
+        self.assertIn(2, untracked_nums)       # untracked — must appear
+
+    def test_all_tracked_yields_empty_untracked(self):
+        tracks = [_track("alpha", _SHARED_REPO, [1, 2])]
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A, (_SHARED_REPO, 2): _ISSUE_B}
+        open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_B]}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(rc, 0)
+        # Either empty list or no entry for this repo
+        all_issue_nums = [
+            i["number"]
+            for entry in out["untracked"]
+            if entry["repo"] == _SHARED_REPO
+            for i in entry["issues"]
+        ]
+        self.assertEqual(all_issue_nums, [])
+
+    def test_no_open_issues_yields_empty_untracked(self):
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A}
+        open_rows = {_SHARED_REPO: []}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["untracked"], [])
+
+    def test_schema_stays_1_with_untracked(self):
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_B]}
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(out["schema"], 1)
+
+    def test_output_serializable_with_untracked(self):
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_C]}
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        json.dumps(out)  # must not raise
+
+
 class ExportCommandGateTest(unittest.TestCase):
     def test_requires_json_flag(self):
         self.assertEqual(export_cmd.run([]), 2)

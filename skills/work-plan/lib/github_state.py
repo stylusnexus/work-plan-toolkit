@@ -172,6 +172,29 @@ def fetch_export_issues(repo_to_numbers: dict, max_workers: int = MAX_FETCH_WORK
     return result
 
 
+def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
+    """All OPEN issues for `repo` as gh rows ({number,title,assignees,milestone,state}).
+    One `gh issue list` call. Never raises — returns [] on any error/bad repo."""
+    if not _REPO_RE.match(repo or ""):
+        return []
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "list", "--repo", repo,
+             "--state", "open",
+             "--json", "number,title,state,assignees,milestone",
+             "--limit", str(limit)],
+            capture_output=True, text=True,
+        )
+    except Exception:
+        return []
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return []
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
 def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = None) -> list[dict]:
     """Fetch issues created since `since_iso` (date YYYY-MM-DD)."""
     search = f"created:>={since_iso}"
