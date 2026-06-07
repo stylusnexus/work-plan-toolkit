@@ -5,11 +5,39 @@ __pycache__/
 *.egg-info/
 .DS_Store
 .write-test
-.vscode/settings.json
-work-plan-toolkit.code-workspace
 CLAUDE.md
 .claude/settings.local.json
 .serena/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+
+# Secrets / env (never publish)
+.env
+.env.*
+*.pem
+
+# Build output & deps (esp. the vscode/ TS extension)
+node_modules/
+dist/
+out/
+build/
+coverage/
+.nyc_output/
+*.vsix
+
+# Python envs
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+
+# Logs / OS
+*.log
+Thumbs.db
 
 # Internal planning artifacts — kept local, not published (public repo).
 docs/superpowers/
