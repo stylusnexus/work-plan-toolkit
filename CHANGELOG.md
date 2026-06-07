@@ -6,6 +6,19 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.07+9f049ec — 2026-06-07 (#91)
+
+docs+chore: public-repo doc refresh + broaden .gitignore
+
+Docs/chore deploy (no code):
+- **Broaden `.gitignore`** for a public repo: `.vscode/`, `.idea/`, `*.code-workspace`, secrets (`.env*`, `*.pem`), build/deps (`node_modules/`, `dist/`, `out/`, `*.vsix` — for the incoming `vscode/` extension), python envs, logs. Nothing tracked matched (purely preventive).
+- **Architecture docs** refreshed for the plugin era (one-engine-two-faces, plugin packaging, plan-status subsystem, corrected install flows, updated counts).
+- **CONTRIBUTING.md**: PRs target `dev`; CI is configured; ~250 tests; git-native sharing in-scope.
+- **notes/README.md**: corrected stale default-`notes_root` premise.
+- **shims**: add `plan-status`; plugin-first framing.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.07+4777cca — 2026-06-07 (#90)
 
 chore: untrack internal planning docs from public repo + plugin-first README
