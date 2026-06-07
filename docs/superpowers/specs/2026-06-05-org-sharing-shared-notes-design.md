@@ -37,6 +37,45 @@ A Codex spec-review returned DO NOT SHIP; it was right on the substance. This re
   an optional `--commit` convenience), not claimed as automatic.
 - **3.9-safe annotation.** `repo_visibility(...) -> Optional[str]`, not a `str | None` union.
 
+## Round-2 corrections (these OVERRIDE conflicting text below)
+
+A second review round found the first revision still had gaps. Apply these:
+
+1. **Visibility protection ships WITH the first shared write** — fold it into Phase 2 (or gate shared
+   writes until the heads-up exists). Don't enable shared creation in Phase 2 and warnings in Phase 3.
+2. **Repo-qualify ALL resolver callers**, not just `slot/handoff/close`: also `canonicalize`,
+   `refresh-md`, `reconcile`, `orient`. `find_track_by_name` today returns **`None`** on
+   ambiguity/miss (it does not list candidates); the new contract must **distinguish missing from
+   ambiguous** (e.g. return a result/`None`/`Ambiguous(candidates)` sentinel) and the qualifier
+   (`--repo=` or `<track>@<repo>`) selects among duplicates.
+3. **`slot`/`init` are in-place mutators, not creators** — `slot` rewrites an existing target and may
+   touch multiple source tracks; `init` edits an arbitrary existing path. Their tier behavior is
+   "operate in the file's existing tier" — there is no "default shared" for them, and `init` never
+   writes `github.repo: TBD` into a shared file.
+4. **`group`'s two-step (`prepare` → `--apply`)** must persist tier/`--private`/`--commit` intent at
+   prepare-time (or require them at `--apply`), revalidate visibility at apply, and define cross-tier
+   existing-track conflicts.
+5. **Single-owner needs identity agreement, or documented trust.** Config `github` and `local` are
+   independent and `init-repo` accepts nonexistent paths. Either validate the clone is a git repo
+   whose remote matches `github`, OR explicitly document config as trusted and **warn** when identity
+   can't be verified. Pick one; don't imply validation we don't do.
+6. **Fix the heads-up copy for mutators.** Default writes do NOT commit and `--private` exists only on
+   *creating* commands, so "this track will be committed; use --private" is wrong for mutators. Use
+   *"written into a public working tree"* and define a separate, actionable mutator policy.
+7. **`--commit` needs boundaries:** path-scoped staging of exactly the written track(s) + the README
+   (never pre-staged unrelated changes), an explicit commit message, partial-failure semantics, and
+   offline tests proving unrelated staged changes are untouched. Never auto-push.
+8. **`reopen` has no implementation today** — either design it (command, destination, collision,
+   tier-preservation, tests) or **remove the reopen requirement** from acceptance.
+9. **`init-repo` registration-only fallback:** resolve the "shared by construction" vs "allowed
+   without a clone" conflict — define what `init-repo` does with no/invalid `local` (register only;
+   no `.work-plan/` until a clone exists).
+10. **Constrain `notes_dir`:** require a normalized, repo-relative, contained path (reject `..`
+    escape / absolute); archive + README logic must use the resolved dir, not a hardcoded `.work-plan/`.
+11. **README seeding vs "self-describing":** first-creation-only means a cloned `.work-plan/` lacking
+    a README never gets one. Either weaken the "every folder self-describing" goal, or use an explicit
+    init marker so deliberate deletion is distinguishable from "never seeded."
+
 ---
 
 ## Plain-English summary (read this even if you never read code)
