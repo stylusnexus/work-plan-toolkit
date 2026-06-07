@@ -56,7 +56,7 @@ function Remove-Skill {
 Remove-Skill "work-plan"
 Remove-Skill "repo-activity-summary"
 
-$cmdSrc = Join-Path $ToolkitDir "commands\work-plan.md"
+$cmdSrc = Join-Path $ToolkitDir "installer\work-plan.md"
 $cmdDst = Join-Path $CommandsDir "work-plan.md"
 if (Test-Path $cmdDst) {
     $srcHash = (Get-FileHash $cmdSrc).Hash
@@ -69,6 +69,11 @@ if (Test-Path $cmdDst) {
     }
 } else {
     Ok "command already absent"
+}
+
+# Remove the bin launcher(s) installed by install.ps1
+foreach ($f in @((Join-Path $BaseDir "bin\work-plan.cmd"), (Join-Path $BaseDir "bin\work-plan"))) {
+    if (Test-Path $f) { Remove-Item $f -Force; Ok "removed $(Split-Path $f -Leaf) launcher" }
 }
 
 Write-Host ""

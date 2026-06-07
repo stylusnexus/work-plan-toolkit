@@ -30,11 +30,16 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 
 ## How to invoke
 
-All subcommands route through the Python CLI. Path depends on where you installed:
+All subcommands route through the Python CLI. Prefer the `work-plan` launcher (on
+PATH as a plugin, and installed by `install.sh`): `work-plan <subcommand>`. It
+resolves `work_plan.py` relative to itself, then via `${CLAUDE_PLUGIN_ROOT}` /
+`${PLUGIN_ROOT}` / `~/.claude` / `~/.agents`. If the launcher isn't on PATH, call
+the CLI directly, first match wins:
 
-- Claude Code: `python3 ~/.claude/skills/work-plan/work_plan.py <subcommand>`
-- Codex: `python3 ~/.agents/skills/work-plan/work_plan.py <subcommand>`
-- Cursor / Copilot / direct: `python3 <toolkit>/skills/work-plan/work_plan.py <subcommand>`
+1. `${CLAUDE_PLUGIN_ROOT}/skills/work-plan/work_plan.py` (Claude plugin; Codex sets this too)
+2. `${PLUGIN_ROOT}/skills/work-plan/work_plan.py` (Codex plugin)
+3. `~/.claude/skills/work-plan/work_plan.py` (install.sh → Claude Code)
+4. `~/.agents/skills/work-plan/work_plan.py` (install.sh → Codex)
 
 Run via Bash. Don't reimplement the logic in chat.
 
