@@ -3,8 +3,25 @@
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
   "version": "0.1.0",
-  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks) and Mermaid dependency graph.",
+  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, and full read/write over your work-plan tracks.",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stylusnexus/work-plan-toolkit.git",
+    "directory": "vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/stylusnexus/work-plan-toolkit/issues"
+  },
+  "homepage": "https://github.com/stylusnexus/work-plan-toolkit/tree/main/vscode#readme",
+  "keywords": [
+    "work-plan",
+    "github issues",
+    "project planning",
+    "tracks",
+    "mermaid"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -209,12 +226,17 @@
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc --noEmit -p ./",
     "test": "node --test --experimental-strip-types --no-warnings=MODULE_TYPELESS_PACKAGE_JSON \"src/**/*.test.ts\"",
+    "package": "vsce package --no-dependencies -o work-plan-viewer.vsix",
+    "publish:vsce": "vsce publish --packagePath work-plan-viewer.vsix",
+    "publish:ovsx": "ovsx publish work-plan-viewer.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.25.0",
+    "ovsx": "^0.10.0",
     "typescript": "^5.8.0"
   },
   "dependencies": {

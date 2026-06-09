@@ -1,0 +1,59 @@
+name: VS Code Extension
+
+# The Node toolchain for vscode/ — separate from the Python matrix in test.yml.
+# Only fires when the extension (or this workflow) changes, so the stdlib CLI's
+# CI and the extension's CI stay independent (the Python/Node boundary).
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'vscode/**'
+      - '.github/workflows/vscode.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'vscode/**'
+      - '.github/workflows/vscode.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: vscode-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  build:
+    name: typecheck · test · build · package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'           # 22.6+ provides --experimental-strip-types for `npm test`
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build (esbuild + Mermaid bundle)
+        run: npm run build
+
+      - name: Package VSIX
+        run: npm run package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-plan-viewer-vsix
+          path: vscode/work-plan-viewer.vsix
+          if-no-files-found: error
