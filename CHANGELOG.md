@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+5d07d27 — 2026-06-09 (#148)
+
+feat(viewer): auto-refresh, shared-track tier badge, welcome fix + README settings table
+
+## Summary
+- **#134 `workPlan.autoRefreshInterval`** — silent background poll on a user-configured interval (0=off, 30s/1m/5m/15m dropdown); timer restarts on config change
+- **#137 Tier badge** — shared tracks show `shared N open` in the tree description; tooltip clarifies shared vs private
+- **#118 Welcome state fix** — `viewsWelcome` now gated on `workPlanHasRepos` context key (driven from unfiltered data) so a lens that hides all tracks doesn't show "No repos yet"
+- **Docs** — VS Code settings table in README; agent-plugins description updated for shared tracks + coverage/auto-triage
+
+Bumps VS Code extension to **v0.2.0**.
+
+## Commits
+- feat(viewer): auto-refresh interval setting (#134) (#145)
+- feat(viewer): tier badge on shared tracks + welcome state fix (#137, #118) (#146)
+- docs: VS Code settings table + tier badge note in README (#147)
+- test: fix Windows path separator in test_group_apply + test_init_repo
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.09+21c63ea — 2026-06-09 (#144)
 
 feat(shared-notes,coverage,auto-triage): two-tier tracks, coverage report, AI triage, next_up fix
