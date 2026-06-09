@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+f86ff30 — 2026-06-09
+
+**Features:**
+- **orient**: `--repo=<key>` and `track@repo` disambiguation (#166, closes #129)
+- **perf**: batched GraphQL issue fetching — ~9× speedup on large repos (#167, closes #106)
+- **group/auto-triage**: `--limit=N` flag (default 100) to cap AI prompt output (#168, closes #165)
+- **viewer**: detail panel caps at 50 issues with collapsible overflow (#170, closes #169)
+- **docs**: architecture.md + updated READMEs across toolkit, extension, and agent-plugins (#171, agent-plugins#2)
+
+**Other (carried from dev):**
+- `depends_on` replaces `related_tracks` for cross-track dependency edges
+- Dedicated `move` subcommand + VS Code Move to track (#162)
+- Milestone sections and ordering within canonicalize (#101)
+
 ## 2026.06.09+530f7e8 — 2026-06-09 (#158)
 
 feat(batch-slot,tracks,vscode): batch-slot command + archived-track dedup
