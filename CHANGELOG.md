@@ -6,6 +6,19 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+c8a85a8 — 2026-06-09 (#159)
+
+chore(vscode): bump extension to 0.2.1 for batch-slot publish
+
+## Deploy to production
+
+**Commits in this deploy:**
+- 736bc40 chore(vscode): bump to 0.2.1 for batch-slot publish
+
+**Files changed:** 1 file, +1 / -1 (`vscode/package.json` version 0.2.0 → 0.2.1)
+
+Lands the version bump that was needed to publish the VS Code extension with batch-slot support. The actual feature code shipped in #158; this aligns main with the published 0.2.1 extension.
+
 ## 2026.06.09+530f7e8 — 2026-06-09 (#158)
 
 feat(batch-slot,tracks,vscode): batch-slot command + archived-track dedup
