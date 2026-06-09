@@ -19,6 +19,8 @@ def build_export(tracks, issues_by_track, visibility, now: str,
     for t in tracks:
         issues = [_issue(i) for i in issues_by_track.get(t.name, [])]
         opened = sum(1 for i in issues if i["state"] == "open")
+        closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
+        next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
         out["tracks"].append({
             "name": t.name,
             "repo": t.repo,
@@ -28,7 +30,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "milestone_alignment": t.meta.get("milestone_alignment"),
             "visibility": visibility.get(t.repo),
             "blockers": list(t.meta.get("blockers") or []),
-            "next_up": list(t.meta.get("next_up") or []),
+            "next_up": next_up,
             "rollup": {"open": opened, "closed": len(issues) - opened},
             "issues": issues,
         })

@@ -29,6 +29,49 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None})
         json.dumps(out)  # must be serializable
 
+class BuildExportNextUpFilterTest(unittest.TestCase):
+    """next_up entries whose issue is closed in the fetched payload are filtered out."""
+
+    def _build(self, next_up_nums, issue_states):
+        """Build export where issues have given states; return the track's next_up."""
+        raw_issues = [
+            {"number": n, "title": f"i{n}", "state": state, "assignees": []}
+            for n, state in issue_states.items()
+        ]
+        tracks = [_track("t1", "o/r", list(issue_states.keys()), next_up=next_up_nums)]
+        out = build_export(tracks, {"t1": raw_issues}, {"o/r": "PRIVATE"}, now="t")
+        return out["tracks"][0]["next_up"]
+
+    def test_closed_next_up_filtered(self):
+        """Closed issue in next_up is removed from the export payload."""
+        result = self._build([95], {95: "CLOSED"})
+        self.assertEqual(result, [])
+
+    def test_open_next_up_kept(self):
+        """Open issue in next_up is kept."""
+        result = self._build([95], {95: "OPEN"})
+        self.assertEqual(result, [95])
+
+    def test_mixed_next_up_only_open_kept(self):
+        """Mixed next_up: closed issue removed, open issue kept."""
+        result = self._build([95, 96], {95: "CLOSED", 96: "OPEN"})
+        self.assertEqual(result, [96])
+
+    def test_next_up_issue_not_in_fetched_payload_kept(self):
+        """If a next_up issue wasn't fetched (e.g. not in the track's issue list),
+        it's preserved rather than silently dropped — we only remove confirmed-closed."""
+        tracks = [_track("t1", "o/r", [95], next_up=[95, 200])]
+        raw_issues = [{"number": 95, "title": "t", "state": "CLOSED", "assignees": []}]
+        out = build_export(tracks, {"t1": raw_issues}, {"o/r": "PRIVATE"}, now="t")
+        result = out["tracks"][0]["next_up"]
+        # 95 is confirmed closed → filtered; 200 not in payload → kept
+        self.assertEqual(result, [200])
+
+    def test_empty_next_up_unchanged(self):
+        result = self._build([], {95: "OPEN"})
+        self.assertEqual(result, [])
+
+
 class BuildExportUntrackedTest(unittest.TestCase):
     """Tests for the untracked kwarg on build_export."""
 
