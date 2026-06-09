@@ -46,10 +46,9 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
 
   lines.push("graph LR");
 
-  // Class definitions
+  // Class definitions (node styling only; edge styling is not supported here)
   lines.push("  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d");
   lines.push("  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px");
-  lines.push("  classDef dependsEdge stroke:#f59e0b,stroke-width:2px,color:#d97706");
 
   // Build a unique, collision-resistant track ID for each track name.
   const tids = buildTrackIds(exp.tracks);
@@ -363,25 +362,30 @@ function trackId(name: string): string {
 /**
  * Escapes characters that would break Mermaid `["..."]` / `(["..."])` node labels.
  *
- * A literal `"` terminates the label early and yields a parse error; the
- * HTML entity `&quot;` is Mermaid-safe.  `<`/`>`/`&` are escaped for
- * HTML-label safety (they would otherwise be interpreted as HTML tags or
- * entity starts).  `[` `]` `(` `)` `{` `}` and backticks are also escaped
- * because they can confuse Mermaid's PEG parser when embedded inside node
- * label strings — e.g. `(["Fix [API] rate"])` causes Mermaid to treat the
- * inner `]` as the end of the node definition.
+ * `<` / `>` / `&` are escaped to HTML entities so the browser does not
+ * misinterpret them as tags or entity starts.  These entities survive the
+ * browser's HTML parse (they are inside a `<pre>`), and after Mermaid's
+ * own `entityDecode` they become the original characters — which are safe
+ * inside Mermaid label strings.
+ *
+ * `"` / `[` / `]` / `` ` `` / `{` / `}` are **replaced** with safe
+ * alternatives (`'` / `(` / `)`) instead of HTML entities.  Mermaid
+ * 11.x's `entityDecode` passes `innerHTML` through `escape()`,
+ * `innerHTML`, and `textContent`, which decodes **all** HTML entities
+ * back to their raw characters.  A raw `"` followed by `]` (i.e. `"]`)
+ * forms the Mermaid `SQE` token and terminates the label string
+ * prematurely, causing "Syntax error in text".  Replacing with safe
+ * literal characters avoids this entirely.
  */
 function mermaidLabel(s: string): string {
   return s
     .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\[/g, "&#91;")
-    .replace(/\]/g, "&#93;")
-    .replace(/\(/g, "&#40;")
-    .replace(/\)/g, "&#41;")
-    .replace(/\{/g, "&#123;")
-    .replace(/\}/g, "&#125;")
-    .replace(/`/g, "&#96;");
+    .replace(/"/g, "'")
+    .replace(/\[/g, "(")
+    .replace(/\]/g, ")")
+    .replace(/\{/g, "(")
+    .replace(/\}/g, ")")
+    .replace(/`/g, "'");
 }
