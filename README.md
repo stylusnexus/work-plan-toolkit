@@ -215,7 +215,11 @@ To install for **both** Claude Code AND Codex, run the installer twice with diff
 
 ### VS Code extension
 
-The **Work Plan** extension is the visual face of the CLI — a sidebar tree (repos → tracks), a Mermaid dependency graph, the Untracked bucket, and full read/write (slot/close/edit/new-track/…) with a public-repo confirm modal. Install it from either registry:
+The **Work Plan** extension is the visual face of the CLI — a sidebar tree (repos → tracks), a Mermaid dependency graph, the Untracked bucket, and full read/write (slot/close/edit/new-track/…) with a public-repo confirm modal.
+
+![Work Plan VS Code extension — sidebar and dependency graph](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/dependency-graph.png)
+
+Install it from either registry:
 
 - **VS Code Marketplace:** Extensions view → search **"Work Plan"** (publisher `stylusnexus`), or `code --install-extension stylusnexus.work-plan-viewer`.
 - **Open VSX** (VS Codium / Cursor / Windsurf): search **"Work Plan"**, or `ovsx get stylusnexus.work-plan-viewer`.

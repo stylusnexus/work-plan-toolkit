@@ -23,6 +23,23 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 A loading bar shows while the CLI fetch runs, and concurrent refreshes are coalesced (single-flight) so a burst of triggers can't spawn overlapping fetches.
 
+## Screenshots
+
+![Repos → tracks in the Work Plan sidebar](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/sidebar-tree.png)
+*Repos → tracks: status dots, open counts, and a ⚠ badge on public repos.*
+
+![Mermaid dependency graph and track detail](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/dependency-graph.png)
+*The dependency/flow graph and per-track detail panel.*
+
+![Public-repo confirm modal](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/write-confirm-modal.png)
+*The "Write anyway / Keep private" modal before any write into a public repo.*
+
+![The Untracked bucket](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/untracked-bucket.png)
+*Open issues that no track references — slot one in with a right-click.*
+
+![Cold-start onboarding](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/onboarding.png)
+*Get started from empty: add a repo and choose where your notes live — no CLI needed.*
+
 ## Install
 
 1. **The extension** — search **"Work Plan"** (publisher `stylusnexus`) in the Extensions view, or:
