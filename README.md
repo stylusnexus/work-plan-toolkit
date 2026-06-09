@@ -17,9 +17,14 @@ Track-aware daily work planning for developers running parallel Claude Code / Co
 /plugin install work-plan@stylus-nexus
 ```
 **Codex:** `codex plugin marketplace add stylusnexus/agent-plugins` → `codex plugin add work-plan@stylus-nexus`
+**npm (any editor / standalone CLI):**
+```
+npm install -g @stylusnexus/work-plan
+```
+**VS Code extension** (the visual viewer): search **"Work Plan"** (publisher `stylusnexus`) in the Extensions view, or `code --install-extension stylusnexus.work-plan-viewer`. It drives the CLI above — see [VS Code extension](#vs-code-extension).
 **Cursor / Copilot / direct:** clone + `./install.sh` (see [Install](#install)).
 
-Full multi-agent guide: the [**agent-plugins** marketplace README](https://github.com/stylusnexus/agent-plugins). See [Install](#install) below for details and the script path.
+Full multi-agent guide: the [**agent-plugins** marketplace README](https://github.com/stylusnexus/agent-plugins). See [Install](#install) below for details, the npm path, and updating.
 
 > **Command names:** examples below use the standalone form `/work-plan <subcommand>` (what `install.sh` gives you). **Installed as a plugin, commands are namespaced** — `/work-plan brief` → `/work-plan:brief`, `/work-plan handoff` → `/work-plan:handoff`, and the long tail is `/work-plan:run <subcommand>`. On Codex, invoke via `@work-plan` / `/skills`.
 
@@ -189,6 +194,7 @@ A skill has two distinct contracts: (1) the underlying **CLI** that does the wor
 
 | Tool | Install command | Then invoke as |
 |---|---|---|
+| **npm (standalone CLI / any editor)** | `npm install -g @stylusnexus/work-plan` (requires `python3` + `yq` + `gh` already on PATH — the postinstall warns if any are missing). | `work-plan <subcommand>` |
 | **Claude Code** | **Plugin (recommended):** `/plugin marketplace add stylusnexus/agent-plugins` → `/plugin install work-plan@stylus-nexus`. Or script: `./install.sh` / `.\install.ps1` | Plugin: `/work-plan:brief` … `/work-plan:run <sub>`. Script: bare `/work-plan <subcommand>` |
 | **Codex** | **Plugin:** `codex plugin marketplace add stylusnexus/agent-plugins` → `codex plugin add work-plan@stylus-nexus`. Or script: `./install.sh --target=$HOME/.agents` | Plugin: `@work-plan` / `/skills`. Script: direct CLI |
 | **Cursor** | Skip installer. Clone repo + copy `shims/cursor/work-plan.cursorrules` into your project's `.cursorrules` (or merge it in) | `python3 <toolkit>/skills/work-plan/work_plan.py <sub>` — alias `wp` recommended |
@@ -206,6 +212,26 @@ function wp { python "C:\path\to\work-plan-toolkit\skills\work-plan\work_plan.py
 ```
 
 To install for **both** Claude Code AND Codex, run the installer twice with different `--target` values.
+
+### VS Code extension
+
+The **Work Plan** extension is the visual face of the CLI — a sidebar tree (repos → tracks), a Mermaid dependency graph, the Untracked bucket, and full read/write (slot/close/edit/new-track/…) with a public-repo confirm modal. Install it from either registry:
+
+- **VS Code Marketplace:** Extensions view → search **"Work Plan"** (publisher `stylusnexus`), or `code --install-extension stylusnexus.work-plan-viewer`.
+- **Open VSX** (VS Codium / Cursor / Windsurf): search **"Work Plan"**, or `ovsx get stylusnexus.work-plan-viewer`.
+
+The extension **shells out to the `work-plan` CLI**, so install the CLI too (npm or any method above). If `work-plan` isn't on your editor's `PATH` — common when VS Code is launched from the Dock/Finder rather than a terminal — set **`workPlan.cliPath`** in Settings to an absolute launcher path (e.g. `/path/to/work-plan-toolkit/bin/work-plan`, or the npm global bin), then reload the window. Extensions auto-update from the registry.
+
+### Updating
+
+| Installed via | Update with |
+|---|---|
+| **npm** | `npm install -g @stylusnexus/work-plan@latest` (or `npm update -g @stylusnexus/work-plan`) |
+| **Claude Code / Codex plugin** | `/plugin update work-plan@stylus-nexus` (Codex: `codex plugin update …`) |
+| **Script (`install.sh`)** | `git pull` in the toolkit repo, then re-run `./install.sh` (or `.\install.ps1`) |
+| **VS Code extension** | Auto-updates; or Extensions view → update manually |
+
+Check your version any time with `work-plan --version`.
 
 ### What the shims do
 

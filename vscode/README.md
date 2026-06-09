@@ -23,6 +23,14 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 A loading bar shows while the CLI fetch runs, and concurrent refreshes are coalesced (single-flight) so a burst of triggers can't spawn overlapping fetches.
 
+## Install
+
+1. **The extension** — search **"Work Plan"** (publisher `stylusnexus`) in the Extensions view, or:
+   - VS Code: `code --install-extension stylusnexus.work-plan-viewer`
+   - VS Codium / Cursor / Windsurf (Open VSX): `ovsx get stylusnexus.work-plan-viewer`
+2. **The CLI** (the extension drives it) — `npm install -g @stylusnexus/work-plan`, or any method in the [toolkit README](https://github.com/stylusnexus/work-plan-toolkit#install).
+3. If `work-plan` isn't on your editor's `PATH` (common when VS Code is opened from the Dock/Finder, not a terminal), set **`workPlan.cliPath`** to an absolute launcher path and reload the window.
+
 ## Requirements
 
 - The `work-plan` CLI must be on your `PATH` (or set `workPlan.cliPath`). The extension checks the CLI version at activation and points you at an update if it's too old to have the read/write surface it needs.
@@ -69,8 +77,8 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Phases 1–3 complete** — the CLI seam, the read-only viewer, and the full write surface (write actions + public-repo confirm modal + cold-start onboarding) are all shipped. **Phase 4** (a dedicated `vscode/` CI job + publishing to the VS Code Marketplace and Open VSX) is the remaining work; until then the extension runs from source via the extension-development host above.
+**Published — v0.1.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). All four phases shipped: the CLI seam, the read-only viewer, the full write surface (write actions + public-repo confirm modal + cold-start onboarding), and the CI/publish pipeline.
 
 ## Development notes
 
-Tests run via Node's native type-stripping; the manifest stays CJS (no `"type": "module"`) because the VS Code extension host and `esbuild.js` require CommonJS — that's why the test script suppresses the `MODULE_TYPELESS_PACKAGE_JSON` warning. CI does not yet cover `vscode/` (Phase 4); the local gate is `npm run typecheck && npm test && npm run build`.
+Tests run via Node's native type-stripping; the manifest stays CJS (no `"type": "module"`) because the VS Code extension host and `esbuild.js` require CommonJS — that's why the test script suppresses the `MODULE_TYPELESS_PACKAGE_JSON` warning. `vscode/` has its own CI job (`.github/workflows/vscode.yml`: typecheck · `node --test` · esbuild · `vsce package`), separate from the Python matrix; the local gate is `npm run typecheck && npm test && npm run build`.
