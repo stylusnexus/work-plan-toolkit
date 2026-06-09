@@ -7,13 +7,13 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 **See**
 
 - A **sidebar tree** (repos → tracks) showing the live state of every tracked GitHub repo — status dot, open count, blocked/next hints, a ⚠ badge on public repos.
-- A **Mermaid dependency graph** webview + **per-track detail** panel (issue table — capped at 50 rows with a collapsible overflow — blockers, ordered next-up) — with a focus toggle on the selected track.
+- A **Mermaid dependency graph** webview + **per-track detail** panel (issue table — capped at 50 rows with a collapsible overflow — blockers, **depends-on chips**, ordered next-up) — with a focus toggle that zooms in on the selected track, and a full map scoped to the track's repo.
 - **Lenses** (filter by repo / milestone / blocked) and **sort** (default / blocked / most-open / name).
 - An **"Untracked" bucket** under each repo: open GitHub issues that no track references — click to open on GitHub, or right-click to slot one into a track.
 
 **Act** — every action runs the CLI under the hood:
 
-- **Edit fields** (status / priority / milestone / blockers / next-up), **Set next-up**, **Slot** an issue, **Close** a track (shipped / parked / abandoned), **Refresh** a track body, **Reconcile** (draft preview), **Run hygiene**, and **New track**.
+- **Edit fields** (status / priority / milestone / blockers / next-up / **cross-track dependencies**), **Set next-up**, **Slot** an issue, **Move Issue from Track** (source-first: pick a destination track in the same repo), **Close** a track (shipped / parked / abandoned), **Refresh** a track body, **Reconcile** (draft preview), **Run hygiene**, and **New track**.
 - **Public-repo confirm modal.** Before any write into a repo that's public (or whose visibility `gh` can't determine), the extension surfaces the CLI's heads-up as a **"Write anyway / Keep private"** dialog and re-invokes with a confirm token — the leak guard, moved from a terminal prompt to a GUI. Private repos write straight through with no friction.
 
 **Get started from empty** — a cold-start a new user can drive without the CLI:
@@ -29,7 +29,7 @@ A loading bar shows while the CLI fetch runs, and concurrent refreshes are coale
 *Repos → tracks: status dots, open counts, and a ⚠ badge on public repos.*
 
 ![Mermaid dependency graph and track detail](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/dependency-graph.png)
-*The dependency/flow graph and per-track detail panel.*
+*The dependency/flow graph and per-track detail panel — showing blockers, cross-track dependency chips, next-up flow, and per-issue move buttons.*
 
 ![Public-repo confirm modal](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/write-confirm-modal.png)
 *The "Write anyway / Keep private" modal before any write into a public repo.*
@@ -75,6 +75,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
 | **Set Next-Up** | Set the ordered next-up issue list for the track. |
 | **Slot Issue into Track** | Add a GitHub issue number to the track. |
+| **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
 | **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
 | **Refresh Track Body** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
 | **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
@@ -129,7 +130,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.2.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). All four phases shipped: the CLI seam, the read-only viewer, the full write surface (write actions + public-repo confirm modal + cold-start onboarding), and the CI/publish pipeline. v0.2.0 adds auto-refresh, shared-track tier badges, and the welcome-screen state fix.
+**Published — v0.3.2 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.x adds Move Issue from Track (right-click context menu), cross-track dependency chips in the detail panel, and a repo-scoped full map.
 
 ## Development notes
 
