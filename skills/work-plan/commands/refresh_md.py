@@ -1,6 +1,6 @@
 """refresh-md subcommand."""
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo
+from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo, parse_track_repo_arg, AmbiguousTrackError
 from lib.github_state import fetch_issues, state_to_status_label
 from lib.frontmatter import write_file
 from lib.status_table import find_all_status_tables, find_canonical_status_tables, sync_missing_rows, ISSUE_NUM_RE
@@ -15,11 +15,19 @@ def run(args: list[str]) -> int:
     if repo_key is True:
         print("usage: work_plan.py refresh-md <track-name> | --all | --repo=<key>  [--yes]")
         return 2
-    track_name = positional[0] if positional else None
+    track_arg = positional[0] if positional else None
 
-    if not do_all and not track_name and not repo_key:
+    if not do_all and not track_arg and not repo_key:
         print("usage: work_plan.py refresh-md <track-name> | --all | --repo=<key>  [--yes]")
         return 2
+
+    track_name = track_arg
+    repo_qualifier = repo_key
+    if track_arg:
+        name_from_arg, repo_from_arg = parse_track_repo_arg(track_arg)
+        track_name = name_from_arg
+        if repo_from_arg:
+            repo_qualifier = repo_from_arg
 
     try:
         cfg = load_config()
@@ -28,7 +36,7 @@ def run(args: list[str]) -> int:
         return 1
 
     tracks = discover_tracks(cfg)
-    if do_all or repo_key:
+    if do_all or (repo_key and not track_arg):
         targets = [t for t in tracks if t.has_frontmatter
                    and t.meta.get("status") in ("active", "in-progress", "blocked")]
         if repo_key:
@@ -41,7 +49,11 @@ def run(args: list[str]) -> int:
             return 0
         return _refresh_many(targets, yes)
 
-    track = find_track_by_name(track_name, tracks)
+    try:
+        track = find_track_by_name(track_name, tracks, repo=repo_qualifier)
+    except AmbiguousTrackError as e:
+        print(str(e))
+        return 1
     if not track:
         print(f"No track matching '{track_name}'.")
         return 1

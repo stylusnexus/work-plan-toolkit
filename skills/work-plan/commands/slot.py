@@ -3,7 +3,7 @@ import json
 import subprocess
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags, prompt_input
@@ -27,16 +27,26 @@ def _find_prior_owners(issue_num: int, repo: str, target_name: str, tracks):
 def run(args: list[str]) -> int:
     # --confirm uses equals form: --confirm=<token>
     # --move / --no-move are bare flags
-    flags, positional = parse_flags(args, {"--confirm", "--move", "--no-move"})
+    # --repo uses equals form: --repo=<key>
+    flags, positional = parse_flags(args, {"--confirm", "--move", "--no-move", "--repo"})
     if not positional:
-        print("usage: work_plan.py slot <issue-num> [track-name]")
+        print("usage: work_plan.py slot <issue-num> [track | track@repo] [--repo=<key>]")
         return 2
     try:
         issue_num = int(positional[0])
     except ValueError:
         print(f"ERROR: '{positional[0]}' is not an issue number.")
         return 2
-    target_name = positional[1] if len(positional) > 1 else None
+    target_arg = positional[1] if len(positional) > 1 else None
+    repo_flag = flags.get("--repo") if flags.get("--repo") is not True else None
+
+    target_name = target_arg
+    repo_qualifier = repo_flag
+    if target_arg:
+        name_from_arg, repo_from_arg = parse_track_repo_arg(target_arg)
+        target_name = name_from_arg
+        if repo_from_arg:
+            repo_qualifier = repo_from_arg
 
     if "--move" in flags and "--no-move" in flags:
         print("ERROR: --move and --no-move are mutually exclusive.")
@@ -53,7 +63,12 @@ def run(args: list[str]) -> int:
               and t.meta.get("status") in ("active", "in-progress", "blocked")]
 
     if target_name:
-        target = find_track_by_name(target_name, tracks, active_only=True)
+        try:
+            target = find_track_by_name(target_name, tracks, active_only=True,
+                                        repo=repo_qualifier)
+        except AmbiguousTrackError as e:
+            print(str(e))
+            return 1
         if not target:
             print(f"No active track matching '{target_name}'.")
             return 1
