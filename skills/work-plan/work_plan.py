@@ -38,6 +38,7 @@ SUBCOMMANDS = {
     "init-repo": "commands.init_repo",
     "suggest-priorities": "commands.suggest_priorities",
     "group": "commands.group",
+    "auto-triage": "commands.auto_triage",
     "reconcile": "commands.reconcile",
     "--reconcile": "commands.reconcile",  # flag-style alias
     "duplicates": "commands.duplicates",
@@ -99,6 +100,10 @@ DESCRIPTIONS = [
      "AI-cluster GitHub issues into thematic track files.",
      "ONE-TIME bulk organization of an unsorted milestone, or after a re-org.",
      "/work-plan group --milestone='v1.0.0 — Public Launch'"),
+    ("auto-triage", "[--repo=<key>] [--apply]",
+     "AI-assign untracked open issues to existing tracks. Step 1 (no --apply): fetches untracked issues + existing tracks, prints AI prompt. Step 2 (--apply): reads AI's JSON answers and slots each assignment into track frontmatter. Complements `group` (which creates new tracks); `auto-triage` assigns to tracks that already exist.",
+     "Periodically — when new issues have piled up outside the track model. Run /work-plan coverage first to confirm there's a gap worth triaging.",
+     "/work-plan auto-triage --repo=critforge"),
     ("reconcile", "<track> | --all | --repo=<key> [--draft]",
      "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. Add --draft to preview proposed ADDs/FLAGs without prompting or writing. NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
      "WEEKLY hygiene on label-driven tracks — pulls labeled issues into their tracks, flags un-labeled ones. Use --repo=<key> to scope the sweep to one repo. Skip on hand-curated tracks (it'll propose dropping curated issues every run).",
