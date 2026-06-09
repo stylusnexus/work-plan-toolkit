@@ -15,6 +15,10 @@ on:
         description: 'Pack + validate only — do not publish'
         type: boolean
         default: true
+      version_suffix:
+        description: 'Optional prerelease suffix (e.g. "-1") for same-day republish when CalVer is already taken'
+        type: string
+        default: ''
 
 jobs:
   publish:
@@ -36,8 +40,10 @@ jobs:
           BASE="${RAW%%+*}"              # 2026.06.09  (drop +sha build metadata)
           # npm/semver rejects leading zeros, so 2026.06.09 → 2026.6.9
           SEMVER="$(echo "$BASE" | awk -F. '{printf "%d.%d.%d", $1, $2, $3}')"
-          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
-          echo "Publishing version $SEMVER (from VERSION=$RAW)"
+          SUFFIX="${{ inputs.version_suffix }}"
+          FULL_VER="${SEMVER}${SUFFIX}"
+          echo "semver=$FULL_VER" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $FULL_VER (from VERSION=$RAW, suffix='$SUFFIX')"
 
       - name: Stamp the version into package.json
         run: npm pkg set version="${{ steps.ver.outputs.semver }}"
