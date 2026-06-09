@@ -17,7 +17,8 @@ export type WriteAction =
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
   | { kind: "addRepo"; key: string; github: string; local?: string }
-  | { kind: "setNotesRoot"; path: string };
+  | { kind: "setNotesRoot"; path: string }
+  | { kind: "move"; fromTrack: string; toTrack: string; issue: number };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -48,6 +49,7 @@ export type WriteOutcome =
  *   newTrack        → ["new-track", repo, slug, ..."--priority=<p>", ..."--milestone=<m>"]
  *   addRepo         → ["init-repo", key, "--github=<org/repo>", ..."--local=<path>"]
  *   setNotesRoot    → ["set-notes-root", path]
+ *   move            → ["move", issue, fromTrack, toTrack]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -107,6 +109,9 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "setNotesRoot":
       return ["set-notes-root", action.path];
+
+    case "move":
+      return ["move", String(action.issue), action.fromTrack, action.toTrack];
   }
 }
 

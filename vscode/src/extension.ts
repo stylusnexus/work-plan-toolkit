@@ -561,6 +561,81 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.move — move an issue from one track to another (context menu)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.move", async (node?: TrackNode) => {
+      try {
+        const fromTrack = await resolveTrackName(node);
+        if (!fromTrack) return;
+
+        const raw = await vscode.window.showInputBox({
+          prompt: `Issue number to move from ${fromTrack}`,
+          validateInput: (v) => {
+            if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
+            return "Enter a positive integer issue number (e.g. 42)";
+          },
+        });
+        if (raw === undefined) return; // cancelled
+
+        const issue = parseInt(raw, 10);
+
+        // Build the destination track list from the RAW export.
+        const exp = provider.rawExport ?? provider.currentExport;
+        if (!exp || exp.tracks.length === 0) {
+          vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
+          return;
+        }
+
+        // Find the source track object to determine its repo.
+        const srcTrack = exp.tracks.find(t => t.name === fromTrack);
+        if (!srcTrack) {
+          vscode.window.showErrorMessage(`Work Plan: Track "${fromTrack}" not found.`);
+          return;
+        }
+
+        // Destination candidates: other active tracks in the same repo.
+        const candidates = exp.tracks.filter(
+          t => t.name !== fromTrack && t.repo === srcTrack.repo,
+        );
+        if (candidates.length === 0) {
+          vscode.window.showInformationMessage(
+            `Work Plan: No other tracks in ${srcTrack.repo} to move to.`,
+          );
+          return;
+        }
+
+        const toTrack = await vscode.window.showQuickPick(
+          candidates.map(t => t.name),
+          { placeHolder: `Move #${issue} from ${fromTrack} to...` },
+        );
+        if (!toTrack) return; // cancelled
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "move", fromTrack, toTrack, issue },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(
+            `Work Plan: moved #${issue} from ${fromTrack} to ${toTrack}`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: move failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.slotUntracked — slot an untracked issue into a track (context menu only)
   // -------------------------------------------------------------------------
 

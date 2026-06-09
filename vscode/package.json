@@ -104,6 +104,10 @@
         "title": "Work Plan: Close Track"
       },
       {
+        "command": "workPlan.move",
+        "title": "Work Plan: Move Issue from Track"
+      },
+      {
         "command": "workPlan.newTrack",
         "title": "Work Plan: New Track"
       },
@@ -192,6 +196,11 @@
           "command": "workPlan.close",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanWrite@6"
+        },
+        {
+          "command": "workPlan.move",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@7"
         },
         {
           "command": "workPlan.slotUntracked",

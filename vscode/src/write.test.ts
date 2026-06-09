@@ -244,6 +244,19 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(actionToArgs(action), ["set-notes-root", "/Users/eve/notes"]);
   });
+
+  test("move → ['move', issue, fromTrack, toTrack]", () => {
+    const action: WriteAction = {
+      kind: "move",
+      issue: 4234,
+      fromTrack: "platform-health",
+      toTrack: "org-sharing",
+    };
+    assert.deepEqual(
+      actionToArgs(action),
+      ["move", "4234", "platform-health", "org-sharing"],
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
