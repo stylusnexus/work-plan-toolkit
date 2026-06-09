@@ -26,7 +26,7 @@ Run with --all to reconcile every active track in one pass.
 """
 import json
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo, parse_track_repo_arg, AmbiguousTrackError
@@ -140,27 +140,31 @@ def run(args: list[str]) -> int:
     work_items = [(track, _resolve_labels(track)) for track in targets if track.repo]
     results: dict = {}  # track.name → list[dict] or None (timeout/error)
 
-    if len(work_items) > 1:
+    total = len(work_items)
+    if total > 1:
         # Parallel fetch when there are multiple tracks
         with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {
-                pool.submit(_fetch_labeled_issues, track.repo, labels): track
-                for track, labels in work_items
-            }
-            for future in as_completed(futures):
-                track = futures[future]
+            submitted: list = []
+            for i, (track, labels) in enumerate(work_items, 1):
+                print(f"  [{i}/{total}] fetching {track.repo} ({track.name})...", flush=True)
+                submitted.append((i, track, pool.submit(_fetch_labeled_issues, track.repo, labels)))
+            # Iterate in submit order for readable output; futures run in parallel
+            for i, track, future in submitted:
                 try:
                     results[track.name] = future.result()
+                    print(f"  [{i}/{total}] ✓ {track.name}")
                 except RuntimeError as e:
-                    print(f"  ⚠ {track.name}: {e} — skipping")
+                    print(f"  [{i}/{total}] ⚠ {track.name}: {e} — skipping")
                     results[track.name] = None
     else:
         # Single track: fetch directly (no thread overhead)
-        for track, labels in work_items:
+        for i, (track, labels) in enumerate(work_items, 1):
+            print(f"  [{i}/{total}] fetching {track.repo} ({track.name})...", flush=True)
             try:
                 results[track.name] = _fetch_labeled_issues(track.repo, labels)
+                print(f"  [{i}/{total}] ✓ {track.name}")
             except RuntimeError as e:
-                print(f"  ⚠ {track.name}: {e} — skipping")
+                print(f"  [{i}/{total}] ⚠ {track.name}: {e} — skipping")
                 results[track.name] = None
 
     # Phase 2: serial diff, report, and confirm (prompts must NOT be in threads)
