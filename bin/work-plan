@@ -10,7 +10,20 @@
 # Harmless elsewhere (missing dirs are simply ignored by PATH lookup).
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
+# Resolve symlinks before computing the package root: `npm install -g` puts the
+# launcher in the global bin as a SYMLINK to the package, so $0 is the symlink,
+# not the real file. Walk the symlink chain to the actual launcher so
+# "<root>/skills/work-plan" resolves to the npm package, not the global bin dir.
+src="${BASH_SOURCE[0]:-$0}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  link="$(readlink "$src")"
+  case "$link" in
+    /*) src="$link" ;;
+    *)  src="$dir/$link" ;;
+  esac
+done
+root="$(cd -P "$(dirname "$src")/.." && pwd)"
 for c in \
   "$root/skills/work-plan/work_plan.py" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \

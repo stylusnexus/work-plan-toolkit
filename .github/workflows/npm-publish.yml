@@ -1,0 +1,59 @@
+name: Publish CLI to npm
+
+# Publishes the Python work-plan CLI as @stylusnexus/work-plan on npm, so it can
+# be installed with `npm install -g @stylusnexus/work-plan` (e.g. for VS Code
+# extension users who don't use the Claude/Codex plugin).
+#
+# Needs an Actions secret: NPM_TOKEN — an npmjs.com automation token with publish
+# rights to the @stylusnexus scope. Dormant until it exists.
+#
+# Run manually. dry_run=true (default) packs + validates without publishing.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack + validate only — do not publish'
+        type: boolean
+        default: true
+
+jobs:
+  publish:
+    name: pack · publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Derive npm version from VERSION (CalVer → semver)
+        id: ver
+        run: |
+          RAW="$(cat VERSION)"            # e.g. 2026.06.09+8c10fe0
+          BASE="${RAW%%+*}"              # 2026.06.09  (drop +sha build metadata)
+          # npm/semver rejects leading zeros, so 2026.06.09 → 2026.6.9
+          SEMVER="$(echo "$BASE" | awk -F. '{printf "%d.%d.%d", $1, $2, $3}')"
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $SEMVER (from VERSION=$RAW)"
+
+      - name: Stamp the version into package.json
+        run: npm pkg set version="${{ steps.ver.outputs.semver }}"
+
+      - name: Pack the tarball (always — proves the package is well-formed)
+        run: npm pack
+
+      - name: Publish to npm
+        if: ${{ inputs.dry_run == false }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-plan-npm-tarball
+          path: '*.tgz'
+          if-no-files-found: error
