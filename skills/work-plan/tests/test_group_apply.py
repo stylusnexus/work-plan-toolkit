@@ -343,6 +343,69 @@ class GroupApplyTierRoutingTest(unittest.TestCase):
             stored = json.loads(batch_file.read_text())
             self.assertFalse(stored.get("private"))
 
+    def test_limit_truncates_issue_display(self):
+        """--limit truncates displayed issues in the AI prompt with remaining count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            notes_root = Path(tmpdir) / "notes"
+            notes_root.mkdir()
+            cfg = _make_cfg(notes_root=str(notes_root))
+            batch_file = Path(tmpdir) / "groups.json"
+
+            issues = [
+                {"number": i, "title": f"Issue {i}", "milestone": None,
+                 "labels": [], "assignees": [], "state": "OPEN"}
+                for i in range(1, 25)
+            ]
+
+            with patch("commands.group.load_config", return_value=cfg), \
+                 patch("commands.group._batch_path", return_value=batch_file), \
+                 patch("commands.group._answers_path",
+                       return_value=Path(tmpdir) / "groups.answers.json"), \
+                 patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=json.dumps(issues), stderr=""
+                )
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = group.run(["--repo=myrepo", "--limit=10"])
+
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("Issue 1", out)
+            self.assertIn("Issue 10", out)
+            self.assertNotIn("Issue 11", out)
+            self.assertIn("and 14 more", out)
+            self.assertIn("--limit", out)
+
+    def test_limit_at_or_below_count_shows_all_no_truncation(self):
+        """When issue count is within --limit, no truncation message appears."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            notes_root = Path(tmpdir) / "notes"
+            notes_root.mkdir()
+            cfg = _make_cfg(notes_root=str(notes_root))
+            batch_file = Path(tmpdir) / "groups.json"
+
+            issues = [
+                {"number": 1, "title": "Issue 1", "milestone": None,
+                 "labels": [], "assignees": [], "state": "OPEN"},
+            ]
+
+            with patch("commands.group.load_config", return_value=cfg), \
+                 patch("commands.group._batch_path", return_value=batch_file), \
+                 patch("commands.group._answers_path",
+                       return_value=Path(tmpdir) / "groups.answers.json"), \
+                 patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=json.dumps(issues), stderr=""
+                )
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = group.run(["--repo=myrepo"])
+
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertNotIn("more issues", out)
+
 
 if __name__ == "__main__":
     unittest.main()

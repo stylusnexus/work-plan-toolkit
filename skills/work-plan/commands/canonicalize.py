@@ -77,6 +77,7 @@ def run(args: list[str]) -> int:
 
         new_body = _insert_canonical_table(
             track.body, issue_nums, issues_by_num, replace=force,
+            milestone_alignment=track.meta.get("milestone_alignment"),
         )
         write_file(track.path, track.meta, new_body)
         print(f"  ✓ {track.name}: canonical table added/refreshed ({len(issue_nums)} issues)")
@@ -88,9 +89,10 @@ def run(args: list[str]) -> int:
 
 
 def _insert_canonical_table(body: str, issue_nums: list[int],
-                            issues_by_num: dict, replace: bool = False) -> str:
+                            issues_by_num: dict, replace: bool = False,
+                            milestone_alignment=None) -> str:
     """Insert (or replace) a canonical table at the top of the body."""
-    table_md = _render_canonical_table(issue_nums, issues_by_num)
+    table_md = _render_canonical_table(issue_nums, issues_by_num, milestone_alignment)
 
     if replace:
         # Strip existing canonical block (marker + heading + table + separator)
@@ -102,22 +104,57 @@ def _insert_canonical_table(body: str, issue_nums: list[int],
     return leading_whitespace + table_md + "\n---\n\n" + body_stripped
 
 
-def _render_canonical_table(issue_nums: list[int], issues_by_num: dict) -> str:
+def _render_canonical_table(issue_nums: list[int], issues_by_num: dict,
+                            milestone_alignment=None) -> str:
     lines = [
         "## Issues (canonical)",
         "",
         f"{CANONICAL_MARKER} — auto-managed by /work-plan refresh-md. Don't edit by hand. -->",
         "",
-        "| # | Title | Assignee | Status |",
-        "|---|---|---|---|",
     ]
+
+    # Build a normalized issue list with compact milestone strings.
+    from lib.github_state import short_milestone
+    norm_issues = []
     for num in sorted(issue_nums):
-        i = issues_by_num.get(num, {})
-        lines.append(render_issue_row(
-            num, i.get("title", "(not fetched)"),
-            format_assignees(i), state_to_status_label(i.get("state")),
-        ))
-    lines.append("")
+        gh = issues_by_num.get(num, {})
+        ms = short_milestone(gh.get("milestone")) or None
+        norm_issues.append({"number": num, "milestone": ms, "_gh": gh})
+
+    from lib.export_model import group_issues_by_milestone
+    groups = group_issues_by_milestone(norm_issues, milestone_alignment)
+
+    if len(groups) <= 1:
+        # Single milestone group (or all null) — render flat, same as before.
+        lines.append("| # | Title | Assignee | Status |")
+        lines.append("|---|---|---|---|")
+        for num in sorted(issue_nums):
+            i = issues_by_num.get(num, {})
+            lines.append(render_issue_row(
+                num, i.get("title", "(not fetched)"),
+                format_assignees(i), state_to_status_label(i.get("state")),
+            ))
+        lines.append("")
+        return "\n".join(lines)
+
+    # Multiple milestone groups — render with section headings.
+    for label, issues in groups:
+        if label:
+            heading = f"{label} ({len(issues)})"
+        else:
+            heading = f"No milestone ({len(issues)})"
+        lines.append(f"### {heading}")
+        lines.append("")
+        lines.append("| # | Title | Assignee | Status |")
+        lines.append("|---|---|---|---|")
+        for norm in issues:
+            num = norm["number"]
+            i = norm["_gh"]
+            lines.append(render_issue_row(
+                num, i.get("title", "(not fetched)"),
+                format_assignees(i), state_to_status_label(i.get("state")),
+            ))
+        lines.append("")
     return "\n".join(lines)
 
 

@@ -256,3 +256,213 @@ describe("renderDetail — HTML escaping", () => {
     );
   });
 });
+
+describe("renderDetail — milestone bands", () => {
+  it("renders milestone band headers when multiple milestone groups exist", () => {
+    const html = renderDetail(platformHealth);
+    // platformHealth has issues in M1 and null milestones → 2 groups → bands
+    assert.ok(
+      html.includes("milestone-band-header"),
+      `Expected milestone-band-header for multi-milestone track:\n${html}`,
+    );
+  });
+
+  it("active milestone band (M1) is expanded (no 'collapsed' class)", () => {
+    const html = renderDetail(platformHealth);
+    // The FIRST tbody.milestone-band should not have 'collapsed'
+    const firstBand = html.match(/<tbody class="milestone-band[^"]*"[^>]*>/);
+    assert.ok(firstBand !== null, "Expected at least one milestone-band tbody");
+    assert.ok(
+      !firstBand![0].includes("collapsed"),
+      `First band should not be collapsed:\n${firstBand![0]}`,
+    );
+  });
+
+  it("non-active milestone band is collapsed", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("collapsed"),
+      `Expected a 'collapsed' class on at least one band:\n${html}`,
+    );
+  });
+
+  it("renders the milestone label (M1) in the band header", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("<b>M1</b>"),
+      `Expected M1 label in band header:\n${html}`,
+    );
+  });
+
+  it("renders 'No milestone' for the null-milestone band", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("<b>No milestone</b>"),
+      `Expected No milestone label:\n${html}`,
+    );
+  });
+
+  it("renders the issue count in the band header", () => {
+    const html = renderDetail(platformHealth);
+    // M1 has 2 issues (#487, #1556) → (2)
+    assert.ok(
+      html.includes("(2)"),
+      `Expected issue count (2) for M1 band:\n${html}`,
+    );
+  });
+
+  it("single milestone group renders flat (no bands)", () => {
+    const singleMsTrack: Track = {
+      ...emptyTrack,
+      issues: [
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1" },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1" },
+      ],
+      rollup: { open: 2, closed: 0 },
+    };
+    const html = renderDetail(singleMsTrack);
+    assert.ok(
+      !html.includes("milestone-band-header"),
+      `Single-milestone track should render flat (no bands):\n${html}`,
+    );
+  });
+
+  it("all-null milestone track renders flat (no bands)", () => {
+    const allNullTrack: Track = {
+      ...emptyTrack,
+      issues: [
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null },
+      ],
+      rollup: { open: 2, closed: 0 },
+    };
+    const html = renderDetail(allNullTrack);
+    assert.ok(
+      !html.includes("milestone-band-header"),
+      `All-null-milestone track should render flat:\n${html}`,
+    );
+  });
+
+  it("issues within each band are in number order", () => {
+    // Create a track with multiple milestones to verify number-sort within groups
+    const multiTrack: Track = {
+      ...emptyTrack,
+      milestone_alignment: "v1",
+      issues: [
+        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2" },
+        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1" },
+        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1" },
+        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null },
+      ],
+      rollup: { open: 4, closed: 0 },
+    };
+    const html = renderDetail(multiTrack);
+    // v1 band (#10, #20) should appear before v2 #30 before null #40
+    const idx10 = html.indexOf("#10");
+    const idx20 = html.indexOf("#20");
+    const idx30 = html.indexOf("#30");
+    const idx40 = html.indexOf("#40");
+    assert.ok(idx10 < idx20, "#10 should appear before #20 within v1 band");
+    assert.ok(idx20 < idx30, "v1 band should appear before v2 band");
+    assert.ok(idx30 < idx40, "v2 band should appear before null-milestone band");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue cap tests (#169)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — issue cap", () => {
+  /** Build a track with `n` issues numbered 1..n, all open, no milestone. */
+  function makeBigTrack(n: number): Track {
+    const issues: Issue[] = [];
+    for (let i = 1; i <= n; i++) {
+      issues.push({
+        number: i,
+        title: `Issue ${i}`,
+        state: "open",
+        assignee: "@dev",
+        milestone: null,
+      });
+    }
+    return {
+      name: "big-track",
+      repo: "org/repo",
+      tier: "private",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: null,
+      blockers: [],
+      next_up: [],
+      rollup: { open: n, closed: 0 },
+      issues,
+    };
+  }
+
+  it("renders all issues when count is below the cap", () => {
+    const track = makeBigTrack(30);
+    const html = renderDetail(track);
+    // All 30 issues should be in the visible table
+    assert.ok(html.includes("#1"), "missing #1");
+    assert.ok(html.includes("#30"), "missing #30");
+    // No collapsible overflow
+    assert.ok(!html.includes("issue-cap-toggle"), "unexpected cap toggle");
+  });
+
+  it("caps at 50 with collapsible overflow for flat table", () => {
+    const track = makeBigTrack(75);
+    const html = renderDetail(track);
+    // First 50 visible
+    assert.ok(html.includes("#1"), "missing #1");
+    assert.ok(html.includes("#50"), "missing #50");
+    // #51 should NOT be in the visible table — only inside <details>
+    const idx50 = html.indexOf("#50");
+    const idx51 = html.indexOf("#51");
+    assert.ok(idx51 > idx50, "#51 should appear after #50");
+    // Collapsible toggle present
+    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle");
+    assert.ok(html.includes("<details>"), "missing <details> element");
+    assert.ok(html.includes("Show all 75 issues"), "missing 'Show all 75 issues'");
+    assert.ok(html.includes("25 more"), "missing '25 more' count");
+  });
+
+  it("caps within milestone bands — overflow goes to collapsible band", () => {
+    // 3 milestones × 20 issues = 60 total, cap at 50 → 10 in overflow
+    const issues: Issue[] = [];
+    for (let i = 1; i <= 60; i++) {
+      const ms = i <= 20 ? "v1" : i <= 40 ? "v2" : null;
+      issues.push({
+        number: i,
+        title: `Issue ${i}`,
+        state: "open",
+        assignee: "@dev",
+        milestone: ms,
+      });
+    }
+    const track: Track = {
+      name: "multi-ms-big",
+      repo: "org/repo",
+      tier: "private",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: "v1",
+      visibility: null,
+      blockers: [],
+      next_up: [],
+      rollup: { open: 60, closed: 0 },
+      issues,
+    };
+
+    const html = renderDetail(track);
+    // Milestone bands should be present
+    assert.ok(html.includes("milestone-band-header"), "missing milestone bands");
+    // First 50 visible — v1 (20) + v2 (20) + null (10 of 20) = 50
+    assert.ok(html.includes("#1"), "missing #1");
+    assert.ok(html.includes("#50"), "missing #50");
+    // Overflow toggle present
+    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle in milestone bands");
+    assert.ok(html.includes("Show all 60 issues"), "missing total count");
+    assert.ok(html.includes("10 more"), "missing '10 more' count");
+  });
+});

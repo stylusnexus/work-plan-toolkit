@@ -36,6 +36,8 @@ export interface Track {
   blockers: number[];
   /** Issue numbers queued as next-up. */
   next_up: number[];
+  /** Track slugs that this track explicitly depends on (#102). */
+  depends_on: string[];
   rollup: Rollup;
   issues: Issue[];
 }

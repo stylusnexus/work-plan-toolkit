@@ -3,6 +3,55 @@ from lib.github_state import format_assignees, short_milestone
 
 SCHEMA = 1
 
+
+def milestone_sort_key(issue: dict, milestone_alignment=None):
+    """Sort key for an issue dict (must have 'number' and 'milestone').
+
+    Returns (tier, milestone_label, number) so that:
+      0. issues matching milestone_alignment come first
+      1. issues with other non-null milestones come next, grouped by label
+      2. issues with null/empty milestone come last.
+
+    milestone may be a compact string (as from short_milestone) or None.
+    """
+    ms = issue.get("milestone")
+    num = issue.get("number", 0) or 0
+    if ms is None or ms == "":
+        return (2, "", num)
+    if ms == milestone_alignment:
+        return (0, ms, num)
+    return (1, ms, num)
+
+
+def group_issues_by_milestone(issues, milestone_alignment=None):
+    """Partition sorted issues into [(label, [issue, ...]), ...].
+
+    label is the compact milestone string; None for the no-milestone group.
+    Groups are emitted in milestone_sort_key order.  A single-group result
+    means all issues share the same milestone (or all lack one) — callers
+    can use this to decide whether to render section headings.
+    """
+    if not issues:
+        return []
+    sorted_issues = sorted(issues,
+                           key=lambda i: milestone_sort_key(i, milestone_alignment))
+    groups = []
+    current_label = None  # sentinel — always differs from the first real label
+    current_group = []
+    for i in sorted_issues:
+        label = i.get("milestone") or None
+        if label != current_label:
+            if current_group:
+                groups.append((current_label, current_group))
+            current_label = label
+            current_group = [i]
+        else:
+            current_group.append(i)
+    if current_group:
+        groups.append((current_label, current_group))
+    return groups
+
+
 def _issue(i: dict) -> dict:
     state = (i.get("state") or "OPEN").lower()
     return {
@@ -13,11 +62,14 @@ def _issue(i: dict) -> dict:
         "milestone": short_milestone(i.get("milestone")) or None,
     }
 
+
 def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None) -> dict:
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
         issues = [_issue(i) for i in issues_by_track.get(t.name, [])]
+        milestone_alignment = t.meta.get("milestone_alignment")
+        issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")
         closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
         next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
@@ -27,10 +79,11 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "tier": getattr(t, "tier", "private") or "private",
             "status": t.meta.get("status"),
             "launch_priority": t.meta.get("launch_priority"),
-            "milestone_alignment": t.meta.get("milestone_alignment"),
+            "milestone_alignment": milestone_alignment,
             "visibility": visibility.get(t.repo),
             "blockers": list(t.meta.get("blockers") or []),
             "next_up": next_up,
+            "depends_on": list(t.meta.get("depends_on") or []),
             "rollup": {"open": opened, "closed": len(issues) - opened},
             "issues": issues,
         })

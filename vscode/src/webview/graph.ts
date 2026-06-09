@@ -49,6 +49,10 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
   // Class definitions
   lines.push("  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d");
   lines.push("  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px");
+  lines.push("  classDef dependsEdge stroke:#f59e0b,stroke-width:2px,color:#d97706");
+
+  // Build a unique, collision-resistant track ID for each track name.
+  const tids = buildTrackIds(exp.tracks);
 
   // Build an issue title index from all tracks' issues[].
   const titleIndex = new Map<number, string>();
@@ -85,7 +89,7 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
   lines.push("");
   lines.push("  %% Track nodes");
   for (const track of exp.tracks) {
-    const id = trackId(track.name);
+    const id = tids.get(track.name)!;
     const label = mermaidLabel(track.name);
     lines.push(`  ${id}["${label}"]`);
   }
@@ -105,7 +109,7 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
   lines.push("  %% Edges");
 
   for (const track of exp.tracks) {
-    const tid = trackId(track.name);
+    const tid = tids.get(track.name)!;
 
     // blocks edges: i_<b> -->|blocks| t_<track>
     for (const b of track.blockers) {
@@ -115,7 +119,7 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
       //   t_<O> -->|owns #<b>| t_<track>
       const ownerName = issueOwner.get(b);
       if (ownerName !== undefined && ownerName !== track.name) {
-        const ownerId = trackId(ownerName);
+        const ownerId = tids.get(ownerName)!;
         lines.push(`  ${ownerId} -->|owns #${b}| ${tid}`);
       }
     }
@@ -132,6 +136,13 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
         prev = n;
       }
     }
+
+    // depends_on edges (explicit cross-track dependencies, #102)
+    const depNames = track.depends_on || [];
+    for (const depName of depNames) {
+      const depId = tids.get(depName) ?? trackId(depName);
+      lines.push(`  ${tid} ==>|depends on| ${depId}`);
+    }
   }
 
   // Class assignments
@@ -141,7 +152,7 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
   const blockedIds: string[] = [];
   for (const track of exp.tracks) {
     if (statusCategory(track) === "blocked") {
-      blockedIds.push(trackId(track.name));
+      blockedIds.push(tids.get(track.name)!);
     }
   }
   if (blockedIds.length > 0) {
@@ -149,7 +160,7 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
   }
 
   if (selectedTrack !== undefined) {
-    const selId = trackId(selectedTrack);
+    const selId = tids.get(selectedTrack) ?? trackId(selectedTrack);
     lines.push(`  class ${selId} selected`);
   }
 
@@ -165,6 +176,9 @@ function _toMermaidFocused(exp: Export, t: Track): string {
   lines.push("graph LR");
   lines.push("  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d");
   lines.push("  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px");
+
+  // Build a unique, collision-resistant track ID for each track name.
+  const tids = buildTrackIds(exp.tracks);
 
   // Build title index from all tracks (titles may live on any track).
   const titleIndex = new Map<number, string>();
@@ -189,11 +203,23 @@ function _toMermaidFocused(exp: Export, t: Track): string {
   // Determine which track nodes to include:
   //   - always: the selected track itself.
   //   - for each blocker b of T: the owner track of b (if b is owned by another track).
+  //   - tracks that T explicitly depends_on, and tracks that depend_on T (#102).
   const includedTrackNames = new Set<string>([t.name]);
   for (const b of t.blockers) {
     const ownerName = issueOwner.get(b);
     if (ownerName !== undefined && ownerName !== t.name) {
       includedTrackNames.add(ownerName);
+    }
+  }
+  // Add dependency neighbourhood (#102)
+  const depNames = t.depends_on || [];
+  for (const depName of depNames) {
+    includedTrackNames.add(depName);
+  }
+  // Reverse: add tracks that depend on T
+  for (const tr of exp.tracks) {
+    if ((tr.depends_on || []).includes(t.name)) {
+      includedTrackNames.add(tr.name);
     }
   }
 
@@ -212,7 +238,7 @@ function _toMermaidFocused(exp: Export, t: Track): string {
   lines.push("  %% Track nodes");
   for (const tr of exp.tracks) {
     if (!includedTrackNames.has(tr.name)) continue;
-    const id = trackId(tr.name);
+    const id = tids.get(tr.name)!;
     const label = mermaidLabel(tr.name);
     lines.push(`  ${id}["${label}"]`);
   }
@@ -231,7 +257,7 @@ function _toMermaidFocused(exp: Export, t: Track): string {
   lines.push("");
   lines.push("  %% Edges");
 
-  const tid = trackId(t.name);
+  const tid = tids.get(t.name)!;
 
   // blocks edges from T's blockers → T
   for (const b of t.blockers) {
@@ -239,7 +265,7 @@ function _toMermaidFocused(exp: Export, t: Track): string {
     // owns edge from owning track → T
     const ownerName = issueOwner.get(b);
     if (ownerName !== undefined && ownerName !== t.name) {
-      const ownerId = trackId(ownerName);
+      const ownerId = tids.get(ownerName)!;
       lines.push(`  ${ownerId} -->|owns #${b}| ${tid}`);
     }
   }
@@ -257,6 +283,20 @@ function _toMermaidFocused(exp: Export, t: Track): string {
     }
   }
 
+  // depends_on edges for T and its dependency neighbourhood (#102)
+  const fDepNames = t.depends_on || [];
+  for (const depName of fDepNames) {
+    const depId = tids.get(depName) ?? trackId(depName);
+    lines.push(`  ${tid} ==>|depends on| ${depId}`);
+  }
+  // Reverse: tracks that depend on T
+  for (const tr of exp.tracks) {
+    if ((tr.depends_on || []).includes(t.name)) {
+      const depId = tids.get(tr.name)!;
+      lines.push(`  ${depId} ==>|depends on| ${tid}`);
+    }
+  }
+
   // Class assignments
   lines.push("");
   lines.push("  %% Class assignments");
@@ -266,7 +306,7 @@ function _toMermaidFocused(exp: Export, t: Track): string {
   for (const tr of exp.tracks) {
     if (!includedTrackNames.has(tr.name)) continue;
     if (statusCategory(tr) === "blocked") {
-      blockedIds.push(trackId(tr.name));
+      blockedIds.push(tids.get(tr.name)!);
     }
   }
   if (blockedIds.length > 0) {
@@ -284,8 +324,37 @@ function _toMermaidFocused(exp: Export, t: Track): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * Builds a collision-resistant Map of track name → Mermaid node id.
+ *
+ * Sanitised base ids are produced by replace(/[^A-Za-z0-9_]/g, "_"). If two
+ * different track names would map to the same sanitised id (e.g. "my-track"
+ * and "my_track"), a zero-based numeric suffix is appended to disambiguate
+ * later occurrences.  The first-seen name keeps the bare id so single-track
+ * graphs produce the same output as before.  Deterministic for the same input.
+ */
+function buildTrackIds(tracks: { name: string }[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const used = new Set<string>();
+  for (const t of tracks) {
+    let base = "t_" + t.name.replace(/[^A-Za-z0-9_]/g, "_");
+    let id = base;
+    let suffix = 1;
+    while (used.has(id)) {
+      id = `${base}_${suffix++}`;
+    }
+    used.add(id);
+    map.set(t.name, id);
+  }
+  return map;
+}
+
+/**
  * Derives a Mermaid-safe node id from a track name.
  * Replaces any character outside [A-Za-z0-9_] with `_` and prefixes with `t_`.
+ *
+ * Prefer `buildTrackIds` when processing multiple tracks — it guarantees
+ * uniqueness across the set.  This function is kept for single-track callers
+ * (e.g. the `selected` class fallback in `_toMermaidFull`).
  */
 function trackId(name: string): string {
   return "t_" + name.replace(/[^A-Za-z0-9_]/g, "_");
@@ -293,13 +362,26 @@ function trackId(name: string): string {
 
 /**
  * Escapes characters that would break Mermaid `["..."]` / `(["..."])` node labels.
- * A literal `"` terminates the label early and yields a parse error; `<`/`>`/`&`
- * are escaped for HTML-label safety.
+ *
+ * A literal `"` terminates the label early and yields a parse error; the
+ * HTML entity `&quot;` is Mermaid-safe.  `<`/`>`/`&` are escaped for
+ * HTML-label safety (they would otherwise be interpreted as HTML tags or
+ * entity starts).  `[` `]` `(` `)` `{` `}` and backticks are also escaped
+ * because they can confuse Mermaid's PEG parser when embedded inside node
+ * label strings — e.g. `(["Fix [API] rate"])` causes Mermaid to treat the
+ * inner `]` as the end of the node definition.
  */
 function mermaidLabel(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/\[/g, "&#91;")
+    .replace(/\]/g, "&#93;")
+    .replace(/\(/g, "&#40;")
+    .replace(/\)/g, "&#41;")
+    .replace(/\{/g, "&#123;")
+    .replace(/\}/g, "&#125;")
+    .replace(/`/g, "&#96;");
 }

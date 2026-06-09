@@ -308,7 +308,7 @@ class NewTrackCommandTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         meta = mw.call_args[0][1]
         for key in ("track", "status", "launch_priority", "milestone_alignment",
-                    "github", "related_tracks", "last_touched", "last_handoff",
+                    "github", "depends_on", "last_touched", "last_handoff",
                     "next_up", "blockers"):
             self.assertIn(key, meta, f"meta missing key: {key}")
 
@@ -320,12 +320,12 @@ class NewTrackCommandTest(unittest.TestCase):
         self.assertEqual(meta["github"]["issues"], [])
         self.assertEqual(meta["github"]["branches"], [])
 
-    def test_meta_related_tracks_next_up_blockers_empty(self):
-        """New track starts with empty related_tracks, next_up, blockers."""
+    def test_meta_depends_on_next_up_blockers_empty(self):
+        """New track starts with empty depends_on, next_up, blockers."""
         rc, mw, out = _drive(["myrepo", "my-feature"], vis="PRIVATE")
         self.assertEqual(rc, 0)
         meta = mw.call_args[0][1]
-        self.assertEqual(meta["related_tracks"], [])
+        self.assertEqual(meta["depends_on"], [])
         self.assertEqual(meta["next_up"], [])
         self.assertEqual(meta["blockers"], [])
 

@@ -72,12 +72,12 @@ class ExportRunJsonTest(unittest.TestCase):
         self.assertEqual(out["schema"], 1)
 
     def test_track_issues_assembled_in_declared_order(self):
-        # Track declares [2, 1] — output order must match declaration, not map-insertion order
+        # Issues are milestone-sorted (#101): null-milestone group sorts by number.
         tracks = [_track("alpha", _SHARED_REPO, [2, 1])]
         rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         issue_nums = [i["number"] for i in out["tracks"][0]["issues"]]
-        self.assertEqual(issue_nums, [2, 1])
+        self.assertEqual(issue_nums, [1, 2])
 
     def test_shared_issue_appears_in_both_tracks(self):
         tracks = [

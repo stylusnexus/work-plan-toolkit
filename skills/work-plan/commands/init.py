@@ -119,7 +119,7 @@ def run(args: list[str]) -> int:
         "launch_priority": priority,
         "milestone_alignment": milestone,
         "github": {"repo": repo or "TBD", "issues": issue_nums, "branches": []},
-        "related_tracks": [],
+        "depends_on": [],
         "last_touched": now, "last_handoff": now,
         "next_up": [], "blockers": [],
     }

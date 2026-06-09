@@ -6,7 +6,7 @@ from lib.frontmatter import write_file
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags
 
-ALLOWED = {"status", "launch_priority", "milestone_alignment", "blockers", "next_up"}
+ALLOWED = {"status", "launch_priority", "milestone_alignment", "blockers", "next_up", "depends_on"}
 LIST_FIELDS = {"blockers", "next_up"}
 STATUSES = {"active", "in-progress", "blocked", "parked", "shipped", "abandoned"}
 
@@ -29,7 +29,10 @@ def run(args: list[str]) -> int:
         k, v = a.split("=", 1)
         if k not in ALLOWED:
             print(f"ERROR: field {k!r} not settable (allowed: {sorted(ALLOWED)})"); return 2
-        if k in LIST_FIELDS:
+        if k == "depends_on":
+            # Comma-separated track slugs (strings, not issue numbers).
+            parsed[k] = [x.strip() for x in v.split(",") if x.strip()] if v.strip() else []
+        elif k in LIST_FIELDS:
             try:
                 parsed[k] = [int(x) for x in v.split(",") if x.strip()] if v.strip() else []
             except ValueError:

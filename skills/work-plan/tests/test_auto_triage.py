@@ -170,6 +170,33 @@ class AutoTriagePrepareTest(unittest.TestCase):
         self.assertEqual(len(stored["tracks"]), 1)
         self.assertEqual(stored["tracks"][0]["slug"], "auth-flow")
 
+    def test_limit_truncates_with_more_issues(self):
+        """When untracked count exceeds --limit, show first N + truncation hint."""
+        cfg = _make_cfg()
+        tracks = [_make_track("auth-flow", "org/myrepo", [])]
+        issues = _open_issues(*range(1, 110))  # 109 untracked
+        rc, out, _ = _drive_prepare(["--limit=10"], cfg=cfg, tracks=tracks,
+                                    open_issues=issues)
+        self.assertEqual(rc, 0)
+        self.assertIn("Issue 1", out)
+        self.assertIn("Issue 10", out)
+        self.assertNotIn("Issue 11", out)
+        self.assertIn("and 99 more", out)
+        self.assertIn("--limit", out)
+
+    def test_limit_at_or_below_count_shows_all(self):
+        """When untracked count is within --limit, show all with no truncation."""
+        cfg = _make_cfg()
+        tracks = [_make_track("auth-flow", "org/myrepo", [])]
+        issues = _open_issues(1, 2, 3)
+        rc, out, _ = _drive_prepare([], cfg=cfg, tracks=tracks,
+                                    open_issues=issues)
+        self.assertEqual(rc, 0)
+        self.assertIn("Issue 1", out)
+        self.assertIn("Issue 2", out)
+        self.assertIn("Issue 3", out)
+        self.assertNotIn("more issues", out)
+
 
 # ---------------------------------------------------------------------------
 # Apply step tests

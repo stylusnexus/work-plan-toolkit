@@ -61,6 +61,15 @@ def run(args: list[str]) -> int:
     apply_mode = "--apply" in args
     repo_arg = next((a for a in args if a.startswith("--repo=")), None)
 
+    limit = 100
+    for a in args:
+        if a.startswith("--limit="):
+            try:
+                limit = int(a.split("=", 1)[1])
+            except ValueError:
+                print("ERROR: --limit must be an integer.")
+                return 2
+
     try:
         cfg = load_config()
     except ConfigError as e:
@@ -139,13 +148,17 @@ def run(args: list[str]) -> int:
 
     print()
     print("Untracked issues to assign:")
-    for i in untracked:
+    shown = untracked[:limit]
+    for i in shown:
         num = i.get("number", "?")
         title = i.get("title", "")
         milestone = i.get("milestone") or {}
         m_title = milestone.get("title", "—") if isinstance(milestone, dict) else "—"
         labels = [lb["name"] for lb in (i.get("labels") or [])]
         print(f"  #{num} [{m_title}] [{','.join(labels) or 'no-labels'}] {title}")
+    remainder = len(untracked) - len(shown)
+    if remainder > 0:
+        print(f"  … and {remainder} more issues (use --limit=N to show more)")
 
     print("=" * 60)
     print()

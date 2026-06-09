@@ -3,7 +3,7 @@
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
   "version": "0.2.1",
-  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, read/write over your tracks. Surfaces shared tracks (git-synced .work-plan/) and private tracks side by side.",
+  "description": "Sidebar tree for your GitHub issues across repos, organised into tracks — with a Mermaid dependency graph, per-track detail panel, and full read/write (slot, close, edit, new track, refresh, reconcile, hygiene). Shared tracks sync via git; private tracks stay local. Public-repo writes are gated behind a confirm dialog — no accidental leaks.",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -20,7 +20,10 @@
     "github issues",
     "project planning",
     "tracks",
-    "mermaid"
+    "mermaid",
+    "dependency graph",
+    "issue tracker",
+    "kanban"
   ],
   "engines": {
     "vscode": "^1.90.0"

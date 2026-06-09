@@ -37,15 +37,23 @@ def fetch_issue(repo: str, number: int) -> Optional[dict]:
 
 
 def fetch_issues(repo: str, issue_numbers: Iterable[int]) -> list[dict]:
-    """Fetch state of multiple issues via gh (sequential). Unchanged semantics."""
+    """Fetch state of multiple issues via batched GraphQL (full field set).
+    Falls back to per-issue `gh issue view` for any numbers the GraphQL query
+    didn't return (preserves existing behaviour for transient failures).
+    Returns a list in the same order as `issue_numbers` (skips not-found)."""
     nums = list(issue_numbers)
     if not nums:
         return []
+    # Fast path: batched GraphQL with full field set
+    gql_results = fetch_repo_issues_graphql(repo, nums, fields=_GQL_FIELDS_FULL)
+    # Fall back to per-issue fetch for anything GraphQL missed
     results = []
     for num in nums:
-        result = fetch_issue(repo, num)
-        if result is not None:
-            results.append(result)
+        issue = gql_results.get(num)
+        if issue is None:
+            issue = fetch_issue(repo, num)
+        if issue is not None:
+            results.append(issue)
     return results
 
 
@@ -72,11 +80,15 @@ def fetch_issues_concurrent(jobs: Iterable[tuple], max_workers: int = MAX_FETCH_
 
 
 def _normalize_gql_node(node) -> Optional[dict]:
-    """Reshape a GraphQL issueOrPullRequest node into the REST-ish shape export_model
-    expects (assignees as [{login}], milestone as {title}|None). None for a null node.
-    On success returns a dict with keys: number, title, state, assignees, milestone."""
+    """Reshape a GraphQL issueOrPullRequest node into the REST-ish shape callers
+    expect (labels as [{name}], assignees as [{login}], milestone as {title}|None).
+    None for a null node.
+    On success returns a dict with keys: number, title, state, labels, milestone,
+    closedAt, body, url, updatedAt, assignees."""
     if not node:
         return None
+    labels = [{"name": l.get("name")} for l in
+              ((node.get("labels") or {}).get("nodes") or []) if l.get("name")]
     assignees = [{"login": a.get("login")} for a in
                  ((node.get("assignees") or {}).get("nodes") or []) if a.get("login")]
     ms = node.get("milestone")
@@ -84,13 +96,38 @@ def _normalize_gql_node(node) -> Optional[dict]:
         "number": node.get("number"),
         "title": node.get("title", ""),
         "state": node.get("state", "OPEN"),
-        "assignees": assignees,
+        "labels": labels,
         "milestone": {"title": ms["title"]} if ms and ms.get("title") else None,
+        "closedAt": node.get("closedAt"),
+        "body": node.get("body", ""),
+        "url": node.get("url", ""),
+        "updatedAt": node.get("updatedAt"),
+        "assignees": assignees,
     }
 
 
-def _gql_query(owner: str, name: str, numbers: list) -> str:
-    fields = ("number title state assignees(first: 10) { nodes { login } } milestone { title }")
+# Shared GQL field set used by both export (lean) and fetch_issues (full).
+# Kept as a module-level constant so _gql_query can parameterize at the call site.
+_GQL_FIELDS_FULL = (
+    "number title state"
+    " labels(first: 20) { nodes { name } }"
+    " milestone { title }"
+    " closedAt body url updatedAt"
+    " assignees(first: 10) { nodes { login } }"
+)
+
+_GQL_FIELDS_LEAN = (
+    "number title state"
+    " assignees(first: 10) { nodes { login } }"
+    " milestone { title }"
+)
+
+
+def _gql_query(owner: str, name: str, numbers: list,
+               fields: str = _GQL_FIELDS_LEAN) -> str:
+    """Build a batched GraphQL query for issueOrPullRequest nodes.
+    `fields` selects the GQL field set; _GQL_FIELDS_LEAN for export, _GQL_FIELDS_FULL
+    for fetch_issues (which needs labels, closedAt, body, url, updatedAt)."""
     aliases = "\n".join(
         f'  i{n}: issueOrPullRequest(number: {int(n)}) {{ '
         f'... on Issue {{ {fields} }} ... on PullRequest {{ {fields} }} }}'
@@ -100,10 +137,14 @@ def _gql_query(owner: str, name: str, numbers: list) -> str:
 
 
 def fetch_repo_issues_graphql(repo: str, numbers, chunk: int = GQL_CHUNK,
-                              max_workers: int = MAX_FETCH_WORKERS) -> dict:
+                              max_workers: int = MAX_FETCH_WORKERS,
+                              fields: str = _GQL_FIELDS_LEAN) -> dict:
     """Fetch exactly `numbers` from `repo` via batched GraphQL (issueOrPullRequest, so
     PRs are included). Returns {number: normalized_issue} for those found. Never raises;
-    missing/null/errored numbers are simply omitted (caller may fall back per-issue)."""
+    missing/null/errored numbers are simply omitted (caller may fall back per-issue).
+
+    `fields` selects the GQL field set; _GQL_FIELDS_LEAN (default) for export,
+    _GQL_FIELDS_FULL for fetch_issues (which needs labels, closedAt, body, url)."""
     try:
         nums = list(dict.fromkeys(int(n) for n in numbers))
     except (ValueError, TypeError):
@@ -116,7 +157,7 @@ def fetch_repo_issues_graphql(repo: str, numbers, chunk: int = GQL_CHUNK,
     def _run(batch):
         try:
             proc = subprocess.run(
-                ["gh", "api", "graphql", "-f", "query=" + _gql_query(owner, name, batch)],
+                ["gh", "api", "graphql", "-f", "query=" + _gql_query(owner, name, batch, fields=fields)],
                 capture_output=True, text=True,
             )
         except Exception:
