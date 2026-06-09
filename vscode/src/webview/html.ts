@@ -258,6 +258,19 @@ mermaid.run();
       margin: 2px;
       font-size: 0.9em;
     }
+    .depends-on { margin-top: 8px; }
+    .depends-chip {
+      display: inline-block;
+      background: #2d1f0e;
+      color: #fbbf24;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin: 2px;
+      font-size: 0.9em;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .depends-chip:hover { opacity: 0.8; }
     .next-up { margin-top: 8px; }
     .step {
       display: inline-block;
