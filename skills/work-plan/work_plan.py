@@ -41,6 +41,7 @@ SUBCOMMANDS = {
     "reconcile": "commands.reconcile",
     "--reconcile": "commands.reconcile",  # flag-style alias
     "duplicates": "commands.duplicates",
+    "coverage": "commands.coverage",
     "canonicalize": "commands.canonicalize",
     "hygiene": "commands.hygiene",
     "--hygiene": "commands.hygiene",      # flag-style alias
@@ -106,6 +107,10 @@ DESCRIPTIONS = [
      "Find likely-duplicate issues by title similarity.",
      "WEEKLY hygiene, or before a milestone planning session — find consolidation candidates.",
      "/work-plan duplicates --min-similarity=0.85"),
+    ("coverage", "[--repo=<key>] [--list] [--limit=N]",
+     "Report how many open issues are not referenced by any track (per repo). --list prints issue titles (default: show 20; override with --limit=N). Read-only; derives live from gh.",
+     "On-demand: measure how much of a repo's backlog has fallen outside the planning layer. Pairs with /work-plan group to bulk-cluster the orphans.",
+     "/work-plan coverage --repo=critforge --list"),
     ("canonicalize", "<track | track@repo> | --all [--force] [--repo=<key>]",
      "Insert a canonical master issue table at the top of a track. Refresh-md then targets ONLY this table, leaving narrative tables alone. Use --repo=<key> or track@repo to disambiguate; with --all, --repo=<key> scopes to one repo.",
      "ONE-TIME for hand-written tracks with multiple narrative tables, OR after restructuring a track.",
