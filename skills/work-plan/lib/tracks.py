@@ -66,20 +66,53 @@ def filter_tracks_by_repo(tracks: list[Track], key: str) -> list[Track]:
             or (t.repo and t.repo.lower() == k)]
 
 
-def find_track_by_name(name: str, tracks: list[Track],
-                       *, active_only: bool = False) -> Optional[Track]:
+class AmbiguousTrackError(Exception):
+    """Raised when a track name matches more than one track across repos."""
+
+    def __init__(self, name: str, candidates: list[Track]):
+        self.name = name
+        self.candidates = candidates
+        repos = [f"  {t.name} (repo: {t.repo or t.folder!r})" for t in candidates]
+        super().__init__(
+            f"Track {name!r} is ambiguous — found in {len(candidates)} repos:\n"
+            + "\n".join(repos)
+            + f"\nUse --repo=<key> or '{name}@<repo>' to disambiguate."
+        )
+
+
+def parse_track_repo_arg(arg: str) -> tuple:
+    """Split 'trackname@repokey' into (trackname, repokey); return (arg, None) if no @."""
+    if "@" in arg:
+        name, _, repo = arg.rpartition("@")
+        return (name, repo) if name else (arg, None)
+    return (arg, None)
+
+
+def find_track_by_name(
+    name: str, tracks: list[Track],
+    *, active_only: bool = False, repo: Optional[str] = None
+) -> Optional[Track]:
     """Find a single Track matching `name` (filename stem OR frontmatter `track`).
 
+    If repo is given, first filter to tracks matching that repo (folder key or
+    GitHub slug, case-insensitive). Then find a single name match.
+
     If active_only=True, only considers tracks with status active/in-progress/blocked.
-    Returns the single match or None. Used by every command that takes a track arg.
+
+    Returns the single match or None (0 matches).
+    Raises AmbiguousTrackError if 2+ matches remain after filtering.
     """
     candidates = tracks
+    if repo:
+        candidates = filter_tracks_by_repo(candidates, repo)
     if active_only:
         candidates = [t for t in candidates if t.has_frontmatter
                       and t.meta.get("status") in ("active", "in-progress", "blocked")]
     matching = [t for t in candidates if t.has_frontmatter
                 and (t.name == name or t.meta.get("track") == name)]
-    return matching[0] if len(matching) == 1 else None
+    if len(matching) <= 1:
+        return matching[0] if matching else None
+    raise AmbiguousTrackError(name, matching)
 
 
 def discover_archived_tracks(cfg: dict) -> list[Track]:

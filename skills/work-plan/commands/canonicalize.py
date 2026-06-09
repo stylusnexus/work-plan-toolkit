@@ -7,7 +7,7 @@ ONLY this table (skipping narrative tables in the existing body).
 Use --all to canonicalize every active track that doesn't yet have one.
 """
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
 from lib.github_state import fetch_issues, state_to_status_label, format_assignees
 from lib.frontmatter import write_file
 from lib.status_table import CANONICAL_MARKER, find_canonical_status_tables, render_issue_row
@@ -15,14 +15,23 @@ from lib.prompts import parse_flags
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all", "--force"})
+    flags, positional = parse_flags(args, {"--all", "--force", "--repo"})
     do_all = flags.get("--all", False)
     force = flags.get("--force", False)
-    track_name = positional[0] if positional else None
+    repo_flag = flags.get("--repo") if flags.get("--repo") is not True else None
+    track_arg = positional[0] if positional else None
 
-    if not do_all and not track_name:
-        print("usage: work_plan.py canonicalize <track-name> | --all  [--force]")
+    if not do_all and not track_arg:
+        print("usage: work_plan.py canonicalize <track-name> | --all  [--force] [--repo=<key>]")
         return 2
+
+    track_name = track_arg
+    repo_qualifier = repo_flag
+    if track_arg:
+        name_from_arg, repo_from_arg = parse_track_repo_arg(track_arg)
+        track_name = name_from_arg
+        if repo_from_arg:
+            repo_qualifier = repo_from_arg
 
     try:
         cfg = load_config()
@@ -36,7 +45,12 @@ def run(args: list[str]) -> int:
         targets = [t for t in tracks if t.has_frontmatter
                    and t.meta.get("status") in ("active", "in-progress", "blocked")]
     else:
-        target = find_track_by_name(track_name, tracks, active_only=True)
+        try:
+            target = find_track_by_name(track_name, tracks, active_only=True,
+                                        repo=repo_qualifier)
+        except AmbiguousTrackError as e:
+            print(str(e))
+            return 1
         if not target:
             print(f"No active track matching '{track_name}'.")
             return 1
