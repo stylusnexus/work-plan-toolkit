@@ -159,9 +159,6 @@ def _build_shared_track(md_path: Path, notes_dir: Path, folder_key: str,
                 file=sys.stderr,
             )
 
-    rel = md_path.relative_to(notes_dir)
-    in_archive = "archive" in rel.parts
-
     return Track(
         path=md_path,
         name=md_path.stem,
