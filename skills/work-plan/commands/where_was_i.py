@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
 from lib.prompts import prompt_input, parse_flags
 from lib.github_state import fetch_issues, short_milestone
 from lib.git_state import (
@@ -40,8 +40,18 @@ RULE_WIDTH = 57
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--pick"})
-    track_name = positional[0] if positional else None
+    flags, positional = parse_flags(args, {"--pick", "--repo"})
+    track_arg = positional[0] if positional else None
+    repo_flag = flags.get("--repo") if flags.get("--repo") is not True else None
+
+    # Resolve track name and repo qualifier from <track>@<repo> syntax
+    track_name = track_arg
+    repo_qualifier = repo_flag
+    if track_arg:
+        name_from_arg, repo_from_arg = parse_track_repo_arg(track_arg)
+        track_name = name_from_arg
+        if repo_from_arg:
+            repo_qualifier = repo_from_arg
 
     try:
         cfg = load_config()
@@ -78,12 +88,20 @@ def run(args: list[str]) -> int:
                 return 1
             track = active[idx]
         else:
-            track = find_track_by_name(choice, tracks)
+            try:
+                track = find_track_by_name(choice, tracks, repo=repo_qualifier)
+            except AmbiguousTrackError as e:
+                print(str(e))
+                return 1
             if not track:
                 print(f"No track matching '{choice}'.")
                 return 1
     else:
-        track = find_track_by_name(track_name, tracks)
+        try:
+            track = find_track_by_name(track_name, tracks, repo=repo_qualifier)
+        except AmbiguousTrackError as e:
+            print(str(e))
+            return 1
         if not track:
             print(f"No track matching '{track_name}'.")
             return 1
