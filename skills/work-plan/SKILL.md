@@ -23,7 +23,9 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | `/work-plan init <path>` | Add frontmatter to a new track .md file. |
 | `/work-plan init-repo <key> [--github=<slug>] [--local=<path>]` | Bootstrap a new repo: create `<notes_root>/<key>/archive/{shipped,abandoned}/` and add the repo block to your config. |
 | `/work-plan suggest-priorities --repo=<key>` | Two-step AI label backfill (one-time migration). |
-| `/work-plan group [--milestone=X] [--label=Y] [--repo=Z]` | Two-step AI clustering: turn a flat list of issues into thematic track files. |
+| `/work-plan group [--milestone=X] [--label=Y] [--repo=Z]` | Two-step AI clustering: turn a flat list of issues into thematic track files. Powerful for a new milestone or repo re-org — fetches issues, prints a clustering prompt, you save the JSON answer, then `--apply` creates the track files. |
+| `/work-plan auto-triage [--repo=<key>]` | Two-step AI assignment: assign untracked open issues to *existing* tracks. Use after `coverage` shows a gap. Prints a prompt listing untracked issues + active tracks; save AI's JSON answer; re-run with `--apply`. |
+| `/work-plan coverage [--repo=<key>] [--list]` | Report how many open issues are not in any track (per repo). `--list` shows titles. Read-only. Run before `auto-triage` or `group` to measure the gap. |
 | `/work-plan reconcile <track> \| --all [--draft]` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels` in frontmatter. Add `--draft` to preview proposed ADDs/FLAGs without prompting or writing. |
 | `/work-plan duplicates [--min-similarity=0.7]` | Find likely-duplicate issues by title similarity (stdlib difflib). |
 | `/work-plan plan-status [--repo=<key>] [--stamp [--draft]] [--type=plan\|spec]` | **Doc/plan liveness.** "Which of my plan/spec docs actually shipped, half-shipped, or died?" Correlates each plan's declared file-manifest (Create/Modify/Test paths) against git + filesystem — not the unreliable checkboxes. Reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. Read-only by default; `--stamp` writes an idempotent status header into each doc (`--draft` previews, writes nothing). Natural-language triggers: "what's done vs unfinished in `<repo>`", "stamp the plan statuses", "which plans are stale/dead". |
@@ -60,15 +62,46 @@ After running `handoff`:
 5. Persist via `python3 <skill-path>/work_plan.py handoff <track> --set-next <comma-list>` (e.g. `--set-next 4167,4148,4149`).
 6. Show the user what was set so they can override.
 
-## Two-step AI subcommands (`suggest-priorities`, `group`)
+## Two-step AI subcommands (`suggest-priorities`, `group`, `auto-triage`)
 
-Both are two-step:
+All three follow the same pattern:
 
-1. CLI fetches issues + writes prompt to terminal.
-2. **You** read the issues, output the requested JSON, save via Write tool to `~/.claude/work-plan/cache/priorities.answers.json` or `~/.claude/work-plan/cache/groups.answers.json`.
+1. CLI fetches issues + writes prompt to terminal (saved to `~/.claude/work-plan/cache/`).
+2. **You** read the issues, output the requested JSON, save via Write tool to the path the CLI printed.
 3. Re-run with `--apply` to commit changes.
 
-Show the proposed labels/clusters BEFORE applying. The user may want to override.
+Show the proposed labels/clusters/assignments BEFORE applying. The user may want to override.
+
+**Which one to use:**
+- `group` — issues need to be *clustered into new track files* (run once per milestone or after a re-org)
+- `auto-triage` — untracked issues need to be *assigned to existing tracks* (run after `coverage` shows a gap)
+- `suggest-priorities` — issues need `priority/PN` labels backfilled (one-time migration)
+
+## Two-tier track storage (shared vs private)
+
+Track files live in one of two places:
+
+| Tier | Path | Who sees it |
+|---|---|---|
+| **Shared** | `<local-clone>/.work-plan/<slug>.md` | Everyone with repo access (committed + pushed) |
+| **Private** | `<notes_root>/<folder>/<slug>.md` | Local only (never committed) |
+
+**Routing logic (automatic):** if a repo has a registered `local:` path that is a valid git repo, new tracks go into `.work-plan/` by default. Pass `--private` to any write command to route to `notes_root` instead.
+
+**Setup shared tracks for a repo:**
+```
+/work-plan init-repo myproject --github=org/myproject --local=/path/to/clone
+```
+
+**Syncing shared tracks:** `git pull` pulls teammates' track changes; `git add .work-plan/ && git commit && git push` shares your own. The CLI never auto-pushes.
+
+**Disambiguation when the same track slug exists in two repos:**
+```
+/work-plan slot 4234 auth-flow@critforge   # @repo qualifier
+/work-plan close auth-flow --repo=critforge  # --repo=<key> flag
+```
+
+Both forms work on: `slot`, `close`, `handoff`, `canonicalize`, `refresh-md`, `reconcile`, `set`.
 
 ## Track ↔ GitHub label mapping
 

@@ -1,7 +1,7 @@
 {
   "name": "@stylusnexus/work-plan",
   "version": "2026.6.9",
-  "description": "Track-aware daily work planning over GitHub issues — the work-plan CLI. Pure Python stdlib; this package only ships + launches it.",
+  "description": "Track-aware daily work planning over GitHub issues. Shared tracks (git-synced .work-plan/ in each repo), AI clustering (group/auto-triage), VS Code viewer, Claude Code + Codex plugins. Pure Python stdlib.",
   "bin": {
     "work-plan": "bin/work-plan"
   },
