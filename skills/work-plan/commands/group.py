@@ -63,6 +63,15 @@ def run(args: list[str]) -> int:
     label_arg = next((a for a in args if a.startswith("--label=")), None)
     state_arg = next((a for a in args if a.startswith("--state=")), None)
 
+    limit = 100
+    for a in args:
+        if a.startswith("--limit="):
+            try:
+                limit = int(a.split("=", 1)[1])
+            except ValueError:
+                print("ERROR: --limit must be an integer.")
+                return 2
+
     try:
         cfg = load_config()
     except ConfigError as e:
@@ -123,11 +132,15 @@ def run(args: list[str]) -> int:
     print()
     print("=" * 60)
     print(PROMPT_TEMPLATE)
-    for i in issues:
+    shown = issues[:limit]
+    for i in shown:
         m = i.get("milestone", {})
         m_title = m.get("title", "—") if m else "—"
         labels = [l["name"] for l in i.get("labels", [])]
         print(f"#{i['number']} [{m_title}] [{','.join(labels) or 'no-labels'}] {i['title']}")
+    remainder = len(issues) - len(shown)
+    if remainder > 0:
+        print(f"… and {remainder} more issues (use --limit=N to show more)")
     print("=" * 60)
     print()
     print(f"After agent returns clusters JSON, save to {_answers_path()}")
