@@ -41,7 +41,7 @@ export function renderDetail(track: Track): string {
 
   parts.push('<table class="issues">');
   parts.push(
-    "<thead><tr><th>Num</th><th>Title</th><th>State</th><th>Assignee</th></tr></thead>",
+    "<thead><tr><th>Num</th><th>Title</th><th>State</th><th>Assignee</th><th></th></tr></thead>",
   );
 
   if (groups.length <= 1) {
@@ -120,17 +120,21 @@ export function renderDetail(track: Track): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Renders a single <tr> for an issue. */
+/** Renders a single <tr> for an issue, with a Move button. */
 function renderIssueRow(track: Track, issue: Issue): string {
   const numCell = track.repo
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
+  const moveBtn = track.repo
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track">↗</button></td>`
+    : `<td class="move-col"></td>`;
   return (
     `<tr>` +
     numCell +
     `<td>${esc(issue.title)}</td>` +
     `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td>` +
     `<td class="who">${esc(issue.assignee)}</td>` +
+    moveBtn +
     `</tr>`
   );
 }

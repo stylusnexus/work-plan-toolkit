@@ -11,6 +11,7 @@
  */
 
 import * as vscode from "vscode";
+import { spawn } from "node:child_process";
 import type { Export } from "../model.ts";
 import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
@@ -46,7 +47,12 @@ interface SetFocusMessage {
   focus: boolean;
 }
 
-type WebviewMessage = SelectTrackMessage | OpenIssueMessage | SetFocusMessage;
+interface MoveIssueMessage {
+  type: "moveIssue";
+  number: number;
+}
+
+type WebviewMessage = SelectTrackMessage | OpenIssueMessage | SetFocusMessage | MoveIssueMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -221,12 +227,72 @@ export class WorkPlanPanel {
         );
         break;
       }
+      case "moveIssue": {
+        this._handleMoveIssue(raw.number);
+        break;
+      }
     }
   }
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  private async _handleMoveIssue(issueNum: number): Promise<void> {
+    const exp = this._currentExport;
+    const currentName = this._currentTrackName;
+    if (!exp || !currentName) return;
+
+    const currentTrack = exp.tracks.find(t => t.name === currentName);
+    if (!currentTrack || !currentTrack.repo) return;
+
+    // Find other active tracks in the same repo
+    const others = exp.tracks.filter(
+      t => t.name !== currentName && t.repo === currentTrack.repo,
+    );
+    if (others.length === 0) {
+      vscode.window.showInformationMessage(
+        "Work Plan: No other tracks in this repo to move to.",
+      );
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      others.map(t => ({
+        label: t.name,
+        description: `${t.status} · ${t.rollup.open} open`,
+      })),
+      { placeHolder: `Move #${issueNum} to which track?` },
+    );
+    if (!picked) return;
+
+    // Execute the move via CLI
+    const cliPath = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<string>("cliPath", "work-plan");
+    const proc = spawn(cliPath, [
+      "move",
+      String(issueNum),
+      currentName,
+      picked.label,
+    ]);
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+    proc.on("close", (code: number | null) => {
+      if (code === 0) {
+        vscode.window.showInformationMessage(
+          `Work Plan: Moved #${issueNum} from ${currentName} to ${picked.label}.`,
+        );
+      } else {
+        vscode.window.showErrorMessage(
+          `Work Plan: Failed to move #${issueNum} — ${stderr || stdout || `exit ${code}`}`,
+        );
+      }
+    });
+  }
 
   private _buildEmptyHtml(message: string): string {
     const esc = (s: string) =>
@@ -277,6 +343,10 @@ function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && (msg["number"] as number) > 0;
     case "setFocus":
       return typeof msg["focus"] === "boolean";
+    case "moveIssue":
+      return typeof msg["number"] === "number"
+        && Number.isInteger(msg["number"])
+        && (msg["number"] as number) > 0;
     default:
       return false;
   }

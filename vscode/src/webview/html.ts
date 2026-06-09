@@ -121,6 +121,15 @@ mermaid.run();
     if (!target) { return; }
 
     // Milestone band toggle
+
+    // Move button
+    var moveBtn = target.closest(".move-btn");
+    if (moveBtn) {
+      var issueNum = parseInt(moveBtn.getAttribute("data-move"), 10);
+      if (issueNum) { post({ type: "moveIssue", number: issueNum }); }
+      return;
+    }
+
     var bandHeader = target.closest(".milestone-band-header");
     if (bandHeader) {
       var band = bandHeader.closest(".milestone-band");
@@ -280,6 +289,21 @@ mermaid.run();
       margin-left: 4px;
     }
     .milestone-band.collapsed tr:not(.milestone-band-header) { display: none; }
+    .move-col { width: 28px; text-align: center; }
+    .move-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--link);
+      cursor: pointer;
+      font-size: 0.85em;
+      padding: 0 4px;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+    tr:hover .move-btn { opacity: 1; }
+    .move-btn:hover { background: var(--card-bg); }
+
   </style>
 </head>
 <body>
