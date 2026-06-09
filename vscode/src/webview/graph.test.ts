@@ -558,3 +558,238 @@ describe("toMermaid — next_up self-loop dedup", () => {
     );
   });
 });
+
+describe("toMermaid — track id collision disambiguation", () => {
+  const collisionExp: Export = {
+    schema: 1,
+    generated_at: "2026-06-09T00:00:00Z",
+    tracks: [
+      {
+        name: "my-track",
+        repo: "org/repo",
+        tier: "private",
+        status: "active",
+        launch_priority: null,
+        milestone_alignment: null,
+        visibility: null,
+        blockers: [],
+        next_up: [1],
+        rollup: { open: 0, closed: 0 },
+        issues: [
+          { number: 1, title: "test issue", state: "open", assignee: "@x", milestone: null },
+        ],
+      },
+      {
+        name: "my_track",
+        repo: "org/repo",
+        tier: "private",
+        status: "active",
+        launch_priority: null,
+        milestone_alignment: null,
+        visibility: null,
+        blockers: [1],
+        next_up: [],
+        rollup: { open: 0, closed: 0 },
+        issues: [],
+      },
+    ],
+  };
+
+  it("produces distinct node ids for my-track and my_track", () => {
+    const out = toMermaid(collisionExp);
+    // Both track names should appear in the output as distinct node declarations.
+    const lines = out.split("\n");
+    const trackLines = lines.filter(
+      l => l.match(/^\s+t_my_track/) && l.includes('["'),
+    );
+    assert.strictEqual(
+      trackLines.length,
+      2,
+      `Expected 2 distinct track node declarations, got ${trackLines.length}:\n${out}`,
+    );
+    const ids = trackLines.map(l => l.trim().split(/[\s\[]/)[0]);
+    assert.notStrictEqual(
+      ids[0],
+      ids[1],
+      `Expected different node ids for the two tracks, got ${ids[0]} and ${ids[1]}:\n${out}`,
+    );
+  });
+
+  it("first-seen track keeps the bare sanitised id", () => {
+    const out = toMermaid(collisionExp);
+    // "my-track" appears first in the tracks array → id should be t_my_track.
+    assert.ok(
+      out.includes('t_my_track["my-track"]'),
+      `Expected first track to get the unsuffixed id t_my_track:\n${out}`,
+    );
+  });
+
+  it("second colliding track gets a suffixed id", () => {
+    const out = toMermaid(collisionExp);
+    // "my_track" is second → id should be t_my_track_1.
+    assert.ok(
+      out.includes('t_my_track_1["my_track"]'),
+      `Expected second track to get suffixed id t_my_track_1:\n${out}`,
+    );
+  });
+
+  it("edges use the correct disambiguated track id", () => {
+    const out = toMermaid(collisionExp);
+    // my-track (t_my_track) has next_up → i_1
+    assert.ok(
+      out.includes("t_my_track -->|next_up| i_1"),
+      `Expected next_up edge from first track:\n${out}`,
+    );
+    // my_track (t_my_track_1) has i_1 blocks → my_track
+    assert.ok(
+      out.includes("i_1 -->|blocks| t_my_track_1"),
+      `Expected blocks edge to second track:\n${out}`,
+    );
+    // owns edge: t_my_track (owns issue 1) → t_my_track_1
+    assert.ok(
+      out.includes("t_my_track -->|owns #1| t_my_track_1"),
+      `Expected owns edge from first track to second:\n${out}`,
+    );
+  });
+
+  it("single-track exports still use bare ids (no regression)", () => {
+    const singleTrackExp: Export = {
+      schema: 1,
+      generated_at: "2026-06-09T00:00:00Z",
+      tracks: [
+        {
+          name: "platform-health",
+          repo: "org/repo",
+          tier: "private",
+          status: "active",
+          launch_priority: null,
+          milestone_alignment: null,
+          visibility: null,
+          blockers: [],
+          next_up: [1],
+          rollup: { open: 0, closed: 0 },
+          issues: [
+            { number: 1, title: "test", state: "open", assignee: "@x", milestone: null },
+          ],
+        },
+      ],
+    };
+    const out = toMermaid(singleTrackExp);
+    assert.ok(out.includes("t_platform_health"), `Expected bare id:\n${out}`);
+    // No suffix should appear for a single track.
+    assert.ok(
+      !out.includes("t_platform_health_"),
+      `Unexpected suffixed id for single track:\n${out}`,
+    );
+  });
+
+  it("deterministic: identical collision input produces identical output", () => {
+    assert.strictEqual(toMermaid(collisionExp), toMermaid(collisionExp));
+  });
+});
+
+describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () => {
+  const specialTitleExp: Export = {
+    schema: 1,
+    generated_at: "2026-06-09T00:00:00Z",
+    tracks: [
+      {
+        name: "special",
+        repo: "org/repo",
+        tier: "private",
+        status: "active",
+        launch_priority: null,
+        milestone_alignment: null,
+        visibility: null,
+        blockers: [10, 20, 30, 40, 50],
+        next_up: [],
+        rollup: { open: 0, closed: 0 },
+        issues: [
+          { number: 10, title: "Fix [API] rate limit", state: "open", assignee: "@x", milestone: null },
+          { number: 20, title: "Update (urgent) dependencies", state: "open", assignee: "@x", milestone: null },
+          { number: 30, title: "Handle {JSON} parsing", state: "open", assignee: "@x", milestone: null },
+          { number: 40, title: 'Auth "token" refresh', state: "open", assignee: "@x", milestone: null },
+          { number: 50, title: "Run `migrate` script", state: "open", assignee: "@x", milestone: null },
+        ],
+      },
+    ],
+  };
+
+  it("escapes [ and ] in issue titles to HTML entities", () => {
+    const out = toMermaid(specialTitleExp);
+    assert.ok(out.includes("&#91;"), `Expected &#91; for '[' in title:\n${out}`);
+    assert.ok(out.includes("&#93;"), `Expected &#93; for ']' in title:\n${out}`);
+  });
+
+  it("escapes ( and ) in issue titles to HTML entities", () => {
+    const out = toMermaid(specialTitleExp);
+    assert.ok(out.includes("&#40;"), `Expected &#40; for '(' in title:\n${out}`);
+    assert.ok(out.includes("&#41;"), `Expected &#41; for ')' in title:\n${out}`);
+  });
+
+  it("escapes { and } in issue titles to HTML entities", () => {
+    const out = toMermaid(specialTitleExp);
+    assert.ok(out.includes("&#123;"), `Expected &#123; for '{' in title:\n${out}`);
+    assert.ok(out.includes("&#125;"), `Expected &#125; for '}' in title:\n${out}`);
+  });
+
+  it("escapes backticks in issue titles to HTML entities", () => {
+    const out = toMermaid(specialTitleExp);
+    assert.ok(out.includes("&#96;"), `Expected &#96; for backtick in title:\n${out}`);
+  });
+
+  it("still escapes double quotes via &quot;", () => {
+    const out = toMermaid(specialTitleExp);
+    assert.ok(out.includes("&quot;"), `Expected &quot; for embedded quote:\n${out}`);
+  });
+
+  it("no raw [, ], (, ), {, } leak into node labels", () => {
+    const out = toMermaid(specialTitleExp);
+    // The raw characters should NOT appear inside quoted label strings.
+    // We search for the issue node definitions and verify.
+    const nodeRegex = /\bi_\d+\(\["(.*?)"\]\)/g;
+    let match: RegExpExecArray | null;
+    while ((match = nodeRegex.exec(out)) !== null) {
+      const label = match[1];
+      assert.ok(!label.includes("["), `Raw '[' leaked into label: "${label}"`);
+      assert.ok(!label.includes("]"), `Raw ']' leaked into label: "${label}"`);
+      assert.ok(!label.includes("("), `Raw '(' leaked into label: "${label}"`);
+      assert.ok(!label.includes(")"), `Raw ')' leaked into label: "${label}"`);
+      // { and } might appear as HTML entities, but the raw char should not.
+      // Note: the literal { may appear in Mermaid classDef lines, not in labels.
+    }
+  });
+
+  it("track name label with special chars is also escaped", () => {
+    const bracketTrackExp: Export = {
+      schema: 1,
+      generated_at: "2026-06-09T00:00:00Z",
+      tracks: [
+        {
+          name: "fix [API] (v2) {urgent}",
+          repo: "org/repo",
+          tier: "private",
+          status: "active",
+          launch_priority: null,
+          milestone_alignment: null,
+          visibility: null,
+          blockers: [],
+          next_up: [],
+          rollup: { open: 0, closed: 0 },
+          issues: [],
+        },
+      ],
+    };
+    const out = toMermaid(bracketTrackExp);
+    // Track labels are ["..."] (rectangle). The special chars should be escaped.
+    const trackLabelMatch = out.match(/t_fix__API___v2___urgent_\["(.*?)"\]/);
+    assert.ok(trackLabelMatch !== null, `Expected track node definition:\n${out}`);
+    const label = trackLabelMatch![1];
+    assert.ok(!label.includes("["), "Raw '[' should be escaped in track name label");
+    assert.ok(!label.includes("]"), "Raw ']' should be escaped in track name label");
+    assert.ok(!label.includes("("), "Raw '(' should be escaped in track name label");
+    assert.ok(!label.includes(")"), "Raw ')' should be escaped in track name label");
+    assert.ok(!label.includes("{"), "Raw '{' should be escaped in track name label");
+    assert.ok(!label.includes("}"), "Raw '}' should be escaped in track name label");
+  });
+});
