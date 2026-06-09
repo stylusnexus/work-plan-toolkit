@@ -2,7 +2,28 @@
 # work-plan CLI launcher. Resolves work_plan.py relative to this wrapper's PARENT
 # (the wrapper lives at <root>/bin/work-plan, so the CLI is <root>/skills/...),
 # then falls back to plugin-root env vars and the install.sh locations.
-root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# GUI editors (VS Code launched from Finder/Dock, not a terminal) inherit a
+# stripped PATH with no Homebrew — but the CLI shells out to python3/yq/gh,
+# which on macOS live in /opt/homebrew/bin (Apple Silicon) or /usr/local/bin
+# (Intel). Prepend the common tool dirs so a GUI-spawned CLI still finds them.
+# Harmless elsewhere (missing dirs are simply ignored by PATH lookup).
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# Resolve symlinks before computing the package root: `npm install -g` puts the
+# launcher in the global bin as a SYMLINK to the package, so $0 is the symlink,
+# not the real file. Walk the symlink chain to the actual launcher so
+# "<root>/skills/work-plan" resolves to the npm package, not the global bin dir.
+src="${BASH_SOURCE[0]:-$0}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  link="$(readlink "$src")"
+  case "$link" in
+    /*) src="$link" ;;
+    *)  src="$dir/$link" ;;
+  esac
+done
+root="$(cd -P "$(dirname "$src")/.." && pwd)"
 for c in \
   "$root/skills/work-plan/work_plan.py" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \

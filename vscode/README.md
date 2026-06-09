@@ -23,16 +23,73 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 A loading bar shows while the CLI fetch runs, and concurrent refreshes are coalesced (single-flight) so a burst of triggers can't spawn overlapping fetches.
 
+## Screenshots
+
+![Repos → tracks in the Work Plan sidebar](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/sidebar-tree.png)
+*Repos → tracks: status dots, open counts, and a ⚠ badge on public repos.*
+
+![Mermaid dependency graph and track detail](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/dependency-graph.png)
+*The dependency/flow graph and per-track detail panel.*
+
+![Public-repo confirm modal](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/write-confirm-modal.png)
+*The "Write anyway / Keep private" modal before any write into a public repo.*
+
+![The Untracked bucket](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/untracked-bucket.png)
+*Open issues that no track references — slot one in with a right-click.*
+
+![Cold-start onboarding](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/onboarding.png)
+*Get started from empty: add a repo and choose where your notes live — no CLI needed.*
+
+![Command menu](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/command-menu.png)
+*The `⋯` menu: New Track, Add Repo, Set Notes Location, Run Hygiene (track verbs are on each track's right-click menu).*
+
+## Install
+
+1. **The extension** — search **"Work Plan"** (publisher `stylusnexus`) in the Extensions view, or:
+   - VS Code: `code --install-extension stylusnexus.work-plan-viewer`
+   - VS Codium / Cursor / Windsurf (Open VSX): `ovsx get stylusnexus.work-plan-viewer`
+2. **The CLI** (the extension drives it) — `npm install -g @stylusnexus/work-plan`, or any method in the [toolkit README](https://github.com/stylusnexus/work-plan-toolkit#install).
+3. If `work-plan` isn't on your editor's `PATH` (common when VS Code is opened from the Dock/Finder, not a terminal), set **`workPlan.cliPath`** to an absolute launcher path and reload the window.
+
 ## Requirements
 
 - The `work-plan` CLI must be on your `PATH` (or set `workPlan.cliPath`). The extension checks the CLI version at activation and points you at an update if it's too old to have the read/write surface it needs.
 - VS Code 1.90.0 or later.
 
-## Commands
+## Commands & controls
 
-Available from the tree (right-click a track / the view's `⋯` overflow) and the command palette:
+Every action runs the CLI under the hood. Commands live where they're relevant — the **title bar** (icons + the `⋯` overflow), a **track's right-click** menu, and the **command palette**.
 
-`Refresh` · `Select View` (lens) · `Sort Tracks` · `Edit Track Fields` · `Set Next-Up` · `Slot Issue into Track` · `Close Track` · `Refresh Track Body` · `Reconcile (preview)` · `Run Hygiene` · `New Track` · `Add Repo` · `Set Notes Location` · `Slot Untracked Issue into Track`.
+### View controls — filtering & sorting (title bar)
+
+| Control | What it does |
+|---|---|
+| **Refresh** (↻) | Re-fetch live state from the CLI and redraw the tree + graph. |
+| **Select View** (filter icon) | **Filter** the tree *and* graph by a lens: a **single repo**, a **milestone**, or **only blocked tracks**. Choose "All tracks" to clear the filter. |
+| **Sort Tracks** | **Order** tracks within each repo: **Default** (discovery order), **Blocked first**, **Most open**, or **Name (A–Z)**. |
+
+### Track actions (right-click a track)
+
+| Command | What it does |
+|---|---|
+| **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
+| **Set Next-Up** | Set the ordered next-up issue list for the track. |
+| **Slot Issue into Track** | Add a GitHub issue number to the track. |
+| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
+| **Refresh Track Body** | Re-sync the track's status table from live GitHub state. |
+| **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
+| **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |
+
+### Create & setup (the `⋯` overflow)
+
+| Command | What it does |
+|---|---|
+| **New Track** | Create a new track for a repo (pick the repo + a slug). |
+| **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. |
+| **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
+| **Run Hygiene** | Sweep refresh + reconcile across all tracks at once. |
+
+Before any write into a **public** (or unknown-visibility) repo, a **"Write anyway / Keep private"** modal appears — the public-repo leak guard, surfaced as a dialog. Private repos write straight through.
 
 ## Configuration
 
@@ -69,8 +126,8 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Phases 1–3 complete** — the CLI seam, the read-only viewer, and the full write surface (write actions + public-repo confirm modal + cold-start onboarding) are all shipped. **Phase 4** (a dedicated `vscode/` CI job + publishing to the VS Code Marketplace and Open VSX) is the remaining work; until then the extension runs from source via the extension-development host above.
+**Published — v0.1.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). All four phases shipped: the CLI seam, the read-only viewer, the full write surface (write actions + public-repo confirm modal + cold-start onboarding), and the CI/publish pipeline.
 
 ## Development notes
 
-Tests run via Node's native type-stripping; the manifest stays CJS (no `"type": "module"`) because the VS Code extension host and `esbuild.js` require CommonJS — that's why the test script suppresses the `MODULE_TYPELESS_PACKAGE_JSON` warning. CI does not yet cover `vscode/` (Phase 4); the local gate is `npm run typecheck && npm test && npm run build`.
+Tests run via Node's native type-stripping; the manifest stays CJS (no `"type": "module"`) because the VS Code extension host and `esbuild.js` require CommonJS — that's why the test script suppresses the `MODULE_TYPELESS_PACKAGE_JSON` warning. `vscode/` has its own CI job (`.github/workflows/vscode.yml`: typecheck · `node --test` · esbuild · `vsce package`), separate from the Python matrix; the local gate is `npm run typecheck && npm test && npm run build`.

@@ -1,0 +1,43 @@
+{
+  "name": "@stylusnexus/work-plan",
+  "version": "2026.6.9",
+  "description": "Track-aware daily work planning over GitHub issues — the work-plan CLI. Pure Python stdlib; this package only ships + launches it.",
+  "bin": {
+    "work-plan": "bin/work-plan"
+  },
+  "files": [
+    "bin/",
+    "skills/work-plan/",
+    "scripts/npm-check-deps.js",
+    "VERSION",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/npm-check-deps.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "keywords": [
+    "work-plan",
+    "github issues",
+    "cli",
+    "project planning",
+    "tracks"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stylusnexus/work-plan-toolkit.git"
+  },
+  "homepage": "https://github.com/stylusnexus/work-plan-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/stylusnexus/work-plan-toolkit/issues"
+  },
+  "license": "MIT",
+  "_note": "This package.json exists ONLY to distribute the Python CLI via npm (npm install -g @stylusnexus/work-plan). It adds no Node/Python dependencies and no build step — the CLI stays pure Python 3.9 stdlib. The vscode/ extension is a separate Node project with its own package.json."
+}

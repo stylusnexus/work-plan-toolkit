@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, and full read/write over your work-plan tracks.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -227,7 +227,7 @@
     "typecheck": "tsc --noEmit -p ./",
     "test": "node --test --experimental-strip-types --no-warnings=MODULE_TYPELESS_PACKAGE_JSON \"src/**/*.test.ts\"",
     "package": "vsce package --no-dependencies -o work-plan-viewer.vsix",
-    "publish:vsce": "vsce publish --packagePath work-plan-viewer.vsix",
+    "publish:vsce": "vsce publish --packagePath work-plan-viewer.vsix --skip-duplicate",
     "publish:ovsx": "ovsx publish work-plan-viewer.vsix",
     "vscode:prepublish": "npm run build"
   },
