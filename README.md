@@ -378,9 +378,9 @@ work-plan-toolkit/
 │   ├── work-plan/
 │   │   ├── SKILL.md
 │   │   ├── work_plan.py                # CLI entry
-│   │   ├── commands/                   # 16 subcommand modules
+│   │   ├── commands/                   # 24 subcommand modules
 │   │   ├── lib/                        # config, frontmatter, gh, git, prompts, …
-│   │   └── tests/                      # 234 unittest cases
+│   │   └── tests/                      # 600+ unittest cases
 │   └── repo-activity-summary/
 │       └── SKILL.md                    # bundled companion skill
 ├── commands/
@@ -497,8 +497,8 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `new-track <repo> <slug> [--priority=P0..P3] [--milestone=<m>]` | One-shot, non-interactive: create a new track file under `notes_root` for `<repo>` (a config key **or** an `org/repo` slug) with frontmatter. Unlike `init`, it makes the file for you — the headless creation path the VS Code viewer uses. |
 | `set-notes-root <path>` | Relocate where your private track notes live (updates `notes_root` in config). Does not move existing tracks — it warns if any would be orphaned. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
-| `group [--milestone=X] [--label=Y] [--repo=Z] [--private] [--apply]` | AI-cluster GitHub issues into thematic track files. Two-step: CLI prints prompt → you save JSON answer → `--apply` creates the tracks. `--private` routes to `notes_root` instead of `.work-plan/`. |
-| `auto-triage [--repo=<key>] [--apply]` | AI-assign untracked open issues to existing tracks. Two-step (same pattern as `group`). Run `coverage` first to measure the gap. |
+| `group [--milestone=X] [--label=Y] [--repo=Z] [--private] [--apply] [--limit=N]` | AI-cluster GitHub issues into thematic track files. Two-step: CLI prints prompt → you save JSON answer → `--apply` creates the tracks. `--private` routes to `notes_root` instead of `.work-plan/`. `--limit` controls how many issues are shown in the prompt (default 100). |
+| `auto-triage [--repo=<key>] [--apply] [--limit=N]` | AI-assign untracked open issues to existing tracks. Two-step (same pattern as `group`). Run `coverage` first to measure the gap. `--limit` controls how many untracked issues are shown (default 100). |
 | `coverage [--repo=<key>] [--list] [--limit=N]` | Report how many open issues are not in any track. `--list` prints titles. Read-only. |
 | `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
@@ -543,7 +543,7 @@ cd skills/work-plan
 python3 -m unittest discover tests
 ```
 
-234 tests, no external dependencies (mocks `gh`/`git` calls).
+600+ tests, no external dependencies (mocks `gh`/`git` calls).
 
 ## License
 
