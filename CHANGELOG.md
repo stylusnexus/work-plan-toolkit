@@ -6,19 +6,18 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
-## 2026.06.09+f86ff30 — 2026-06-09
+## 2026.06.09+c8a85a8 — 2026-06-09 (#159)
 
-**Features:**
-- **orient**: `--repo=<key>` and `track@repo` disambiguation (#166, closes #129)
-- **perf**: batched GraphQL issue fetching — ~9× speedup on large repos (#167, closes #106)
-- **group/auto-triage**: `--limit=N` flag (default 100) to cap AI prompt output (#168, closes #165)
-- **viewer**: detail panel caps at 50 issues with collapsible overflow (#170, closes #169)
-- **docs**: architecture.md + updated READMEs across toolkit, extension, and agent-plugins (#171, agent-plugins#2)
+chore(vscode): bump extension to 0.2.1 for batch-slot publish
 
-**Other (carried from dev):**
-- `depends_on` replaces `related_tracks` for cross-track dependency edges
-- Dedicated `move` subcommand + VS Code Move to track (#162)
-- Milestone sections and ordering within canonicalize (#101)
+## Deploy to production
+
+**Commits in this deploy:**
+- 736bc40 chore(vscode): bump to 0.2.1 for batch-slot publish
+
+**Files changed:** 1 file, +1 / -1 (`vscode/package.json` version 0.2.0 → 0.2.1)
+
+Lands the version bump that was needed to publish the VS Code extension with batch-slot support. The actual feature code shipped in #158; this aligns main with the published 0.2.1 extension.
 
 ## 2026.06.09+530f7e8 — 2026-06-09 (#158)
 
