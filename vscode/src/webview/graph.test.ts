@@ -335,11 +335,11 @@ describe("toMermaid — label escaping", () => {
     ],
   };
 
-  it("escapes a double-quote in an issue title to &quot;", () => {
+  it("replaces \" with ' in issue titles (prevents \"] delimiter)", () => {
     const out = toMermaid(quotedExp);
     assert.ok(
-      out.includes("&quot;"),
-      `Expected &quot; for the quoted title:\n${out}`,
+      out.includes("'rate'"),
+      `Expected 'rate' (double-quotes replaced with single-quotes):\n${out}`,
     );
   });
 
@@ -715,52 +715,57 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
     ],
   };
 
-  it("escapes [ and ] in issue titles to HTML entities", () => {
+  it("replaces [ and ] in issue titles with ( and )", () => {
     const out = toMermaid(specialTitleExp);
-    assert.ok(out.includes("&#91;"), `Expected &#91; for '[' in title:\n${out}`);
-    assert.ok(out.includes("&#93;"), `Expected &#93; for ']' in title:\n${out}`);
+    // [API] → (API) — the characters are replaced with safe literal chars
+    assert.ok(out.includes("(API)"), `Expected (API) for '[API]' in title:\n${out}`);
+    assert.ok(!out.includes("[API]"), `Raw '[API]' should not appear:\n${out}`);
   });
 
-  it("escapes ( and ) in issue titles to HTML entities", () => {
+  it("leaves ( and ) in issue titles unchanged (safe inside labels)", () => {
     const out = toMermaid(specialTitleExp);
-    assert.ok(out.includes("&#40;"), `Expected &#40; for '(' in title:\n${out}`);
-    assert.ok(out.includes("&#41;"), `Expected &#41; for ')' in title:\n${out}`);
+    // (urgent) stays as (urgent) — parens are safe inside Mermaid labels
+    assert.ok(out.includes("(urgent)"), `Expected (urgent) unchanged in title:\n${out}`);
   });
 
-  it("escapes { and } in issue titles to HTML entities", () => {
+  it("replaces { and } in issue titles with ( and )", () => {
     const out = toMermaid(specialTitleExp);
-    assert.ok(out.includes("&#123;"), `Expected &#123; for '{' in title:\n${out}`);
-    assert.ok(out.includes("&#125;"), `Expected &#125; for '}' in title:\n${out}`);
+    // {JSON} → (JSON)
+    assert.ok(out.includes("(JSON)"), `Expected (JSON) for '{JSON}' in title:\n${out}`);
+    assert.ok(!out.includes("{JSON}"), `Raw '{JSON}' should not appear:\n${out}`);
   });
 
-  it("escapes backticks in issue titles to HTML entities", () => {
+  it("replaces backticks in issue titles with '", () => {
     const out = toMermaid(specialTitleExp);
-    assert.ok(out.includes("&#96;"), `Expected &#96; for backtick in title:\n${out}`);
+    // `migrate` → 'migrate'
+    assert.ok(out.includes("'migrate'"), `Expected 'migrate' for backtick in title:\n${out}`);
+    assert.ok(!out.includes("`migrate`"), `Raw backtick should not appear:\n${out}`);
   });
 
-  it("still escapes double quotes via &quot;", () => {
+  it("replaces \" with ' in issue titles (prevents \"] delimiter)", () => {
     const out = toMermaid(specialTitleExp);
-    assert.ok(out.includes("&quot;"), `Expected &quot; for embedded quote:\n${out}`);
+    assert.ok(out.includes("'token'"), `Expected 'token' for embedded quote:\n${out}`);
+    assert.ok(!out.includes('"token"'), `Raw double-quote should not appear:\n${out}`);
   });
 
-  it("no raw [, ], (, ), {, } leak into node labels", () => {
+  it("no raw [, ], {, }, \", or backtick leak into node labels", () => {
     const out = toMermaid(specialTitleExp);
-    // The raw characters should NOT appear inside quoted label strings.
-    // We search for the issue node definitions and verify.
+    // The raw characters that would form Mermaid delimiters must NOT appear.
+    // Parens are safe — they may appear as replacements or pass through unchanged.
     const nodeRegex = /\bi_\d+\(\["(.*?)"\]\)/g;
     let match: RegExpExecArray | null;
     while ((match = nodeRegex.exec(out)) !== null) {
       const label = match[1];
       assert.ok(!label.includes("["), `Raw '[' leaked into label: "${label}"`);
       assert.ok(!label.includes("]"), `Raw ']' leaked into label: "${label}"`);
-      assert.ok(!label.includes("("), `Raw '(' leaked into label: "${label}"`);
-      assert.ok(!label.includes(")"), `Raw ')' leaked into label: "${label}"`);
-      // { and } might appear as HTML entities, but the raw char should not.
-      // Note: the literal { may appear in Mermaid classDef lines, not in labels.
+      assert.ok(!label.includes("{"), `Raw '{' leaked into label: "${label}"`);
+      assert.ok(!label.includes("}"), `Raw '}' leaked into label: "${label}"`);
+      assert.ok(!label.includes('"'), `Raw '\"' leaked into label: "${label}"`);
+      assert.ok(!label.includes("`"), `Raw backtick leaked into label: "${label}"`);
     }
   });
 
-  it("track name label with special chars is also escaped", () => {
+  it("track name label with special chars replaced", () => {
     const bracketTrackExp: Export = {
       schema: 1,
       generated_at: "2026-06-09T00:00:00Z",
@@ -781,16 +786,21 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
       ],
     };
     const out = toMermaid(bracketTrackExp);
-    // Track labels are ["..."] (rectangle). The special chars should be escaped.
+    // Track labels are ["..."] (rectangle).  The replaced label should be
+    // "fix (API) (v2) (urgent)" — brackets/braces → parens.
     const trackLabelMatch = out.match(/t_fix__API___v2___urgent_\["(.*?)"\]/);
     assert.ok(trackLabelMatch !== null, `Expected track node definition:\n${out}`);
     const label = trackLabelMatch![1];
-    assert.ok(!label.includes("["), "Raw '[' should be escaped in track name label");
-    assert.ok(!label.includes("]"), "Raw ']' should be escaped in track name label");
-    assert.ok(!label.includes("("), "Raw '(' should be escaped in track name label");
-    assert.ok(!label.includes(")"), "Raw ')' should be escaped in track name label");
-    assert.ok(!label.includes("{"), "Raw '{' should be escaped in track name label");
-    assert.ok(!label.includes("}"), "Raw '}' should be escaped in track name label");
+    assert.ok(!label.includes("["), "Raw '[' should not appear in track name label");
+    assert.ok(!label.includes("]"), "Raw ']' should not appear in track name label");
+    assert.ok(!label.includes("{"), "Raw '{' should not appear in track name label");
+    assert.ok(!label.includes("}"), "Raw '}' should not appear in track name label");
+    assert.ok(!label.includes('"'), "Raw '\"' should not appear in track name label");
+    assert.ok(!label.includes("`"), "Raw backtick should not appear in track name label");
+    // Parens ARE present (as replacements or pass-through).
+    assert.ok(label.includes("(API)"), `Expected (API) in label, got: "${label}"`);
+    assert.ok(label.includes("(v2)"), `Expected (v2) in label, got: "${label}"`);
+    assert.ok(label.includes("(urgent)"), `Expected (urgent) in label, got: "${label}"`);
   });
 });
 
