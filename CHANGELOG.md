@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+a00489a — 2026-06-09 (#176)
+
+Deploy: Mermaid fix + move subcommand + depends_on surface (#172, #162, #102)
+
+## Changes in this deploy
+
+### #172 — Mermaid label escaping fix
+- Replaced HTML entities with safe literal characters in `mermaidLabel`
+- Mermaid 11.x's `entityDecode` was silently undoing all entity escaping, allowing `"]` sequences to break the parser
+- Fix: `"` → `'`, `[{` → `(`, `]}` → `)`, backtick → `'`
+
+### #173 — `move` subcommand + VSCode right-click
+- CLI `move` subcommand (source-first: `work-plan move <issue> <from> <to>`)
+- VSCode context menu "Move Issue from Track" with QuickPick destination
+- Added to `WriteAction` type with full public-repo confirm gate
+- 13 CLI tests + 1 VSCode test
+
+### #175 — Surface `depends_on` in detail panel + README
+- New "Depends on:" section in VSCode detail panel with clickable amber chips
+- README documentation for cross-track dependencies
+- 2 new detail panel tests
+
+## Verification
+- 620 Python tests pass
+- 308 VSCode tests pass
+
 ## 2026.06.09+f86ff30 — 2026-06-09
 
 **Features:**
