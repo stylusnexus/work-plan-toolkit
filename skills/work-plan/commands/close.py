@@ -87,5 +87,12 @@ def run(args: list[str]) -> int:
     archive_dir.mkdir(parents=True, exist_ok=True)
     dest = archive_dir / track.path.name
     shutil.move(str(track.path), str(dest))
-    print(f"✓ '{track.name}' marked {end_state}, moved to {dest.relative_to(notes_root)}")
+    # Use relative path from tier root; fall back to absolute if outside notes_root
+    try:
+        display = dest.relative_to(notes_root)
+    except ValueError:
+        display = dest
+    print(f"✓ '{track.name}' marked {end_state}, moved to {display}")
+    if getattr(track, "tier", None) == "shared":
+        print("  ↑ shared track — commit + push to share this archive with teammates.")
     return 0

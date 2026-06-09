@@ -14,9 +14,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from lib.config import load_config, ConfigError
+from lib.config import load_config, ConfigError, is_valid_git_repo
 from lib.frontmatter import parse_file, write_file
+from lib.notes_readme import seed_readme
 from lib.scratch import cache_dir
+from lib.write_guard import needs_confirm
 
 
 def _batch_path() -> Path:
@@ -68,7 +70,7 @@ def run(args: list[str]) -> int:
         return 1
 
     if apply_mode:
-        return _apply(cfg)
+        return _apply(cfg, args)
 
     # Resolve repo
     repos = list(cfg["repos"].keys())
@@ -113,6 +115,7 @@ def run(args: list[str]) -> int:
         "repo": repo,
         "folder": folder,
         "milestone": milestone_arg.split("=", 1)[1] if milestone_arg else None,
+        "private": "--private" in args,
         "issues": issues,
     }, indent=2))
 
@@ -132,7 +135,9 @@ def run(args: list[str]) -> int:
     return 0
 
 
-def _apply(cfg: dict) -> int:
+def _apply(cfg: dict, args: list[str] = None) -> int:
+    if args is None:
+        args = []
     answers_path = _answers_path()
     batch_path = _batch_path()
     if not answers_path.exists():
@@ -149,13 +154,48 @@ def _apply(cfg: dict) -> int:
         print(f"ERROR: batch folder '{folder}' not in config.yml repos.")
         return 1
     batch_milestone = batch.get("milestone") or "v1.0.0"
+
+    # --private: from current args OR stored in batch (so re-invocation is consistent)
+    use_private = "--private" in args or batch.get("private", False)
+
     answers = json.loads(answers_path.read_text())
 
     notes_root = Path(cfg["notes_root"])
-    track_dir = notes_root / folder
+
+    # Determine track directory: shared (.work-plan/) or private (notes_root/folder/)
+    repo_entry = cfg["repos"].get(folder, {})
+    local_raw = repo_entry.get("local")
+    shared_dir = None
+    if not use_private and local_raw:
+        local_path = Path(local_raw).expanduser()
+        if is_valid_git_repo(local_path):
+            shared_dir = local_path / ".work-plan"
+
+    if shared_dir is not None:
+        track_dir = shared_dir
+        is_shared_route = True
+    else:
+        track_dir = notes_root / folder
+        is_shared_route = False
+
+    # Public-repo heads-up (non-blocking) — print once before processing
+    if is_shared_route and needs_confirm(repo, cfg):
+        print(
+            f"HEADS-UP: {repo} is PUBLIC (or visibility unknown) — shared tracks"
+            " will be committed publicly. Use --private to keep them local."
+        )
+
     if not track_dir.exists():
-        print(f"ERROR: {track_dir} doesn't exist. Create it first.")
-        return 1
+        if is_shared_route:
+            track_dir.mkdir(parents=True, exist_ok=True)
+            seed_readme(track_dir)
+        else:
+            print(f"ERROR: {track_dir} doesn't exist. Create it first.")
+            return 1
+
+    # Seed README when using shared route and dir was just created or README absent
+    if is_shared_route:
+        seed_readme(track_dir)
 
     issues_by_num = {i["number"]: i for i in batch["issues"]}
 
@@ -199,6 +239,8 @@ def _apply(cfg: dict) -> int:
             body = _build_body(name, summary, cluster_issues, issues_by_num)
             write_file(path, meta, body)
             print(f"  ✓ {slug}.md created ({len(cluster_issues)} issues)")
+            if is_shared_route:
+                print("  ↑ shared — commit + push to share with teammates.")
             created += 1
 
     print()
