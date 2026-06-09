@@ -6,6 +6,12 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+f25e6e1 — 2026-06-09 (#178)
+
+docs: update READMEs for v0.3.2 features
+
+README updates for the v0.3.2 feature set: move subcommand, depends_on chips, repo-scoped full map.
+
 ## 2026.06.09+03c8f5e — 2026-06-09 (#177)
 
 Deploy: repo-scoped full map (v0.3.2)
