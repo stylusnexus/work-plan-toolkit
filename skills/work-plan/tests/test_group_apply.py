@@ -161,20 +161,59 @@ class GroupApplyTierRoutingTest(unittest.TestCase):
         written_path = mw.call_args[0][0]
         self.assertNotIn(".work-plan", str(written_path))
 
-    def test_apply_shared_route_seeds_readme(self):
-        """group --apply with shared route calls seed_readme on the track dir."""
+    def test_apply_shared_route_seeds_readme_when_dir_is_new(self):
+        """group --apply seeds README only when .work-plan/ is newly created."""
         notes_root = "/tmp/fake-notes"
         cfg = _make_cfg(notes_root=notes_root)
         batch = _make_batch()
         answers = _make_answers()
 
+        # Make the .work-plan dir appear to NOT exist so the mkdir+seed path runs
+        with tempfile.TemporaryDirectory() as tmpdir:
+            batch_file = Path(tmpdir) / "groups.json"
+            answers_file = Path(tmpdir) / "groups.answers.json"
+            batch_file.write_text(json.dumps(batch), encoding="utf-8")
+            answers_file.write_text(json.dumps(answers), encoding="utf-8")
+
+            _real_exists = Path.exists
+
+            def _exists_dir_missing(self):
+                if str(self) in (str(batch_file), str(answers_file)):
+                    return True
+                if str(self).endswith(".work-plan"):
+                    return False  # dir not yet created → triggers mkdir+seed
+                if str(self).endswith(".md"):
+                    return False
+                return _real_exists(self)
+
+            with patch("commands.group._batch_path", return_value=batch_file), \
+                 patch("commands.group._answers_path", return_value=answers_file), \
+                 patch("commands.group.load_config", return_value=cfg), \
+                 patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
+                 patch("commands.group.is_valid_git_repo", return_value=True), \
+                 patch("commands.group.write_file"), \
+                 patch("commands.group.parse_file", return_value=({}, "")), \
+                 patch("commands.group.seed_readme") as mseed, \
+                 patch("pathlib.Path.mkdir"), \
+                 patch("pathlib.Path.exists", _exists_dir_missing):
+                group._apply(cfg, [])
+
+            mseed.assert_called_once()
+            seeded_path = mseed.call_args[0][0]
+            self.assertIn(".work-plan", str(seeded_path))
+
+    def test_apply_shared_route_no_readme_resurrection(self):
+        """group --apply does NOT call seed_readme when .work-plan/ already exists."""
+        notes_root = "/tmp/fake-notes"
+        cfg = _make_cfg(notes_root=notes_root)
+        batch = _make_batch()
+        answers = _make_answers()
+
+        # Default _drive_apply mocks .work-plan as existing → seed_readme not called
         rc, mw, mseed, out = _drive_apply([], cfg=cfg, batch=batch,
                                           answers=answers, vis="PRIVATE")
         self.assertEqual(rc, 0)
-        # seed_readme should have been called on the .work-plan/ dir
-        mseed.assert_called()
-        seeded_path = mseed.call_args[0][0]
-        self.assertIn(".work-plan", str(seeded_path))
+        mseed.assert_not_called()
 
     def test_apply_private_route_does_not_seed_readme(self):
         """group --apply --private does NOT call seed_readme."""

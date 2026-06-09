@@ -193,10 +193,6 @@ def _apply(cfg: dict, args: list[str] = None) -> int:
             print(f"ERROR: {track_dir} doesn't exist. Create it first.")
             return 1
 
-    # Seed README when using shared route and dir was just created or README absent
-    if is_shared_route:
-        seed_readme(track_dir)
-
     issues_by_num = {i["number"]: i for i in batch["issues"]}
 
     print(f"Applying {len(answers)} clusters to {track_dir}/")
