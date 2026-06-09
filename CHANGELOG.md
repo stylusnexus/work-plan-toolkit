@@ -6,6 +6,39 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+21c63ea — 2026-06-09 (#144)
+
+feat(shared-notes,coverage,auto-triage): two-tier tracks, coverage report, AI triage, next_up fix
+
+## What's shipping
+
+### Major: shared-notes (two-tier track storage)
+Track files can now live inside a repo clone (`.work-plan/<slug>.md`, git-synced) alongside the existing private `notes_root` tier. Register a local clone with `init-repo --local=<path>`; tracks route there automatically. Teammates share planning state via `git pull`/`git push`. `--private` opts out per-command.
+
+Phases A–D:
+- Phase A: `discover_tracks` unions shared + private; `AmbiguousTrackError` for same-slug-different-repo
+- Phase B: `--repo=<key>` / `<track>@<repo>` disambiguation on all write verbs
+- Phase C: write-surface routing (`group`, `new-track`, `close`, `init`)
+- Phase D: `init-repo` detects existing `.work-plan/` tracks; `new-track --commit`; `export` tier field
+
+### New: `coverage` command
+`/work-plan coverage [--repo=<key>] [--list]` — reports how many open issues are outside the track model. 42% orphan rate measured on a real production repo.
+
+### New: `auto-triage` command
+`/work-plan auto-triage [--repo=<key>] [--apply]` — two-step AI assignment of untracked issues to existing tracks. Complements `group` (which creates new tracks).
+
+### Fix: closed issues filtered from `next_up` in export
+The VS Code viewer was showing closed issues as actionable next-up nodes. Export now cross-references `next_up` against the fetched issue states and removes confirmed-closed entries.
+
+### Docs
+README, SKILL.md, npm description, and VS Code extension description updated with shared-notes setup, group/auto-triage callouts, and `@repo` disambiguation syntax.
+
+---
+
+PRs: #129 (shared-notes phases A–D via #132 #133 #135 #138), #139 (next_up fix), #141 (coverage), #142 (auto-triage), #143 (docs)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.09+f3bc861 — 2026-06-09 (#128)
 
 feat: npm CLI distribution + launcher PATH fix + extension v0.1.1 (screenshots, docs)
