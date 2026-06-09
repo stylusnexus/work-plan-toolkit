@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+f7e5ff5 — 2026-06-09 (#155)
+
+feat(reconcile,hygiene): parallel gh fetches, per-call timeouts, progress indicators
+
+## Summary
+
+- **#151** `perf(reconcile,hygiene)`: parallel `gh` fetches in `reconcile --all` via `ThreadPoolExecutor` (4 workers); per-call 15s timeout per track; `--timeout=N` flag forwarded to `duplicates`; per-step timing in `hygiene`
+- **#152** `feat(hygiene,reconcile,refresh-md)`: `[N/total]` progress indicator during `--all` sweeps in all three subcommands; also fixes latent `NameError` in `hygiene.py` step-2 timing (referenced `t2` before assignment)
+- New test module: `test_reconcile_readonly.py` — timeout/skip behaviour for single-track and multi-track parallel paths
+
+## Commits
+
+```
+8e8a29f feat(hygiene,reconcile): per-track progress indicator during --all sweep (#152) (#154)
+2332c49 perf(reconcile,hygiene): parallel gh fetches + per-call timeout (#151) (#153)
+```
+
+## Migrations
+
+None.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.09+ac8a3d7 — 2026-06-09 (#150)
 
 docs(readme,skill): clarify refresh-md and hygiene, add read-only callout, vscode README v0.2.0
