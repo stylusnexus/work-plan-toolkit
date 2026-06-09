@@ -26,11 +26,15 @@ Run with --all to reconcile every active track in one pass.
 """
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
 from lib.prompts import parse_flags, prompt_input
+
+
+PER_TRACK_TIMEOUT = 15  # seconds; each gh call gets this budget
 
 
 def _resolve_labels(track) -> list[str]:
@@ -59,13 +63,19 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
     seen: dict[int, dict] = {}
     for lab in labels:
         for kind in ("issue", "pr"):
-            proc = subprocess.run(
-                ["gh", kind, "list", "--repo", repo,
-                 "--label", lab,
-                 "--state", "all", "--limit", "200",
-                 "--json", "number,title,state"],
-                capture_output=True, text=True,
-            )
+            try:
+                proc = subprocess.run(
+                    ["gh", kind, "list", "--repo", repo,
+                     "--label", lab,
+                     "--state", "all", "--limit", "200",
+                     "--json", "number,title,state"],
+                    capture_output=True, text=True,
+                    timeout=PER_TRACK_TIMEOUT,
+                )
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(
+                    f"gh {kind} query timed out for label '{lab}'"
+                )
             if proc.returncode != 0:
                 raise RuntimeError(
                     f"gh {kind} query failed for label '{lab}': {proc.stderr.strip()}"
@@ -126,19 +136,45 @@ def run(args: list[str]) -> int:
             return 1
         targets = [target]
 
+    # Phase 1: parallel fetch of labeled issues for all tracks
+    work_items = [(track, _resolve_labels(track)) for track in targets if track.repo]
+    results: dict = {}  # track.name → list[dict] or None (timeout/error)
+
+    if len(work_items) > 1:
+        # Parallel fetch when there are multiple tracks
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(_fetch_labeled_issues, track.repo, labels): track
+                for track, labels in work_items
+            }
+            for future in as_completed(futures):
+                track = futures[future]
+                try:
+                    results[track.name] = future.result()
+                except RuntimeError as e:
+                    print(f"  ⚠ {track.name}: {e} — skipping")
+                    results[track.name] = None
+    else:
+        # Single track: fetch directly (no thread overhead)
+        for track, labels in work_items:
+            try:
+                results[track.name] = _fetch_labeled_issues(track.repo, labels)
+            except RuntimeError as e:
+                print(f"  ⚠ {track.name}: {e} — skipping")
+                results[track.name] = None
+
+    # Phase 2: serial diff, report, and confirm (prompts must NOT be in threads)
     any_changes = False
     for track in targets:
         slug = track.meta.get("track", track.name)
         if not track.repo:
             continue
 
-        labels = _resolve_labels(track)
-        try:
-            labeled = _fetch_labeled_issues(track.repo, labels)
-        except RuntimeError as e:
-            print(f"  ⚠ {slug}: {e}")
+        labeled = results.get(track.name)
+        if labeled is None:
             continue
 
+        labels = _resolve_labels(track)
         labeled_nums = {i["number"] for i in labeled}
         listed_nums = set(track.meta.get("github", {}).get("issues") or [])
 
