@@ -287,6 +287,16 @@ Install it from either registry:
 
 The extension **shells out to the `work-plan` CLI**, so install the CLI too (npm or any method above). If `work-plan` isn't on your editor's `PATH` — common when VS Code is launched from the Dock/Finder rather than a terminal — set **`workPlan.cliPath`** in Settings to an absolute launcher path (e.g. `/path/to/work-plan-toolkit/bin/work-plan`, or the npm global bin), then reload the window. Extensions auto-update from the registry.
 
+Useful settings:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `workPlan.cliPath` | `"work-plan"` | Absolute path to the CLI, if it's not on the editor's PATH |
+| `workPlan.autoRefreshInterval` | `0` (off) | Re-poll the CLI silently in the background (seconds). Set to 30, 60, 300, or 900 if teammates are pushing shared-track changes and you want the tree to stay current without manual refresh |
+| `workPlan.expandReposByDefault` | `false` | Expand all repo groups on load (single-repo workspaces always expand) |
+
+Shared tracks show a **`shared`** tag in the tree description so you can tell at a glance which tracks travel via `git push/pull` and which are local-only.
+
 ### Updating
 
 | Installed via | Update with |
