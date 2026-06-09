@@ -6,6 +6,19 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+03c8f5e — 2026-06-09 (#177)
+
+Deploy: repo-scoped full map (v0.3.2)
+
+## Change
+The 'Show full map' graph now only shows tracks in the **same repo** as the selected track. Cross-repo tracks share no edges, so showing them together produced noise without value.
+
+- Focus mode: unchanged (neighbourhood of selected track)
+- Full map: scoped to selected track's repo
+
+## Version
+VSCode extension → 0.3.2
+
 ## 2026.06.09+a00489a — 2026-06-09 (#176)
 
 Deploy: Mermaid fix + move subcommand + depends_on surface (#172, #162, #102)
