@@ -13,6 +13,7 @@ export type WriteAction =
   | { kind: "reconcileDraft"; track: string }
   | { kind: "hygiene" }
   | { kind: "slot"; track: string; issue: number }
+  | { kind: "batchSlot"; track: string; issues: number[] }
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
   | { kind: "addRepo"; key: string; github: string; local?: string }
@@ -75,6 +76,9 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "slot":
       return ["slot", String(action.issue), action.track, "--no-move"];
+
+    case "batchSlot":
+      return ["batch-slot", ...action.issues.map(String), action.track, "--no-move"];
 
     case "close":
       return [
