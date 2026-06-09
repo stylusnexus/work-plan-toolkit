@@ -140,6 +140,13 @@ export class WorkPlanTreeProvider
         this._filteredCache = applyLens(this.cache, this._activeLens);
         this.roots = this._applySortToRepos(buildTree(this._filteredCache));
         this._onDidChangeTreeData.fire();
+        // Drive viewsWelcome off the RAW (unfiltered) data so an active lens
+        // that hides everything doesn't incorrectly show "No repos yet."
+        void vscode.commands.executeCommand(
+          "setContext",
+          "workPlanHasRepos",
+          this.cache.tracks.length > 0,
+        );
       },
     );
   }
@@ -209,15 +216,19 @@ export class WorkPlanTreeProvider
       vscode.TreeItemCollapsibleState.None
     );
 
+    const shared = node.track.tier === "shared";
+    const tierPrefix = shared ? "shared  " : "";
     item.description = node.hint
-      ? `${node.open} open  ${node.hint}`
-      : `${node.open} open`;
+      ? `${tierPrefix}${node.open} open  ${node.hint}`
+      : `${tierPrefix}${node.open} open`;
 
     const { icon, color } = categoryIcon(node.category);
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
     item.contextValue = "workPlanTrack";
-    item.tooltip = `${node.name} — ${node.status} · ${node.open} open`;
+    item.tooltip = `${node.name} — ${node.status} · ${node.open} open · ${
+      shared ? "Shared — travels via git push/pull" : "Private — local only"
+    }`;
 
     item.command = {
       command: "workPlan.openTrack",

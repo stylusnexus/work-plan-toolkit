@@ -202,6 +202,7 @@
     "viewsWelcome": [
       {
         "view": "workPlan.tree",
+        "when": "workPlanHasRepos == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
       }
     ],
