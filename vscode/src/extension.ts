@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { exportJson, makeSpawnRunner, checkVersion, CliError } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
-import type { Lens, TrackNode, UntrackedIssueNode } from "./tree.ts";
+import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses } from "./webview/lenses.ts";
@@ -607,6 +607,69 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: slot-untracked failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.batchSlotUntracked — batch-slot untracked issues into a track (context menu on UntrackedGroup)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.batchSlotUntracked", async (node?: UntrackedGroupNode) => {
+      if (!node || node.kind !== "untrackedGroup") {
+        return;
+      }
+
+      try {
+        // Multi-select quick-pick of untracked issues.
+        type IssueItem = vscode.QuickPickItem & { issueNumber: number };
+        const issueItems: IssueItem[] = node.issues.map(issue => ({
+          label: `#${issue.number}  ${issue.title}`,
+          issueNumber: issue.number,
+        }));
+
+        const picks = await vscode.window.showQuickPick(issueItems, {
+          canPickMany: true,
+          placeHolder: `Select untracked issues to slot (${node.repo})`,
+        });
+        if (!picks || picks.length === 0) return; // cancelled
+
+        const issueNumbers = picks.map(p => p.issueNumber);
+
+        // Build the track list from the RAW (unfiltered) export.
+        const exp = provider.rawExport ?? provider.currentExport;
+        if (!exp || exp.tracks.length === 0) {
+          vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
+          return;
+        }
+
+        const sameRepoTracks = exp.tracks.filter(t => t.repo === node.repo);
+        const candidateTracks = sameRepoTracks.length > 0 ? sameRepoTracks : exp.tracks;
+
+        const track = await vscode.window.showQuickPick(
+          candidateTracks.map(t => t.name),
+          { placeHolder: `Slot ${issueNumbers.length} issue(s) into a track` },
+        );
+        if (!track) return; // cancelled
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "batchSlot", track, issues: issueNumbers },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: slotted ${issueNumbers.length} issue(s) into ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: batch-slot-untracked failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),

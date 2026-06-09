@@ -380,6 +380,71 @@ class DiscoverArchivedSharedTest(unittest.TestCase):
         slugs = [a.meta.get("track") for a in archived]
         self.assertIn("old", slugs)
 
+    def test_archived_collision_shared_wins(self):
+        """When (repo, name) collides in archived tracks, shared wins + warns."""
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            clone = _make_git_repo(base / "clone")
+            # Shared archived track
+            _write_track_md(
+                clone / ".work-plan" / "archive" / "shipped.md",
+                "shipped", "org/repo", status="shipped",
+            )
+            # Private archived track with SAME name in notes_root
+            notes = base / "notes"
+            _write_track_md(
+                notes / "repo" / "archive" / "shipped.md",
+                "shipped", "org/repo", status="shipped",
+            )
+            cfg = {
+                "notes_root": str(notes),
+                "repos": {
+                    "repo": {"github": "org/repo", "local": str(clone)},
+                },
+            }
+
+            stderr_buf = io.StringIO()
+            with patch("sys.stderr", stderr_buf):
+                archived = discover_archived_tracks(cfg)
+
+            # Exactly one entry for "shipped"
+            shipped = [t for t in archived if t.name == "shipped"]
+            self.assertEqual(len(shipped), 1)
+            self.assertEqual(shipped[0].tier, "shared")
+            # Warning was emitted
+            self.assertIn("WARN:", stderr_buf.getvalue())
+            self.assertIn("shipped", stderr_buf.getvalue())
+
+    def test_archived_no_collision_no_warning(self):
+        """Different names in shared/private archives → no warning, both returned."""
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            clone = _make_git_repo(base / "clone")
+            _write_track_md(
+                clone / ".work-plan" / "archive" / "shared-archived.md",
+                "shared-archived", "org/repo", status="shipped",
+            )
+            notes = base / "notes"
+            _write_track_md(
+                notes / "repo" / "archive" / "private-archived.md",
+                "private-archived", "org/repo", status="shipped",
+            )
+            cfg = {
+                "notes_root": str(notes),
+                "repos": {
+                    "repo": {"github": "org/repo", "local": str(clone)},
+                },
+            }
+
+            stderr_buf = io.StringIO()
+            with patch("sys.stderr", stderr_buf):
+                archived = discover_archived_tracks(cfg)
+
+            names = [t.name for t in archived]
+            self.assertIn("shared-archived", names)
+            self.assertIn("private-archived", names)
+            self.assertNotIn("WARN:", stderr_buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
