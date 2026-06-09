@@ -367,3 +367,102 @@ describe("renderDetail — milestone bands", () => {
     assert.ok(idx30 < idx40, "v2 band should appear before null-milestone band");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue cap tests (#169)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — issue cap", () => {
+  /** Build a track with `n` issues numbered 1..n, all open, no milestone. */
+  function makeBigTrack(n: number): Track {
+    const issues: Issue[] = [];
+    for (let i = 1; i <= n; i++) {
+      issues.push({
+        number: i,
+        title: `Issue ${i}`,
+        state: "open",
+        assignee: "@dev",
+        milestone: null,
+      });
+    }
+    return {
+      name: "big-track",
+      repo: "org/repo",
+      tier: "private",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: null,
+      blockers: [],
+      next_up: [],
+      rollup: { open: n, closed: 0 },
+      issues,
+    };
+  }
+
+  it("renders all issues when count is below the cap", () => {
+    const track = makeBigTrack(30);
+    const html = renderDetail(track);
+    // All 30 issues should be in the visible table
+    assert.ok(html.includes("#1"), "missing #1");
+    assert.ok(html.includes("#30"), "missing #30");
+    // No collapsible overflow
+    assert.ok(!html.includes("issue-cap-toggle"), "unexpected cap toggle");
+  });
+
+  it("caps at 50 with collapsible overflow for flat table", () => {
+    const track = makeBigTrack(75);
+    const html = renderDetail(track);
+    // First 50 visible
+    assert.ok(html.includes("#1"), "missing #1");
+    assert.ok(html.includes("#50"), "missing #50");
+    // #51 should NOT be in the visible table — only inside <details>
+    const idx50 = html.indexOf("#50");
+    const idx51 = html.indexOf("#51");
+    assert.ok(idx51 > idx50, "#51 should appear after #50");
+    // Collapsible toggle present
+    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle");
+    assert.ok(html.includes("<details>"), "missing <details> element");
+    assert.ok(html.includes("Show all 75 issues"), "missing 'Show all 75 issues'");
+    assert.ok(html.includes("25 more"), "missing '25 more' count");
+  });
+
+  it("caps within milestone bands — overflow goes to collapsible band", () => {
+    // 3 milestones × 20 issues = 60 total, cap at 50 → 10 in overflow
+    const issues: Issue[] = [];
+    for (let i = 1; i <= 60; i++) {
+      const ms = i <= 20 ? "v1" : i <= 40 ? "v2" : null;
+      issues.push({
+        number: i,
+        title: `Issue ${i}`,
+        state: "open",
+        assignee: "@dev",
+        milestone: ms,
+      });
+    }
+    const track: Track = {
+      name: "multi-ms-big",
+      repo: "org/repo",
+      tier: "private",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: "v1",
+      visibility: null,
+      blockers: [],
+      next_up: [],
+      rollup: { open: 60, closed: 0 },
+      issues,
+    };
+
+    const html = renderDetail(track);
+    // Milestone bands should be present
+    assert.ok(html.includes("milestone-band-header"), "missing milestone bands");
+    // First 50 visible — v1 (20) + v2 (20) + null (10 of 20) = 50
+    assert.ok(html.includes("#1"), "missing #1");
+    assert.ok(html.includes("#50"), "missing #50");
+    // Overflow toggle present
+    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle in milestone bands");
+    assert.ok(html.includes("Show all 60 issues"), "missing total count");
+    assert.ok(html.includes("10 more"), "missing '10 more' count");
+  });
+});

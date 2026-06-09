@@ -7,6 +7,13 @@
 import type { Track, Issue } from "../model.ts";
 
 // ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+/** Maximum issues to show in the detail panel before collapsing the rest. */
+const DETAIL_ISSUE_CAP = 50;
+
+// ---------------------------------------------------------------------------
 // Public surface
 // ---------------------------------------------------------------------------
 
@@ -46,14 +53,33 @@ export function renderDetail(track: Track): string {
 
   if (groups.length <= 1) {
     // Flat table — single milestone group (or all null).
+    const allIssues = track.issues;
+    const visible = allIssues.slice(0, DETAIL_ISSUE_CAP);
+    const hidden = allIssues.slice(DETAIL_ISSUE_CAP);
+
     parts.push("<tbody>");
-    for (const issue of track.issues) {
+    for (const issue of visible) {
       parts.push(renderIssueRow(track, issue));
     }
     parts.push("</tbody>");
+
+    if (hidden.length > 0) {
+      parts.push(
+        `<tbody class="issue-cap-band collapsed"><tr class="issue-cap-toggle"><td colspan="5">` +
+          `<details><summary>Show all ${allIssues.length} issues (${hidden.length} more)</summary>` +
+          `<table>`
+      );
+      for (const issue of hidden) {
+        parts.push(renderIssueRow(track, issue));
+      }
+      parts.push(`</table></details></td></tr></tbody>`);
+    }
   } else {
     // Milestone bands.
     let first = true;
+    let totalRendered = 0;
+    const hiddenIssues: Issue[] = [];
+
     for (const [label, issues] of groups) {
       const heading = label ? esc(label) : "No milestone";
       const count = String(issues.length);
@@ -65,11 +91,29 @@ export function renderDetail(track: Track): string {
           `<b>${heading}</b> <span class="milestone-count">(${count})</span>` +
           `</td></tr>`,
       );
+
       for (const issue of issues) {
-        parts.push(renderIssueRow(track, issue));
+        if (totalRendered < DETAIL_ISSUE_CAP) {
+          parts.push(renderIssueRow(track, issue));
+          totalRendered++;
+        } else {
+          hiddenIssues.push(issue);
+        }
       }
       parts.push("</tbody>");
       first = false;
+    }
+
+    if (hiddenIssues.length > 0) {
+      parts.push(
+        `<tbody class="issue-cap-band collapsed"><tr class="issue-cap-toggle"><td colspan="5">` +
+          `<details><summary>Show all ${track.issues.length} issues (${hiddenIssues.length} more)</summary>` +
+          `<table>`
+      );
+      for (const issue of hiddenIssues) {
+        parts.push(renderIssueRow(track, issue));
+      }
+      parts.push(`</table></details></td></tr></tbody>`);
     }
   }
 
