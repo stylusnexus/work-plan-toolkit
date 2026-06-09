@@ -27,7 +27,7 @@ class Track:
     tier: Optional[str] = None
 
 
-def discover_tracks(cfg: dict) -> list:
+def discover_tracks(cfg: dict) -> list[Track]:
     """Walk notes_root for active (non-archived) .md files, then union with
     shared tracks from each configured repo's .work-plan/ directory.
     Shared wins on (repo, name) collisions.
@@ -49,6 +49,7 @@ def discover_tracks(cfg: dict) -> list:
             print(
                 f"WARN: track {t.name!r} (repo={t.repo!r}) exists in both shared"
                 f" ({shared_keys[key].path}) and private ({t.path}); using shared.",
+                file=sys.stderr,
             )
         else:
             merged.append(t)
@@ -56,7 +57,7 @@ def discover_tracks(cfg: dict) -> list:
     return merged
 
 
-def filter_tracks_by_repo(tracks: list, key: str) -> list:
+def filter_tracks_by_repo(tracks: list[Track], key: str) -> list[Track]:
     """Filter tracks by repo. Matches the config-key folder name OR the
     `org/repo` GitHub slug, so users can pass either. Case-insensitive."""
     k = key.lower()
@@ -65,8 +66,8 @@ def filter_tracks_by_repo(tracks: list, key: str) -> list:
             or (t.repo and t.repo.lower() == k)]
 
 
-def find_track_by_name(name: str, tracks: list,
-                       *, active_only: bool = False) -> Optional["Track"]:
+def find_track_by_name(name: str, tracks: list[Track],
+                       *, active_only: bool = False) -> Optional[Track]:
     """Find a single Track matching `name` (filename stem OR frontmatter `track`).
 
     If active_only=True, only considers tracks with status active/in-progress/blocked.
@@ -81,7 +82,7 @@ def find_track_by_name(name: str, tracks: list,
     return matching[0] if len(matching) == 1 else None
 
 
-def discover_archived_tracks(cfg: dict) -> list:
+def discover_archived_tracks(cfg: dict) -> list[Track]:
     """Walk notes_root for archived .md files, and also scan each repo's
     .work-plan/archive/ for shared archived tracks."""
     notes_root = Path(cfg["notes_root"]).expanduser()
@@ -104,7 +105,7 @@ def discover_archived_tracks(cfg: dict) -> list:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _discover_private_tracks(cfg: dict, include_archive: bool) -> list:
+def _discover_private_tracks(cfg: dict, include_archive: bool) -> list[Track]:
     notes_root = Path(cfg["notes_root"]).expanduser()
     if not notes_root.exists():
         return []
@@ -112,9 +113,9 @@ def _discover_private_tracks(cfg: dict, include_archive: bool) -> list:
 
 
 def _discover_shared_tracks(cfg: dict, include_archive: bool = False,
-                             archive_only: bool = False) -> list:
+                             archive_only: bool = False) -> list[Track]:
     """Walk each configured repo's local clone .work-plan/ directory."""
-    out = []
+    out: list[Track] = []
     repos = cfg.get("repos", {})
     for folder_key, entry in repos.items():
         if not entry or not entry.get("local"):
@@ -136,14 +137,13 @@ def _discover_shared_tracks(cfg: dict, include_archive: bool = False,
             if not include_archive and in_archive:
                 continue
             out.append(_build_shared_track(
-                md_path, notes_dir, folder_key, github_repo, local_path, cfg
+                md_path, folder_key, github_repo, local_path
             ))
     return out
 
 
-def _build_shared_track(md_path: Path, notes_dir: Path, folder_key: str,
-                         github_repo: Optional[str], local_path: Path,
-                         cfg: dict) -> "Track":
+def _build_shared_track(md_path: Path, folder_key: str,
+                         github_repo: Optional[str], local_path: Path) -> Track:
     """Build a Track from a shared .work-plan/ markdown file."""
     meta, body = parse_file(md_path)
     has_fm = bool(meta)
@@ -174,7 +174,7 @@ def _build_shared_track(md_path: Path, notes_dir: Path, folder_key: str,
     )
 
 
-def _walk(notes_root: Path, cfg: dict, include_archive: bool) -> list:
+def _walk(notes_root: Path, cfg: dict, include_archive: bool) -> list[Track]:
     out = []
     for md_path in sorted(notes_root.rglob("*.md")):
         if not include_archive and "archive" in md_path.parts:

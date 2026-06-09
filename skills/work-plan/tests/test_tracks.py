@@ -282,9 +282,9 @@ class SharedTrackCollisionTest(unittest.TestCase):
                 },
             }
 
-            with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+            with patch("sys.stderr", new_callable=io.StringIO) as mock_err:
                 discover_tracks(cfg)
-                output = mock_out.getvalue()
+                output = mock_err.getvalue()
             # One warning about the collision
             self.assertEqual(output.count("WARN:"), 1)
             self.assertIn("feat-x", output)
