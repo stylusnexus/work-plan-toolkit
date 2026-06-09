@@ -120,6 +120,14 @@ mermaid.run();
     var target = e.target;
     if (!target) { return; }
 
+    // Milestone band toggle
+    var bandHeader = target.closest(".milestone-band-header");
+    if (bandHeader) {
+      var band = bandHeader.closest(".milestone-band");
+      if (band) { band.classList.toggle("collapsed"); }
+      return;
+    }
+
     // data-track → selectTrack
     var trackBtn = target.closest("[data-track]");
     if (trackBtn) {
@@ -251,6 +259,27 @@ mermaid.run();
       margin: 2px;
       font-size: 0.9em;
     }
+    .milestone-band-header td {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .milestone-band-header td:hover { opacity: 0.85; }
+    .milestone-toggle {
+      display: inline-block;
+      transition: transform 0.15s;
+      font-size: 0.85em;
+      margin-right: 2px;
+    }
+    .milestone-band:not(.collapsed) .milestone-toggle { transform: rotate(90deg); }
+    .milestone-count {
+      opacity: 0.6;
+      font-weight: normal;
+      margin-left: 4px;
+    }
+    .milestone-band.collapsed tr:not(.milestone-band-header) { display: none; }
   </style>
 </head>
 <body>

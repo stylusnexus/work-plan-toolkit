@@ -256,3 +256,114 @@ describe("renderDetail — HTML escaping", () => {
     );
   });
 });
+
+describe("renderDetail — milestone bands", () => {
+  it("renders milestone band headers when multiple milestone groups exist", () => {
+    const html = renderDetail(platformHealth);
+    // platformHealth has issues in M1 and null milestones → 2 groups → bands
+    assert.ok(
+      html.includes("milestone-band-header"),
+      `Expected milestone-band-header for multi-milestone track:\n${html}`,
+    );
+  });
+
+  it("active milestone band (M1) is expanded (no 'collapsed' class)", () => {
+    const html = renderDetail(platformHealth);
+    // The FIRST tbody.milestone-band should not have 'collapsed'
+    const firstBand = html.match(/<tbody class="milestone-band[^"]*"[^>]*>/);
+    assert.ok(firstBand !== null, "Expected at least one milestone-band tbody");
+    assert.ok(
+      !firstBand![0].includes("collapsed"),
+      `First band should not be collapsed:\n${firstBand![0]}`,
+    );
+  });
+
+  it("non-active milestone band is collapsed", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("collapsed"),
+      `Expected a 'collapsed' class on at least one band:\n${html}`,
+    );
+  });
+
+  it("renders the milestone label (M1) in the band header", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("<b>M1</b>"),
+      `Expected M1 label in band header:\n${html}`,
+    );
+  });
+
+  it("renders 'No milestone' for the null-milestone band", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("<b>No milestone</b>"),
+      `Expected No milestone label:\n${html}`,
+    );
+  });
+
+  it("renders the issue count in the band header", () => {
+    const html = renderDetail(platformHealth);
+    // M1 has 2 issues (#487, #1556) → (2)
+    assert.ok(
+      html.includes("(2)"),
+      `Expected issue count (2) for M1 band:\n${html}`,
+    );
+  });
+
+  it("single milestone group renders flat (no bands)", () => {
+    const singleMsTrack: Track = {
+      ...emptyTrack,
+      issues: [
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1" },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1" },
+      ],
+      rollup: { open: 2, closed: 0 },
+    };
+    const html = renderDetail(singleMsTrack);
+    assert.ok(
+      !html.includes("milestone-band-header"),
+      `Single-milestone track should render flat (no bands):\n${html}`,
+    );
+  });
+
+  it("all-null milestone track renders flat (no bands)", () => {
+    const allNullTrack: Track = {
+      ...emptyTrack,
+      issues: [
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null },
+      ],
+      rollup: { open: 2, closed: 0 },
+    };
+    const html = renderDetail(allNullTrack);
+    assert.ok(
+      !html.includes("milestone-band-header"),
+      `All-null-milestone track should render flat:\n${html}`,
+    );
+  });
+
+  it("issues within each band are in number order", () => {
+    // Create a track with multiple milestones to verify number-sort within groups
+    const multiTrack: Track = {
+      ...emptyTrack,
+      milestone_alignment: "v1",
+      issues: [
+        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2" },
+        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1" },
+        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1" },
+        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null },
+      ],
+      rollup: { open: 4, closed: 0 },
+    };
+    const html = renderDetail(multiTrack);
+    // v1 band (#10, #20) should appear before v2 #30 before null #40
+    const idx10 = html.indexOf("#10");
+    const idx20 = html.indexOf("#20");
+    const idx30 = html.indexOf("#30");
+    const idx40 = html.indexOf("#40");
+    assert.ok(idx10 < idx20, "#10 should appear before #20 within v1 band");
+    assert.ok(idx20 < idx30, "v1 band should appear before v2 band");
+    assert.ok(idx30 < idx40, "v2 band should appear before null-milestone band");
+  });
+});

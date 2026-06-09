@@ -167,3 +167,107 @@ class BuildExportTierFieldTest(unittest.TestCase):
 class ExportCommandGateTest(unittest.TestCase):
     def test_requires_json_flag(self):
         self.assertEqual(export_cmd.run([]), 2)
+
+
+class MilestoneSortKeyTest(unittest.TestCase):
+    """Tests for milestone_sort_key — the sort-order function."""
+
+    def test_active_milestone_first(self):
+        from lib.export_model import milestone_sort_key
+        active = {"number": 10, "milestone": "v1"}
+        future = {"number": 20, "milestone": "v2"}
+        # active milestone (matches alignment) should sort before future
+        self.assertLess(
+            milestone_sort_key(active, milestone_alignment="v1"),
+            milestone_sort_key(future, milestone_alignment="v1"),
+        )
+
+    def test_future_before_null(self):
+        from lib.export_model import milestone_sort_key
+        future = {"number": 10, "milestone": "v2"}
+        null_ms = {"number": 99, "milestone": None}
+        self.assertLess(
+            milestone_sort_key(future, milestone_alignment="v1"),
+            milestone_sort_key(null_ms, milestone_alignment="v1"),
+        )
+
+    def test_null_last(self):
+        from lib.export_model import milestone_sort_key
+        null_ms = {"number": 10, "milestone": None}
+        active = {"number": 20, "milestone": "v1"}
+        self.assertLess(
+            milestone_sort_key(active, milestone_alignment="v1"),
+            milestone_sort_key(null_ms, milestone_alignment="v1"),
+        )
+
+    def test_number_tiebreak_within_group(self):
+        from lib.export_model import milestone_sort_key
+        a = {"number": 10, "milestone": "v1"}
+        b = {"number": 5, "milestone": "v1"}
+        # Both match alignment → tier 0; lower number sorts first
+        self.assertLess(
+            milestone_sort_key(b, milestone_alignment="v1"),
+            milestone_sort_key(a, milestone_alignment="v1"),
+        )
+
+    def test_empty_string_milestone_treated_as_null(self):
+        from lib.export_model import milestone_sort_key
+        empty = {"number": 1, "milestone": ""}
+        null_ms = {"number": 2, "milestone": None}
+        # Both should be in tier 2
+        k1 = milestone_sort_key(empty, milestone_alignment="v1")
+        k2 = milestone_sort_key(null_ms, milestone_alignment="v1")
+        self.assertEqual(k1[0], 2)  # tier
+        self.assertEqual(k2[0], 2)
+
+
+class GroupIssuesByMilestoneTest(unittest.TestCase):
+    """Tests for group_issues_by_milestone."""
+
+    def test_single_group_returns_one_entry(self):
+        from lib.export_model import group_issues_by_milestone
+        issues = [
+            {"number": 1, "milestone": "v1"},
+            {"number": 2, "milestone": "v1"},
+        ]
+        groups = group_issues_by_milestone(issues, milestone_alignment="v1")
+        self.assertEqual(len(groups), 1)
+        label, items = groups[0]
+        self.assertEqual(label, "v1")
+        self.assertEqual([i["number"] for i in items], [1, 2])
+
+    def test_all_null_returns_single_group(self):
+        from lib.export_model import group_issues_by_milestone
+        issues = [
+            {"number": 2, "milestone": None},
+            {"number": 1, "milestone": None},
+        ]
+        groups = group_issues_by_milestone(issues, milestone_alignment="v1")
+        self.assertEqual(len(groups), 1)
+        label, items = groups[0]
+        self.assertIsNone(label)
+        # Sorted by number within the null group
+        self.assertEqual([i["number"] for i in items], [1, 2])
+
+    def test_multi_group_active_first(self):
+        from lib.export_model import group_issues_by_milestone
+        issues = [
+            {"number": 30, "milestone": None},
+            {"number": 20, "milestone": "v2"},
+            {"number": 10, "milestone": "v1"},
+        ]
+        groups = group_issues_by_milestone(issues, milestone_alignment="v1")
+        self.assertEqual(len(groups), 3)
+        # Active milestone (v1) first
+        self.assertEqual(groups[0][0], "v1")
+        self.assertEqual([i["number"] for i in groups[0][1]], [10])
+        # Future (v2) second
+        self.assertEqual(groups[1][0], "v2")
+        self.assertEqual([i["number"] for i in groups[1][1]], [20])
+        # Null last
+        self.assertIsNone(groups[2][0])
+        self.assertEqual([i["number"] for i in groups[2][1]], [30])
+
+    def test_empty_issues_returns_empty(self):
+        from lib.export_model import group_issues_by_milestone
+        self.assertEqual(group_issues_by_milestone([]), [])

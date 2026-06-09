@@ -202,7 +202,9 @@ def _apply(cfg: dict, args: list[str] = None) -> int:
         slug = _slugify(cluster["slug"])
         name = cluster.get("name", slug)
         summary = cluster.get("summary", "")
-        cluster_issues = sorted(set(cluster.get("issues") or []))
+        cluster_issues = _sort_by_milestone(
+            sorted(set(cluster.get("issues") or [])), issues_by_num, batch_milestone,
+        )
         if not cluster_issues:
             print(f"  SKIP {slug}: no issues")
             continue
@@ -214,7 +216,10 @@ def _apply(cfg: dict, args: list[str] = None) -> int:
                 print(f"  SKIP {slug}: file exists but has no frontmatter; use init first")
                 continue
             existing_issues = list(existing_meta.get("github", {}).get("issues") or [])
-            merged = sorted(set(existing_issues) | set(cluster_issues))
+            merged = _sort_by_milestone(
+                sorted(set(existing_issues) | set(cluster_issues)), issues_by_num,
+                existing_meta.get("milestone_alignment") or batch_milestone,
+            )
             existing_meta.setdefault("github", {})["issues"] = merged
             existing_meta["last_touched"] = datetime.now().strftime("%Y-%m-%dT%H:%M")
             write_file(path, existing_meta, existing_body)
@@ -244,6 +249,26 @@ def _apply(cfg: dict, args: list[str] = None) -> int:
     print("Next: review priorities (P3 default — edit frontmatter or use slot),")
     print("      then run /work-plan brief.")
     return 0
+
+
+def _sort_by_milestone(issue_nums, issues_by_num, milestone_alignment=None):
+    """Return issue_nums sorted by milestone then number.
+
+    milestone_alignment issues come first, then other non-null milestones
+    (grouped by label), then null-milestone issues last.  Graceful fallback:
+    if no milestone data is available, falls back to pure numeric sort.
+    """
+    from lib.export_model import milestone_sort_key
+    from lib.github_state import short_milestone
+
+    norm = []
+    for num in issue_nums:
+        gh = issues_by_num.get(num, {})
+        ms = short_milestone(gh.get("milestone")) or None
+        norm.append({"number": num, "milestone": ms})
+
+    norm.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
+    return [i["number"] for i in norm]
 
 
 def _slugify(s: str) -> str:
