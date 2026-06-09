@@ -21,6 +21,7 @@ const platformHealth: Track = {
   visibility: "PRIVATE",
   blockers: [4821],
   next_up: [487, 1556],
+  depends_on: ["idea-mode", "org-sharing"],
   rollup: { open: 12, closed: 8 },
   issues: [
     { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null },
@@ -40,6 +41,7 @@ const emptyTrack: Track = {
   visibility: null,
   blockers: [],
   next_up: [],
+  depends_on: [],
   rollup: { open: 0, closed: 0 },
   issues: [],
 };
@@ -54,6 +56,7 @@ const xssTrack: Track = {
   visibility: null,
   blockers: [],
   next_up: [999],
+  depends_on: [],
   rollup: { open: 1, closed: 0 },
   issues: [
     {
@@ -196,6 +199,51 @@ describe("renderDetail — empty blockers / next_up branches", () => {
   it("empty next_up → renders 'empty'", () => {
     const html = renderDetail(emptyTrack);
     assert.ok(html.includes("empty"), `Expected 'empty' for empty next_up:\n${html}`);
+  });
+});
+
+describe("renderDetail — depends_on (#102)", () => {
+  it("renders depends_on chips with data-track attributes", () => {
+    const html = renderDetail(platformHealth);
+    // platformHealth depends_on: ["idea-mode", "org-sharing"]
+    assert.ok(
+      html.includes("idea-mode"),
+      `Expected 'idea-mode' depends_on chip:\n${html}`,
+    );
+    assert.ok(
+      html.includes("org-sharing"),
+      `Expected 'org-sharing' depends_on chip:\n${html}`,
+    );
+    // Chips should be clickable (data-track attribute for navigation)
+    assert.ok(
+      html.includes('data-track="idea-mode"'),
+      `Expected data-track attribute on idea-mode chip:\n${html}`,
+    );
+    assert.ok(
+      html.includes('data-track="org-sharing"'),
+      `Expected data-track attribute on org-sharing chip:\n${html}`,
+    );
+    // Uses the depends-chip CSS class
+    assert.ok(
+      html.includes("depends-chip"),
+      `Expected depends-chip class:\n${html}`,
+    );
+  });
+
+  it("empty depends_on → renders 'None.'", () => {
+    const html = renderDetail(emptyTrack);
+    assert.ok(
+      html.includes("Depends on:"),
+      `Expected 'Depends on:' heading even when empty:\n${html}`,
+    );
+    // The "None." text should appear in the depends-on section.
+    // We check that "None." appears after "Depends on:".
+    const dependsIdx = html.indexOf("Depends on:");
+    const noneIdx = html.indexOf("None.", dependsIdx);
+    assert.ok(
+      noneIdx > dependsIdx,
+      `Expected 'None.' after 'Depends on:' for empty depends_on:\n${html}`,
+    );
   });
 });
 
@@ -395,6 +443,7 @@ describe("renderDetail — issue cap", () => {
       visibility: null,
       blockers: [],
       next_up: [],
+      depends_on: [],
       rollup: { open: n, closed: 0 },
       issues,
     };
@@ -450,6 +499,7 @@ describe("renderDetail — issue cap", () => {
       visibility: null,
       blockers: [],
       next_up: [],
+      depends_on: [],
       rollup: { open: 60, closed: 0 },
       issues,
     };

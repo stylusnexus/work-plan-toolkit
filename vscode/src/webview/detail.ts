@@ -139,6 +139,23 @@ export function renderDetail(track: Track): string {
   parts.push("</div>");
 
   // -------------------------------------------------------------------------
+  // Depends on (cross-track dependencies, #102)
+  // -------------------------------------------------------------------------
+
+  parts.push('<div class="depends-on"><b>Depends on:</b> ');
+
+  if (track.depends_on.length === 0) {
+    parts.push("None.");
+  } else {
+    const depChips = track.depends_on.map(name =>
+      `<span class="depends-chip" data-track="${esc(name)}">${esc(name)}</span>`,
+    );
+    parts.push(depChips.join(" "));
+  }
+
+  parts.push("</div>");
+
+  // -------------------------------------------------------------------------
   // Next-up steps
   // -------------------------------------------------------------------------
 
