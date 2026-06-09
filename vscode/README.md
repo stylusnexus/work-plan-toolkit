@@ -76,7 +76,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **Set Next-Up** | Set the ordered next-up issue list for the track. |
 | **Slot Issue into Track** | Add a GitHub issue number to the track. |
 | **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
-| **Refresh Track Body** | Re-sync the track's status table from live GitHub state. |
+| **Refresh Track Body** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
 | **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
 | **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |
 
@@ -87,9 +87,11 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **New Track** | Create a new track for a repo (pick the repo + a slug). |
 | **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. |
 | **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
-| **Run Hygiene** | Sweep refresh + reconcile across all tracks at once. |
+| **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Refresh Track Body" instead when you just need to update one track after closing issues. |
 
 Before any write into a **public** (or unknown-visibility) repo, a **"Write anyway / Keep private"** modal appears — the public-repo leak guard, surfaced as a dialog. Private repos write straight through.
+
+> **GitHub access is read-only.** The extension (and the CLI it drives) never writes to GitHub. All issue data comes from read-only `gh` CLI calls. Every write — status table updates, frontmatter, session logs — goes to your local markdown files only.
 
 ## Configuration
 
@@ -97,6 +99,7 @@ Before any write into a **public** (or unknown-visibility) repo, a **"Write anyw
 |---------|---------|-------------|
 | `workPlan.cliPath` | `"work-plan"` | Path to the `work-plan` CLI launcher. Read at activation — reload the window after changing it. |
 | `workPlan.expandReposByDefault` | `false` | Expand all repo groups on load (a single-repo workspace always expands). |
+| `workPlan.autoRefreshInterval` | `0` (off) | Re-poll the CLI silently in the background. Options: 0 (off), 30 s, 60 s, 5 min, 15 min. Useful when teammates are pushing shared-track changes and you want the tree to stay current without manual refreshes. |
 
 ## Build & run
 
@@ -126,7 +129,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.1.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). All four phases shipped: the CLI seam, the read-only viewer, the full write surface (write actions + public-repo confirm modal + cold-start onboarding), and the CI/publish pipeline.
+**Published — v0.2.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). All four phases shipped: the CLI seam, the read-only viewer, the full write surface (write actions + public-repo confirm modal + cold-start onboarding), and the CI/publish pipeline. v0.2.0 adds auto-refresh, shared-track tier badges, and the welcome-screen state fix.
 
 ## Development notes
 
