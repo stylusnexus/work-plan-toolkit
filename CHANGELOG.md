@@ -6,6 +6,21 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+8c10fe0 — 2026-06-09 (#124)
+
+ci(vscode): Node CI job + Marketplace/Open VSX publish scaffolding (#87 Phase 4)
+
+Promotes the **#87 Phase 4** CI + packaging plumbing to production so the extension's publish pipeline is live on `main`.
+
+- **`vscode.yml`** — the extension's own Node CI (typecheck · `node --test` · esbuild · `vsce package` → VSIX artifact), scoped to `vscode/**`. The Python/Node boundary.
+- **`vscode-publish.yml`** — publish job (VS Code Marketplace + Open VSX), **dormant** until a Release is cut or it's dispatched manually; uses the `VSCE_PAT` / `OVSX_TOKEN` repo secrets.
+- **`vscode/package.json`** — Marketplace fields (repository, icon, keywords, …) + `package`/`publish:*` scripts + `@vscode/vsce` + `ovsx` devDeps.
+- **`vscode/media/icon.png`** (real raster icon) + **`vscode/LICENSE`** (packaged into the VSIX) + the AGENTS.md Python/Node boundary note.
+
+No CLI behavior change; the viewer's runtime is unchanged from the previous deploy. Tests green (Python matrix + the new `vscode.yml` job). After this lands, a `v0.1.0` Release publishes the extension.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.07+e972a11 — 2026-06-07 (#122)
 
 feat: ship the VS Code viewer (Phases 1–3) — see, write, and onboard work-plan tracks (#87)
