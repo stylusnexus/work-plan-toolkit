@@ -6,10 +6,11 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(SKILL_R
 from lib.export_model import build_export
 import commands.export as export_cmd
 
-def _track(name, repo, issues, blockers=None, next_up=None, status="active"):
+def _track(name, repo, issues, blockers=None, next_up=None, status="active", depends_on=None):
     return SimpleNamespace(name=name, repo=repo, tier="private",
         meta={"status": status, "launch_priority": "P2", "milestone_alignment": "v1",
               "blockers": blockers or [], "next_up": next_up or [],
+              "depends_on": depends_on or [],
               "github": {"repo": repo, "issues": issues}})
 
 class BuildExportTest(unittest.TestCase):
@@ -271,3 +272,23 @@ class GroupIssuesByMilestoneTest(unittest.TestCase):
     def test_empty_issues_returns_empty(self):
         from lib.export_model import group_issues_by_milestone
         self.assertEqual(group_issues_by_milestone([]), [])
+
+
+class BuildExportDependsOnTest(unittest.TestCase):
+    """Tests that depends_on is surfaced in the export JSON (#102)."""
+
+    def test_depends_on_exported(self):
+        tracks = [_track("alpha", "o/r", [1], depends_on=["beta", "gamma"])]
+        issues_by_track = {"alpha": [
+            {"number": 1, "title": "a", "state": "OPEN", "assignees": []},
+        ]}
+        out = build_export(tracks, issues_by_track, {"o/r": "PRIVATE"}, now="t")
+        self.assertEqual(out["tracks"][0]["depends_on"], ["beta", "gamma"])
+
+    def test_depends_on_empty_by_default(self):
+        tracks = [_track("alpha", "o/r", [1])]
+        issues_by_track = {"alpha": [
+            {"number": 1, "title": "a", "state": "OPEN", "assignees": []},
+        ]}
+        out = build_export(tracks, issues_by_track, {"o/r": "PRIVATE"}, now="t")
+        self.assertEqual(out["tracks"][0]["depends_on"], [])

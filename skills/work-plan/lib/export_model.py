@@ -83,6 +83,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "visibility": visibility.get(t.repo),
             "blockers": list(t.meta.get("blockers") or []),
             "next_up": next_up,
+            "depends_on": list(t.meta.get("depends_on") or []),
             "rollup": {"open": opened, "closed": len(issues) - opened},
             "issues": issues,
         })

@@ -49,6 +49,7 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
   // Class definitions
   lines.push("  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d");
   lines.push("  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px");
+  lines.push("  classDef dependsEdge stroke:#f59e0b,stroke-width:2px,color:#d97706");
 
   // Build a unique, collision-resistant track ID for each track name.
   const tids = buildTrackIds(exp.tracks);
@@ -135,6 +136,13 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
         prev = n;
       }
     }
+
+    // depends_on edges (explicit cross-track dependencies, #102)
+    const depNames = track.depends_on || [];
+    for (const depName of depNames) {
+      const depId = tids.get(depName) ?? trackId(depName);
+      lines.push(`  ${tid} ==>|depends on| ${depId}`);
+    }
   }
 
   // Class assignments
@@ -195,11 +203,23 @@ function _toMermaidFocused(exp: Export, t: Track): string {
   // Determine which track nodes to include:
   //   - always: the selected track itself.
   //   - for each blocker b of T: the owner track of b (if b is owned by another track).
+  //   - tracks that T explicitly depends_on, and tracks that depend_on T (#102).
   const includedTrackNames = new Set<string>([t.name]);
   for (const b of t.blockers) {
     const ownerName = issueOwner.get(b);
     if (ownerName !== undefined && ownerName !== t.name) {
       includedTrackNames.add(ownerName);
+    }
+  }
+  // Add dependency neighbourhood (#102)
+  const depNames = t.depends_on || [];
+  for (const depName of depNames) {
+    includedTrackNames.add(depName);
+  }
+  // Reverse: add tracks that depend on T
+  for (const tr of exp.tracks) {
+    if ((tr.depends_on || []).includes(t.name)) {
+      includedTrackNames.add(tr.name);
     }
   }
 
@@ -260,6 +280,20 @@ function _toMermaidFocused(exp: Export, t: Track): string {
         lines.push(`  i_${prev} -.->|then| i_${n}`);
       }
       prev = n;
+    }
+  }
+
+  // depends_on edges for T and its dependency neighbourhood (#102)
+  const fDepNames = t.depends_on || [];
+  for (const depName of fDepNames) {
+    const depId = tids.get(depName) ?? trackId(depName);
+    lines.push(`  ${tid} ==>|depends on| ${depId}`);
+  }
+  // Reverse: tracks that depend on T
+  for (const tr of exp.tracks) {
+    if ((tr.depends_on || []).includes(t.name)) {
+      const depId = tids.get(tr.name)!;
+      lines.push(`  ${depId} ==>|depends on| ${tid}`);
     }
   }
 

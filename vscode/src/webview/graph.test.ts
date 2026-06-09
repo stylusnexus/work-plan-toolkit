@@ -793,3 +793,93 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
     assert.ok(!label.includes("}"), "Raw '}' should be escaped in track name label");
   });
 });
+
+describe("toMermaid — depends_on edges (#102)", () => {
+  const depExp: Export = {
+    schema: 1,
+    generated_at: "2026-06-09T00:00:00Z",
+    tracks: [
+      {
+        name: "alpha",
+        repo: "org/repo",
+        tier: "private",
+        status: "active",
+        launch_priority: null,
+        milestone_alignment: null,
+        visibility: null,
+        blockers: [],
+        next_up: [],
+        depends_on: ["beta"],
+        rollup: { open: 0, closed: 0 },
+        issues: [],
+      },
+      {
+        name: "beta",
+        repo: "org/repo",
+        tier: "private",
+        status: "active",
+        launch_priority: null,
+        milestone_alignment: null,
+        visibility: null,
+        blockers: [],
+        next_up: [],
+        depends_on: [],
+        rollup: { open: 0, closed: 0 },
+        issues: [],
+      },
+    ],
+  };
+
+  it("emits a thick 'depends on' edge from alpha to beta", () => {
+    const out = toMermaid(depExp);
+    const lines = out.split("\n");
+    const depLine = lines.find(
+      l => l.includes("t_alpha") && l.includes("depends on") && l.includes("t_beta"),
+    );
+    assert.ok(depLine !== undefined, `Expected depends on edge:\n${out}`);
+  });
+
+  it("uses thick arrow (==>) for depends_on edges", () => {
+    const out = toMermaid(depExp);
+    assert.ok(
+      out.includes("==>|depends on|"),
+      `Expected ==>|depends on| thick arrow:\n${out}`,
+    );
+  });
+
+  it("track without depends_on has no dependency edges", () => {
+    // beta has empty depends_on — no outgoing dependency edges
+    const out = toMermaid(depExp);
+    const lines = out.split("\n");
+    const betaDepEdge = lines.find(
+      l => l.startsWith("  t_beta") && l.includes("depends on"),
+    );
+    assert.strictEqual(
+      betaDepEdge,
+      undefined,
+      `Beta should not emit depends_on edges:\n${out}`,
+    );
+  });
+
+  it("focused graph includes tracks in dependency neighbourhood", () => {
+    const out = toMermaid(depExp, "alpha", { focus: true });
+    // alpha depends_on beta → beta should be included in focused view
+    assert.ok(
+      out.includes("t_beta"),
+      `Focused alpha should include beta (dependency):\n${out}`,
+    );
+    assert.ok(
+      out.includes("depends on"),
+      `Focused alpha should show depends on edge:\n${out}`,
+    );
+  });
+
+  it("focused graph includes tracks that depend on the selected track", () => {
+    const out = toMermaid(depExp, "beta", { focus: true });
+    // alpha depends_on beta → alpha should be included when focused on beta
+    assert.ok(
+      out.includes("t_alpha"),
+      `Focused beta should include alpha (reverse dependency):\n${out}`,
+    );
+  });
+});

@@ -233,7 +233,7 @@ def _apply(cfg: dict, args: list[str] = None) -> int:
                 "launch_priority": "P3",
                 "milestone_alignment": batch_milestone,
                 "github": {"repo": repo, "issues": cluster_issues, "branches": []},
-                "related_tracks": [],
+                "depends_on": [],
                 "last_touched": now, "last_handoff": now,
                 "next_up": [], "blockers": [],
             }
