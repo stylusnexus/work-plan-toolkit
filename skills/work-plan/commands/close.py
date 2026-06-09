@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags
@@ -15,13 +15,17 @@ VALID_STATES = {"shipped", "parked", "abandoned"}
 def run(args: list[str]) -> int:
     # --confirm uses equals form: --confirm=<token>
     # --state and --note also use equals form: --state=shipped, --note=...
-    flags, positional = parse_flags(args, {"--state", "--note", "--confirm"})
+    # --repo uses equals form: --repo=<key>
+    flags, positional = parse_flags(args, {"--state", "--note", "--confirm", "--repo"})
 
     if not positional:
-        print("usage: work_plan.py close <track-name> --state=shipped|parked|abandoned [--note=<text>] [--confirm=<token>]")
+        print("usage: work_plan.py close <track-name> --state=shipped|parked|abandoned [--note=<text>] [--confirm=<token>] [--repo=<key>]")
         return 2
 
-    track_name = positional[0]
+    track_arg = positional[0]
+    name_from_arg, repo_from_arg = parse_track_repo_arg(track_arg)
+    track_name = name_from_arg
+    repo_qualifier = repo_from_arg or (flags.get("--repo") if flags.get("--repo") is not True else None)
 
     # Validate --state (required)
     end_state = flags.get("--state")
@@ -39,7 +43,11 @@ def run(args: list[str]) -> int:
         return 1
 
     tracks = discover_tracks(cfg)
-    track = find_track_by_name(track_name, tracks)
+    try:
+        track = find_track_by_name(track_name, tracks, repo=repo_qualifier)
+    except AmbiguousTrackError as e:
+        print(str(e))
+        return 1
     if not track:
         print(f"No track matching '{track_name}'.")
         return 1
@@ -79,5 +87,12 @@ def run(args: list[str]) -> int:
     archive_dir.mkdir(parents=True, exist_ok=True)
     dest = archive_dir / track.path.name
     shutil.move(str(track.path), str(dest))
-    print(f"✓ '{track.name}' marked {end_state}, moved to {dest.relative_to(notes_root)}")
+    # Use relative path from tier root; fall back to absolute if outside notes_root
+    try:
+        display = dest.relative_to(notes_root)
+    except ValueError:
+        display = dest
+    print(f"✓ '{track.name}' marked {end_state}, moved to {display}")
+    if getattr(track, "tier", None) == "shared":
+        print("  ↑ shared track — commit + push to share this archive with teammates.")
     return 0

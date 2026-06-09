@@ -13,7 +13,7 @@ import subprocess
 from datetime import datetime, timedelta
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name
+from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
 from lib.session_log import append_session_log, SESSION_LOG_HEADER
 from lib.git_state import (
@@ -28,7 +28,7 @@ from lib.prompts import prompt_lines, parse_flags, prompt_input
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--interactive", "-i", "--set-next", "--auto-next"})
+    flags, positional = parse_flags(args, {"--interactive", "-i", "--set-next", "--auto-next", "--repo"})
     interactive = flags.get("--interactive", False) or flags.get("-i", False)
     auto_next = flags.get("--auto-next", False)
 
@@ -54,6 +54,14 @@ def run(args: list[str]) -> int:
             return 2
 
     track_arg = positional[0] if positional else None
+    repo_qualifier = flags.get("--repo") if flags.get("--repo") is not True else None
+
+    # Support <track>@<repo> syntax in positional
+    if track_arg:
+        name_from_arg, repo_from_arg = parse_track_repo_arg(track_arg)
+        track_arg = name_from_arg
+        if repo_from_arg:
+            repo_qualifier = repo_from_arg
 
     try:
         cfg = load_config()
@@ -62,7 +70,11 @@ def run(args: list[str]) -> int:
         return 1
 
     tracks = discover_tracks(cfg)
-    track = _resolve_track(tracks, track_arg)
+    try:
+        track = _resolve_track(tracks, track_arg, repo_qualifier=repo_qualifier)
+    except AmbiguousTrackError as e:
+        print(str(e))
+        return 1
     if not track:
         return 1
 
@@ -254,9 +266,9 @@ def _check_next_up_collisions(track, proposed: list[int], cfg: dict) -> bool:
     return answer in ("y", "yes")
 
 
-def _resolve_track(tracks, track_arg):
+def _resolve_track(tracks, track_arg, repo_qualifier=None):
     if track_arg:
-        track = find_track_by_name(track_arg, tracks)
+        track = find_track_by_name(track_arg, tracks, repo=repo_qualifier)
         if not track:
             print(f"No track matching '{track_arg}'.")
         return track

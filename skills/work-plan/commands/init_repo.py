@@ -7,8 +7,46 @@ import re
 import subprocess
 from pathlib import Path
 
-from lib.config import load_config, ConfigError, DEFAULT_CONFIG_PATH
+from lib.config import load_config, ConfigError, DEFAULT_CONFIG_PATH, is_valid_git_repo
 from lib.prompts import parse_flags
+
+
+def _count_shared_tracks(work_plan_dir: Path) -> int:
+    """Count eligible .md files in a .work-plan/ directory.
+
+    Excludes: README.md, dotfiles, and anything inside archive/.
+    """
+    count = 0
+    for p in work_plan_dir.iterdir():
+        if p.is_dir():
+            continue
+        if p.name.startswith("."):
+            continue
+        if p.name.lower() == "readme.md":
+            continue
+        if p.suffix == ".md":
+            count += 1
+    return count
+
+
+def _report_shared_tracks(local_path: "Path | None") -> None:
+    """Print a status line about shared tracks found in .work-plan/ (if any).
+
+    If local_path is None, not a valid git repo, or has no .work-plan/ dir,
+    prints the registration-only fallback message instead.
+    """
+    if local_path is None or not is_valid_git_repo(local_path):
+        print()
+        print("ℹ No valid local clone provided — registered for future use.")
+        print("  Run 'work-plan init-repo <key> --local=<path>' to add the clone path later.")
+        return
+    work_plan_dir = local_path / ".work-plan"
+    if work_plan_dir.is_dir():
+        n = _count_shared_tracks(work_plan_dir)
+        print(
+            f"ℹ Found {n} shared track(s) in {work_plan_dir}/"
+            " — they'll appear after 'work-plan brief'."
+        )
 
 
 def run(args: list[str]) -> int:
@@ -45,6 +83,7 @@ def run(args: list[str]) -> int:
 
     # --local is optional; if absent, skip (no prompt)
     local = flags.get("--local") or None
+    local_path = None
     if local:
         local_path = Path(local).expanduser()
         if not local_path.exists():
@@ -66,6 +105,9 @@ def run(args: list[str]) -> int:
     print(f"✓ Created notes folder: {repo_dir}/")
     print(f"  ├── archive/shipped/")
     print(f"  └── archive/abandoned/")
+
+    # Detect existing shared tracks in .work-plan/ inside the local clone
+    _report_shared_tracks(local_path)
 
     repo_block = {"github": github}
     if local:

@@ -3,6 +3,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from lib.config import load_config, ConfigError, resolve_github_for_folder
 from lib.frontmatter import parse_file, write_file
@@ -10,6 +11,21 @@ from lib.prompts import parse_flags
 from lib.write_guard import needs_confirm, make_token, valid_token
 
 _VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
+
+
+def _find_repo_for_shared_path(path: Path, cfg: dict) -> Optional[str]:
+    """If path is inside a .work-plan/ dir, find the configured github repo for that clone."""
+    # Walk up the path looking for a .work-plan ancestor
+    for parent in path.parents:
+        if parent.name == ".work-plan":
+            clone_root = parent.parent
+            for folder, entry in cfg.get("repos", {}).items():
+                if entry.get("local"):
+                    local = Path(entry["local"]).expanduser().resolve()
+                    if local == clone_root.resolve():
+                        return entry.get("github")
+            return None  # In .work-plan/ but not registered
+    return None  # Not in a .work-plan/
 
 
 def run(args: list[str]) -> int:
@@ -37,13 +53,27 @@ def run(args: list[str]) -> int:
 
     slug = re.sub(r"[^a-z0-9-]+", "-", path.stem.lower()).strip("-")
 
-    notes_root = Path(cfg["notes_root"])
-    try:
-        rel = path.relative_to(notes_root)
-        folder = rel.parts[0] if len(rel.parts) > 1 else None
-    except ValueError:
+    # Detect if this path is inside a .work-plan/ shared directory
+    is_shared = ".work-plan" in path.parts
+    tier = "shared" if is_shared else None
+
+    if is_shared:
+        repo = _find_repo_for_shared_path(path, cfg)
+        if repo is None:
+            print(
+                "ERROR: path is inside a .work-plan/ directory but its repo isn't"
+                " registered in config — run init-repo first"
+            )
+            return 1
         folder = None
-    repo = resolve_github_for_folder(folder, cfg) if folder else None
+    else:
+        notes_root = Path(cfg["notes_root"])
+        try:
+            rel = path.relative_to(notes_root)
+            folder = rel.parts[0] if len(rel.parts) > 1 else None
+        except ValueError:
+            folder = None
+        repo = resolve_github_for_folder(folder, cfg) if folder else None
 
     issue_nums = sorted(set(int(m) for m in re.findall(r"#(\d+)", body)))
 
@@ -79,6 +109,8 @@ def run(args: list[str]) -> int:
     print(f"Initializing: {path.name}")
     print(f"  track: {slug}")
     print(f"  repo: {repo or '(unknown — will set TBD)'}")
+    if tier == "shared":
+        print("  tier: shared")
     print(f"  issues found in body: {issue_nums or '(none)'}")
 
     now = datetime.now().strftime("%Y-%m-%dT%H:%M")

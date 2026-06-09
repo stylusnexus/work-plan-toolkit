@@ -70,6 +70,12 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH,
     return cfg
 
 
+def is_valid_git_repo(path: Path) -> bool:
+    """Return True if path is a directory that contains a .git entry."""
+    p = Path(path)
+    return p.is_dir() and (p / ".git").exists()
+
+
 def resolve_github_for_folder(folder_name: str, cfg: dict) -> Optional[str]:
     entry = cfg.get("repos", {}).get(folder_name)
     return entry.get("github") if entry else None

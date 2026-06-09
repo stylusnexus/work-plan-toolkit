@@ -28,7 +28,7 @@ import json
 import subprocess
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo
+from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
 from lib.prompts import parse_flags, prompt_input
 
@@ -83,11 +83,19 @@ def run(args: list[str]) -> int:
     if repo_key is True:
         print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
         return 2
-    track_name = positional[0] if positional else None
+    track_arg = positional[0] if positional else None
 
-    if not do_all and not track_name and not repo_key:
+    if not do_all and not track_arg and not repo_key:
         print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
         return 2
+
+    track_name = track_arg
+    repo_qualifier = repo_key
+    if track_arg:
+        name_from_arg, repo_from_arg = parse_track_repo_arg(track_arg)
+        track_name = name_from_arg
+        if repo_from_arg:
+            repo_qualifier = repo_from_arg
 
     try:
         cfg = load_config()
@@ -99,7 +107,7 @@ def run(args: list[str]) -> int:
     active = [t for t in tracks if t.has_frontmatter
               and t.meta.get("status") in ("active", "in-progress", "blocked")]
 
-    if do_all or repo_key:
+    if do_all or (repo_key and not track_arg):
         targets = active
         if repo_key:
             targets = filter_tracks_by_repo(targets, repo_key)
@@ -107,7 +115,12 @@ def run(args: list[str]) -> int:
                 print(f"No active tracks for repo '{repo_key}'.")
                 return 0
     else:
-        target = find_track_by_name(track_name, tracks, active_only=True)
+        try:
+            target = find_track_by_name(track_name, tracks, active_only=True,
+                                        repo=repo_qualifier)
+        except AmbiguousTrackError as e:
+            print(str(e))
+            return 1
         if not target:
             print(f"No active track matching '{track_name}'.")
             return 1
