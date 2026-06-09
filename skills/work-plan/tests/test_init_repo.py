@@ -247,5 +247,131 @@ class InitRepoNonInteractiveTest(unittest.TestCase):
         self.assertEqual(rc, 2)
 
 
+# ---------------------------------------------------------------------------
+# Phase D: detect-and-import tests
+# ---------------------------------------------------------------------------
+
+class InitRepoSharedTrackDetectionTest(unittest.TestCase):
+    """Tests for the .work-plan/ detection and fallback reporting added in Phase D."""
+
+    # ------------------------------------------------------------------
+    # Helper that lets us control .work-plan/ contents precisely
+    # ------------------------------------------------------------------
+
+    def _drive_with_local(self, args, *, local_is_git=True, work_plan_files=None):
+        """Run init_repo.run(args) with fine-grained control over the local clone.
+
+        local_is_git: whether the local path looks like a valid git repo (.git present).
+        work_plan_files: list of filenames inside .work-plan/ (default: no .work-plan/).
+        """
+        cfg = _make_cfg(repos={})
+        mock_proc = MagicMock(returncode=0, stdout="", stderr="")
+
+        def _is_dir(self):
+            s = str(self)
+            # .md files are never directories
+            if s.endswith(".md"):
+                return False
+            # dotfiles like .gitkeep are not directories
+            name = self.name
+            if name.startswith(".") and name != ".work-plan" and name != ".git":
+                return False
+            if name == ".git":
+                return True  # .git is a dir
+            if name == ".work-plan":
+                return work_plan_files is not None
+            return True  # everything else is a dir
+
+        def _exists(self):
+            s = str(self)
+            # notes_root always exists
+            if "fake-notes" in s:
+                return True
+            # .git dir exists when local_is_git=True
+            if s.endswith("/.git"):
+                return local_is_git
+            # local clone dir always exists
+            if s.endswith("/clone"):
+                return True
+            return False
+
+        # Build fake iterdir for .work-plan/
+        def _iterdir(self):
+            if work_plan_files is None:
+                return iter([])
+            root = self
+            fake_paths = []
+            for name in work_plan_files:
+                p = root / name
+                fake_paths.append(p)
+            return iter(fake_paths)
+
+        with patch("commands.init_repo.load_config", return_value=cfg), \
+             patch("commands.init_repo.subprocess.run", return_value=mock_proc), \
+             patch("pathlib.Path.exists", _exists), \
+             patch("pathlib.Path.is_dir", _is_dir), \
+             patch("pathlib.Path.iterdir", _iterdir), \
+             patch("pathlib.Path.mkdir"), \
+             patch("pathlib.Path.touch"):
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = init_repo.run(args)
+        return rc, buf.getvalue()
+
+    # ------------------------------------------------------------------
+    # init-repo with existing .work-plan/ containing 3 tracks
+    # ------------------------------------------------------------------
+
+    def test_found_3_shared_tracks_reported(self):
+        """init-repo --local pointing to a git repo with 3 .md tracks in .work-plan/
+        → output includes 'Found 3 shared track(s)'."""
+        rc, out = self._drive_with_local(
+            ["mykey", "--github=org/myrepo", "--local=/tmp/clone"],
+            local_is_git=True,
+            work_plan_files=["alpha.md", "beta.md", "gamma.md"],
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("Found 3 shared track(s)", out)
+
+    def test_readme_excluded_from_shared_track_count(self):
+        """README.md is excluded from the track count; dotfiles are excluded too."""
+        rc, out = self._drive_with_local(
+            ["mykey", "--github=org/myrepo", "--local=/tmp/clone"],
+            local_is_git=True,
+            work_plan_files=["alpha.md", "README.md", ".gitkeep"],
+        )
+        self.assertEqual(rc, 0)
+        # Only alpha.md counts; README.md and .gitkeep are excluded
+        self.assertIn("Found 1 shared track(s)", out)
+
+    # ------------------------------------------------------------------
+    # init-repo with no --local → registration-only fallback
+    # ------------------------------------------------------------------
+
+    def test_no_local_prints_registration_only_fallback(self):
+        """init-repo without --local → 'No valid local clone' message."""
+        rc, out = self._drive_with_local(
+            ["mykey", "--github=org/myrepo"],
+            local_is_git=False,
+            work_plan_files=None,
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("No valid local clone", out)
+
+    # ------------------------------------------------------------------
+    # init-repo with --local pointing to non-git dir
+    # ------------------------------------------------------------------
+
+    def test_local_non_git_dir_prints_registration_only_fallback(self):
+        """--local pointing to a directory that is not a git repo → 'No valid local clone'."""
+        rc, out = self._drive_with_local(
+            ["mykey", "--github=org/myrepo", "--local=/tmp/clone"],
+            local_is_git=False,
+            work_plan_files=None,
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("No valid local clone", out)
+
+
 if __name__ == "__main__":
     unittest.main()

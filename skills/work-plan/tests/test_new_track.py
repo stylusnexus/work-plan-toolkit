@@ -18,6 +18,7 @@ Covers:
 """
 import io
 import json
+import subprocess
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -439,6 +440,170 @@ class NewTrackCommandTest(unittest.TestCase):
                     rc = new_track.run(["myrepo", "my-feature"])
         self.assertEqual(rc, 0)
         mw.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Phase D: --commit flag tests
+# ---------------------------------------------------------------------------
+
+CLONE_ROOT = "/tmp/fake-clone"
+
+
+def _make_cfg_with_local(*, local=CLONE_ROOT):
+    """Config with a repo entry that has a local clone path."""
+    return {
+        "notes_root": NOTES_ROOT,
+        "repos": {
+            "myrepo": {"github": "org/myrepo", "local": local},
+        },
+    }
+
+
+class NewTrackCommitFlagTest(unittest.TestCase):
+    """Tests for --commit flag on new-track (Phase D)."""
+
+    def _drive_shared(self, args, *, git_returncode=0, path_exists=False):
+        """Drive new-track with a shared-tier setup (local clone is a valid git repo)."""
+        cfg = _make_cfg_with_local()
+
+        def _path_exists(self):
+            # NOTES_ROOT itself exists
+            if self == Path(NOTES_ROOT):
+                return True
+            # .git dir inside the clone root exists (valid git repo)
+            if str(self) == f"{CLONE_ROOT}/.git":
+                return True
+            # The clone root itself exists
+            if str(self) == CLONE_ROOT:
+                return True
+            # The target .md path: controlled by path_exists
+            if self.suffix == ".md":
+                return path_exists
+            return True
+
+        def _is_dir(self):
+            s = str(self)
+            if s.endswith(".md"):
+                return False
+            return True
+
+        # git subprocess: first call (rev-parse), then add, then commit
+        git_results = [
+            MagicMock(returncode=0, stdout="main\n", stderr=""),       # rev-parse
+            MagicMock(returncode=git_returncode, stdout="", stderr="error msg"),  # add
+            MagicMock(returncode=git_returncode, stdout="", stderr=""),           # commit
+        ]
+        git_call_index = {"n": 0}
+
+        def _git_run(cmd, **kwargs):
+            idx = git_call_index["n"]
+            git_call_index["n"] += 1
+            if git_returncode != 0 and idx > 0:
+                raise subprocess.CalledProcessError(git_returncode, cmd, stderr="error msg")
+            return git_results[min(idx, len(git_results) - 1)]
+
+        with patch("commands.new_track.load_config", return_value=cfg), \
+             patch("commands.new_track.write_file") as mw, \
+             patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
+             patch("pathlib.Path.exists", _path_exists), \
+             patch("pathlib.Path.is_dir", _is_dir), \
+             patch("pathlib.Path.mkdir"), \
+             patch("commands.new_track.subprocess.run", side_effect=_git_run) as msub:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = new_track.run(args)
+        return rc, mw, msub, buf.getvalue()
+
+    def test_commit_shared_track_calls_git_add_then_commit(self):
+        """--commit on a shared track: git -C <clone_root> add <file> called,
+        then git -C <clone_root> commit called; path-scoped (not git add .)."""
+        rc, mw, msub, out = self._drive_shared(
+            ["myrepo", "my-feature", "--commit"]
+        )
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        # Should have made git calls: rev-parse, add, commit
+        calls = msub.call_args_list
+        # Find the add and commit calls (skip rev-parse at index 0)
+        git_cmds = [c[0][0] for c in calls]
+        add_calls = [c for c in git_cmds if "add" in c]
+        commit_calls = [c for c in git_cmds if "commit" in c]
+        self.assertEqual(len(add_calls), 1, "exactly one git add call expected")
+        self.assertEqual(len(commit_calls), 1, "exactly one git commit call expected")
+        # Verify add is path-scoped (not "git add .")
+        add_argv = add_calls[0]
+        self.assertNotIn(".", add_argv, "git add must be path-scoped, not 'git add .'")
+        self.assertIn("-C", add_argv)
+        # The file argument should end in .md
+        file_arg = add_argv[-1]
+        self.assertTrue(file_arg.endswith(".md"), f"expected .md path, got: {file_arg}")
+        # Commit message should mention the slug
+        commit_argv = commit_calls[0]
+        msg_idx = commit_argv.index("-m") + 1
+        self.assertIn("my-feature", commit_argv[msg_idx])
+
+    def test_commit_shared_track_path_scoped_not_git_add_dot(self):
+        """The git add call must never use '.' as the file argument."""
+        rc, mw, msub, out = self._drive_shared(
+            ["myrepo", "path-scoped-test", "--commit"]
+        )
+        self.assertEqual(rc, 0)
+        git_cmds = [c[0][0] for c in msub.call_args_list]
+        add_calls = [c for c in git_cmds if "add" in c]
+        self.assertEqual(len(add_calls), 1)
+        self.assertNotIn(".", add_calls[0])
+
+    def test_commit_private_track_warns_and_skips_git(self):
+        """--commit on a private track (notes_root, not .work-plan) → warning
+        printed, git NOT called."""
+        cfg = _make_cfg()  # no local clone → private route
+
+        def _path_exists(self):
+            if self == Path(NOTES_ROOT):
+                return True
+            if self.suffix == ".md":
+                return False
+            return True
+
+        with patch("commands.new_track.load_config", return_value=cfg), \
+             patch("commands.new_track.write_file") as mw, \
+             patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
+             patch("pathlib.Path.exists", _path_exists), \
+             patch("pathlib.Path.mkdir"), \
+             patch("commands.new_track.subprocess.run") as msub:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = new_track.run(["myrepo", "private-track", "--commit"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        msub.assert_not_called()
+        self.assertIn("--commit ignored", buf.getvalue())
+
+    def test_commit_git_failure_is_non_fatal(self):
+        """--commit with git add failing → rc still 0, warning printed."""
+        rc, mw, msub, out = self._drive_shared(
+            ["myrepo", "my-feature", "--commit"],
+            git_returncode=1,
+        )
+        self.assertEqual(rc, 0, "git failure must be non-fatal")
+        mw.assert_called_once()
+        self.assertIn("⚠", out)
+
+    def test_no_commit_flag_no_git_calls(self):
+        """Without --commit: git is never called, even for a shared track."""
+        rc, mw, msub, out = self._drive_shared(["myrepo", "my-feature"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        msub.assert_not_called()
+
+    def test_commit_success_prints_committed_line(self):
+        """Successful --commit → output contains 'committed' and the slug."""
+        rc, mw, msub, out = self._drive_shared(
+            ["myrepo", "my-feature", "--commit"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("committed", out)
+        self.assertIn("my-feature", out)
 
 
 if __name__ == "__main__":

@@ -86,6 +86,41 @@ class BuildExportUntrackedTest(unittest.TestCase):
         json.dumps(out)  # must not raise
 
 
+class BuildExportTierFieldTest(unittest.TestCase):
+    """Tests that build_export uses the track's actual tier field."""
+
+    def _build(self, tier_value):
+        """Build a minimal export with a track that has the given tier."""
+        from types import SimpleNamespace
+        t = SimpleNamespace(
+            name="t1",
+            repo="o/r",
+            tier=tier_value,
+            meta={
+                "status": "active",
+                "launch_priority": "P2",
+                "milestone_alignment": "v1",
+                "blockers": [],
+                "next_up": [],
+                "github": {"repo": "o/r", "issues": []},
+            },
+        )
+        out = build_export([t], {}, {"o/r": "PRIVATE"}, now="2026-06-09T00:00")
+        return out["tracks"][0]["tier"]
+
+    def test_tier_shared_exported_as_shared(self):
+        """Track with tier='shared' → export JSON has tier='shared'."""
+        self.assertEqual(self._build("shared"), "shared")
+
+    def test_tier_private_exported_as_private(self):
+        """Track with tier='private' → export JSON has tier='private'."""
+        self.assertEqual(self._build("private"), "private")
+
+    def test_tier_none_exported_as_private(self):
+        """Track with tier=None → export JSON has tier='private' (safe default)."""
+        self.assertEqual(self._build(None), "private")
+
+
 class ExportCommandGateTest(unittest.TestCase):
     def test_requires_json_flag(self):
         self.assertEqual(export_cmd.run([]), 2)
