@@ -2,12 +2,19 @@ name: Publish VS Code Extension
 
 # Publishes vscode/ to the VS Code Marketplace + Open VSX.
 #
-# DORMANT until two repo secrets exist (Settings → Secrets → Actions):
-#   VSCE_PAT   — Azure DevOps PAT with Marketplace > Manage scope (publisher: stylusnexus)
-#   OVSX_TOKEN — open-vsx.org access token (namespace: stylusnexus)
+# Needs two secrets (repo- or org-level Actions secrets on THIS repo):
+#   VSCE_PAT   — Azure DevOps PAT, "All accessible organizations" + Marketplace > Manage
+#                (the stylusnexus Marketplace publisher must already exist)
+#   OVSX_TOKEN — open-vsx.org access token (stylusnexus namespace; Eclipse agreement signed)
 #
 # Trigger by publishing a GitHub Release, or run manually with dry_run=true to
 # build + validate the VSIX without publishing.
+#
+# Design: build once, then publish to each registry in its OWN job. The two
+# registries are INDEPENDENT — a failure (or a transient outage) on one never
+# blocks or half-completes the other, and either can be re-run on its own. The
+# Marketplace publish uses --skip-duplicate so re-running an already-published
+# version is a clean no-op rather than a hard failure.
 on:
   release:
     types: [published]
@@ -19,43 +26,80 @@ on:
         default: true
 
 jobs:
-  publish:
-    name: package · publish (Marketplace + Open VSX)
+  package:
+    name: build · test · package VSIX
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: vscode
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: vscode/package-lock.json
-
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npm run package
-
-      - name: Publish to VS Code Marketplace
-        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
-        run: npm run publish:vsce
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      - name: Publish to Open VSX
-        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
-        run: npm run publish:ovsx
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_TOKEN }}
-
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
           name: work-plan-viewer-vsix
           path: vscode/work-plan-viewer.vsix
           if-no-files-found: error
+
+  marketplace:
+    name: publish · VS Code Marketplace
+    needs: package
+    if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: work-plan-viewer-vsix
+          path: vscode
+      - name: Publish to VS Code Marketplace
+        run: npm run publish:vsce
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+  open-vsx:
+    name: publish · Open VSX
+    needs: package
+    if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: work-plan-viewer-vsix
+          path: vscode
+      - name: Publish to Open VSX
+        run: npm run publish:ovsx
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_TOKEN }}
