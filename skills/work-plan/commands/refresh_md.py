@@ -64,7 +64,8 @@ def _refresh_many(tracks: list, yes: bool) -> int:
     """Refresh one or more tracks. Computes proposed updates, then asks one
     confirmation (or applies all if --yes)."""
     pending = []
-    for track in tracks:
+    for i, track in enumerate(tracks, 1):
+        print(f"  [{i}/{len(tracks)}] {track.path.name}...", flush=True)
         canonical = find_canonical_status_tables(track.body)
         all_tables = find_all_status_tables(track.body)
         tables = canonical if canonical else all_tables
