@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, read/write over your tracks. Surfaces shared tracks (git-synced .work-plan/) and private tracks side by side.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -217,6 +217,20 @@
           "type": "boolean",
           "default": false,
           "description": "Expand all repo groups in the Tracks view on load. Off by default (repos start collapsed); a single-repo workspace always expands."
+        },
+        "workPlan.autoRefreshInterval": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "enum": [0, 30, 60, 300, 900],
+          "enumDescriptions": [
+            "Off — manual refresh only",
+            "Every 30 seconds",
+            "Every minute",
+            "Every 5 minutes",
+            "Every 15 minutes"
+          ],
+          "description": "Auto-refresh interval in seconds (0 = off). Silently re-polls the CLI in the background — useful when teammates are pushing shared-track changes."
         }
       }
     }
