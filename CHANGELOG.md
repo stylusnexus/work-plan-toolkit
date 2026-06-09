@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+530f7e8 — 2026-06-09 (#158)
+
+feat(batch-slot,tracks,vscode): batch-slot command + archived-track dedup
+
+## Deploy to production
+
+**Commits in this deploy:**
+- e2a14dd feat(batch-slot,tracks): batch-slot command + archived-track dedup (#131, #140) (#157)
+
+**Files changed:** 8 files, +657 / -8
+
+- `skills/work-plan/commands/batch_slot.py` — new `batch-slot` subcommand (slot multiple issues at once)
+- `skills/work-plan/lib/tracks.py` — archived-track dedup logic
+- `skills/work-plan/tests/test_batch_slot.py` — 291-line test suite for batch-slot
+- `skills/work-plan/tests/test_tracks.py` — archived-track dedup tests
+- `skills/work-plan/work_plan.py` — subcommand registration
+- `vscode/package.json` + `vscode/src/extension.ts` + `vscode/src/write.ts` — VS Code extension support
+
+**CI:** 587 tests pass · vscode typecheck clean
+
 ## 2026.06.09+a6f1298 — 2026-06-09 (#156)
 
 chore(npm): add version_suffix input for same-day republish
