@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+ac8a3d7 — 2026-06-09 (#150)
+
+docs(readme,skill): clarify refresh-md and hygiene, add read-only callout, vscode README v0.2.0
+
+## Summary
+
+- **SKILL.md + README.md**: rewrote `refresh-md` guidance — removed "you usually don't need this" framing; it's the right tool to run after closing issues. Expanded `hygiene` description to enumerate all three steps (refresh-md + reconcile + duplicates).
+- **README.md + vscode/README.md**: added explicit GitHub read-only callout — the toolkit never writes to GitHub; all writes are local markdown files only.
+- **vscode/README.md**: added `workPlan.autoRefreshInterval` to the configuration table; bumped Status line from v0.1.0 → v0.2.0 with feature summary.
+
+## Commits
+
+- docs: clarify refresh-md vs hygiene, add read-only callout, vscode README v0.2.0 (#149)
+
+## Test plan
+- [ ] README.md hygiene row enumerates all 3 steps
+- [ ] SKILL.md refresh-md row says "run after closing issues"
+- [ ] vscode/README.md config table includes autoRefreshInterval
+- [ ] Read-only GitHub note present in both READMEs
+- [ ] Status line in vscode/README.md reads v0.2.0
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.09+5d07d27 — 2026-06-09 (#148)
 
 feat(viewer): auto-refresh, shared-track tier badge, welcome fix + README settings table
