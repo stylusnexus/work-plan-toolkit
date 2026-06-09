@@ -378,5 +378,140 @@ class WhereWasINoSessionLogCase(unittest.TestCase):
         self.assertIn("Last session: (none yet)", out)
 
 
+class OrientRepoFlagTest(unittest.TestCase):
+    """orient command --repo=<key> and track@repo disambiguation."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.notes_root = Path(self.tmp.name) / "notes_root"
+        self.notes_root.mkdir(parents=True)
+        # Create two tracks with the same slug in different repos
+        for folder in ("repo-a", "repo-b"):
+            repo_dir = self.notes_root / folder
+            repo_dir.mkdir(parents=True)
+            _make_track_file(repo_dir, slug="feat-x")
+
+        self.cfg = {
+            "notes_root": str(self.notes_root),
+            "repos": {
+                "repo-a": {"github": "org/repo-a"},
+                "repo-b": {"github": "org/repo-b"},
+            },
+        }
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _drive(self, args, *, find_result=None):
+        """Drive orient.run() with load_config mocked. If find_result is None
+        (the normal case), discover_tracks runs for real against tmp files.
+        When find_result is an Exception, we mock find_track_by_name."""
+        patches = [
+            mock.patch("commands.where_was_i.load_config", return_value=self.cfg),
+            mock.patch("commands.where_was_i.fetch_issues", return_value=[]),
+            mock.patch("commands.where_was_i.find_new_issues_for_tracks",
+                       return_value={}),
+            mock.patch("commands.where_was_i.current_branch", return_value=None),
+            mock.patch("commands.where_was_i.commits_ahead", return_value=0),
+            mock.patch("commands.where_was_i.uncommitted_file_count", return_value=0),
+        ]
+        if find_result is not None:
+            patches.append(
+                mock.patch("commands.where_was_i.find_track_by_name",
+                           side_effect=find_result
+                           if isinstance(find_result, Exception)
+                           else None,
+                           return_value=find_result
+                           if not isinstance(find_result, Exception)
+                           else None)
+            )
+
+        for p in patches:
+            p.start()
+
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = where_was_i.run(args)
+            return rc, buf.getvalue()
+        finally:
+            for p in patches:
+                p.stop()
+
+    def test_repo_flag_passed_to_find_track(self):
+        """--repo=<key> is passed as repo= kwarg to find_track_by_name."""
+        find_mock = mock.MagicMock()
+        find_mock.return_value = None  # We just care about how it was called
+
+        patches = [
+            mock.patch("commands.where_was_i.load_config", return_value=self.cfg),
+            mock.patch("commands.where_was_i.find_track_by_name", find_mock),
+            mock.patch("commands.where_was_i.discover_tracks", return_value=[]),
+            mock.patch("commands.where_was_i.fetch_issues", return_value=[]),
+            mock.patch("commands.where_was_i.find_new_issues_for_tracks",
+                       return_value={}),
+            mock.patch("commands.where_was_i.current_branch", return_value=None),
+            mock.patch("commands.where_was_i.commits_ahead", return_value=0),
+            mock.patch("commands.where_was_i.uncommitted_file_count", return_value=0),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                where_was_i.run(["feat-x", "--repo=repo-a"])
+        finally:
+            for p in patches:
+                p.stop()
+
+        call_kwargs = find_mock.call_args.kwargs
+        self.assertEqual(call_kwargs.get("repo"), "repo-a")
+
+    def test_at_syntax_passed_to_find_track(self):
+        """feat-x@repo-a positional → repo='repo-a' passed to find_track_by_name."""
+        find_mock = mock.MagicMock()
+        find_mock.return_value = None
+
+        patches = [
+            mock.patch("commands.where_was_i.load_config", return_value=self.cfg),
+            mock.patch("commands.where_was_i.find_track_by_name", find_mock),
+            mock.patch("commands.where_was_i.discover_tracks", return_value=[]),
+            mock.patch("commands.where_was_i.fetch_issues", return_value=[]),
+            mock.patch("commands.where_was_i.find_new_issues_for_tracks",
+                       return_value={}),
+            mock.patch("commands.where_was_i.current_branch", return_value=None),
+            mock.patch("commands.where_was_i.commits_ahead", return_value=0),
+            mock.patch("commands.where_was_i.uncommitted_file_count", return_value=0),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                where_was_i.run(["feat-x@repo-a"])
+        finally:
+            for p in patches:
+                p.stop()
+
+        call_kwargs = find_mock.call_args.kwargs
+        self.assertEqual(call_kwargs.get("repo"), "repo-a")
+
+    def test_ambiguous_error_returns_rc1(self):
+        """AmbiguousTrackError → prints message, returns 1."""
+        from lib.tracks import Track, AmbiguousTrackError
+
+        t1 = Track(path=Path("/tmp/fake/repo-a/feat-x.md"), name="feat-x",
+                   has_frontmatter=True, needs_init=False, needs_filing=False,
+                   repo="org/a", folder="repo-a", meta={"track": "feat-x", "status": "active"})
+        t2 = Track(path=Path("/tmp/fake/repo-b/feat-x.md"), name="feat-x",
+                   has_frontmatter=True, needs_init=False, needs_filing=False,
+                   repo="org/b", folder="repo-b", meta={"track": "feat-x", "status": "active"})
+        err = AmbiguousTrackError("feat-x", [t1, t2])
+
+        rc, out = self._drive(["feat-x"], find_result=err)
+        self.assertEqual(rc, 1)
+        self.assertIn("ambiguous", out.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
