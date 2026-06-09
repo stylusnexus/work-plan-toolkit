@@ -14,6 +14,7 @@ verbs. It exercises both the default-label path (no `github.labels`
 override) and the new override path from #32.
 """
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -158,6 +159,78 @@ class ReadOnlyContractTest(unittest.TestCase):
         )
         self.assertEqual(rc, 0)
         self._assert_read_only(captured)
+        mock_prompt.assert_not_called()
+        mock_write.assert_not_called()
+
+
+    def test_timeout_skips_track_but_continues_others(self):
+        # When _fetch_labeled_issues raises TimeoutExpired for one track, the
+        # track is skipped with a ⚠ warning and the rest of --all continues.
+        # Verifies: no crash, warning printed, other tracks still processed.
+        track_alpha = _fake_track(slug="alpha", repo="ok/ok", issues=[1])
+        track_beta = _fake_track(slug="beta", repo="ok/ok", issues=[10])
+
+        captured = []
+        timed_out_labels = set()
+
+        def fake_run(argv, *args, **kwargs):
+            captured.append(list(argv))
+            # alpha's default label is "track/alpha" — time it out
+            if "--label" in argv:
+                label_idx = argv.index("--label") + 1
+                label = argv[label_idx]
+                if label == "track/alpha":
+                    timed_out_labels.add(label)
+                    raise subprocess.TimeoutExpired(cmd=argv, timeout=15)
+            return MagicMock(
+                returncode=0,
+                stdout=json.dumps([{"number": 10, "title": "x", "state": "OPEN"}]),
+                stderr="",
+            )
+
+        cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/ok"}}}
+        with patch("commands.reconcile.subprocess.run", side_effect=fake_run), \
+             patch("commands.reconcile.load_config", return_value=cfg), \
+             patch("commands.reconcile.discover_tracks",
+                   return_value=[track_alpha, track_beta]), \
+             patch("commands.reconcile.prompt_input",
+                   return_value="n") as mock_prompt, \
+             patch("commands.reconcile.write_file") as mock_write:
+            rc = reconcile.run(["--all"])
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(timed_out_labels, "alpha label should have timed out")
+        # Beta's gh calls should have succeeded
+        beta_calls = [a for a in captured
+                      if "--label" in a and a[a.index("--label") + 1] == "track/beta"]
+        self.assertTrue(len(beta_calls) > 0,
+                        "beta should have been fetched after alpha timeout")
+        mock_write.assert_not_called()
+
+    def test_single_track_timeout_skips_cleanly(self):
+        # Even with a single track (the non-parallel code path), a timeout
+        # should skip the track with a warning and return 0 without crashing.
+        track = _fake_track(slug="lonely", repo="ok/ok", issues=[7])
+
+        captured = []
+        timed_out = False
+
+        def fake_run(argv, *args, **kwargs):
+            captured.append(list(argv))
+            nonlocal timed_out
+            timed_out = True
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=15)
+
+        cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/ok"}}}
+        with patch("commands.reconcile.subprocess.run", side_effect=fake_run), \
+             patch("commands.reconcile.load_config", return_value=cfg), \
+             patch("commands.reconcile.discover_tracks", return_value=[track]), \
+             patch("commands.reconcile.prompt_input") as mock_prompt, \
+             patch("commands.reconcile.write_file") as mock_write:
+            rc = reconcile.run(["lonely"])
+
+        self.assertEqual(rc, 0)
+        self.assertTrue(timed_out)
         mock_prompt.assert_not_called()
         mock_write.assert_not_called()
 

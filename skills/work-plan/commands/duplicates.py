@@ -23,10 +23,12 @@ def run(args: list[str]) -> int:
     threshold_arg = next((a for a in args if a.startswith("--min-similarity=")), None)
     limit_arg = next((a for a in args if a.startswith("--limit=")), None)
     state_arg = next((a for a in args if a.startswith("--state=")), None)
+    timeout_arg = next((a for a in args if a.startswith("--timeout=")), None)
 
     threshold = float(threshold_arg.split("=", 1)[1]) if threshold_arg else 0.70
     limit = int(limit_arg.split("=", 1)[1]) if limit_arg else 20
     state = state_arg.split("=", 1)[1] if state_arg else "open"
+    gh_timeout = int(timeout_arg.split("=", 1)[1]) if timeout_arg else 30
 
     try:
         cfg = load_config()
@@ -49,12 +51,17 @@ def run(args: list[str]) -> int:
     repo = cfg["repos"][folder]["github"]
 
     print(f"Fetching {state} issues from {repo}...")
-    proc = subprocess.run(
-        ["gh", "issue", "list", "--repo", repo,
-         "--state", state, "--limit", "1000",
-         "--json", "number,title,url"],
-        capture_output=True, text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "list", "--repo", repo,
+             "--state", state, "--limit", "1000",
+             "--json", "number,title,url"],
+            capture_output=True, text=True,
+            timeout=gh_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"ERROR: gh issue list timed out after {gh_timeout}s")
+        return 1
     if proc.returncode != 0:
         print(f"ERROR fetching issues: {proc.stderr}")
         return 1
@@ -69,17 +76,23 @@ def run(args: list[str]) -> int:
 
     # Pairwise similarity (O(n²) but fine for n<=1000)
     pairs = []
-    for idx_a in range(len(normalized)):
+    total = len(normalized)
+    tick_interval = max(1, total // 10)
+    for idx_a in range(total):
+        if idx_a % tick_interval == 0:
+            print(f"  ... {idx_a}/{total} compared", end="\r", flush=True)
         a, norm_a = normalized[idx_a]
         if len(norm_a) < 5:
             continue
-        for idx_b in range(idx_a + 1, len(normalized)):
+        for idx_b in range(idx_a + 1, total):
             b, norm_b = normalized[idx_b]
             if len(norm_b) < 5:
                 continue
             ratio = SequenceMatcher(None, norm_a, norm_b).ratio()
             if ratio >= threshold:
                 pairs.append((ratio, a, b))
+
+    print()  # clear the \r progress line
 
     pairs.sort(key=lambda x: -x[0])
     pairs = pairs[:limit]

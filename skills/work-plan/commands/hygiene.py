@@ -14,10 +14,14 @@ is per-repo, so:
     that repo;
   - when --repo is absent and config has multiple repos, it's skipped cleanly
     (rather than letting duplicates exit non-zero on the ambiguous case).
+
+Pass --timeout=N to set the gh subprocess timeout for the duplicates step
+(default 30s).
 """
 from commands import refresh_md, reconcile, duplicates
 from lib.config import load_config, ConfigError
 from lib.prompts import parse_flags
+import time
 
 
 def _resolve_repo_folder(repo_key: str, cfg: dict):
@@ -35,16 +39,28 @@ def _resolve_repo_folder(repo_key: str, cfg: dict):
 
 
 def run(args: list[str]) -> int:
-    flags, _ = parse_flags(args, {"--yes", "--no-duplicates", "--repo"})
+    flags, _ = parse_flags(args, {"--yes", "--no-duplicates", "--repo", "--timeout"})
     skip_dups = flags.get("--no-duplicates", False)
     yes = flags.get("--yes", False)
     repo_key = flags.get("--repo")
     if repo_key is True:
-        print("usage: work_plan.py hygiene [--yes] [--no-duplicates] [--repo=<key>]")
+        print("usage: work_plan.py hygiene [--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]")
+        return 2
+
+    gh_timeout = None
+    raw_timeout = flags.get("--timeout")
+    if raw_timeout is not None and raw_timeout is not True:
+        try:
+            gh_timeout = int(raw_timeout)
+        except ValueError:
+            print(f"WARNING: invalid --timeout value '{raw_timeout}'; using default")
+    elif raw_timeout is True:
+        print("usage: work_plan.py hygiene [--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]")
         return 2
 
     scope_label = f" --repo={repo_key}" if repo_key else " --all"
 
+    t0 = time.time()
     print("=" * 60)
     print(f"WEEKLY HYGIENE — step 1 of 3: refresh-md{scope_label}")
     print("=" * 60)
@@ -54,7 +70,9 @@ def run(args: list[str]) -> int:
     rc = refresh_md.run(refresh_args)
     if rc != 0:
         print(f"\n⚠ refresh-md exited with code {rc}; continuing.")
+    print(f"  (step 1 took {time.time() - t0:.1f}s)")
 
+    t1 = time.time()
     print()
     print("=" * 60)
     print(f"WEEKLY HYGIENE — step 2 of 3: reconcile{scope_label}")
@@ -63,12 +81,14 @@ def run(args: list[str]) -> int:
     rc = reconcile.run(reconcile_args)
     if rc != 0:
         print(f"\n⚠ reconcile exited with code {rc}; continuing.")
+    print(f"  (step 2 took {time.time() - t1:.1f}s)")
 
     if skip_dups:
         print()
         print("(skipping duplicates per --no-duplicates)")
         return 0
 
+    t2 = time.time()
     print()
     print("=" * 60)
     print("WEEKLY HYGIENE — step 3 of 3: duplicates")
@@ -94,11 +114,15 @@ def run(args: list[str]) -> int:
         return 0
     # else: 0 or 1 repos → duplicates handles both (errors / single-repo auto-pick)
 
+    if gh_timeout is not None:
+        dupes_args.append(f"--timeout={gh_timeout}")
+
     rc = duplicates.run(dupes_args)
     if rc != 0:
         print(f"\n⚠ duplicates exited with code {rc}.")
+    print(f"  (step 3 took {time.time() - t2:.1f}s)")
 
     print()
-    print("✓ Weekly hygiene complete. Review the duplicate candidates above and "
+    print(f"✓ Weekly hygiene complete ({time.time() - t0:.1f}s total). Review the duplicate candidates above and "
           "consolidate any real dupes via `gh issue close`.")
     return 0
