@@ -6,6 +6,22 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+a6f1298 — 2026-06-09 (#156)
+
+chore(npm): add version_suffix input for same-day republish
+
+## Summary
+
+- Adds optional `version_suffix` input to `npm-publish.yml` (e.g. `"-1"` → publishes `2026.6.9-1`)
+- Allows same-day npm republish when the CalVer semver is already taken, without changing the VERSION file
+- Used immediately after creation to publish `@stylusnexus/work-plan@2026.6.9-1` (CLI improvements from #151/#152 that landed after today's first npm publish)
+
+## Migrations
+
+None.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.09+f7e5ff5 — 2026-06-09 (#155)
 
 feat(reconcile,hygiene): parallel gh fetches, per-call timeouts, progress indicators
