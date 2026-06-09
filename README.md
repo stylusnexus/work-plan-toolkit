@@ -7,7 +7,23 @@
 
 Track-aware daily work planning for developers running parallel Claude Code / Codex sessions across many GitHub issues.
 
-`work-plan` is a CLI-backed agent skill (a pure-Python-stdlib CLI + `SKILL.md`). It treats your daily work as a set of *tracks* — each track is a markdown file with YAML frontmatter listing its priority, milestone, GitHub issue numbers, and current status. The skill derives state live from GitHub (`gh`), git, and the markdown body, so the markdown stays light (it references issues by ID rather than duplicating their state).
+## What this is
+
+A daily work-planning system for developers running parallel AI sessions across many GitHub issues. It's made of three things: a pure-Python stdlib CLI, a set of YAML-frontmattered markdown files ("tracks"), and a `SKILL.md` that tells your AI how to use the CLI. Together they give you and your agent a shared, live picture of what's in flight — without asking you to maintain it manually.
+
+**Installs as a plugin** for Claude Code and Codex (see [Quick install](#quick-install) for the exact commands), as an npm global for any editor or terminal (`npm install -g @stylusnexus/work-plan`), and as a VS Code extension (search "Work Plan", publisher `stylusnexus`).
+
+The system derives state *live* from GitHub (`gh`), `git`, and your track files on every run — nothing is mirrored or cached. AI sessions get a paste-ready context block; you stay oriented even when switching between a dozen parallel workstreams.
+
+**Why it exists:** born from the frustration of building detailed plans that die the moment you open a new agent session and start over. Inspired by [Andrej Karpathy's notes on vibe coding](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and the specific pain of doing enthusiastic work on the wrong thing.
+
+## What this is not
+
+- **Not a Jira / Linear / GitHub Projects replacement.** It doesn't manage sprints, roadmaps, or capacity planning — it helps *you and your AI agent* stay oriented on GitHub issues you already have.
+- **Not a standalone issue tracker.** GitHub is canonical; `work-plan` just reads and references it.
+- **Not zero-setup.** Requires Python 3.9+, the `gh` GitHub CLI (authenticated), and `yq` (the Go version, not the Python one).
+- **Not a background service.** No daemon, no cache, no sync loop — `git pull` is the sync mechanism for shared tracks.
+- **Not a replacement for reading your code.** It tells you *what* to work on and *where you left off* — not what the code does.
 
 ## Quick install
 
