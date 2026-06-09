@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.09+f3bc861 — 2026-06-09 (#128)
+
+feat: npm CLI distribution + launcher PATH fix + extension v0.1.1 (screenshots, docs)
+
+Production deploy bundling the post-launch polish: npm distribution for the CLI, the GUI-PATH launcher fix, expanded docs, and the assets/version bump for the extension's `0.1.1` listing refresh.
+
+## CLI — npm distribution
+- **`@stylusnexus/work-plan` npm package** (root `package.json` + `scripts/npm-check-deps.js`): ships the Python CLI + launcher so `npm install -g @stylusnexus/work-plan` works (no repo clone). `files`-whitelisted (488 kB, no leaks); pure Python still, no build step. Plus `.github/workflows/npm-publish.yml` (CalVer→semver, `--access public`, `NPM_TOKEN`).
+- **Launcher GUI-PATH fix** (`bin/work-plan`): GUI editors (VS Code from Finder/Dock) inherit a stripped PATH without Homebrew, so the CLI's `yq`/`gh` lookups failed and the viewer showed an empty tree. The launcher now prepends `/opt/homebrew/bin:/usr/local/bin`, and resolves symlinks (so the npm global-bin symlink finds its Python). Verified under a simulated minimal PATH.
+
+## Extension — v0.1.1 listing refresh
+- **Six listing screenshots** (sidebar, dependency graph, public-repo modal, Untracked bucket, onboarding, command menu) + the README `Screenshots` section.
+- **Expanded docs**: a real **Commands & controls** section explaining every command plus **filtering** (Select View lenses) and **sorting**; an **Install** section; status → published.
+- **Independent per-registry publish jobs + `--skip-duplicate`** (the resilient `vscode-publish.yml`).
+- Version bumped to **0.1.1**.
+
+## Top-level README
+- `npm install -g` path in Quick install + the per-platform table; a **VS Code extension** section (Marketplace/Open VSX + cliPath); an **Updating** table; a hero screenshot.
+
+After merge: run **npm-publish** (first `@stylusnexus/work-plan` release) and **vscode-publish** (extension `0.1.1`, now with screenshots).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.09+8c10fe0 — 2026-06-09 (#124)
 
 ci(vscode): Node CI job + Marketplace/Open VSX publish scaffolding (#87 Phase 4)
