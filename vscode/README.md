@@ -56,11 +56,40 @@ A loading bar shows while the CLI fetch runs, and concurrent refreshes are coale
 - The `work-plan` CLI must be on your `PATH` (or set `workPlan.cliPath`). The extension checks the CLI version at activation and points you at an update if it's too old to have the read/write surface it needs.
 - VS Code 1.90.0 or later.
 
-## Commands
+## Commands & controls
 
-Available from the tree (right-click a track / the view's `⋯` overflow) and the command palette:
+Every action runs the CLI under the hood. Commands live where they're relevant — the **title bar** (icons + the `⋯` overflow), a **track's right-click** menu, and the **command palette**.
 
-`Refresh` · `Select View` (lens) · `Sort Tracks` · `Edit Track Fields` · `Set Next-Up` · `Slot Issue into Track` · `Close Track` · `Refresh Track Body` · `Reconcile (preview)` · `Run Hygiene` · `New Track` · `Add Repo` · `Set Notes Location` · `Slot Untracked Issue into Track`.
+### View controls — filtering & sorting (title bar)
+
+| Control | What it does |
+|---|---|
+| **Refresh** (↻) | Re-fetch live state from the CLI and redraw the tree + graph. |
+| **Select View** (filter icon) | **Filter** the tree *and* graph by a lens: a **single repo**, a **milestone**, or **only blocked tracks**. Choose "All tracks" to clear the filter. |
+| **Sort Tracks** | **Order** tracks within each repo: **Default** (discovery order), **Blocked first**, **Most open**, or **Name (A–Z)**. |
+
+### Track actions (right-click a track)
+
+| Command | What it does |
+|---|---|
+| **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
+| **Set Next-Up** | Set the ordered next-up issue list for the track. |
+| **Slot Issue into Track** | Add a GitHub issue number to the track. |
+| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
+| **Refresh Track Body** | Re-sync the track's status table from live GitHub state. |
+| **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
+| **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |
+
+### Create & setup (the `⋯` overflow)
+
+| Command | What it does |
+|---|---|
+| **New Track** | Create a new track for a repo (pick the repo + a slug). |
+| **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. |
+| **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
+| **Run Hygiene** | Sweep refresh + reconcile across all tracks at once. |
+
+Before any write into a **public** (or unknown-visibility) repo, a **"Write anyway / Keep private"** modal appears — the public-repo leak guard, surfaced as a dialog. Private repos write straight through.
 
 ## Configuration
 
