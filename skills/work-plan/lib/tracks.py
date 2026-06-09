@@ -117,21 +117,45 @@ def find_track_by_name(
 
 def discover_archived_tracks(cfg: dict) -> list[Track]:
     """Walk notes_root for archived .md files, and also scan each repo's
-    .work-plan/archive/ for shared archived tracks."""
+    .work-plan/archive/ for shared archived tracks.
+
+    Deduplicates by (repo, name): shared wins over private, same as
+    discover_tracks for active tracks.
+    """
     notes_root = Path(cfg["notes_root"]).expanduser()
-    out = []
+    private_archived: list[Track] = []
     if notes_root.exists():
         for md_path in sorted(notes_root.rglob("*.md")):
             if "archive" not in md_path.parts:
                 continue
             if md_path.name.startswith((".", "_")):
                 continue
-            out.append(_build_track(md_path, notes_root, cfg))
+            private_archived.append(_build_track(md_path, notes_root, cfg))
 
-    # Also scan shared repos' .work-plan/archive/
-    out.extend(_discover_shared_tracks(cfg, include_archive=True,
-                                        archive_only=True))
-    return out
+    shared_archived = _discover_shared_tracks(cfg, include_archive=True,
+                                              archive_only=True)
+
+    # Build lookup for shared tracks keyed by (repo, name)
+    shared_keys: dict = {}
+    for t in shared_archived:
+        key = (t.repo, t.name)
+        shared_keys[key] = t
+
+    # Merge: shared wins on collision
+    merged = list(shared_archived)
+    for t in private_archived:
+        key = (t.repo, t.name)
+        if key in shared_keys:
+            print(
+                f"WARN: archived track {t.name!r} (repo={t.repo!r}) exists in"
+                f" both shared ({shared_keys[key].path}) and private"
+                f" ({t.path}); using shared.",
+                file=sys.stderr,
+            )
+        else:
+            merged.append(t)
+
+    return merged
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ SUBCOMMANDS = {
     "orient": "commands.where_was_i",
     "--orient": "commands.where_was_i",   # flag-style alias
     "slot": "commands.slot",
+    "batch-slot": "commands.batch_slot",
     "close": "commands.close",
     "refresh-md": "commands.refresh_md",
     "list": "commands.list_cmd",
@@ -72,6 +73,10 @@ DESCRIPTIONS = [
      "Add a GitHub issue to a track's frontmatter. If the issue is already in another active track in the same repo, prompts to move it (remove from source) rather than duplicate. Use --repo=<key> or track@repo to disambiguate when the same track slug exists in multiple repos.",
      "When a new GitHub issue is filed and you want it associated with a track — or when an existing issue was relabeled and needs to move tracks.",
      "/work-plan slot 4234 tabletop"),
+    ("batch-slot", "<issue-num>... <track | track@repo> [--repo=<key>] [--move|--no-move]",
+     "Slot multiple GitHub issues into a track at once. The last positional argument is the track; everything before it is an issue number. Skips issues already in the track. Use --move to remove issues from any prior owning tracks.",
+     "After bulk-triage with auto-triage or group — when several issues need the same track assignment.",
+     "/work-plan batch-slot 100 101 102 tabletop --move"),
     ("close", "<track | track@repo> [--repo=<key>]",
      "Retire a track: shipped / parked / abandoned. Moves to archive/. Use --repo=<key> or track@repo to disambiguate when the same track slug exists in multiple repos.",
      "When a track is done, paused, or won't ship — frees mental space.",

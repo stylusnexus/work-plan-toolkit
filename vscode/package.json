@@ -115,6 +115,10 @@
       {
         "command": "workPlan.slotUntracked",
         "title": "Work Plan: Slot Untracked Issue into Track"
+      },
+      {
+        "command": "workPlan.batchSlotUntracked",
+        "title": "Work Plan: Batch Slot Untracked Issues into Track"
       }
     ],
     "menus": {
@@ -190,11 +194,20 @@
           "command": "workPlan.slotUntracked",
           "when": "view == workPlan.tree && viewItem == workPlanUntrackedIssue",
           "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.batchSlotUntracked",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
+          "group": "1_workPlanWrite@1"
         }
       ],
       "commandPalette": [
         {
           "command": "workPlan.slotUntracked",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.batchSlotUntracked",
           "when": "false"
         }
       ]
