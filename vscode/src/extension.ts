@@ -894,6 +894,40 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // Auto-refresh — polls export --json on the configured interval.
+  // Silent: errors go to console only (no toast on background failures).
+  // -------------------------------------------------------------------------
+
+  let autoRefreshDisposable: vscode.Disposable | undefined;
+
+  const restartAutoRefresh = (): void => {
+    autoRefreshDisposable?.dispose();
+    autoRefreshDisposable = undefined;
+    const intervalSecs = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<number>("autoRefreshInterval", 0);
+    if (intervalSecs > 0) {
+      const handle = setInterval(() => {
+        refreshAndRerender().catch((err: unknown) => {
+          console.error("Work Plan: auto-refresh failed:", err);
+        });
+      }, intervalSecs * 1000);
+      autoRefreshDisposable = new vscode.Disposable(() => clearInterval(handle));
+      context.subscriptions.push(autoRefreshDisposable);
+    }
+  };
+
+  restartAutoRefresh();
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.autoRefreshInterval")) {
+        restartAutoRefresh();
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // On activation: kick off initial data load + version check.
   // NEVER throw out of activate — all async work has its own catch.
   // -------------------------------------------------------------------------
