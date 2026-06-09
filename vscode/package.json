@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, and full read/write over your work-plan tracks.",
   "license": "MIT",
   "icon": "media/icon.png",
