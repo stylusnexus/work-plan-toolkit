@@ -52,7 +52,7 @@ The five essentials you'll use 80% of the time are:
 | `/work-plan handoff <track>` | End of a work block. Captures what you touched. Use `--auto-next` for an algorithmic priority-sorted `next_up` (no LLM), `--set-next 1,2,3` for explicit numbers, or pair with Claude in chat for a curated pick. |
 | `/work-plan orient <track>` | Switching context. ~15-line paste-block of priority / last session / next pick / git state — drop into a fresh Claude Code terminal. |
 | `/work-plan reconcile <track> \| --all \| --repo=<key> [--draft]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. `--draft` previews proposed ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. |
-| `/work-plan hygiene [--repo=<key>]` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. `--repo=<key>` scopes steps 1–2 to one repo (duplicates is global, so it's skipped in scoped mode). |
+| `/work-plan hygiene [--repo=<key>]` | **Weekly all-in-one cleanup.** Runs three steps: ① `refresh-md --all` (pull live GitHub state into every active track's status table), ② `reconcile --all` (sync frontmatter membership against GitHub labels), ③ `duplicates` (flag likely-duplicate issues). `--repo=<key>` scopes steps ① and ② to one repo; step ③ is skipped in scoped mode. |
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), and one-time priority-label backfill. Three capabilities worth calling out explicitly:
 
@@ -106,7 +106,10 @@ flowchart TB
   - Free-form via Claude in your agent session, which can review project memory and write a curated list back. The two `--*-next` flags are the no-LLM paths.
   - For tracks where you don't want to bother curating at all, set `next_up_auto: true` in the track's frontmatter — `brief` will then derive the list live each invocation, ignoring whatever's stored.
 - **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.
-> **When does the body status table get refreshed?** `handoff` already rewrites the ✅/🔲 icons for its own track on every run (live `gh` fetch → `update_row_status`). `brief` reads GitHub state live and never relies on the body table, so it's always accurate. The only drift `refresh-md` exists to fix is *cross-track*: a track you haven't `handoff`'d recently whose icons fell behind because issues moved while you were heads-down on a sibling track. That's why `hygiene --all` sweeps it weekly.
+
+> **When should I run `refresh-md`?** Any time you close or merge issues and want the track body to reflect the new state. `handoff` rewrites the status table for one track on every run, but `brief` reads GitHub live without writing anything back — so a track you haven't `handoff`'d recently stays stale on disk. `refresh-md <track>` (or **Refresh Track Body** in VS Code) fixes that on-demand; `hygiene` sweeps all tracks weekly.
+
+> **GitHub access is read-only.** The toolkit never writes to GitHub. All issue data comes from read-only `gh` CLI calls (`gh issue list`, `gh issue view`). Every write (frontmatter, status table, session log) goes to your local markdown files only.
 
 ## Shared tracks
 
