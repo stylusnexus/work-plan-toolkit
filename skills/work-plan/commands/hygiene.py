@@ -70,7 +70,7 @@ def run(args: list[str]) -> int:
     rc = refresh_md.run(refresh_args)
     if rc != 0:
         print(f"\n⚠ refresh-md exited with code {rc}; continuing.")
-    print(f"  (step 1 took {time.time() - t0:.1f}s)")
+    print(f"  (step 1/3 done in {time.time() - t0:.1f}s)")
 
     t1 = time.time()
     print()
@@ -81,7 +81,7 @@ def run(args: list[str]) -> int:
     rc = reconcile.run(reconcile_args)
     if rc != 0:
         print(f"\n⚠ reconcile exited with code {rc}; continuing.")
-    print(f"  (step 2 took {time.time() - t1:.1f}s)")
+    print(f"  (step 2/3 done in {time.time() - t1:.1f}s)")
 
     if skip_dups:
         print()
@@ -120,7 +120,7 @@ def run(args: list[str]) -> int:
     rc = duplicates.run(dupes_args)
     if rc != 0:
         print(f"\n⚠ duplicates exited with code {rc}.")
-    print(f"  (step 3 took {time.time() - t2:.1f}s)")
+    print(f"  (step 3/3 done in {time.time() - t2:.1f}s)")
 
     print()
     print(f"✓ Weekly hygiene complete ({time.time() - t0:.1f}s total). Review the duplicate candidates above and "
