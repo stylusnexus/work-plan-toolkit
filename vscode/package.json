@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Sidebar tree for your GitHub issues across repos, organised into tracks — with a Mermaid dependency graph, per-track detail panel, and full read/write (slot, close, edit, new track, refresh, reconcile, hygiene). Shared tracks sync via git; private tracks stay local. Public-repo writes are gated behind a confirm dialog — no accidental leaks.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -248,7 +248,13 @@
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "enum": [0, 30, 60, 300, 900],
+          "enum": [
+            0,
+            30,
+            60,
+            300,
+            900
+          ],
           "enumDescriptions": [
             "Off — manual refresh only",
             "Every 30 seconds",

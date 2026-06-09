@@ -165,7 +165,12 @@ export class WorkPlanPanel {
       .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "dist", MERMAID_FILE))
       .toString();
 
-    const graphDef = toMermaid(exp, selectedTrackName, { focus: this._focused });
+    // Full map is repo-scoped: only show tracks in the same repo as the
+    // selected track.  Focus mode is already scoped to the neighbourhood.
+    const graphExp = this._focused
+      ? exp
+      : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
+    const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused });
     const detailHtml = renderDetail(track);
 
     const html = buildHtml({
