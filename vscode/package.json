@@ -3,7 +3,7 @@
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
   "version": "0.1.1",
-  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, and full read/write over your work-plan tracks.",
+  "description": "VS Code viewer for the work-plan CLI — sidebar tree (repos→tracks), Mermaid dependency graph, read/write over your tracks. Surfaces shared tracks (git-synced .work-plan/) and private tracks side by side.",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {

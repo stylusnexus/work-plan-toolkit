@@ -54,7 +54,13 @@ The five essentials you'll use 80% of the time are:
 | `/work-plan reconcile <track> \| --all \| --repo=<key> [--draft]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. `--draft` previews proposed ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. |
 | `/work-plan hygiene [--repo=<key>]` | Weekly. Refresh status icons, reconcile labels, scan for duplicates. `--repo=<key>` scopes steps 1–2 to one repo (duplicates is global, so it's skipped in scoped mode). |
 
-A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), AI-clustering raw GitHub issues into thematic tracks, and one-time priority-label backfill.
+A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), and one-time priority-label backfill. Three capabilities worth calling out explicitly:
+
+**Shared tracks** — track files can live *inside your repo clone* (`.work-plan/<slug>.md`) so teammates see the same planning state via `git pull`. The default is private (`notes_root/<repo>/`); register a local clone with `init-repo --local=<path>` to opt into shared mode. Pass `--private` to any write command to keep a specific track local. See [Shared tracks](#shared-tracks).
+
+**AI-powered clustering (`group`)** — hand a flat list of GitHub issues to your AI and get back thematic track files. Run `group --milestone=X` to fetch all issues in a milestone, get a clustering prompt, save the JSON answer, then `group --apply` creates the tracks. Pairs with `auto-triage` for ongoing maintenance: once tracks exist, `auto-triage` assigns newly-filed untracked issues back into them.
+
+**Coverage + auto-triage** — `coverage --repo=<key>` reports how many open issues fall outside the track model (42% on a real production repo). `auto-triage --repo=<key>` then produces an AI prompt to assign those orphans to existing tracks. Run both periodically to keep the backlog visible.
 
 Beyond issue tracking, **`plan-status`** answers a different question — *which of your accumulated plan/spec docs actually shipped, half-shipped, or died*. It correlates each plan's declared file-manifest (`Create:`/`Modify:`/`Test:` paths) against git and the filesystem rather than trusting checkboxes (which are routinely left unchecked even for shipped work). Read-only by default; optionally stamp the verdict into each doc (`--stamp`), get an AI verdict on prose/ambiguous docs (`--llm`), and act on the results behind confirmation gates (`--archive` dead plans, `--issues` for partial ones). See [Plan & doc liveness](#plan--doc-liveness-plan-status).
 
@@ -101,6 +107,45 @@ flowchart TB
   - For tracks where you don't want to bother curating at all, set `next_up_auto: true` in the track's frontmatter — `brief` will then derive the list live each invocation, ignoring whatever's stored.
 - **Weekly** → `hygiene` runs `refresh-md --all` + `reconcile --all` + `duplicates` in sequence to keep status icons, GitHub labels, and dedup state honest.
 > **When does the body status table get refreshed?** `handoff` already rewrites the ✅/🔲 icons for its own track on every run (live `gh` fetch → `update_row_status`). `brief` reads GitHub state live and never relies on the body table, so it's always accurate. The only drift `refresh-md` exists to fix is *cross-track*: a track you haven't `handoff`'d recently whose icons fell behind because issues moved while you were heads-down on a sibling track. That's why `hygiene --all` sweeps it weekly.
+
+## Shared tracks
+
+By default track files live under `notes_root/<repo>/` — local only, never committed. **Shared tracks** live inside the repo clone itself (`.work-plan/<slug>.md`) and travel with the repo via `git pull`/`git push`. Teammates see the same planning state without a separate notes sync.
+
+**Set up shared tracks for a repo:**
+
+```bash
+# Register the local clone path in your config
+/work-plan init-repo myproject --github=org/myproject --local=/path/to/clone
+```
+
+Once `local:` is set and points to a valid git repo, all new tracks for that repo go into `.work-plan/` automatically.
+
+**Syncing:**
+
+```bash
+git pull                          # pull teammates' track changes
+git add .work-plan/ && git commit && git push  # share your own
+```
+
+The CLI never auto-pushes. When you create or update a shared track, it prints a reminder:
+```
+↑ shared — commit + push to share with teammates.
+```
+
+**Opt out per-command:** pass `--private` to route a specific track to `notes_root` instead:
+
+```bash
+/work-plan group --milestone='v1.0' --private   # keep clusters local
+/work-plan new-track myproject exploration       # --private for one-off tracks
+```
+
+**Multi-repo disambiguation:** if the same track slug exists in two repos, qualify with `@<repo>` or `--repo=<key>`:
+
+```bash
+/work-plan slot 4234 auth-flow@critforge
+/work-plan close auth-flow --repo=critforge
+```
 
 ## Plan & doc liveness (`plan-status`)
 
@@ -439,7 +484,9 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `new-track <repo> <slug> [--priority=P0..P3] [--milestone=<m>]` | One-shot, non-interactive: create a new track file under `notes_root` for `<repo>` (a config key **or** an `org/repo` slug) with frontmatter. Unlike `init`, it makes the file for you — the headless creation path the VS Code viewer uses. |
 | `set-notes-root <path>` | Relocate where your private track notes live (updates `notes_root` in config). Does not move existing tracks — it warns if any would be orphaned. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
-| `group [--milestone=X] [--label=Y]` | AI-cluster GitHub issues into thematic tracks (creates `<repo>/<slug>.md` per cluster). |
+| `group [--milestone=X] [--label=Y] [--repo=Z] [--private] [--apply]` | AI-cluster GitHub issues into thematic track files. Two-step: CLI prints prompt → you save JSON answer → `--apply` creates the tracks. `--private` routes to `notes_root` instead of `.work-plan/`. |
+| `auto-triage [--repo=<key>] [--apply]` | AI-assign untracked open issues to existing tracks. Two-step (same pattern as `group`). Run `coverage` first to measure the gap. |
+| `coverage [--repo=<key>] [--list] [--limit=N]` | Report how many open issues are not in any track. `--list` prints titles. Read-only. |
 | `reconcile <track>` `\|` `--all` `\|` `--repo=<key> [--draft]` | Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing against a GitHub label. Read-only on GitHub. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter (OR semantics). `--draft` previews ADDs/FLAGs without prompting or writing. `--repo=<key>` scopes the sweep to one repo. NOT for hand-curated tracks (it'll propose dropping curated issues every run) — use `refresh-md` if you only want to update issue state. When >50% of frontmatter issues lack the label, reconcile prints a hint pointing to `refresh-md`. |
 | `duplicates [--repo=<key>]` | Find likely-duplicate issues by title similarity (stdlib `difflib`). Prints `gh issue close` consolidation commands. |
 | `canonicalize <track>` | Add a canonical issue table to a track file (so `refresh-md` knows where to update). |
