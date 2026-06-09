@@ -207,28 +207,66 @@ class FetchIssuesConcurrentTest(unittest.TestCase):
 
 
 class FetchIssuesAfterRefactorTest(unittest.TestCase):
-    """Verify fetch_issues still returns the sequential list after refactor."""
+    """Verify fetch_issues uses batched GraphQL + per-issue fallback."""
 
-    @patch("lib.github_state.subprocess.run")
-    def test_returns_list_in_order(self, mock_run):
-        responses = [
-            MagicMock(returncode=0, stdout='{"number": 10, "state": "OPEN", "labels": [], "title": "a"}'),
-            MagicMock(returncode=0, stdout='{"number": 20, "state": "CLOSED", "labels": [], "title": "b"}'),
-        ]
-        mock_run.side_effect = responses
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    @patch("lib.github_state.fetch_issue")
+    def test_gql_returns_all_no_fallback(self, mock_fetch_issue, mock_gql):
+        """When GraphQL returns every number, no fallback calls needed."""
+        mock_gql.return_value = {
+            10: {"number": 10, "state": "OPEN", "labels": [], "title": "a"},
+            20: {"number": 20, "state": "CLOSED", "labels": [], "title": "b"},
+        }
         result = fetch_issues("org/repo", [10, 20])
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["number"], 10)
         self.assertEqual(result[1]["number"], 20)
+        mock_fetch_issue.assert_not_called()
 
-    @patch("lib.github_state.subprocess.run")
-    def test_skips_failed_fetches(self, mock_run):
-        responses = [
-            MagicMock(returncode=0, stdout='{"number": 10, "state": "OPEN", "labels": []}'),
-            MagicMock(returncode=1, stdout="", stderr="not found"),
-            MagicMock(returncode=0, stdout='{"number": 30, "state": "OPEN", "labels": []}'),
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    @patch("lib.github_state.fetch_issue")
+    def test_gql_partial_falls_back(self, mock_fetch_issue, mock_gql):
+        """Numbers missing from GraphQL → per-issue fallback for each."""
+        mock_gql.return_value = {
+            10: {"number": 10, "state": "OPEN", "labels": []},
+        }
+        mock_fetch_issue.side_effect = [
+            None,  # 20 not found via fallback
+            {"number": 30, "state": "OPEN", "labels": []},
         ]
-        mock_run.side_effect = responses
+        result = fetch_issues("org/repo", [10, 20, 30])
+        # 10 from GQL, 20 fallback returns None (no side_effect entry), 30 from fallback
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["number"], 10)
+        self.assertEqual(result[1]["number"], 30)
+        # fetch_issue called for 20 and 30 (only numbers not in GQL)
+        self.assertEqual(mock_fetch_issue.call_count, 2)
+
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    @patch("lib.github_state.fetch_issue")
+    def test_gql_empty_falls_back_completely(self, mock_fetch_issue, mock_gql):
+        """Empty GraphQL result → all numbers go to per-issue fallback."""
+        mock_gql.return_value = {}
+        mock_fetch_issue.side_effect = [
+            {"number": 10, "state": "OPEN", "labels": []},
+            {"number": 20, "state": "CLOSED", "labels": []},
+        ]
+        result = fetch_issues("org/repo", [10, 20])
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["number"], 10)
+        self.assertEqual(result[1]["number"], 20)
+        self.assertEqual(mock_fetch_issue.call_count, 2)
+
+    @patch("lib.github_state.fetch_repo_issues_graphql")
+    @patch("lib.github_state.fetch_issue")
+    def test_skips_failed_fallbacks(self, mock_fetch_issue, mock_gql):
+        """Per-issue fallback returning None → skipped silently."""
+        mock_gql.return_value = {}
+        mock_fetch_issue.side_effect = [
+            {"number": 10, "state": "OPEN", "labels": []},
+            None,  # number 20 failed
+            {"number": 30, "state": "OPEN", "labels": []},
+        ]
         result = fetch_issues("org/repo", [10, 20, 30])
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["number"], 10)
