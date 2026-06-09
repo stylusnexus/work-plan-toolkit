@@ -287,11 +287,13 @@ class InitRepoSharedTrackDetectionTest(unittest.TestCase):
             # notes_root always exists
             if "fake-notes" in s:
                 return True
+            # Use Path.name so Windows backslash paths match too.
+            _name = Path(self).name
             # .git dir exists when local_is_git=True
-            if s.endswith("/.git"):
+            if _name == ".git":
                 return local_is_git
             # local clone dir always exists
-            if s.endswith("/clone"):
+            if _name == "clone":
                 return True
             return False
 

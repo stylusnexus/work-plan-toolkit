@@ -91,7 +91,9 @@ def _drive_apply(args, *, cfg, batch, answers, vis="PRIVATE"):
                     return True
                 # Track directory for shared route: let it appear to exist
                 # so _apply doesn't error out trying to mkdir and fails
-                if str(self).endswith(".work-plan") or str(self).endswith("/myrepo"):
+                # Use Path.name (not endswith) so Windows backslash paths match too.
+                _name = Path(self).name
+                if _name == ".work-plan" or _name == "myrepo":
                     return True
                 # Track .md files: pretend they don't exist (trigger create path)
                 if str(self).endswith(".md"):
