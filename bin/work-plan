@@ -24,6 +24,29 @@ while [ -L "$src" ]; do
   esac
 done
 root="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+# Runtime preflight: surface a clear, per-tool message if a required external
+# tool is missing, instead of a Python traceback from deep in config-load (the
+# classic "yq not found" confusion). yq/gh aren't needed for --version/--help,
+# so don't block those.
+_wp_have() { command -v "$1" >/dev/null 2>&1; }
+_wp_missing=""
+_wp_have python3 || _wp_missing="$_wp_missing python3"
+case "${1:-}" in
+  --version|-v|--help|-h|"") ;;
+  *)
+    _wp_have yq || _wp_missing="$_wp_missing yq"
+    _wp_have gh || _wp_missing="$_wp_missing gh"
+    ;;
+esac
+if [ -n "$_wp_missing" ]; then
+  echo "work-plan: missing required tool(s) on PATH:$_wp_missing" >&2
+  case "$_wp_missing" in *python3*) echo "  python3 — the CLI runtime            (brew install python · https://python.org)" >&2 ;; esac
+  case "$_wp_missing" in *yq*)      echo "  yq      — YAML config/frontmatter    (brew install yq — the Go mikefarah/yq, NOT the python yq)" >&2 ;; esac
+  case "$_wp_missing" in *gh*)      echo "  gh      — GitHub issue state         (brew install gh, then: gh auth login · https://cli.github.com)" >&2 ;; esac
+  exit 1
+fi
+
 for c in \
   "$root/skills/work-plan/work_plan.py" \
   "${CLAUDE_PLUGIN_ROOT:-}/skills/work-plan/work_plan.py" \
