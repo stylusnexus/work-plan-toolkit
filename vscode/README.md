@@ -40,6 +40,9 @@ A loading bar shows while the CLI fetch runs, and concurrent refreshes are coale
 ![Cold-start onboarding](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/onboarding.png)
 *Get started from empty: add a repo and choose where your notes live — no CLI needed.*
 
+![Command menu](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/command-menu.png)
+*The `⋯` menu: New Track, Add Repo, Set Notes Location, Run Hygiene (track verbs are on each track's right-click menu).*
+
 ## Install
 
 1. **The extension** — search **"Work Plan"** (publisher `stylusnexus`) in the Extensions view, or:

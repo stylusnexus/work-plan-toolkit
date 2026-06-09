@@ -11,6 +11,7 @@ your dark theme is great, crop tight to the relevant UI.
 | `write-confirm-modal.png` | The **public-repo confirm modal** — right-click `work-plan-viewer` → Edit Track Fields → change status, capture the "Write anyway / Keep private" dialog. |
 | `untracked-bucket.png` | A repo's **⊘ Untracked (N)** node expanded, showing open issues in no track (right-click → Slot into a track). |
 | `onboarding.png` | The **empty-state welcome** — "No work-plan repos yet" with the **Add a repo** / **Set notes location** buttons. (Point `cliPath` at a fresh config to reproduce, or you already have it.) |
+| `command-menu.png` | The view-title **`⋯` overflow menu** open — New Track / Add Repo / Set Notes Location / Run Hygiene. |
 
 After dropping them in:
 1. Bump `vscode/package.json` `version` to `0.1.1`.
