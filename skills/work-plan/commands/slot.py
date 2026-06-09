@@ -30,7 +30,7 @@ def run(args: list[str]) -> int:
     # --repo uses equals form: --repo=<key>
     flags, positional = parse_flags(args, {"--confirm", "--move", "--no-move", "--repo"})
     if not positional:
-        print("usage: work_plan.py slot <issue-num> [track-name]")
+        print("usage: work_plan.py slot <issue-num> [track | track@repo] [--repo=<key>]")
         return 2
     try:
         issue_num = int(positional[0])

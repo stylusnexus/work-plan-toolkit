@@ -44,6 +44,9 @@ def run(args: list[str]) -> int:
     if do_all:
         targets = [t for t in tracks if t.has_frontmatter
                    and t.meta.get("status") in ("active", "in-progress", "blocked")]
+        if repo_qualifier:
+            from lib.tracks import filter_tracks_by_repo
+            targets = filter_tracks_by_repo(targets, repo_qualifier)
     else:
         try:
             target = find_track_by_name(track_name, tracks, active_only=True,
