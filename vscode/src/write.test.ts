@@ -62,35 +62,35 @@ function recordingConfirm(
 // ---------------------------------------------------------------------------
 
 describe("actionToArgs", () => {
-  test("editFields with one field → ['set', track, 'status=parked']", () => {
+  test("editFields with one field → ['set', 'status=parked', '--', track]", () => {
     const action: WriteAction = {
       kind: "editFields",
       track: "platform-health",
       fields: { status: "parked" },
     };
-    assert.deepEqual(actionToArgs(action), ["set", "platform-health", "status=parked"]);
+    assert.deepEqual(actionToArgs(action), ["set", "status=parked", "--", "platform-health"]);
   });
 
-  test("editFields with empty fields {} → ['set', track] (no key=value pairs)", () => {
+  test("editFields with empty fields {} → ['set', '--', track] (no key=value pairs)", () => {
     const action: WriteAction = {
       kind: "editFields",
       track: "platform-health",
       fields: {},
     };
-    assert.deepEqual(actionToArgs(action), ["set", "platform-health"]);
+    assert.deepEqual(actionToArgs(action), ["set", "--", "platform-health"]);
   });
 
-  test("editFields with multiple fields → includes each key=value in Object.entries order", () => {
+  test("editFields with multiple fields → each key=value before '--', track after", () => {
     const action: WriteAction = {
       kind: "editFields",
       track: "ph",
       fields: { status: "shipped", tier: "P1", milestone: "v2" },
     };
     const result = actionToArgs(action);
-    assert.deepEqual(result, ["set", "ph", "status=shipped", "tier=P1", "milestone=v2"]);
+    assert.deepEqual(result, ["set", "status=shipped", "tier=P1", "milestone=v2", "--", "ph"]);
   });
 
-  test("setNext with [4167, 4148] → ['handoff', track, '--set-next=4167,4148']", () => {
+  test("setNext with [4167, 4148] → ['handoff', '--set-next=4167,4148', '--', track]", () => {
     const action: WriteAction = {
       kind: "setNext",
       track: "platform-health",
@@ -98,8 +98,9 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(actionToArgs(action), [
       "handoff",
-      "platform-health",
       "--set-next=4167,4148",
+      "--",
+      "platform-health",
     ]);
   });
 
@@ -109,50 +110,50 @@ describe("actionToArgs", () => {
       track: "ph",
       issues: [42],
     };
-    assert.deepEqual(actionToArgs(action), ["handoff", "ph", "--set-next=42"]);
+    assert.deepEqual(actionToArgs(action), ["handoff", "--set-next=42", "--", "ph"]);
   });
 
-  test("refresh → ['refresh-md', track, '--yes']", () => {
+  test("refresh → ['refresh-md', '--yes', '--', track]", () => {
     const action: WriteAction = { kind: "refresh", track: "platform-health" };
-    assert.deepEqual(actionToArgs(action), ["refresh-md", "platform-health", "--yes"]);
+    assert.deepEqual(actionToArgs(action), ["refresh-md", "--yes", "--", "platform-health"]);
   });
 
-  test("reconcileDraft → ['reconcile', track, '--draft']", () => {
+  test("reconcileDraft → ['reconcile', '--draft', '--', track]", () => {
     const action: WriteAction = { kind: "reconcileDraft", track: "platform-health" };
-    assert.deepEqual(actionToArgs(action), ["reconcile", "platform-health", "--draft"]);
+    assert.deepEqual(actionToArgs(action), ["reconcile", "--draft", "--", "platform-health"]);
   });
 
-  test("hygiene → ['hygiene', '--yes']", () => {
+  test("hygiene → ['hygiene', '--yes'] (no positionals, no separator)", () => {
     const action: WriteAction = { kind: "hygiene" };
     assert.deepEqual(actionToArgs(action), ["hygiene", "--yes"]);
   });
 
-  test("slot → ['slot', issue, track, '--no-move']", () => {
+  test("slot → ['slot', '--no-move', '--', issue, track]", () => {
     const action: WriteAction = { kind: "slot", issue: 4234, track: "tabletop" };
-    assert.deepEqual(actionToArgs(action), ["slot", "4234", "tabletop", "--no-move"]);
+    assert.deepEqual(actionToArgs(action), ["slot", "--no-move", "--", "4234", "tabletop"]);
   });
 
-  test("close without note → ['close', track, '--state=shipped']", () => {
+  test("close without note → ['close', '--state=shipped', '--', track]", () => {
     const action: WriteAction = { kind: "close", track: "ph", state: "shipped" };
-    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=shipped"]);
+    assert.deepEqual(actionToArgs(action), ["close", "--state=shipped", "--", "ph"]);
   });
 
-  test("close with note → includes '--note=wrapped up' in equals form", () => {
+  test("close with note → includes '--note=wrapped up' before '--' in equals form", () => {
     const action: WriteAction = { kind: "close", track: "ph", state: "shipped", note: "wrapped up" };
-    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=shipped", "--note=wrapped up"]);
+    assert.deepEqual(actionToArgs(action), ["close", "--state=shipped", "--note=wrapped up", "--", "ph"]);
   });
 
   test("close with state 'parked' → '--state=parked'", () => {
     const action: WriteAction = { kind: "close", track: "ph", state: "parked" };
-    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=parked"]);
+    assert.deepEqual(actionToArgs(action), ["close", "--state=parked", "--", "ph"]);
   });
 
   test("close with state 'abandoned' → '--state=abandoned'", () => {
     const action: WriteAction = { kind: "close", track: "ph", state: "abandoned" };
-    assert.deepEqual(actionToArgs(action), ["close", "ph", "--state=abandoned"]);
+    assert.deepEqual(actionToArgs(action), ["close", "--state=abandoned", "--", "ph"]);
   });
 
-  test("newTrack without optional flags → ['new-track', repo, slug]", () => {
+  test("newTrack without optional flags → ['new-track', '--', repo, slug]", () => {
     const action: WriteAction = {
       kind: "newTrack",
       repo: "stylusnexus/work-plan-toolkit",
@@ -160,12 +161,13 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(actionToArgs(action), [
       "new-track",
+      "--",
       "stylusnexus/work-plan-toolkit",
       "my-feature",
     ]);
   });
 
-  test("newTrack with priority and milestone → includes '--priority=P1' and '--milestone=v2'", () => {
+  test("newTrack with priority and milestone → flags before '--', repo+slug after", () => {
     const action: WriteAction = {
       kind: "newTrack",
       repo: "stylusnexus/work-plan-toolkit",
@@ -176,10 +178,11 @@ describe("actionToArgs", () => {
     const result = actionToArgs(action);
     assert.deepEqual(result, [
       "new-track",
-      "stylusnexus/work-plan-toolkit",
-      "my-feature",
       "--priority=P1",
       "--milestone=v2",
+      "--",
+      "stylusnexus/work-plan-toolkit",
+      "my-feature",
     ]);
   });
 
@@ -192,9 +195,10 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(actionToArgs(action), [
       "new-track",
+      "--priority=P0",
+      "--",
       "stylusnexus/work-plan-toolkit",
       "my-feature",
-      "--priority=P0",
     ]);
   });
 
@@ -207,22 +211,23 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(actionToArgs(action), [
       "new-track",
+      "--milestone=v3",
+      "--",
       "stylusnexus/work-plan-toolkit",
       "my-feature",
-      "--milestone=v3",
     ]);
   });
 
-  test("addRepo without local → ['init-repo', key, '--github=org/myrepo']", () => {
+  test("addRepo without local → ['init-repo', '--github=org/myrepo', '--', key]", () => {
     const action: WriteAction = {
       kind: "addRepo",
       key: "myrepo",
       github: "org/myrepo",
     };
-    assert.deepEqual(actionToArgs(action), ["init-repo", "myrepo", "--github=org/myrepo"]);
+    assert.deepEqual(actionToArgs(action), ["init-repo", "--github=org/myrepo", "--", "myrepo"]);
   });
 
-  test("addRepo with local → includes '--local=/path/to/repo' in equals form", () => {
+  test("addRepo with local → includes '--local=/path/to/repo' before '--' in equals form", () => {
     const action: WriteAction = {
       kind: "addRepo",
       key: "myrepo",
@@ -231,21 +236,22 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(actionToArgs(action), [
       "init-repo",
-      "myrepo",
       "--github=org/myrepo",
       "--local=/path/to/repo",
+      "--",
+      "myrepo",
     ]);
   });
 
-  test("setNotesRoot → ['set-notes-root', path]", () => {
+  test("setNotesRoot → ['set-notes-root', '--', path]", () => {
     const action: WriteAction = {
       kind: "setNotesRoot",
       path: "/Users/eve/notes",
     };
-    assert.deepEqual(actionToArgs(action), ["set-notes-root", "/Users/eve/notes"]);
+    assert.deepEqual(actionToArgs(action), ["set-notes-root", "--", "/Users/eve/notes"]);
   });
 
-  test("move → ['move', issue, fromTrack, toTrack]", () => {
+  test("move → ['move', '--', issue, fromTrack, toTrack]", () => {
     const action: WriteAction = {
       kind: "move",
       issue: 4234,
@@ -254,8 +260,55 @@ describe("actionToArgs", () => {
     };
     assert.deepEqual(
       actionToArgs(action),
-      ["move", "4234", "platform-health", "org-sharing"],
+      ["move", "--", "4234", "platform-health", "org-sharing"],
     );
+  });
+
+  test("batchSlot → ['batch-slot', '--no-move', '--', ...issues, track]", () => {
+    const action: WriteAction = {
+      kind: "batchSlot",
+      issues: [11, 22, 33],
+      track: "tabletop",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "batch-slot",
+      "--no-move",
+      "--",
+      "11",
+      "22",
+      "33",
+      "tabletop",
+    ]);
+  });
+
+  // #194: a dash-led track name must survive as a positional, never a flag.
+  test("editFields with a '--'-prefixed track name → track lands after '--' separator", () => {
+    const action: WriteAction = {
+      kind: "editFields",
+      track: "--confirm=evil-token",
+      fields: { status: "parked" },
+    };
+    const args = actionToArgs(action);
+    const sepIdx = args.indexOf("--");
+    assert.ok(sepIdx !== -1, "must contain a '--' end-of-options separator");
+    // The hostile track name appears only AFTER the separator.
+    assert.equal(args[sepIdx + 1], "--confirm=evil-token");
+    assert.ok(
+      args.slice(0, sepIdx).every((a) => a !== "--confirm=evil-token"),
+      "dash-led track name must not appear before the separator",
+    );
+  });
+
+  test("move with a '--repo'-named source track → all positionals after '--'", () => {
+    const action: WriteAction = {
+      kind: "move",
+      issue: 7,
+      fromTrack: "--repo",
+      toTrack: "safe-track",
+    };
+    const args = actionToArgs(action);
+    const sepIdx = args.indexOf("--");
+    assert.deepEqual(args.slice(sepIdx + 1), ["7", "--repo", "safe-track"]);
   });
 });
 
@@ -324,7 +377,7 @@ describe("executeWrite — needs_confirm → writeAnyway", () => {
     stderr: "",
   };
 
-  test("TWO runWrite calls; second call has --confirm=<token> appended in equals form", async () => {
+  test("TWO runWrite calls; second call carries --confirm=<token> as a flag (before '--')", async () => {
     const action: WriteAction = {
       kind: "editFields",
       track: "ph",
@@ -336,10 +389,19 @@ describe("executeWrite — needs_confirm → writeAnyway", () => {
 
     assert.equal(calls.length, 2, "should invoke runWrite exactly twice");
 
-    // The second call must end with '--confirm=<token>' in equals form.
     const secondArgs = calls[1];
-    const confirmArg = secondArgs[secondArgs.length - 1];
-    assert.equal(confirmArg, `--confirm=${TOKEN}`, "confirm arg must use equals form");
+
+    // The token must be present in equals form.
+    assert.ok(
+      secondArgs.includes(`--confirm=${TOKEN}`),
+      "confirm arg must use equals form"
+    );
+
+    // It MUST sit before the '--' separator so a strict parser reads it as a flag.
+    const sepIdx = secondArgs.indexOf("--");
+    const confirmIdx = secondArgs.indexOf(`--confirm=${TOKEN}`);
+    assert.ok(sepIdx !== -1, "args must still contain the '--' separator");
+    assert.ok(confirmIdx < sepIdx, "confirm flag must precede the '--' separator");
 
     // There must be no separate '--confirm' flag (space-separated) anywhere.
     assert.ok(
@@ -348,7 +410,7 @@ describe("executeWrite — needs_confirm → writeAnyway", () => {
     );
   });
 
-  test("second call's args are original args + --confirm=<token>", async () => {
+  test("second call = original args with --confirm=<token> spliced in before '--'", async () => {
     const action: WriteAction = {
       kind: "editFields",
       track: "ph",
@@ -361,15 +423,10 @@ describe("executeWrite — needs_confirm → writeAnyway", () => {
     const firstArgs = calls[0];
     const secondArgs = calls[1];
 
-    // Second call starts with all the same args as the first...
-    assert.deepEqual(
-      secondArgs.slice(0, firstArgs.length),
-      firstArgs,
-      "second call should start with original args"
-    );
-    // ...and appends exactly one more element: the confirm token.
+    // Exactly one element longer than the original.
     assert.equal(secondArgs.length, firstArgs.length + 1);
-    assert.equal(secondArgs[secondArgs.length - 1], `--confirm=${TOKEN}`);
+    // editFields → ["set", "status=shipped", "--confirm=<token>", "--", "ph"]
+    assert.deepEqual(secondArgs, ["set", "status=shipped", `--confirm=${TOKEN}`, "--", "ph"]);
   });
 
   test("outcome is {status:'written', stdout} from the second call", async () => {
@@ -546,11 +603,11 @@ describe("executeWrite — new verbs inherit the confirm-token flow", () => {
 
     assert.equal(calls.length, 2, "should invoke runWrite exactly twice");
 
-    // First call: close args without confirm
-    assert.deepEqual(calls[0], ["close", "ph", "--state=shipped"]);
+    // First call: close args without confirm (positional after '--')
+    assert.deepEqual(calls[0], ["close", "--state=shipped", "--", "ph"]);
 
-    // Second call: same args with --confirm=<token> appended in equals form
-    assert.deepEqual(calls[1], ["close", "ph", "--state=shipped", `--confirm=${TOKEN}`]);
+    // Second call: --confirm spliced in before '--' so it parses as a flag.
+    assert.deepEqual(calls[1], ["close", "--state=shipped", `--confirm=${TOKEN}`, "--", "ph"]);
 
     // Outcome is from second call
     assert.deepEqual(outcome, { status: "written", stdout: "✓ closed ph" });

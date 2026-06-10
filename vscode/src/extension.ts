@@ -301,6 +301,31 @@ export function activate(context: vscode.ExtensionContext): void {
     return choice === "Write anyway" ? "writeAnyway" : "cancel";
   };
 
+  // Webview drag-move goes through the same audited write path as workPlan.move:
+  // executeWrite + the public-repo confirm modal (#197). No ad-hoc spawn in the panel.
+  WorkPlanPanel.setMoveHandler(async (issue, fromTrack, toTrack) => {
+    try {
+      const outcome: WriteOutcome = await executeWrite(
+        runner,
+        { kind: "move", fromTrack, toTrack, issue },
+        confirmPublicWrite,
+      );
+      if (outcome.status === "written") {
+        await refreshAndRerender();
+        vscode.window.showInformationMessage(
+          `Work Plan: moved #${issue} from ${fromTrack} to ${toTrack}`,
+        );
+      } else {
+        vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof CliError
+        ? `Work Plan: ${err.message}`
+        : `Work Plan: move failed — ${String(err)}`;
+      vscode.window.showErrorMessage(msg);
+    }
+  });
+
   // Output channel for reconcile draft output (created once; disposed via subscriptions).
   const outputChannel = vscode.window.createOutputChannel("Work Plan");
   context.subscriptions.push(outputChannel);
@@ -1071,6 +1096,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // On activation: kick off initial data load + version check.
   // NEVER throw out of activate — all async work has its own catch.
   // -------------------------------------------------------------------------
+
+  // Defence-in-depth: never spawn the CLI in an untrusted (Restricted Mode)
+  // workspace. The package.json `capabilities.untrustedWorkspaces.supported:false`
+  // already gates activation, so in practice this is belt-and-suspenders — but it
+  // also protects the spawn paths if that manifest flag is ever relaxed.
+  if (!vscode.workspace.isTrusted) {
+    return;
+  }
 
   // Initial data load.
   provider.refresh().catch((err: unknown) => {
