@@ -6,6 +6,8 @@
  */
 
 import type { Export } from "../model.ts";
+import type { StatusCategory } from "../treeModel.ts";
+import { statusCategory } from "../treeModel.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,6 +17,7 @@ export type Lens =
   | { kind: "all" }
   | { kind: "repo"; repo: string }
   | { kind: "milestone"; milestone: string }
+  | { kind: "status"; status: StatusCategory }
   | { kind: "blocked" };
 
 export interface LensChoice {
@@ -35,7 +38,11 @@ export interface LensChoice {
  *   2. One entry per distinct track.repo, in first-seen order.
  *   3. One entry per distinct non-empty issue.milestone across all tracks,
  *      in first-seen (track order, then issue order) order.
- *   4. "Blocked tracks" — only when at least one track has non-empty blockers.
+ *   4. Status lenses ("Status: Active", "Status: Shipped", "Status: Parked"),
+ *      in that fixed order, each only when at least one track falls in that
+ *      category per `statusCategory`. The "blocked" category is intentionally
+ *      NOT surfaced here — it has its own standalone "Blocked tracks" lens.
+ *   5. "Blocked tracks" — only when at least one track has non-empty blockers.
  *
  * Categories with no members are omitted.
  */
@@ -73,7 +80,26 @@ export function availableLenses(exp: Export): LensChoice[] {
     }
   }
 
-  // 4. Blocked — only when at least one track has blockers
+  // 4. Status lenses — one per category that has at least one member.
+  //    Driven by the SAME statusCategory classifier the tree uses, so the lens
+  //    and the sidebar always agree. "blocked" is omitted here on purpose; it
+  //    keeps its own standalone "Blocked tracks" lens below.
+  const statusLensSpecs: { status: StatusCategory; label: string }[] = [
+    { status: "active", label: "Status: Active" },
+    { status: "shipped", label: "Status: Shipped" },
+    { status: "parked", label: "Status: Parked" },
+  ];
+  for (const spec of statusLensSpecs) {
+    if (exp.tracks.some(t => statusCategory(t) === spec.status)) {
+      choices.push({
+        id: `status:${spec.status}`,
+        label: spec.label,
+        lens: { kind: "status", status: spec.status },
+      });
+    }
+  }
+
+  // 5. Blocked — only when at least one track has blockers
   const hasBlocked = exp.tracks.some(t => t.blockers.length > 0);
   if (hasBlocked) {
     choices.push({
@@ -112,6 +138,11 @@ export function applyLens(exp: Export, lens: Lens): Export {
       filteredTracks = exp.tracks.filter(t =>
         t.issues.some(issue => issue.milestone === lens.milestone)
       );
+      break;
+
+    case "status":
+      // Reuse the tree's classifier so this filter and the sidebar agree.
+      filteredTracks = exp.tracks.filter(t => statusCategory(t) === lens.status);
       break;
 
     case "blocked":
