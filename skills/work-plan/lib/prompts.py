@@ -87,7 +87,18 @@ def parse_flags(args: list[str], known: set[str]) -> tuple[dict, list[str]]:
     """
     flags = {}
     positional = []
+    end_of_opts = False
     for arg in args:
+        # A bare `--` ends option parsing: everything after it is positional,
+        # even if it begins with `--`. Lets callers (e.g. the VS Code extension)
+        # pass a GitHub-derived value like a `--repo`-named track as a plain
+        # positional instead of having it misparsed as a flag (#194).
+        if end_of_opts:
+            positional.append(arg)
+            continue
+        if arg == "--":
+            end_of_opts = True
+            continue
         if not arg.startswith("--"):
             positional.append(arg)
             continue

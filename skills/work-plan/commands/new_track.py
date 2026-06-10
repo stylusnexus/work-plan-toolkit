@@ -103,6 +103,13 @@ def run(args: list[str]) -> int:
     elif "/" in repo_arg:
         github = repo_arg
         folder = repo_arg.rsplit("/", 1)[-1]
+        # Validate the derived folder segment (#195). `rsplit` caps traversal at
+        # one segment, but a slug like `x/..` yields folder=".." → the track
+        # would be written one level ABOVE notes_root. A real GitHub repo name
+        # matches [A-Za-z0-9._-]+ and is never "." / ".." — reject anything else.
+        if folder in ("", ".", "..") or not re.fullmatch(r"[A-Za-z0-9._-]+", folder):
+            print(f"ERROR: cannot derive a safe notes folder from '{repo_arg}'.")
+            return 2
     else:
         print(
             f"ERROR: unknown repo '{repo_arg}' — pass a configured key"

@@ -10,6 +10,7 @@ Covers:
 - No input()/prompt_input reached (patch to raise).
 """
 import io
+import json
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -80,11 +81,13 @@ class InitRepoNonInteractiveTest(unittest.TestCase):
         yq_args = msub.call_args[0][0]  # positional first arg is the argv list
         self.assertEqual(yq_args[0], "yq")
         self.assertEqual(yq_args[1], "-i")
-        # Expression should contain both github and local
+        # Hardened (#196): the repo block travels as an OPAQUE env value via
+        # env(); only the validated key appears in the expression path.
         expr = yq_args[2]
-        self.assertIn("org/myrepo", expr)
-        self.assertIn("/some/path", expr)
-        self.assertIn("mykey", expr)
+        self.assertEqual(expr, ".repos.mykey = env(WP_REPO_BLOCK)")
+        block = json.loads(msub.call_args.kwargs["env"]["WP_REPO_BLOCK"])
+        self.assertEqual(block["github"], "org/myrepo")
+        self.assertEqual(block["local"], "/some/path")
         self.assertIn("✓", out)
 
     # ------------------------------------------------------------------
@@ -100,9 +103,11 @@ class InitRepoNonInteractiveTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         msub.assert_called_once()
         expr = msub.call_args[0][0][2]
-        self.assertIn("org/myrepo", expr)
-        # local should NOT appear in the yq expression
-        self.assertNotIn("local", expr)
+        self.assertEqual(expr, ".repos.mykey = env(WP_REPO_BLOCK)")
+        block = json.loads(msub.call_args.kwargs["env"]["WP_REPO_BLOCK"])
+        self.assertEqual(block["github"], "org/myrepo")
+        # local should NOT appear in the block
+        self.assertNotIn("local", block)
 
     # ------------------------------------------------------------------
     # Missing --github → rc 2, no yq, no prompt
