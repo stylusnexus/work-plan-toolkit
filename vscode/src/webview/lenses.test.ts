@@ -2,7 +2,7 @@
  * Tests for src/webview/lenses.ts — pure lens derivation and filtering.
  *
  * Fixture:
- *   repo A (stylusnexus/CritForge):
+ *   repo A (your-org/myproject):
  *     • platform-health  — blocked, blockers:[4821], issues with milestones "M1"
  *     • idea-mode        — active, no blockers, no milestones
  *   repo B (stylusnexus/work-plan-toolkit):
@@ -26,7 +26,7 @@ const exp: Export = {
   tracks: [
     {
       name: "platform-health",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "blocked",
       launch_priority: "P0",
@@ -43,7 +43,7 @@ const exp: Export = {
     },
     {
       name: "idea-mode",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "active",
       launch_priority: "P1",
@@ -173,7 +173,7 @@ describe("availableLenses — repo lenses", () => {
     assert.strictEqual(repoChoices.length, 2);
     assert.deepStrictEqual(
       repoChoices.map(c => (c.lens as { kind: "repo"; repo: string }).repo),
-      ["stylusnexus/CritForge", "stylusnexus/work-plan-toolkit"],
+      ["your-org/myproject", "stylusnexus/work-plan-toolkit"],
     );
   });
 
@@ -366,10 +366,10 @@ describe("applyLens — kind:all", () => {
 
 describe("applyLens — kind:repo", () => {
   it("keeps only tracks with matching repo", () => {
-    const lens: Lens = { kind: "repo", repo: "stylusnexus/CritForge" };
+    const lens: Lens = { kind: "repo", repo: "your-org/myproject" };
     const result = applyLens(exp, lens);
     assert.strictEqual(result.tracks.length, 2);
-    assert.ok(result.tracks.every(t => t.repo === "stylusnexus/CritForge"));
+    assert.ok(result.tracks.every(t => t.repo === "your-org/myproject"));
   });
 
   it("returns empty tracks for an unknown repo", () => {
@@ -379,7 +379,7 @@ describe("applyLens — kind:repo", () => {
   });
 
   it("tracks include all their issues (no per-issue surgery)", () => {
-    const lens: Lens = { kind: "repo", repo: "stylusnexus/CritForge" };
+    const lens: Lens = { kind: "repo", repo: "your-org/myproject" };
     const result = applyLens(exp, lens);
     const platformHealth = result.tracks.find(t => t.name === "platform-health");
     assert.ok(platformHealth !== undefined);
@@ -388,7 +388,7 @@ describe("applyLens — kind:repo", () => {
 
   it("does not mutate exp.tracks", () => {
     const before = exp.tracks.map(t => t.name);
-    applyLens(exp, { kind: "repo", repo: "stylusnexus/CritForge" });
+    applyLens(exp, { kind: "repo", repo: "your-org/myproject" });
     assert.deepStrictEqual(exp.tracks.map(t => t.name), before);
   });
 });
@@ -505,7 +505,7 @@ describe("applyLens — immutability", () => {
   it("returned Export is a new object for all lens kinds", () => {
     const lenses: Lens[] = [
       { kind: "all" },
-      { kind: "repo", repo: "stylusnexus/CritForge" },
+      { kind: "repo", repo: "your-org/myproject" },
       { kind: "milestone", milestone: "M1" },
       { kind: "status", status: "active" },
       { kind: "blocked" },
@@ -519,7 +519,7 @@ describe("applyLens — immutability", () => {
   it("exp.tracks is unchanged after multiple applyLens calls", () => {
     const before = JSON.stringify(exp.tracks);
     applyLens(exp, { kind: "all" });
-    applyLens(exp, { kind: "repo", repo: "stylusnexus/CritForge" });
+    applyLens(exp, { kind: "repo", repo: "your-org/myproject" });
     applyLens(exp, { kind: "milestone", milestone: "M1" });
     applyLens(exp, { kind: "blocked" });
     assert.strictEqual(JSON.stringify(exp.tracks), before);
@@ -534,7 +534,7 @@ describe("applyLens — untracked forwarding (#99 regression)", () => {
     ...exp,
     untracked: [
       {
-        repo: "stylusnexus/CritForge",
+        repo: "your-org/myproject",
         issues: [
           { number: 999, title: "stray", state: "open", assignee: "—", milestone: null },
         ],
@@ -548,7 +548,7 @@ describe("applyLens — untracked forwarding (#99 regression)", () => {
   });
 
   it("forwards untracked unchanged under a 'repo' lens", () => {
-    const result = applyLens(withUntracked, { kind: "repo", repo: "stylusnexus/CritForge" });
+    const result = applyLens(withUntracked, { kind: "repo", repo: "your-org/myproject" });
     assert.deepStrictEqual(result.untracked, withUntracked.untracked);
   });
 

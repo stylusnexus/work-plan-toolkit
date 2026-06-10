@@ -26,7 +26,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
 function makeTrack(overrides: Partial<Track> = {}): Track {
   return {
     name: "platform-health",
-    repo: "stylusnexus/CritForge",
+    repo: "your-org/myproject",
     tier: "private",
     status: "active",
     launch_priority: "P2",

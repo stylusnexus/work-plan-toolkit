@@ -131,9 +131,9 @@ class FindTrackByNameTest(unittest.TestCase):
 class ParseTrackRepoArgTest(unittest.TestCase):
 
     def test_name_at_repo_splits_correctly(self):
-        name, repo = parse_track_repo_arg("foo@critforge")
+        name, repo = parse_track_repo_arg("foo@myproject")
         self.assertEqual(name, "foo")
-        self.assertEqual(repo, "critforge")
+        self.assertEqual(repo, "myproject")
 
     def test_no_at_returns_original_none(self):
         name, repo = parse_track_repo_arg("foo")

@@ -13,7 +13,7 @@ import { renderDetail } from "./detail.ts";
 
 const platformHealth: Track = {
   name: "platform-health",
-  repo: "stylusnexus/CritForge",
+  repo: "your-org/myproject",
   tier: "private",
   status: "blocked",
   launch_priority: "P0",
@@ -135,7 +135,7 @@ describe("renderDetail — clickable issue links", () => {
   it("emits data-repo / data-issue anchors when the track has a repo", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('data-repo="stylusnexus/CritForge"'),
+      html.includes('data-repo="your-org/myproject"'),
       `Expected data-repo attribute:\n${html}`,
     );
     assert.ok(

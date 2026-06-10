@@ -41,7 +41,7 @@ class DiscoverTracksTest(unittest.TestCase):
     def setUp(self):
         self.cfg = {
             "notes_root": str(FIXTURES),
-            "repos": {"critforge": {"github": "stylusnexus/CritForge", "local": None}},
+            "repos": {"myproject": {"github": "your-org/myproject", "local": None}},
         }
 
     def test_active_track_discovered(self):
@@ -50,7 +50,7 @@ class DiscoverTracksTest(unittest.TestCase):
 
     def test_repo_inferred_from_folder(self):
         ex = next(t for t in discover_tracks(self.cfg) if t.name == "example")
-        self.assertEqual(ex.repo, "stylusnexus/CritForge")
+        self.assertEqual(ex.repo, "your-org/myproject")
 
     def test_no_frontmatter_flagged_needs_init(self):
         nf = next(t for t in discover_tracks(self.cfg) if t.path.name == "no_frontmatter.md")
@@ -76,7 +76,7 @@ class DiscoverArchivedTracksTest(unittest.TestCase):
     def setUp(self):
         self.cfg = {
             "notes_root": str(FIXTURES),
-            "repos": {"critforge": {"github": "stylusnexus/CritForge", "local": None}},
+            "repos": {"myproject": {"github": "your-org/myproject", "local": None}},
         }
 
     def test_finds_shipped_track_in_archive(self):
@@ -374,7 +374,7 @@ class DiscoverArchivedSharedTest(unittest.TestCase):
         """Existing notes_root archives continue to be discovered."""
         cfg = {
             "notes_root": str(FIXTURES),
-            "repos": {"critforge": {"github": "stylusnexus/CritForge", "local": None}},
+            "repos": {"myproject": {"github": "your-org/myproject", "local": None}},
         }
         archived = discover_archived_tracks(cfg)
         slugs = [a.meta.get("track") for a in archived]

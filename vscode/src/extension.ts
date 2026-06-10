@@ -850,7 +850,7 @@ export function activate(context: vscode.ExtensionContext): void {
           repo = await vscode.window.showInputBox({
             prompt: "Repo (org/repo)",
             validateInput: (v) =>
-              /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. stylusnexus/CritForge",
+              /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
           });
         } else {
           const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
@@ -862,7 +862,7 @@ export function activate(context: vscode.ExtensionContext): void {
             repo = await vscode.window.showInputBox({
               prompt: "Repo (org/repo)",
               validateInput: (v) =>
-                /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. stylusnexus/CritForge",
+                /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
             });
           } else {
             repo = repoPick.label;
@@ -938,7 +938,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const github = await vscode.window.showInputBox({
           prompt: "GitHub repo (org/repo)",
           validateInput: (v) =>
-            /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. stylusnexus/CritForge",
+            /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
         });
         if (github === undefined) return; // cancelled
 
