@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.10+a6052bf — 2026-06-10 (#189)
+
+feat: reconcile auto-move + non-TTY hang fix, list --sort, viewer status lens
+
+Production deploy. Ships four issues plus docs and the VS Code extension bump to 0.3.4.
+
+### Fixes
+- **#183 — `fix(prompts)`: non-TTY prompt hang.** `hygiene`/`reconcile` launched from the VS Code extension could block forever on a prompt (stdin is an open pipe that never delivers a line and never EOFs). All prompt helpers now fall back to their default when stdin is not a TTY. Adds `reconcile --yes` (auto-apply, local-write only) and `hygiene` forwards it.
+
+### Features
+- **#163 — `feat(reconcile)`: label-driven auto-move.** In an `--all`/`--repo` sweep, an issue relabeled from one track to another in the same repo is moved (removed from the old, added to the new) instead of dangling as a FLAG + duplicate ADD. Ambiguous targets stay FLAGs. PUBLIC-repo destinations are skipped under `--yes`.
+- **#181 — `feat(list)`: `--sort`.** `list --sort=recent` (by `last_touched`) and `--sort=priority` (P0→P3, recency tiebreak); default keeps discovery order.
+- **#180 — `feat(viewer)`: status filter lens.** New Active / Shipped / Parked lens in the VS Code viewer's Select View.
+
+### Chore / docs
+- VS Code extension bumped `0.3.3 → 0.3.4` for the status-lens Marketplace + Open VSX release.
+- README + vscode/README updated for the new flags and lens.
+
+Full suite green (644 tests).
+
 ## 2026.06.09+f25e6e1 — 2026-06-09 (#178)
 
 docs: update READMEs for v0.3.2 features
