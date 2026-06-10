@@ -78,15 +78,15 @@ When a change warrants it, update the docs **in the same PR** as the code — do
 - **README.md** (root) — when you add/rename/remove a subcommand or flag, or change user-visible behavior. The command tables (the `## Commands` reference and the quick-start table near the top) are hand-maintained; update both rows if the change touches a command listed in each.
 - **vscode/README.md** — when the VS Code extension's surface changes (a new lens/sort/command, a new tree affordance, a confirm flow).
 - **agent-plugins** ([stylusnexus/agent-plugins](https://github.com/stylusnexus/agent-plugins), cross-repo) — that README is a **catalog entry pinned to a release tag**, written at the "VS Code viewer + skills" altitude. Update it only when the *plugin's advertised surface* changes (a new/renamed `/work-plan:*` skill command, install/upgrade instructions, the one-line capability summary) — **not** for flag-level details, which live in this repo's README. Day-to-day `feat`/`fix` work does not touch it; a new top-level skill command or a release that changes the pitch does.
-- **CHANGELOG.md** — **don't hand-edit** below the `<!-- new entries inserted below -->` marker. It's written by `.github/workflows/version-bump.yml` on the deploy PR merge to `main`, from that PR's title/body (see "Deploy & release" below). dev merges don't touch it; the production deploy does.
+- **CHANGELOG.md** — **don't hand-edit** below the `<!-- new entries inserted below -->` marker. It's written by `.github/workflows/version-bump.yml` on the deploy PR merge to `main`, from that PR's title/body (see "Releasing (maintainers)" below). dev merges don't touch it; the production deploy does.
 
 Rule of thumb: a `feat` that adds/changes a flag or command → README here (both tables). A new top-level skill command or a release that changes the plugin's pitch → also agent-plugins. Pure internal `refactor`/`test`/`chore` → usually no doc change.
 
-## Deploy & release
+## Releasing (maintainers)
 
-**Do NOT use any globally-installed `/deploy` skill here — one may be present that targets a different project** (assuming a different git remote, a database-migration step, and release-please PR squashing — none of which exist in this repo). This repo's deploy is simpler and is documented below.
+**Contributors can skip this section** — releasing is a maintainer task and needs push access to `main`. This repo has **no deploy automation of its own** and no database / release-please steps; a release is just the manual `dev → main` merge below, after which `version-bump.yml` stamps the version and CHANGELOG. (Don't reach for any general-purpose deploy automation you may have from other projects — the flow here is self-contained and documented in full below.)
 
-**The deploy is a `dev → main` merge.** Merging a deploy PR into `main` fires `.github/workflows/version-bump.yml`, which (on `pull_request: closed` + merged):
+**The release is a `dev → main` merge.** Merging a deploy PR into `main` fires `.github/workflows/version-bump.yml`, which (on `pull_request: closed` + merged):
 1. writes `VERSION` = `<UTC-date>+<short-sha>` (CalVer, e.g. `2026.06.10+a6052bf`),
 2. syncs that CalVer into `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`,
 3. **prepends a CHANGELOG.md entry from the deploy PR's title + body**, and
@@ -94,7 +94,7 @@ Rule of thumb: a `feat` that adds/changes a flag or command → README here (bot
 
 So **the deploy PR title/body IS the changelog entry** — write it as one (conventional-commit title like `feat: …`, body with the shipped changes). The title must be a real conventional type or version-bump still runs but the entry reads poorly.
 
-### Deploy steps (run manually — no repo-local deploy skill)
+### Release steps (maintainer-only, run manually)
 1. Confirm `dev` CI is green and `git diff origin/main..dev` is non-empty.
 2. `gh pr create --base main --head dev --title "<conventional summary>" --body "<changelog-worthy body>"`.
 3. Wait for PR checks (Tests matrix 3.9–3.12 × ubuntu/macos/windows, lint, vscode build): `gh pr checks <n> --watch`.

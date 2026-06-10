@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a new subcommand, flag, or capability.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please skim [CONTRIBUTING.md → What's in scope / out of scope](../blob/main/CONTRIBUTING.md#whats-in-scope)
+        first. This is a focused tool: it helps you and your AI agent stay oriented on GitHub issues
+        (organised into "tracks"). It is **not** a Jira/Linear/Projects replacement or a standalone
+        issue tracker — GitHub stays canonical.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the workflow pain, not the solution. e.g. "When I switch tracks, I have to … by hand."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: A new subcommand/flag? A viewer affordance? Sketch the CLI shape if you can.
+    validations:
+      required: false
+  - type: checkboxes
+    id: fit
+    attributes:
+      label: Fit check
+      options:
+        - label: Keeps GitHub canonical — doesn't add a cache or mirror of issue state.
+        - label: Stays pure-Python-stdlib (no new third-party dependency), or I've flagged why it can't.
+    validations:
+      required: false
