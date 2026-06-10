@@ -12,7 +12,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Export } from "../model.ts";
-import { toMermaid } from "./graph.ts";
+import { toMermaid, __mermaidLabelForTest as mermaidLabel } from "./graph.ts";
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -890,6 +890,118 @@ describe("toMermaid — depends_on edges (#102)", () => {
     assert.ok(
       out.includes("t_alpha"),
       `Focused beta should include alpha (reverse dependency):\n${out}`,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hostile issue-title corpus → label escaper grammar contract (#197)
+// ---------------------------------------------------------------------------
+//
+// mermaid.parse() needs a DOM (jsdom), which this stdlib `node --test` setup
+// does not provide. So instead of round-tripping through the real parser we
+// lock the grammar contract directly: the escaper output must contain none of
+// the characters that can terminate or break a Mermaid `["..."]` /
+// `(["..."])` node label, and embedding a hostile title in a full toMermaid()
+// graph must keep every node statement on its own single line.
+
+describe("mermaidLabel — hostile-title corpus (#197)", () => {
+  const hostileTitles = [
+    'foo")',                       // closes the SQE token then the bracket
+    'bar"]',                       // raw "] terminates the label
+    "line one\nline two",          // newline aborts the node statement
+    "carriage\rreturn",            // lone CR
+    "windows\r\nnewline",          // CRLF
+    "</script><img src=x>",        // HTML/script injection attempt
+    '"[]{}`',                      // every bracket/quote/backtick at once
+    ";|()&<>",                     // pipe/semicolon/paren/entity chars
+    "100% done (maybe?)",          // benign-looking but paren-heavy
+    "a".repeat(500) + '"]',        // long title ending in the SQE token
+  ];
+
+  // Characters that, if present RAW in the escaper output, can break the
+  // `["..."]` label grammar: the double-quote (closes the string), square
+  // brackets and braces (bracket grammar), the backtick, and any newline.
+  const forbiddenRaw = ['"', "[", "]", "{", "}", "`", "\n", "\r"];
+
+  for (const title of hostileTitles) {
+    it(`neutralises grammar-breakers in: ${JSON.stringify(title.slice(0, 40))}`, () => {
+      const out = mermaidLabel(title);
+      for (const ch of forbiddenRaw) {
+        assert.ok(
+          !out.includes(ch),
+          `escaped label must not contain raw ${JSON.stringify(ch)}: ${JSON.stringify(out)}`,
+        );
+      }
+    });
+  }
+
+  it("escaper is idempotent on already-safe output", () => {
+    for (const title of hostileTitles) {
+      const once = mermaidLabel(title);
+      // A second pass may re-escape '&' inside entities, but must still produce
+      // no forbidden raw grammar chars.
+      const twice = mermaidLabel(once);
+      for (const ch of forbiddenRaw) {
+        assert.ok(!twice.includes(ch), `double-escape leaked ${JSON.stringify(ch)}`);
+      }
+    }
+  });
+
+  it("hostile titles in a full graph keep node statements on a single line", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-10T00:00:00Z",
+      tracks: [
+        {
+          name: 'evil")\nx["pwned',
+          repo: "stylusnexus/work-plan-toolkit",
+          tier: "shared",
+          status: "active",
+          launch_priority: "P1",
+          milestone_alignment: null,
+          visibility: "PUBLIC",
+          blockers: [],
+          next_up: [42],
+          rollup: { open: 1, closed: 0 },
+          issues: [
+            { number: 42, title: 'boom"]\nclass x evil', state: "open", assignee: "@x", milestone: null },
+          ],
+        },
+      ],
+    };
+
+    const out = toMermaid(exp);
+
+    // Every node-definition line must be balanced: opening `["` is matched by a
+    // closing `"]` on the SAME line, and no label content introduced a newline.
+    for (const line of out.split("\n")) {
+      const opens = (line.match(/\["/g) ?? []).length;
+      const closes = (line.match(/"\]/g) ?? []).length;
+      assert.equal(
+        opens,
+        closes,
+        `unbalanced label quoting on line: ${JSON.stringify(line)}`,
+      );
+    }
+
+    // The injected `x["` must NOT have survived as raw Mermaid node syntax:
+    // the newline collapsed to a space and the `[` became `(`, so "pwned" is
+    // now inert escaped text inside the single track label, not a second node.
+    // There must be exactly one track-node definition (the `["..."]` form) and
+    // one issue-node definition (the `(["..."])` form) — no extras spawned by
+    // the injected bracket.
+    const trackNodeLines = out
+      .split("\n")
+      .filter(l => /^\s+t_\S+\["/.test(l));
+    assert.equal(
+      trackNodeLines.length,
+      1,
+      `newline/bracket injection spawned extra track nodes:\n${out}`,
+    );
+    assert.ok(
+      !out.includes('x["pwned'),
+      `raw 'x["pwned' node syntax leaked into the graph:\n${out}`,
     );
   });
 });

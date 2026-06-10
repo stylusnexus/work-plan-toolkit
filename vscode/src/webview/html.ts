@@ -340,11 +340,15 @@ mermaid.run();
 }
 
 // ---------------------------------------------------------------------------
-// Private helpers
+// Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Escapes HTML special characters for embedding in text nodes and attributes. */
-function esc(s: string): string {
+/**
+ * Escapes the five HTML special characters (`& < > " '`) for safe embedding in
+ * text nodes and attribute values. Exported so every webview sink uses the same
+ * full 5-char escaper rather than ad-hoc 3-char variants.
+ */
+export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

@@ -38,80 +38,98 @@ export type WriteOutcome =
 /**
  * Maps a WriteAction to work-plan CLI argv. Does NOT include --confirm.
  *
+ * Argument-injection hardening (#194): user/GitHub-derived **positional** args
+ * (track names, repo keys, slugs, notes paths) are placed AFTER a `--`
+ * end-of-options separator. A track named `--repo` or `--confirm=<token>` then
+ * reaches the CLI as a plain positional rather than being misparsed as a flag.
+ * Flags (`--set-next=`, `--state=`, `--no-move`, …) are emitted in equals/literal
+ * form BEFORE the `--`. Numeric issue args are never dash-led but live after the
+ * `--` too, for a single, predictable shape: [subcommand, ...flags, "--", ...positionals].
+ *
+ * NOTE: this depends on the CLI honouring `--` (stopping flag parsing there) —
+ * shipped on a separate Python branch. Verbs with no positionals (hygiene) emit
+ * no separator.
+ *
  * Mappings:
- *   editFields      → ["set", track, ...entries.map(k=v)]
- *   setNext         → ["handoff", track, "--set-next=<csv>"]   (equals form)
- *   refresh         → ["refresh-md", track, "--yes"]
- *   reconcileDraft  → ["reconcile", track, "--draft"]
+ *   editFields      → ["set", ...entries.map(k=v), "--", track]
+ *   setNext         → ["handoff", "--set-next=<csv>", "--", track]   (equals form)
+ *   refresh         → ["refresh-md", "--yes", "--", track]
+ *   reconcileDraft  → ["reconcile", "--draft", "--", track]
  *   hygiene         → ["hygiene", "--yes"]
- *   slot            → ["slot", issue, track, "--no-move"]
- *   close           → ["close", track, "--state=<state>", ..."--note=<text>"]
- *   newTrack        → ["new-track", repo, slug, ..."--priority=<p>", ..."--milestone=<m>"]
- *   addRepo         → ["init-repo", key, "--github=<org/repo>", ..."--local=<path>"]
- *   setNotesRoot    → ["set-notes-root", path]
- *   move            → ["move", issue, fromTrack, toTrack]
+ *   slot            → ["slot", "--no-move", "--", issue, track]
+ *   batchSlot       → ["batch-slot", "--no-move", "--", ...issues, track]
+ *   close           → ["close", "--state=<state>", ..."--note=<text>", "--", track]
+ *   newTrack        → ["new-track", ..."--priority=<p>", ..."--milestone=<m>", "--", repo, slug]
+ *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", "--", key]
+ *   setNotesRoot    → ["set-notes-root", "--", path]
+ *   move            → ["move", "--", issue, fromTrack, toTrack]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
     case "editFields":
       return [
         "set",
-        action.track,
         ...Object.entries(action.fields).map(([k, v]) => `${k}=${v}`),
+        "--",
+        action.track,
       ];
 
     case "setNext":
       return [
         "handoff",
-        action.track,
         `--set-next=${action.issues.join(",")}`,
+        "--",
+        action.track,
       ];
 
     case "refresh":
-      return ["refresh-md", action.track, "--yes"];
+      return ["refresh-md", "--yes", "--", action.track];
 
     case "reconcileDraft":
-      return ["reconcile", action.track, "--draft"];
+      return ["reconcile", "--draft", "--", action.track];
 
     case "hygiene":
       return ["hygiene", "--yes"];
 
     case "slot":
-      return ["slot", String(action.issue), action.track, "--no-move"];
+      return ["slot", "--no-move", "--", String(action.issue), action.track];
 
     case "batchSlot":
-      return ["batch-slot", ...action.issues.map(String), action.track, "--no-move"];
+      return ["batch-slot", "--no-move", "--", ...action.issues.map(String), action.track];
 
     case "close":
       return [
         "close",
-        action.track,
         `--state=${action.state}`,
         ...(action.note ? [`--note=${action.note}`] : []),
+        "--",
+        action.track,
       ];
 
     case "newTrack":
       return [
         "new-track",
-        action.repo,
-        action.slug,
         ...(action.priority ? [`--priority=${action.priority}`] : []),
         ...(action.milestone ? [`--milestone=${action.milestone}`] : []),
+        "--",
+        action.repo,
+        action.slug,
       ];
 
     case "addRepo":
       return [
         "init-repo",
-        action.key,
         `--github=${action.github}`,
         ...(action.local ? [`--local=${action.local}`] : []),
+        "--",
+        action.key,
       ];
 
     case "setNotesRoot":
-      return ["set-notes-root", action.path];
+      return ["set-notes-root", "--", action.path];
 
     case "move":
-      return ["move", String(action.issue), action.fromTrack, action.toTrack];
+      return ["move", "--", String(action.issue), action.fromTrack, action.toTrack];
   }
 }
 
@@ -125,7 +143,9 @@ export function actionToArgs(action: WriteAction): string[] {
  * 1. runWrite(run, actionToArgs(action))
  * 2. If result.json?.needs_confirm === true → call confirm(reason)
  *    - "writeAnyway" → re-invoke with the SAME args + `--confirm=<token>` (equals
- *                       form), return { status: "written", stdout }
+ *                       form), inserted BEFORE the `--` end-of-options separator
+ *                       so a strict CLI parser treats it as a flag, not a
+ *                       positional; return { status: "written", stdout }
  *    - "cancel"      → return { status: "cancelled" } WITHOUT a second invocation
  * 3. Otherwise → return { status: "written", stdout } from the first call
  *
@@ -155,10 +175,28 @@ export async function executeWrite(
       return { status: "cancelled" };
     }
 
-    // Re-invoke with the equals-form confirm token appended.
-    const confirmedResult = await runWrite(run, [...args, `--confirm=${token}`]);
+    // Re-invoke with the equals-form confirm token. It MUST land before the
+    // `--` separator (#194) — anything after `--` is a positional to a strict
+    // parser, which would swallow the token instead of honouring it.
+    const confirmedArgs = withConfirmToken(args, token);
+    const confirmedResult = await runWrite(run, confirmedArgs);
     return { status: "written", stdout: confirmedResult.stdout };
   }
 
   return { status: "written", stdout: result.stdout };
+}
+
+/**
+ * Returns a copy of `args` with `--confirm=<token>` inserted as a flag.
+ * If `args` contains a `--` end-of-options separator, the flag is inserted
+ * immediately before it (so it stays in the flag region); otherwise it is
+ * appended (e.g. `hygiene`, which has no positionals).
+ */
+function withConfirmToken(args: string[], token: string): string[] {
+  const flag = `--confirm=${token}`;
+  const sepIdx = args.indexOf("--");
+  if (sepIdx === -1) {
+    return [...args, flag];
+  }
+  return [...args.slice(0, sepIdx), flag, ...args.slice(sepIdx)];
 }

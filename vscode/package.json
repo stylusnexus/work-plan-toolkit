@@ -3,7 +3,7 @@
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
   "version": "0.3.4",
-  "description": "Sidebar tree for your GitHub issues across repos, organised into tracks — with a Mermaid dependency graph, per-track detail panel, and full read/write (slot, close, edit, new track, refresh, reconcile, hygiene). Shared tracks sync via git; private tracks stay local. Public-repo writes are gated behind a confirm dialog — no accidental leaks.",
+  "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -33,6 +33,11 @@
     "Other"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -237,7 +242,8 @@
         "workPlan.cliPath": {
           "type": "string",
           "default": "work-plan",
-          "description": "Path to the work-plan CLI launcher (on PATH by default)."
+          "scope": "machine",
+          "description": "Path to the work-plan CLI launcher (on PATH by default). Machine-scoped: cannot be overridden by a workspace .vscode/settings.json, so a malicious repo cannot redirect the spawned executable."
         },
         "workPlan.expandReposByDefault": {
           "type": "boolean",

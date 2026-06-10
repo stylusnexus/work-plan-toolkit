@@ -11,11 +11,31 @@
  */
 
 import * as vscode from "vscode";
-import { spawn } from "node:child_process";
 import type { Export } from "../model.ts";
 import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
-import { buildHtml } from "./html.ts";
+import { buildHtml, esc } from "./html.ts";
+
+// ---------------------------------------------------------------------------
+// Injected move handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Performs a track-to-track move for the given issue. Injected by extension.ts
+ * so the webview's drag-move goes through the SAME audited path as the
+ * `workPlan.move` command — `executeWrite` + the public-repo confirm modal —
+ * instead of spawning the CLI directly here. This keeps all spawn logic inside
+ * the single audited runner in cli.ts and guarantees a public-repo move
+ * surfaces the confirm dialog like every other write verb (#197).
+ *
+ * The implementation owns its own success/error/cancel notifications and the
+ * post-write re-render; this module only collects the destination track.
+ */
+export type MoveHandler = (
+  issue: number,
+  fromTrack: string,
+  toTrack: string,
+) => Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Mermaid bundle filename (UMD, self-contained, no chunks required)
@@ -61,6 +81,18 @@ type WebviewMessage = SelectTrackMessage | OpenIssueMessage | SetFocusMessage | 
 export class WorkPlanPanel {
   // Singleton reference — cleared on disposal.
   private static _instance: WorkPlanPanel | undefined;
+
+  /**
+   * Injected handler that performs a move via the audited write path.
+   * Set once during activation (extension.ts). When unset, the drag-move is a
+   * no-op rather than falling back to an ad-hoc spawn.
+   */
+  private static _moveHandler: MoveHandler | undefined;
+
+  /** Registers the move handler used by the webview drag-move (#197). */
+  static setMoveHandler(handler: MoveHandler): void {
+    WorkPlanPanel._moveHandler = handler;
+  }
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -271,37 +303,20 @@ export class WorkPlanPanel {
     );
     if (!picked) return;
 
-    // Execute the move via CLI
-    const cliPath = vscode.workspace
-      .getConfiguration("workPlan")
-      .get<string>("cliPath", "work-plan");
-    const proc = spawn(cliPath, [
-      "move",
-      String(issueNum),
-      currentName,
-      picked.label,
-    ]);
-    let stdout = "";
-    let stderr = "";
-    proc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-    proc.on("close", (code: number | null) => {
-      if (code === 0) {
-        vscode.window.showInformationMessage(
-          `Work Plan: Moved #${issueNum} from ${currentName} to ${picked.label}.`,
-        );
-      } else {
-        vscode.window.showErrorMessage(
-          `Work Plan: Failed to move #${issueNum} — ${stderr || stdout || `exit ${code}`}`,
-        );
-      }
-    });
+    // Route the move through the injected handler so it goes through the same
+    // executeWrite + public-repo confirm flow as every other write verb (#197).
+    // No ad-hoc spawn here — all spawn logic lives in the audited cli.ts runner.
+    const handler = WorkPlanPanel._moveHandler;
+    if (!handler) {
+      vscode.window.showErrorMessage(
+        "Work Plan: move is unavailable — the extension is still starting up.",
+      );
+      return;
+    }
+    await handler(issueNum, currentName, picked.label);
   }
 
   private _buildEmptyHtml(message: string): string {
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return `<!DOCTYPE html>
 <html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'"></head>
 <body><p>${esc(message)}</p></body></html>`;
