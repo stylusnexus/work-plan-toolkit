@@ -218,6 +218,31 @@ describe("actionToArgs", () => {
     ]);
   });
 
+  test("renameTrack → ['rename-track', '--', track, newSlug]", () => {
+    const action: WriteAction = {
+      kind: "renameTrack",
+      track: "old-project-name",
+      newSlug: "new-project-name",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "rename-track",
+      "--",
+      "old-project-name",
+      "new-project-name",
+    ]);
+  });
+
+  test("renameTrack with a '--'-prefixed track name → both positionals after '--'", () => {
+    const action: WriteAction = {
+      kind: "renameTrack",
+      track: "--confirm=evil",
+      newSlug: "safe-slug",
+    };
+    const args = actionToArgs(action);
+    const sepIdx = args.indexOf("--");
+    assert.deepEqual(args.slice(sepIdx + 1), ["--confirm=evil", "safe-slug"]);
+  });
+
   test("addRepo without local → ['init-repo', '--github=org/myrepo', '--', key]", () => {
     const action: WriteAction = {
       kind: "addRepo",

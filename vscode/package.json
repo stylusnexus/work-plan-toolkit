@@ -113,6 +113,10 @@
         "title": "Work Plan: Move Issue from Track"
       },
       {
+        "command": "workPlan.renameTrack",
+        "title": "Work Plan: Rename Track"
+      },
+      {
         "command": "workPlan.newTrack",
         "title": "Work Plan: New Track"
       },
@@ -206,6 +210,11 @@
           "command": "workPlan.move",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanWrite@7"
+        },
+        {
+          "command": "workPlan.renameTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@8"
         },
         {
           "command": "workPlan.slotUntracked",
