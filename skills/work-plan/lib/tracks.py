@@ -10,6 +10,33 @@ from lib.config import (
     resolve_local_path_for_folder,
     is_valid_git_repo,
 )
+from lib.git_state import parse_iso_timestamp
+
+_PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
+
+def priority_rank(meta: dict) -> int:
+    """Rank a track's launch_priority for ascending sort: P0<P1<P2<P3<anything.
+
+    Unknown / missing values (e.g. "—" or absent) sort after all known ranks.
+    """
+    return _PRIORITY_RANK.get(meta.get("launch_priority"), len(_PRIORITY_RANK))
+
+
+def recency_sort_key(meta: dict) -> float:
+    """Sort key for last_touched recency (most recent first when sorted ascending).
+
+    Returns the negative POSIX timestamp so that a plain ascending sort puts the
+    most-recently-touched track first. Tracks with no (or unparseable)
+    last_touched return +inf, sorting them LAST.
+    """
+    raw = meta.get("last_touched")
+    if not raw:
+        return float("inf")
+    try:
+        return -parse_iso_timestamp(raw).timestamp()
+    except (ValueError, TypeError):
+        return float("inf")
 
 
 @dataclass
