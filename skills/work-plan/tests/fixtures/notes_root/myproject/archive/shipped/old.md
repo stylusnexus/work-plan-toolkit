@@ -3,7 +3,7 @@ track: old
 status: shipped
 launch_priority: P2
 github:
-  repo: stylusnexus/CritForge
+  repo: your-org/myproject
   issues: [50]
 ---
 

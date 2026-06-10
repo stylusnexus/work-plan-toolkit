@@ -61,7 +61,7 @@ DESCRIPTIONS = [
     ("brief", "[--repo=<key>]",
      "Multi-track snapshot with time-aware framing. --repo scopes the brief (and the archived-reopen callouts) to one configured repo.",
      "Starting a work session, after a gap, or any time you want a status snapshot. Use --repo when you only want to think about one project today.",
-     "/work-plan brief --repo=critforge"),
+     "/work-plan brief --repo=myproject"),
     ("handoff", "[track] [--set-next 1,2,3 | --auto-next] [--interactive]",
      "Wrap up a session: capture touched/next/blockers, update body status table. Use --set-next to set the next_up list explicitly. Use --auto-next to suggest a priority-sorted list from open issues (interactive: apply / edit / skip).",
      "Ending a work block — before stepping away, going to bed, or switching tracks. Use --auto-next when you don't want to hand-pick issue numbers.",
@@ -89,7 +89,7 @@ DESCRIPTIONS = [
     ("refresh-md", "<track> | --all | --repo=<key> [--yes]",
      "Update issue STATE (open/closed, status labels) inside the track body's status table. Does not change track membership.",
      "Usually NOT needed directly: `handoff` already refreshes the body table for its own track, and `brief` reads GitHub live. Reach for this when a sibling track has drifted because you haven't `handoff`'d it lately. `--all` sweeps every active track; `--repo=<key>` scopes the sweep to one repo (also runs as part of weekly `hygiene`).",
-     "/work-plan refresh-md --repo=critforge"),
+     "/work-plan refresh-md --repo=myproject"),
     ("list", "[--all] [--sort=recent|priority]",
      "List active tracks (or all including parked/archived).",
      "Quick scan of what tracks exist; --all to see archived. --sort orders by last_touched recency or launch_priority.",
@@ -113,11 +113,11 @@ DESCRIPTIONS = [
     ("auto-triage", "[--repo=<key>] [--apply] [--limit=N]",
      "AI-assign untracked open issues to existing tracks. Step 1 (no --apply): fetches untracked issues + existing tracks, prints AI prompt. Step 2 (--apply): reads AI's JSON answers and slots each assignment into track frontmatter. Complements `group` (which creates new tracks); `auto-triage` assigns to tracks that already exist. --limit controls how many untracked issues are shown (default 100).",
      "Periodically — when new issues have piled up outside the track model. Run /work-plan coverage first to confirm there's a gap worth triaging.",
-     "/work-plan auto-triage --repo=critforge"),
+     "/work-plan auto-triage --repo=myproject"),
     ("reconcile", "<track> | --all | --repo=<key> [--draft] [--yes]",
      "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. In an --all/--repo sweep it also detects MOVEs — an issue relabeled from one track to another in the same repo is moved (removed from the old track, added to the new). Add --draft to preview proposed ADDs/MOVEs/FLAGs without prompting or writing; add --yes to apply without prompting (non-interactive, e.g. from the VS Code extension; PUBLIC-repo move destinations are skipped under --yes). NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
      "WEEKLY hygiene on label-driven tracks — pulls labeled issues into their tracks, flags un-labeled ones. Use --repo=<key> to scope the sweep to one repo. Skip on hand-curated tracks (it'll propose dropping curated issues every run).",
-     "/work-plan reconcile --repo=critforge --draft"),
+     "/work-plan reconcile --repo=myproject --draft"),
     ("duplicates", "[--min-similarity=0.7] [--limit=20] [--state=open] [--timeout=N]",
      "Find likely-duplicate issues by title similarity.",
      "WEEKLY hygiene, or before a milestone planning session — find consolidation candidates.",
@@ -125,7 +125,7 @@ DESCRIPTIONS = [
     ("coverage", "[--repo=<key>] [--list] [--limit=N]",
      "Report how many open issues are not referenced by any track (per repo). --list prints issue titles (default: show 20; override with --limit=N). Read-only; derives live from gh.",
      "On-demand: measure how much of a repo's backlog has fallen outside the planning layer. Pairs with /work-plan group to bulk-cluster the orphans.",
-     "/work-plan coverage --repo=critforge --list"),
+     "/work-plan coverage --repo=myproject --list"),
     ("canonicalize", "<track | track@repo> | --all [--force] [--repo=<key>]",
      "Insert a canonical master issue table at the top of a track. Refresh-md then targets ONLY this table, leaving narrative tables alone. Use --repo=<key> or track@repo to disambiguate; with --all, --repo=<key> scopes to one repo.",
      "ONE-TIME for hand-written tracks with multiple narrative tables, OR after restructuring a track.",
@@ -133,7 +133,7 @@ DESCRIPTIONS = [
     ("hygiene", "[--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]",
      "Weekly cleanup wrapper: refresh-md + reconcile + duplicates. With --repo=<key>, steps 1 and 2 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).",
      "WEEKLY — runs all three hygiene commands in sequence so you don't have to remember each. Use --repo=<key> to clean up one project without touching the others.",
-     "/work-plan hygiene --repo=critforge"),
+     "/work-plan hygiene --repo=myproject"),
     ("export", "--json",
      "Emit the viewer-ready JSON read surface (schema 1): every frontmatter'd track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone. Read-only; derives live from gh. Consumed by the VS Code extension.",
      "When a tool (the VS Code viewer, or any script) needs structured track state instead of the human-facing brief/orient text.",
@@ -143,13 +143,13 @@ DESCRIPTIONS = [
      "Programmatic/GUI edits that have no dedicated verb — e.g. the VS Code extension changing a status or blockers list. On the terminal you'll usually use the named verbs instead.",
      "/work-plan set ux-redesign status=parked"),
     ("new-track", "<repo> <slug> [--priority=P0..P3] [--milestone=<m>] [--private] [--confirm=<token>]",
-     "Create a brand-new track file under notes_root in one headless call. <repo> is either a configured key (e.g. 'critforge') or a bare org/repo slug (e.g. 'stylusnexus/critforge'). Writes frontmatter with status=active and optional priority/milestone. Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=<token> to proceed.",
+     "Create a brand-new track file under notes_root in one headless call. <repo> is either a configured key (e.g. 'myproject') or a bare org/repo slug (e.g. 'your-org/myproject'). Writes frontmatter with status=active and optional priority/milestone. Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=<token> to proceed.",
      "When a new feature branch or initiative starts and you want the track file created immediately — especially from a non-terminal caller like the VS Code extension that can't interactively run init.",
      "/work-plan new-track stylusnexus/work-plan-toolkit my-feature"),
     ("plan-status", "[--repo=<key>] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive | --issues] [--draft] [--since-days=N] [--type=plan|spec]",
      "Reach a verdict on every plan/spec doc in a repo by correlating each plan's declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes. Read-only: reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. --json for machine output. Add --stamp to write each verdict into its doc as an idempotent status header (--draft previews without writing). Add --llm for a two-step AI pass that judges prose/ambiguous docs (writes a prompt; you save JSON to the cache; re-run with --llm --apply). --archive moves dead plans to archive/abandoned/ (gated); --issues opens a GitHub issue per partial plan listing its unsatisfied files (gated). Both honor --draft.",
      "When you point at a repo and need to know what's actually done vs. half-done vs. dead among accumulated plans. Run from inside the repo, or use --repo=<key> for a configured one.",
-     "/work-plan plan-status --repo=critforge"),
+     "/work-plan plan-status --repo=myproject"),
     ("set-notes-root", "<path>",
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
@@ -192,7 +192,7 @@ def _print_help() -> int:
     print("FOCUS ON ONE PROJECT\n")
     print("  Daily snapshot, one repo  →  /work-plan brief --repo=<key>")
     print("  Weekly cleanup, one repo  →  /work-plan hygiene --repo=<key>")
-    print("  (<key> is the folder name under notes_root, e.g. 'critforge'.)")
+    print("  (<key> is the folder name under notes_root, e.g. 'myproject'.)")
     print()
     print("ONE-TIME SETUP\n")
     print("  Bulk-cluster milestone →  /work-plan group --milestone='v1.0.0 — Public Launch'")

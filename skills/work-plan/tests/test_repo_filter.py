@@ -15,23 +15,23 @@ class FilterTracksByRepoTest(unittest.TestCase):
     def setUp(self):
         self.cfg = {
             "notes_root": str(FIXTURES),
-            "repos": {"critforge": {"github": "stylusnexus/CritForge", "local": None}},
+            "repos": {"myproject": {"github": "your-org/myproject", "local": None}},
         }
         self.tracks = discover_tracks(self.cfg)
 
     def test_matches_folder_key(self):
-        scoped = filter_tracks_by_repo(self.tracks, "critforge")
+        scoped = filter_tracks_by_repo(self.tracks, "myproject")
         names = {t.name for t in scoped}
         self.assertIn("example", names)
         self.assertNotIn("loose_at_root", names)
 
     def test_matches_github_slug(self):
-        scoped = filter_tracks_by_repo(self.tracks, "stylusnexus/CritForge")
+        scoped = filter_tracks_by_repo(self.tracks, "your-org/myproject")
         names = {t.name for t in scoped}
         self.assertIn("example", names)
 
     def test_case_insensitive(self):
-        scoped = filter_tracks_by_repo(self.tracks, "CRITFORGE")
+        scoped = filter_tracks_by_repo(self.tracks, "MYPROJECT")
         names = {t.name for t in scoped}
         self.assertIn("example", names)
 
@@ -39,13 +39,13 @@ class FilterTracksByRepoTest(unittest.TestCase):
         self.assertEqual(filter_tracks_by_repo(self.tracks, "nonexistent"), [])
 
     def test_excludes_loose_filing_track(self):
-        scoped = filter_tracks_by_repo(self.tracks, "critforge")
+        scoped = filter_tracks_by_repo(self.tracks, "myproject")
         for t in scoped:
             self.assertFalse(t.needs_filing)
 
     def test_track_folder_field_populated(self):
         ex = next(t for t in self.tracks if t.name == "example")
-        self.assertEqual(ex.folder, "critforge")
+        self.assertEqual(ex.folder, "myproject")
 
 
 if __name__ == "__main__":

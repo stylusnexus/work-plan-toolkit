@@ -53,12 +53,12 @@ class FetchIssuesTest(unittest.TestCase):
             stdout='{"number": 4254, "state": "OPEN", "labels": [{"name": "priority/P0"}], "title": "polls"}',
             returncode=0,
         )
-        result = fetch_issues("stylusnexus/CritForge", [4254])
+        result = fetch_issues("your-org/myproject", [4254])
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["number"], 4254)
 
     def test_empty_returns_empty(self):
-        self.assertEqual(fetch_issues("stylusnexus/CritForge", []), [])
+        self.assertEqual(fetch_issues("your-org/myproject", []), [])
 
 
 class FetchRecentIssuesTest(unittest.TestCase):
@@ -68,7 +68,7 @@ class FetchRecentIssuesTest(unittest.TestCase):
             stdout='[{"number": 9999, "title": "new", "labels": [], "createdAt": "2026-04-28T10:00:00Z"}]',
             returncode=0,
         )
-        result = fetch_recent_issues("stylusnexus/CritForge", since_iso="2026-04-27")
+        result = fetch_recent_issues("your-org/myproject", since_iso="2026-04-27")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["number"], 9999)
         called_args = mock_run.call_args[0][0]

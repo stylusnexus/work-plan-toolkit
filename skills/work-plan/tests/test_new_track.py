@@ -43,7 +43,7 @@ def _make_cfg(*, repos=None):
     if repos is None:
         repos = {
             "myrepo": {"github": "org/myrepo", "local": None},
-            "critforge": {"github": "stylusnexus/critforge", "local": None},
+            "myproject": {"github": "your-org/myproject", "local": None},
         }
     return {"notes_root": NOTES_ROOT, "repos": repos}
 
@@ -114,18 +114,18 @@ class NewTrackCommandTest(unittest.TestCase):
         self.assertEqual(meta["status"], "active")
 
     def test_config_key_folder_resolves_correctly(self):
-        """Config-key 'critforge' → folder = 'critforge',
-        github.repo = 'stylusnexus/critforge'."""
-        rc, mw, out = _drive(["critforge", "encounter-builder"], vis="PRIVATE")
+        """Config-key 'myproject' → folder = 'myproject',
+        github.repo = 'your-org/myproject'."""
+        rc, mw, out = _drive(["myproject", "encounter-builder"], vis="PRIVATE")
         self.assertEqual(rc, 0)
         mw.assert_called_once()
         meta = mw.call_args[0][1]
-        self.assertEqual(meta["github"]["repo"], "stylusnexus/critforge")
+        self.assertEqual(meta["github"]["repo"], "your-org/myproject")
         # Track name from slug
         self.assertEqual(meta["track"], "encounter-builder")
-        # Path passed to write_file should be under critforge folder
+        # Path passed to write_file should be under myproject folder
         path_arg = mw.call_args[0][0]
-        self.assertIn("critforge", str(path_arg))
+        self.assertIn("myproject", str(path_arg))
 
     # ------------------------------------------------------------------
     # Bare org/repo slug

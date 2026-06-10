@@ -2,7 +2,7 @@
  * Tests for src/webview/graph.ts — pure Mermaid graph derivation.
  *
  * Fixture mirrors the mockup:
- *   CritForge (PRIVATE):
+ *   myproject (PRIVATE):
  *     • platform-health — blocked, blockers:[4821], next_up:[487,1556]
  *     • idea-mode       — active,  blockers:[],    next_up:[4821]
  *   work-plan-toolkit (PUBLIC):
@@ -24,7 +24,7 @@ const exp: Export = {
   tracks: [
     {
       name: "platform-health",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "blocked",
       launch_priority: "P0",
@@ -42,7 +42,7 @@ const exp: Export = {
     },
     {
       name: "idea-mode",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "active",
       launch_priority: "P1",

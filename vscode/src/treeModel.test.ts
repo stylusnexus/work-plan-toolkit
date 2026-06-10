@@ -29,7 +29,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
 function makeTrack(overrides: Partial<Track> = {}): Track {
   return {
     name: "platform-health",
-    repo: "stylusnexus/CritForge",
+    repo: "your-org/myproject",
     tier: "private",
     status: "active",
     launch_priority: "P2",
@@ -50,7 +50,7 @@ const MOCKUP_EXPORT: Export = {
   tracks: [
     {
       name: "platform-health",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "blocked",
       launch_priority: "P1",
@@ -63,7 +63,7 @@ const MOCKUP_EXPORT: Export = {
     },
     {
       name: "idea-mode",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "active",
       launch_priority: "P2",
@@ -175,11 +175,11 @@ describe("buildTree", () => {
   test("returns 2 repo nodes in first-seen order", () => {
     const tree = buildTree(MOCKUP_EXPORT);
     assert.equal(tree.length, 2);
-    assert.equal(tree[0].repo, "stylusnexus/CritForge");
+    assert.equal(tree[0].repo, "your-org/myproject");
     assert.equal(tree[1].repo, "stylusnexus/work-plan-toolkit");
   });
 
-  test("CritForge isPublic:false (all PRIVATE tracks)", () => {
+  test("myproject isPublic:false (all PRIVATE tracks)", () => {
     const tree = buildTree(MOCKUP_EXPORT);
     assert.equal(tree[0].isPublic, false);
   });
@@ -189,12 +189,12 @@ describe("buildTree", () => {
     assert.equal(tree[1].isPublic, true);
   });
 
-  test("CritForge has 2 tracks in first-seen order", () => {
+  test("myproject has 2 tracks in first-seen order", () => {
     const tree = buildTree(MOCKUP_EXPORT);
-    const critforge = tree[0];
-    assert.equal(critforge.tracks.length, 2);
-    assert.equal(critforge.tracks[0].name, "platform-health");
-    assert.equal(critforge.tracks[1].name, "idea-mode");
+    const myproject = tree[0];
+    assert.equal(myproject.tracks.length, 2);
+    assert.equal(myproject.tracks[0].name, "platform-health");
+    assert.equal(myproject.tracks[1].name, "idea-mode");
   });
 
   test("work-plan-toolkit has 1 track", () => {
@@ -340,18 +340,18 @@ describe("buildTree", () => {
       schema: 1,
       generated_at: "2026-06-07T00:00:00Z",
       tracks: [
-        makeTrack({ name: "t1", repo: "stylusnexus/CritForge" }),
+        makeTrack({ name: "t1", repo: "your-org/myproject" }),
         makeTrack({ name: "t2", repo: "stylusnexus/work-plan-toolkit" }),
       ],
       untracked: [
-        { repo: "stylusnexus/CritForge", issues: [untrackedIssue] },
+        { repo: "your-org/myproject", issues: [untrackedIssue] },
       ],
     };
     const tree = buildTree(exp);
-    const critforge = tree.find(n => n.repo === "stylusnexus/CritForge")!;
+    const myproject = tree.find(n => n.repo === "your-org/myproject")!;
     const wpt = tree.find(n => n.repo === "stylusnexus/work-plan-toolkit")!;
-    assert.equal(critforge.untracked.length, 1);
-    assert.strictEqual(critforge.untracked[0], untrackedIssue);
+    assert.equal(myproject.untracked.length, 1);
+    assert.strictEqual(myproject.untracked[0], untrackedIssue);
     assert.deepEqual(wpt.untracked, []);
   });
 
@@ -391,7 +391,7 @@ describe("buildTree", () => {
 
 describe("repoDescription", () => {
   function repoNode(overrides: Partial<RepoNode> = {}): RepoNode {
-    return { kind: "repo", repo: "stylusnexus/CritForge", isPublic: false, tier: "private", tracks: [], untracked: [], ...overrides };
+    return { kind: "repo", repo: "your-org/myproject", isPublic: false, tier: "private", tracks: [], untracked: [], ...overrides };
   }
 
   test("private repo → the tier text", () => {
@@ -411,7 +411,7 @@ describe("repoDescription", () => {
 
   test("the MOCKUP fixture's public repo reads '⚠ public'", () => {
     const tree = buildTree(MOCKUP_EXPORT);
-    assert.equal(repoDescription(tree[0]), "private");   // CritForge (private)
+    assert.equal(repoDescription(tree[0]), "private");   // myproject (private)
     assert.equal(repoDescription(tree[1]), "⚠ public");  // work-plan-toolkit (public)
   });
 });
