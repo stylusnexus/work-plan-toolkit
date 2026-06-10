@@ -6,8 +6,9 @@ By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## Quick links
 
-- **Bug reports / feature requests**: [open an issue](https://github.com/stylusnexus/work-plan-toolkit/issues/new)
+- **Bug reports / feature requests**: [open an issue](https://github.com/stylusnexus/work-plan-toolkit/issues/new/choose)
 - **Discussion**: [GitHub Discussions](https://github.com/stylusnexus/work-plan-toolkit/discussions) (if enabled)
+- **Working with an AI agent?** Repo-specific guidance for Claude Code and Codex lives in [`CLAUDE.md`](CLAUDE.md) (deep reference) and [`AGENTS.md`](AGENTS.md) (the verify loop + guardrails). Keep them consistent when you change either.
 - **Maintainer**: Stylus Nexus Holdings LLC (`@stylusnexus`)
 
 ## Dev setup

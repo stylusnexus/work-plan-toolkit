@@ -1,0 +1,76 @@
+name: Bug report
+description: Something in the CLI, skill, or VS Code extension isn't working.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report.
+
+        **Security vulnerabilities: do NOT file here.** Use a
+        [private advisory](https://github.com/stylusnexus/work-plan-toolkit/security/advisories/new)
+        instead (see [SECURITY.md](../blob/main/SECURITY.md)).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: The exact command you ran and what went wrong — include any traceback or error output verbatim.
+      placeholder: |
+        $ /work-plan brief --repo=myproject
+        Traceback (most recent call last): ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: false
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - CLI (work_plan.py / slash command)
+        - VS Code extension (viewer)
+        - install.sh / install.ps1
+        - Other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How did you install it?
+      options:
+        - Claude Code plugin
+        - Codex plugin
+        - npm global (@stylusnexus/work-plan)
+        - VS Code Marketplace / Open VSX
+        - Cloned + ./install.sh / .\install.ps1
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Run these and paste the output. (`yq` must be the mikefarah/Go build, not the Python jq wrapper.)
+      value: |
+        - OS:
+        - Python (`python3 --version`):
+        - gh (`gh --version`):
+        - yq (`yq --version`):
+        - work-plan version (CLI `--version`, or the VS Code extension version):
+    validations:
+      required: true

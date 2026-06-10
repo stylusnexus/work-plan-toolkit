@@ -67,3 +67,4 @@ There is no build step, no lint config, no CI lint gate beyond a py3.9 union che
 - [ ] Re-ran `./install.sh` if you changed skill source and want to exercise the live command.
 - [ ] New subcommand registered in BOTH `SUBCOMMANDS` and `DESCRIPTIONS`.
 - [ ] Still pure stdlib (no new imports of third-party packages; no `match`).
+- [ ] **Docs in lockstep** if user-facing: a new/changed flag or subcommand → update `README.md` (both command tables); an extension change → `vscode/README.md`. Don't hand-edit `CHANGELOG.md` (release-generated). See `CLAUDE.md → Keep docs in lockstep with changes`.
