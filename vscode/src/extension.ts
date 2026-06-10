@@ -102,6 +102,8 @@ export function activate(context: vscode.ExtensionContext): void {
             ? activeLens.kind === "repo" && c.lens.repo === activeLens.repo
             : c.lens.kind === "milestone"
             ? activeLens.kind === "milestone" && c.lens.milestone === activeLens.milestone
+            : c.lens.kind === "status"
+            ? activeLens.kind === "status" && c.lens.status === activeLens.status
             : true);
         return {
           label: c.label,
