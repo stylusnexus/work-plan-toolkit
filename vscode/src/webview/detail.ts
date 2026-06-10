@@ -44,7 +44,7 @@ export function renderDetail(track: Track): string {
   // Issues table (with milestone bands when multiple groups exist)
   // -------------------------------------------------------------------------
 
-  const groups = groupByMilestone(track.issues);
+  const groups = groupByMilestone(track.issues, track.milestone_alignment);
 
   parts.push('<table class="issues">');
   parts.push(
@@ -227,8 +227,12 @@ function lookupTitle(track: Track, num: number): string {
  *
  * Returns [(label, [Issue, ...]), ...] where label is the compact milestone
  * string (as from short_milestone) or null for the no-milestone group.
- * Issues are already sorted by milestone_sort_key (active first, future
- * milestones grouped, null last).  The input issues array is NOT mutated.
+ *
+ * Mirrors the Python `milestone_sort_key` (lib/export_model.py): the track's
+ * active milestone (`milestone_alignment`) comes first, then other non-null
+ * milestones grouped by label, then the no-milestone group last; ties broken
+ * by issue number. This is THE shared ordering — both surfaces derive from the
+ * same rule so they cannot drift. The input issues array is NOT mutated.
  *
  * Graceful fallback: if all issues share the same milestone (or all lack
  * one), returns a single-group result — callers can use this to skip
@@ -236,17 +240,28 @@ function lookupTitle(track: Track, num: number): string {
  */
 function groupByMilestone(
   issues: Issue[],
+  milestoneAlignment: string | null = null,
 ): [string | null, Issue[]][] {
   if (issues.length === 0) return [];
 
-  // Sort by milestone: null last, then by milestone label, then by number.
+  // Tier mirrors milestone_sort_key: 0 = active milestone, 1 = other non-null
+  // milestone, 2 = no milestone. Lower tier sorts first.
+  const tier = (ms: string | null): number => {
+    if (ms === null || ms === "") return 2;
+    if (ms === milestoneAlignment) return 0;
+    return 1;
+  };
+
   const sorted = [...issues].sort((a, b) => {
     const msA = a.milestone ?? null;
     const msB = b.milestone ?? null;
-    if (msA === null && msB !== null) return 1;
-    if (msB === null && msA !== null) return -1;
-    if (msA !== null && msB !== null && msA !== msB) {
-      return msA.localeCompare(msB);
+    const tierA = tier(msA);
+    const tierB = tier(msB);
+    if (tierA !== tierB) return tierA - tierB;
+    // Same tier: within tier 1, order distinct labels lexicographically so
+    // groups are stable; within any tier, ties break by issue number.
+    if (tierA === 1 && msA !== msB) {
+      return (msA as string).localeCompare(msB as string);
     }
     return a.number - b.number;
   });
