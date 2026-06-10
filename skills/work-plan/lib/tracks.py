@@ -155,7 +155,9 @@ def discover_archived_tracks(cfg: dict) -> list[Track]:
         for md_path in sorted(notes_root.rglob("*.md")):
             if "archive" not in md_path.parts:
                 continue
-            if md_path.name.startswith((".", "_")):
+            # '-' prefix rejected so a `--repo.md` file can't become a `--repo`
+            # track that the CLI misparses as a flag (#194).
+            if md_path.name.startswith((".", "_", "-")):
                 continue
             private_archived.append(_build_track(md_path, notes_root, cfg))
 
@@ -212,8 +214,9 @@ def _discover_shared_tracks(cfg: dict, include_archive: bool = False,
         if not notes_dir.is_dir():
             continue
         for md_path in sorted(notes_dir.rglob("*.md")):
-            # Skip dotfiles and README
-            if md_path.name.startswith(".") or md_path.name == "README.md":
+            # Skip dotfiles, README, and dash-led names (a `--repo.md` file
+            # would otherwise become a `--repo` track the CLI misparses, #194).
+            if md_path.name.startswith((".", "-")) or md_path.name == "README.md":
                 continue
             in_archive = "archive" in md_path.relative_to(notes_dir).parts
             if archive_only and not in_archive:
@@ -263,7 +266,9 @@ def _walk(notes_root: Path, cfg: dict, include_archive: bool) -> list[Track]:
     for md_path in sorted(notes_root.rglob("*.md")):
         if not include_archive and "archive" in md_path.parts:
             continue
-        if md_path.name.startswith((".", "_")):
+        # '-' prefix rejected so a `--repo.md` file can't become a `--repo`
+        # track that the CLI misparses as a flag (#194).
+        if md_path.name.startswith((".", "_", "-")):
             continue
         out.append(_build_track(md_path, notes_root, cfg))
     return out
