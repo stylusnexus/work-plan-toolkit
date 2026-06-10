@@ -5,6 +5,7 @@ folder. Config writes stay in the CLI (the engine), not the extension.
 
 Usage: set-notes-root <path>
 """
+import os
 import subprocess
 from pathlib import Path
 
@@ -38,12 +39,15 @@ def run(args: list[str]) -> int:
     # Ensure the target directory exists
     new_root.mkdir(parents=True, exist_ok=True)
 
-    # Write the new notes_root into config via yq (mikefarah/yq)
-    yq_expr = f'.notes_root = "{new_root}"'
+    # Write the new notes_root into config via yq (mikefarah/yq). The path is
+    # passed as an OPAQUE env value via strenv() — never interpolated into the
+    # yq expression — so a path containing `"` or yq operators cannot break out
+    # of the string literal and rewrite arbitrary config keys (#191).
+    env = {**os.environ, "WP_NEW_ROOT": str(new_root)}
     try:
         subprocess.run(
-            ["yq", "-i", yq_expr, str(DEFAULT_CONFIG_PATH)],
-            check=True, capture_output=True, text=True,
+            ["yq", "-i", ".notes_root = strenv(WP_NEW_ROOT)", str(DEFAULT_CONFIG_PATH)],
+            check=True, capture_output=True, text=True, env=env,
         )
     except subprocess.CalledProcessError as e:
         print(f"ERROR: yq failed to update config: {e.stderr}")

@@ -103,8 +103,12 @@ class SetNotesRootTest(unittest.TestCase):
         # raw POSIX input string.
         expected = str(Path("/some/new/path").expanduser().resolve())
         expr = yq_args[2]
-        self.assertIn(".notes_root", expr)
-        self.assertIn(expected, expr)
+        # Hardened (#191): the path travels as an OPAQUE env value via strenv(),
+        # never interpolated into the yq expression — so a path containing `"`
+        # or yq operators can't break out and rewrite arbitrary config keys.
+        self.assertEqual(expr, ".notes_root = strenv(WP_NEW_ROOT)")
+        self.assertNotIn(expected, expr)
+        self.assertEqual(msub.call_args.kwargs["env"]["WP_NEW_ROOT"], expected)
 
         # mkdir must have been called (creates the dir)
         mmkdir.assert_called_once()

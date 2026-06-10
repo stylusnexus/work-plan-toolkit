@@ -3,6 +3,7 @@
 Non-interactive: --github is required; --local is optional (no prompts).
 """
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -113,11 +114,16 @@ def run(args: list[str]) -> int:
     if local:
         repo_block["local"] = local
 
-    yq_expr = f'.repos.{key} = {json.dumps(repo_block)}'
+    # `key` is validated against ^[a-z][a-z0-9-]*$ above, so it's safe in the yq
+    # path. The repo block is passed as an OPAQUE env value via env() (parsed as
+    # YAML/JSON) rather than interpolated into the expression — uniform with the
+    # strenv() hardening in set-notes-root (#196).
+    env = {**os.environ, "WP_REPO_BLOCK": json.dumps(repo_block)}
+    yq_expr = f".repos.{key} = env(WP_REPO_BLOCK)"
     try:
         subprocess.run(
             ["yq", "-i", yq_expr, str(DEFAULT_CONFIG_PATH)],
-            check=True, capture_output=True, text=True,
+            check=True, capture_output=True, text=True, env=env,
         )
     except subprocess.CalledProcessError as e:
         print(f"ERROR: yq failed to update config: {e.stderr}")

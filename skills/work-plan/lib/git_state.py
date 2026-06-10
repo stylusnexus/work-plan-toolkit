@@ -4,6 +4,39 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+# Bound every git subprocess so a hung repo, a stuck lock, or a slow network
+# filesystem can't stall the CLI (or the VS Code extension that spawns it)
+# indefinitely (#196). 20s is generous for local git operations.
+GIT_TIMEOUT = 20
+
+
+def is_safe_ref(name: str) -> bool:
+    """True if `name` is safe to pass to git as a positional revision.
+
+    Rejects empty strings and anything beginning with '-'. A branch/rev that
+    starts with a dash is read by git as an OPTION, not a value — e.g. a branch
+    named `--output=/path` turns `git log <branch> …` into an arbitrary-file
+    write (#192). git refnames cannot legitimately start with '-', so this
+    rejects nothing valid. Callers must gate every positional rev on this.
+    """
+    return bool(name) and not name.startswith("-")
+
+
+def _git(repo_path, *args, timeout: int = GIT_TIMEOUT):
+    """Run `git -C <repo_path> <args>` with a bounded timeout.
+
+    Returns the CompletedProcess, or None on timeout / spawn failure — callers
+    treat None as "no data", preserving the never-raise contract these helpers
+    have always had.
+    """
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo_path), *args],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
 
 def gap_seconds_to_label(seconds: int) -> str:
     """'Nm ago' / 'Nh ago' / 'Nd ago'."""
@@ -26,11 +59,8 @@ def parse_iso_timestamp(s: str) -> datetime:
 def current_branch(repo_path: Path) -> Optional[str]:
     if not repo_path or not Path(repo_path).exists():
         return None
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "branch", "--show-current"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
+    proc = _git(repo_path, "branch", "--show-current")
+    if proc is None or proc.returncode != 0:
         return None
     return proc.stdout.strip() or None
 
@@ -38,21 +68,15 @@ def current_branch(repo_path: Path) -> Optional[str]:
 def has_uncommitted(repo_path: Path) -> bool:
     if not repo_path or not Path(repo_path).exists():
         return False
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "status", "--short"],
-        capture_output=True, text=True,
-    )
-    return proc.returncode == 0 and bool(proc.stdout.strip())
+    proc = _git(repo_path, "status", "--short")
+    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
 
 
 def uncommitted_file_count(repo_path: Path) -> int:
     if not repo_path or not Path(repo_path).exists():
         return 0
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "status", "--short"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
+    proc = _git(repo_path, "status", "--short")
+    if proc is None or proc.returncode != 0:
         return 0
     return len([l for l in proc.stdout.splitlines() if l.strip()])
 
@@ -60,11 +84,12 @@ def uncommitted_file_count(repo_path: Path) -> int:
 def commits_ahead(branch_name: str, base: str, repo_path: Path) -> int:
     if not repo_path or not Path(repo_path).exists():
         return 0
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "rev-list", "--count", f"{base}..{branch_name}"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0:
+    # Both refs are interpolated into a single `base..branch` positional, so a
+    # dash-led value would be read as a git option — reject before use (#192).
+    if not is_safe_ref(branch_name) or not is_safe_ref(base):
+        return 0
+    proc = _git(repo_path, "rev-list", "--count", f"{base}..{branch_name}")
+    if proc is None or proc.returncode != 0:
         return 0
     try:
         return int(proc.stdout.strip())
@@ -75,11 +100,10 @@ def commits_ahead(branch_name: str, base: str, repo_path: Path) -> int:
 def branch_exists(branch_name: str, repo_path: Path) -> bool:
     if not repo_path or not Path(repo_path).exists():
         return False
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "rev-parse", "--verify", branch_name],
-        capture_output=True, text=True,
-    )
-    return proc.returncode == 0
+    if not is_safe_ref(branch_name):
+        return False
+    proc = _git(repo_path, "rev-parse", "--verify", branch_name)
+    return proc is not None and proc.returncode == 0
 
 
 def _has_recent_commits(branch_name: str, repo_path: Path, hours: int = 24) -> bool:
@@ -88,12 +112,8 @@ def _has_recent_commits(branch_name: str, repo_path: Path, hours: int = 24) -> b
     if not branch_exists(branch_name, repo_path):
         return False
     since = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "log", branch_name,
-         f"--since={since}", "--pretty=format:%H"],
-        capture_output=True, text=True,
-    )
-    return proc.returncode == 0 and bool(proc.stdout.strip())
+    proc = _git(repo_path, "log", branch_name, f"--since={since}", "--pretty=format:%H")
+    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
 
 
 def branch_in_progress(branch_name: str, repo_path: Path) -> bool:
@@ -117,11 +137,8 @@ def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:
         return None
     if not branch_exists(branch_name, repo_path):
         return None
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "log", "-1", branch_name, "--pretty=format:%cI"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0 or not proc.stdout.strip():
+    proc = _git(repo_path, "log", "-1", branch_name, "--pretty=format:%cI")
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
         return None
     try:
         s = proc.stdout.strip().split("+")[0].split("Z")[0]
@@ -134,11 +151,8 @@ def path_last_commit_date(rel_path: str, repo_path: Path) -> Optional[datetime]:
     """Timestamp of the most recent commit touching `rel_path` (naive datetime)."""
     if not repo_path or not Path(repo_path).exists():
         return None
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "log", "-1", "--pretty=format:%cI", "--", rel_path],
-        capture_output=True, text=True,
-    )
-    if proc.returncode != 0 or not proc.stdout.strip():
+    proc = _git(repo_path, "log", "-1", "--pretty=format:%cI", "--", rel_path)
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
         return None
     try:
         s = proc.stdout.strip().split("+")[0].split("Z")[0]
@@ -159,12 +173,10 @@ def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
     if not repo_path or not Path(repo_path).exists():
         return False
     window_start = since - timedelta(days=1)
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "log",
-         f"--since={window_start.isoformat()}", "--pretty=format:%H", "--", rel_path],
-        capture_output=True, text=True,
-    )
-    return proc.returncode == 0 and bool(proc.stdout.strip())
+    proc = _git(repo_path, "log",
+                f"--since={window_start.isoformat()}", "--pretty=format:%H",
+                "--", rel_path)
+    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
 
 
 def git_mv(src_rel: str, dst_rel: str, repo_path: Path) -> bool:
@@ -173,8 +185,5 @@ def git_mv(src_rel: str, dst_rel: str, repo_path: Path) -> bool:
     if not repo_path or not Path(repo_path).exists():
         return False
     (Path(repo_path) / dst_rel).parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(
-        ["git", "-C", str(repo_path), "mv", src_rel, dst_rel],
-        capture_output=True, text=True,
-    )
-    return proc.returncode == 0
+    proc = _git(repo_path, "mv", src_rel, dst_rel)
+    return proc is not None and proc.returncode == 0

@@ -15,16 +15,30 @@ _GH_ISSUE_FIELDS = "number,state,labels,title,milestone,url,closedAt,body,update
 _REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
 GQL_CHUNK = 100  # issues per GraphQL query; GitHub GraphQL complexity budget ~5000 pts/query, 100 issueOrPullRequest nodes is well within it
 
+# Bound every `gh` subprocess so a network stall can't hang the CLI (or the
+# VS Code extension that spawns it) indefinitely (#196). The concurrent fetch
+# paths compound an unbounded stall across a thread pool, so this matters.
+GH_TIMEOUT = 30
+
+
+def _valid_repo(repo: str) -> bool:
+    """True when `repo` looks like `owner/name`. Callers that pass it to `gh`
+    should gate on this so a malformed config slug fails fast rather than
+    reaching the network (and never lands in argv as something flag-like)."""
+    return bool(repo) and _REPO_RE.match(repo) is not None
+
 
 def fetch_issue(repo: str, number: int) -> Optional[dict]:
     """Fetch a single issue via gh. Returns parsed dict on success, None on failure.
-    Never raises — a missing `gh` binary or any subprocess error yields None."""
+    Never raises — a missing `gh` binary, a timeout, or a bad repo yields None."""
+    if not _valid_repo(repo):
+        return None
     try:
         proc = subprocess.run(
             ["gh", "issue", "view", str(number),
              "--repo", repo,
              "--json", _GH_ISSUE_FIELDS],
-            capture_output=True, text=True,
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
         )
     except Exception:
         return None
@@ -158,7 +172,7 @@ def fetch_repo_issues_graphql(repo: str, numbers, chunk: int = GQL_CHUNK,
         try:
             proc = subprocess.run(
                 ["gh", "api", "graphql", "-f", "query=" + _gql_query(owner, name, batch, fields=fields)],
-                capture_output=True, text=True,
+                capture_output=True, text=True, timeout=GH_TIMEOUT,
             )
         except Exception:
             return {}
@@ -224,7 +238,7 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
              "--state", "open",
              "--json", "number,title,state,assignees,milestone",
              "--limit", str(limit)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
         )
     except Exception:
         return []
@@ -238,6 +252,8 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
 
 def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = None) -> list[dict]:
     """Fetch issues created since `since_iso` (date YYYY-MM-DD)."""
+    if not _valid_repo(repo):
+        return []
     search = f"created:>={since_iso}"
     cmd = ["gh", "issue", "list", "--repo", repo,
            "--state", "all",
@@ -247,7 +263,10 @@ def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = Non
     if extra_labels:
         for lab in extra_labels:
             cmd.extend(["--label", lab])
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=GH_TIMEOUT)
+    except Exception:
+        return []
     if proc.returncode != 0:
         return []
     return json.loads(proc.stdout) if proc.stdout.strip() else []
@@ -263,10 +282,19 @@ def repo_visibility(repo: str) -> Optional[str]:
         return None
     if repo in _VIS_CACHE:
         return _VIS_CACHE[repo]
-    proc = subprocess.run(
-        ["gh", "repo", "view", repo, "--json", "visibility"],
-        capture_output=True, text=True,
-    )
+    if not _valid_repo(repo):
+        _VIS_CACHE[repo] = None
+        return None
+    try:
+        proc = subprocess.run(
+            ["gh", "repo", "view", repo, "--json", "visibility"],
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
+        )
+    except Exception:
+        # Timeout / spawn failure → unknown visibility. needs_confirm() fails
+        # CLOSED on None (it still prompts), so this never weakens the gate.
+        _VIS_CACHE[repo] = None
+        return None
     vis = None
     if proc.returncode == 0 and proc.stdout.strip():
         try:
@@ -328,10 +356,15 @@ def state_to_status_label(state: str) -> str:
 def create_issue(repo: str, title: str, body: str) -> Optional[str]:
     """Open a GitHub issue via `gh issue create`. Returns the issue URL, or None
     on failure. Reuses the user's `gh` auth; never touches tokens."""
-    proc = subprocess.run(
-        ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body],
-        capture_output=True, text=True,
-    )
+    if not _valid_repo(repo):
+        return None
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body],
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
+        )
+    except Exception:
+        return None
     if proc.returncode != 0:
         return None
     return proc.stdout.strip() or None

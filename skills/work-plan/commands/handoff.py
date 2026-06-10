@@ -19,6 +19,7 @@ from lib.session_log import append_session_log, SESSION_LOG_HEADER
 from lib.git_state import (
     has_uncommitted, current_branch, parse_iso_timestamp,
     gap_seconds_to_label, uncommitted_file_count, commits_ahead,
+    is_safe_ref, GIT_TIMEOUT,
 )
 from lib.github_state import fetch_issues, state_to_status_label, extract_priority, short_milestone
 from lib.status_table import update_row_status, sync_missing_rows, find_canonical_status_tables, ISSUE_NUM_RE
@@ -514,12 +515,20 @@ def _recent_commits(track, since_dt) -> list[dict]:
 
     if branches:
         for b in branches:
-            proc = subprocess.run(
-                ["git", "-C", str(track.local_path), "log", b,
-                 f"--since={since_iso}",
-                 "--pretty=format:%H|%s|%cI"],
-                capture_output=True, text=True,
-            )
+            # A branch name from frontmatter is passed as a positional rev; a
+            # dash-led value (e.g. `--output=/path`) would be read by git as an
+            # option → arbitrary-file write. Reject before use (#192).
+            if not is_safe_ref(str(b)):
+                continue
+            try:
+                proc = subprocess.run(
+                    ["git", "-C", str(track.local_path), "log", b,
+                     f"--since={since_iso}",
+                     "--pretty=format:%H|%s|%cI"],
+                    capture_output=True, text=True, timeout=GIT_TIMEOUT,
+                )
+            except (subprocess.TimeoutExpired, OSError):
+                continue
             if proc.returncode != 0 or not proc.stdout.strip():
                 continue
             for line in proc.stdout.strip().split("\n"):
