@@ -130,8 +130,10 @@ class RenameTrackTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         # write_file targets the new path in the original's directory; the old
         # file is then unlinked (write-new-then-remove-old, no data-loss window).
-        write_target = str(mw.call_args[0][0])
-        self.assertEqual(write_target, f"{NOTES_ROOT}/myrepo/new-feature.md")
+        # Compare via Path (not str) so the assertion holds on Windows, where
+        # str(Path("/tmp/x")) uses backslashes.
+        write_target = Path(mw.call_args[0][0])
+        self.assertEqual(write_target, Path(NOTES_ROOT) / "myrepo" / "new-feature.md")
         munlink.assert_called_once()
 
     # -- validation ------------------------------------------------------
