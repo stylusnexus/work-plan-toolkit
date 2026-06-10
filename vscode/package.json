@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -113,6 +113,10 @@
         "title": "Work Plan: Move Issue from Track"
       },
       {
+        "command": "workPlan.renameTrack",
+        "title": "Work Plan: Rename Track"
+      },
+      {
         "command": "workPlan.newTrack",
         "title": "Work Plan: New Track"
       },
@@ -206,6 +210,11 @@
           "command": "workPlan.move",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanWrite@7"
+        },
+        {
+          "command": "workPlan.renameTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanWrite@8"
         },
         {
           "command": "workPlan.slotUntracked",

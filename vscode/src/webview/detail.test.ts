@@ -414,6 +414,33 @@ describe("renderDetail — milestone bands", () => {
     assert.ok(idx20 < idx30, "v1 band should appear before v2 band");
     assert.ok(idx30 < idx40, "v2 band should appear before null-milestone band");
   });
+
+  it("active milestone band comes first even when alphabetically last", () => {
+    // milestone_alignment is the alphabetically-LAST label here, so an
+    // alphabetical sort would wrongly put v0.4.0 first. Active-milestone-first
+    // ordering must surface v2.0.0 (the track's alignment) before v0.4.0.
+    const futureFocusedTrack: Track = {
+      ...emptyTrack,
+      milestone_alignment: "v2.0.0",
+      issues: [
+        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0" },
+        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0" },
+        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null },
+      ],
+      rollup: { open: 3, closed: 0 },
+    };
+    const html = renderDetail(futureFocusedTrack);
+    const idxActive = html.indexOf("<b>v2.0.0</b>");
+    const idxOther = html.indexOf("<b>v0.4.0</b>");
+    const idxNull = html.indexOf("<b>No milestone</b>");
+    assert.ok(idxActive !== -1 && idxOther !== -1, "both milestone bands should render");
+    assert.ok(idxActive < idxOther, "active milestone (v2.0.0) band must precede v0.4.0 band");
+    assert.ok(idxOther < idxNull, "no-milestone band stays last");
+    // The active band is the first one → expanded (not collapsed).
+    const firstBand = html.match(/<tbody class="milestone-band[^"]*"[^>]*>/);
+    assert.ok(firstBand !== null && !firstBand[0].includes("collapsed"),
+      "active milestone band should be the expanded first band");
+  });
 });
 
 // ---------------------------------------------------------------------------

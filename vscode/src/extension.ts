@@ -821,6 +821,50 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.renameTrack — rename a track's slug (context menu + palette)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.renameTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const newSlug = await vscode.window.showInputBox({
+          prompt: `New slug for "${track}"`,
+          value: track,
+          validateInput: (v) => {
+            if (!/^[a-z][a-z0-9-]*$/.test(v)) {
+              return "Slug must be lowercase, start with a letter, e.g. my-feature";
+            }
+            if (v === track) return "Enter a slug different from the current one";
+            return null;
+          },
+        });
+        if (newSlug === undefined) return; // cancelled
+
+        const outcome: WriteOutcome = await executeWrite(
+          runner,
+          { kind: "renameTrack", track, newSlug },
+          confirmPublicWrite,
+        );
+
+        if (outcome.status === "written") {
+          await refreshAndRerender();
+          vscode.window.showInformationMessage(`Work Plan: renamed ${track} → ${newSlug}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: rename-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.newTrack — create a new track (view/title overflow + palette)
   // -------------------------------------------------------------------------
 
