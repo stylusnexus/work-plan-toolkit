@@ -131,7 +131,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.3.2 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.x adds Move Issue from Track (right-click context menu), cross-track dependency chips in the detail panel, and a repo-scoped full map.
+**Published — v0.3.5 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.x adds Move Issue from Track (right-click context menu), cross-track dependency chips in the detail panel, and a repo-scoped full map.
 
 ## Development notes
 
