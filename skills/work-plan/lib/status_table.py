@@ -104,12 +104,102 @@ def update_row_status(body: str, issue_num: int, new_status: str) -> str:
     return "\n".join(lines)
 
 
-def render_issue_row(num: int, title: str, assignee: str, status: str) -> str:
-    """Render a canonical issue-table row: `| #N | title | assignee | status |`.
+def render_issue_row(num: int, title: str, assignee: str, status: str,
+                     milestone: Optional[str] = None) -> str:
+    """Render a canonical issue-table row.
 
-    Single source of truth for the canonical row shape — used by canonicalize
-    (initial table) and by sync_missing_rows (drift-healing appends)."""
-    return f"| #{num} | {title} | {assignee} | {status} |"
+    Single source of truth for the canonical row shape. With `milestone=None`
+    (the default) renders the 4-column form `| #N | title | assignee | status |`
+    used by narrative tables and sync_missing_rows appends. Pass a milestone
+    string (possibly empty) to render the 5-column canonical form
+    `| #N | title | milestone | assignee | status |` used by render_canonical_table
+    (#101). An empty string still renders the column — distinct from None, which
+    drops it."""
+    if milestone is None:
+        return f"| #{num} | {title} | {assignee} | {status} |"
+    return f"| #{num} | {title} | {milestone} | {assignee} | {status} |"
+
+
+def render_canonical_table(issue_nums: list, issues_by_num: dict,
+                           milestone_alignment=None) -> str:
+    """Render the canonical issues block: heading, marker, and ONE table.
+
+    The table carries a `Milestone` column and is ordered active-milestone-first
+    (the shared `milestone_sort_key`): issues whose milestone matches the track's
+    `milestone_alignment` come first, then other milestones grouped by label,
+    then no-milestone issues last; a blank divider row separates each group.
+
+    Deliberately a SINGLE table (not per-milestone sub-tables): it round-trips
+    through refresh-md, which re-derives this whole block on every run, so the
+    rendered order can't decay (#101). The blank divider row has no `#NNNN`
+    ref, so the table parsers skip it.
+
+    Returns the block string (heading + marker + table); callers add the
+    trailing `---` separator via insert_canonical_block."""
+    from lib.github_state import (
+        short_milestone, format_assignees, state_to_status_label,
+    )
+    from lib.export_model import group_issues_by_milestone
+
+    lines = [
+        "## Issues (canonical)",
+        "",
+        f"{CANONICAL_MARKER} — auto-managed by /work-plan refresh-md. Don't edit by hand. -->",
+        "",
+        "| # | Title | Milestone | Assignee | Status |",
+        "|---|---|---|---|---|",
+    ]
+
+    norm = []
+    for num in sorted(issue_nums):
+        gh = issues_by_num.get(num, {})
+        ms = short_milestone(gh.get("milestone")) or None
+        norm.append({"number": num, "milestone": ms, "_gh": gh})
+
+    groups = group_issues_by_milestone(norm, milestone_alignment)
+    for gi, (label, issues) in enumerate(groups):
+        if gi > 0:
+            lines.append("| | | | | |")  # blank divider row between milestone groups
+        for it in issues:
+            gh = it["_gh"]
+            lines.append(render_issue_row(
+                it["number"], gh.get("title", "(not fetched)"),
+                format_assignees(gh), state_to_status_label(gh.get("state")),
+                milestone=it["milestone"] or "",
+            ))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def strip_canonical_block(body: str) -> str:
+    """Remove an existing canonical-table block from the top of the body.
+
+    The block runs from the `## Issues (canonical)` heading (or the marker if
+    the heading is absent) through the next `\\n---\\n` separator. Returns the
+    body unchanged when no marker is present."""
+    if CANONICAL_MARKER not in body:
+        return body
+    heading_idx = body.find("## Issues (canonical)")
+    marker_idx = body.find(CANONICAL_MARKER)
+    start = heading_idx if 0 <= heading_idx < marker_idx else marker_idx
+    sep_idx = body.find("\n---\n", marker_idx)
+    if sep_idx == -1:
+        end = body.find("\n", marker_idx) + 1
+    else:
+        end = sep_idx + len("\n---\n")
+    return body[:start] + body[end:].lstrip("\n")
+
+
+def insert_canonical_block(body: str, table_md: str, replace: bool = False) -> str:
+    """Prepend `table_md` (a render_canonical_table block) at the top of body,
+    followed by a `---` separator. With replace=True, strip any existing
+    canonical block first (so refresh-md re-derive and canonicalize --force
+    produce identical output)."""
+    if replace:
+        body = strip_canonical_block(body)
+    body_stripped = body.lstrip("\n")
+    leading = body[: len(body) - len(body_stripped)]
+    return leading + table_md + "\n---\n\n" + body_stripped
 
 
 def append_rows(body: str, table: dict, row_lines: list[str]) -> str:

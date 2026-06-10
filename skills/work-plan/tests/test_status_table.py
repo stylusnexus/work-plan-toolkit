@@ -10,6 +10,7 @@ from lib.status_table import (
     find_status_table, update_row_status, ISSUE_NUM_RE,
     render_issue_row, append_rows, sync_missing_rows,
     find_canonical_status_tables, CANONICAL_MARKER,
+    render_canonical_table, strip_canonical_block, insert_canonical_block,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -59,6 +60,66 @@ class RenderIssueRowTest(unittest.TestCase):
     def test_renders_canonical_row_shape(self):
         row = render_issue_row(487, "fix the thing", "@alice", "🔲 Open")
         self.assertEqual(row, "| #487 | fix the thing | @alice | 🔲 Open |")
+
+    def test_milestone_arg_adds_fifth_column(self):
+        row = render_issue_row(487, "fix", "@alice", "🔲 Open", milestone="v0.4.0")
+        self.assertEqual(row, "| #487 | fix | v0.4.0 | @alice | 🔲 Open |")
+
+    def test_empty_milestone_still_renders_column(self):
+        # "" is distinct from None: the column is present but blank.
+        row = render_issue_row(487, "fix", "@alice", "🔲 Open", milestone="")
+        self.assertEqual(row, "| #487 | fix |  | @alice | 🔲 Open |")
+
+
+class RenderCanonicalTableTest(unittest.TestCase):
+    def _gh(self, num, title, state="OPEN", milestone=None):
+        d = {"number": num, "title": title, "state": state, "assignees": []}
+        if milestone:
+            d["milestone"] = {"title": milestone}
+        return d
+
+    def test_single_milestone_renders_one_table_no_divider(self):
+        by = {1: self._gh(1, "a"), 2: self._gh(2, "b")}
+        md = render_canonical_table([1, 2], by)
+        self.assertIn("| # | Title | Milestone | Assignee | Status |", md)
+        self.assertNotIn("| | | | | |", md)  # no divider when one group
+
+    def test_active_milestone_first_with_divider(self):
+        by = {
+            10: self._gh(10, "near", milestone="v0.4.0 — MVP"),
+            20: self._gh(20, "far", milestone="v2.0.0 — Post-Launch"),
+            30: self._gh(30, "none"),
+        }
+        md = render_canonical_table([10, 20, 30], by, milestone_alignment="v2.0.0")
+        # Active milestone (v2.0.0 → #20) precedes v0.4.0 (#10) precedes none (#30).
+        self.assertLess(md.index("#20"), md.index("#10"))
+        self.assertLess(md.index("#10"), md.index("#30"))
+        # Divider rows separate the three groups (2 dividers).
+        self.assertEqual(md.count("| | | | | |"), 2)
+        self.assertIn("| #20 | far | v2.0.0 |", md)
+
+    def test_strip_and_insert_round_trip(self):
+        by = {1: self._gh(1, "a")}
+        table = render_canonical_table([1], by)
+        body = insert_canonical_block("## Notes\n\nkeep\n", table)
+        self.assertTrue(body.startswith("## Issues (canonical)"))
+        self.assertIn("## Notes\n\nkeep", body)
+        # Stripping removes the canonical block, leaving the narrative.
+        stripped = strip_canonical_block(body)
+        self.assertNotIn(CANONICAL_MARKER, stripped)
+        self.assertIn("## Notes", stripped)
+
+    def test_insert_replace_swaps_existing_block(self):
+        by1 = {1: self._gh(1, "a")}
+        body = insert_canonical_block("## Notes\n", render_canonical_table([1], by1))
+        by2 = {2: self._gh(2, "b")}
+        body2 = insert_canonical_block(body, render_canonical_table([2], by2),
+                                       replace=True)
+        # Old table gone, new table present, narrative preserved, exactly one block.
+        self.assertNotIn("#1", body2)
+        self.assertIn("#2", body2)
+        self.assertEqual(body2.count(CANONICAL_MARKER), 1)
+        self.assertIn("## Notes", body2)
 
 
 class AppendRowsTest(unittest.TestCase):
