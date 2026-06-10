@@ -8,9 +8,11 @@ Use --all to canonicalize every active track that doesn't yet have one.
 """
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
-from lib.github_state import fetch_issues, state_to_status_label, format_assignees
+from lib.github_state import fetch_issues
 from lib.frontmatter import write_file
-from lib.status_table import CANONICAL_MARKER, find_canonical_status_tables, render_issue_row
+from lib.status_table import (
+    find_canonical_status_tables, render_canonical_table, insert_canonical_block,
+)
 from lib.prompts import parse_flags
 
 
@@ -75,10 +77,11 @@ def run(args: list[str]) -> int:
         issues = fetch_issues(track.repo, issue_nums)
         issues_by_num = {i["number"]: i for i in issues}
 
-        new_body = _insert_canonical_table(
-            track.body, issue_nums, issues_by_num, replace=force,
+        table_md = render_canonical_table(
+            issue_nums, issues_by_num,
             milestone_alignment=track.meta.get("milestone_alignment"),
         )
+        new_body = insert_canonical_block(track.body, table_md, replace=force)
         write_file(track.path, track.meta, new_body)
         print(f"  ✓ {track.name}: canonical table added/refreshed ({len(issue_nums)} issues)")
         any_changes = True
@@ -86,91 +89,3 @@ def run(args: list[str]) -> int:
     if not any_changes:
         print("Nothing to do.")
     return 0
-
-
-def _insert_canonical_table(body: str, issue_nums: list[int],
-                            issues_by_num: dict, replace: bool = False,
-                            milestone_alignment=None) -> str:
-    """Insert (or replace) a canonical table at the top of the body."""
-    table_md = _render_canonical_table(issue_nums, issues_by_num, milestone_alignment)
-
-    if replace:
-        # Strip existing canonical block (marker + heading + table + separator)
-        body = _strip_existing_canonical(body)
-
-    # Prepend table after any leading whitespace
-    body_stripped = body.lstrip("\n")
-    leading_whitespace = body[: len(body) - len(body_stripped)]
-    return leading_whitespace + table_md + "\n---\n\n" + body_stripped
-
-
-def _render_canonical_table(issue_nums: list[int], issues_by_num: dict,
-                            milestone_alignment=None) -> str:
-    lines = [
-        "## Issues (canonical)",
-        "",
-        f"{CANONICAL_MARKER} — auto-managed by /work-plan refresh-md. Don't edit by hand. -->",
-        "",
-    ]
-
-    # Build a normalized issue list with compact milestone strings.
-    from lib.github_state import short_milestone
-    norm_issues = []
-    for num in sorted(issue_nums):
-        gh = issues_by_num.get(num, {})
-        ms = short_milestone(gh.get("milestone")) or None
-        norm_issues.append({"number": num, "milestone": ms, "_gh": gh})
-
-    from lib.export_model import group_issues_by_milestone
-    groups = group_issues_by_milestone(norm_issues, milestone_alignment)
-
-    if len(groups) <= 1:
-        # Single milestone group (or all null) — render flat, same as before.
-        lines.append("| # | Title | Assignee | Status |")
-        lines.append("|---|---|---|---|")
-        for num in sorted(issue_nums):
-            i = issues_by_num.get(num, {})
-            lines.append(render_issue_row(
-                num, i.get("title", "(not fetched)"),
-                format_assignees(i), state_to_status_label(i.get("state")),
-            ))
-        lines.append("")
-        return "\n".join(lines)
-
-    # Multiple milestone groups — render with section headings.
-    for label, issues in groups:
-        if label:
-            heading = f"{label} ({len(issues)})"
-        else:
-            heading = f"No milestone ({len(issues)})"
-        lines.append(f"### {heading}")
-        lines.append("")
-        lines.append("| # | Title | Assignee | Status |")
-        lines.append("|---|---|---|---|")
-        for norm in issues:
-            num = norm["number"]
-            i = norm["_gh"]
-            lines.append(render_issue_row(
-                num, i.get("title", "(not fetched)"),
-                format_assignees(i), state_to_status_label(i.get("state")),
-            ))
-        lines.append("")
-    return "\n".join(lines)
-
-
-def _strip_existing_canonical(body: str) -> str:
-    """Remove an existing canonical-table block from the top of the body."""
-    if CANONICAL_MARKER not in body:
-        return body
-    # Find the start of the heading "## Issues (canonical)" if present, else the marker
-    heading_idx = body.find("## Issues (canonical)")
-    marker_idx = body.find(CANONICAL_MARKER)
-    start = heading_idx if 0 <= heading_idx < marker_idx else marker_idx
-    # Find end: the next "---\n" separator after the marker
-    sep_idx = body.find("\n---\n", marker_idx)
-    if sep_idx == -1:
-        # No separator — strip just the marker line
-        end = body.find("\n", marker_idx) + 1
-    else:
-        end = sep_idx + len("\n---\n")
-    return body[:start] + body[end:].lstrip("\n")
