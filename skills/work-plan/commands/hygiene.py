@@ -78,6 +78,8 @@ def run(args: list[str]) -> int:
     print(f"WEEKLY HYGIENE — step 2 of 3: reconcile{scope_label}")
     print("=" * 60)
     reconcile_args = [f"--repo={repo_key}"] if repo_key else ["--all"]
+    if yes:
+        reconcile_args.append("--yes")
     rc = reconcile.run(reconcile_args)
     if rc != 0:
         print(f"\n⚠ reconcile exited with code {rc}; continuing.")
