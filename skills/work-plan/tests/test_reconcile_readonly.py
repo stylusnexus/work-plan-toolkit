@@ -142,6 +142,25 @@ class ReadOnlyContractTest(unittest.TestCase):
         self._assert_read_only(captured)
         mock_write.assert_called_once()
 
+    def test_yes_applies_without_prompt_and_writes_local_only(self):
+        # --yes (non-interactive, e.g. from the VS Code extension) applies the
+        # proposed ADDs without ever calling prompt_input, and the only write
+        # is the local frontmatter file — never gh. This is the #183 fix: a
+        # piped/no-TTY run must not hang on the prompt.
+        track = _fake_track(slug="epsilon", repo="ok/ok", issues=[5])
+        gh_response = [
+            {"number": 5, "title": "x", "state": "OPEN"},
+            {"number": 99, "title": "new", "state": "OPEN"},
+        ]
+        rc, captured, mock_write, mock_prompt = self._drive(
+            track=track, gh_response=gh_response,
+            user_choice="n", extra_args=["--yes"],
+        )
+        self.assertEqual(rc, 0)
+        self._assert_read_only(captured)
+        mock_prompt.assert_not_called()
+        mock_write.assert_called_once()
+
     def test_draft_skips_user_prompt_and_write(self):
         # --draft prints the analysis but never prompts and never writes.
         # Even with proposed ADDs (so the report path is exercised), the user

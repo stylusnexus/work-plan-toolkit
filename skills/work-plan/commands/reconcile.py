@@ -86,17 +86,18 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all", "--draft", "--repo"})
+    flags, positional = parse_flags(args, {"--all", "--draft", "--repo", "--yes"})
     do_all = flags.get("--all", False)
     draft = flags.get("--draft", False)
+    yes = flags.get("--yes", False)
     repo_key = flags.get("--repo")
     if repo_key is True:
-        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
+        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft] [--yes]")
         return 2
     track_arg = positional[0] if positional else None
 
     if not do_all and not track_arg and not repo_key:
-        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
+        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft] [--yes]")
         return 2
 
     track_name = track_arg
@@ -213,7 +214,13 @@ def run(args: list[str]) -> int:
             # Useful for sweep audits and scripted reports.
             continue
 
-        choice = prompt_input(f"\n  Apply ADDs to {track.path.name}? [y/N/skip-flags]").lower()
+        if yes:
+            # Non-interactive: apply ADDs without prompting. Still a local-only
+            # write via write_file — the read-only-GitHub contract is unchanged.
+            print(f"\n  --yes: applying ADDs to {track.path.name}")
+            choice = "y"
+        else:
+            choice = prompt_input(f"\n  Apply ADDs to {track.path.name}? [y/N/skip-flags]").lower()
         if choice == "y":
             new_issues = sorted(listed_nums | labeled_nums)
             track.meta.setdefault("github", {})["issues"] = new_issues
