@@ -34,7 +34,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
     steps:
       - name: Check out main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main          # pull_request checks out a merge ref by default; we want main's tip
           fetch-depth: 0
