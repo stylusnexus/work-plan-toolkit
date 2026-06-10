@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.10+9dce675 — 2026-06-10 (#203)
+
+fix(security): CLI + VS Code extension hardening (injection fixes, extension RCE)
+
+Security release from a full review of the CLI and the VS Code extension, plus CI and public-repo hygiene. VS Code extension → 0.3.5; npm CLI republished.
+
+### Security fixes
+- **yq expression injection** in `set-notes-root` — a path containing `"` could rewrite arbitrary `config.yml` keys. Values now pass to `yq` via `strenv()`/`env()` (#191).
+- **git option injection** via dash-led `github.branches` frontmatter → arbitrary file overwrite (`git log --output=`). Dash-led revs are now rejected (#192).
+- **VS Code extension RCE** — `workPlan.cliPath` was workspace-overridable and spawned on activation. Now machine-scoped + `untrustedWorkspaces: { supported: false }` (#193).
+- **Argument injection** via `--`-prefixed track names — CLI now honours a `--` end-of-options separator and rejects dash-led track filenames; the extension passes positionals after `--` (#194).
+- **Hardening**: path-write containment + symlink-write guard (#195); `gh`/`git` subprocess timeouts, repo-slug validation, answers int-coercion (#196); webview confirm-modal consistency, Mermaid label newline handling, CSP/escaper nits (#197).
+
+### Also in this release
+- **CI**: GitHub Actions bumped to Node-24 majors (checkout v6, setup-node v6, upload-artifact v7, download-artifact v8) (#190).
+- **Public-repo readiness**: CLAUDE.md now tracked for contributors; internal project references + a leaked maintainer path scrubbed repo-wide; SECURITY.md advisory history updated; issue templates + agent-doc cross-links added (#200, #201).
+
+### Versions
+- VS Code extension → **0.3.5**
+- npm CLI republished (same-day CalVer, `-1` suffix)
+
+Full suite green (Python 657 + lint matrix; vscode typecheck + 335 tests).
+
 ## 2026.06.10+a6052bf — 2026-06-10 (#189)
 
 feat: reconcile auto-move + non-TTY hang fix, list --sort, viewer status lens
