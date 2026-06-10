@@ -16,6 +16,7 @@ export type WriteAction =
   | { kind: "batchSlot"; track: string; issues: number[] }
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
+  | { kind: "renameTrack"; track: string; newSlug: string }
   | { kind: "addRepo"; key: string; github: string; local?: string }
   | { kind: "setNotesRoot"; path: string }
   | { kind: "move"; fromTrack: string; toTrack: string; issue: number };
@@ -60,6 +61,7 @@ export type WriteOutcome =
  *   batchSlot       → ["batch-slot", "--no-move", "--", ...issues, track]
  *   close           → ["close", "--state=<state>", ..."--note=<text>", "--", track]
  *   newTrack        → ["new-track", ..."--priority=<p>", ..."--milestone=<m>", "--", repo, slug]
+ *   renameTrack     → ["rename-track", "--", track, newSlug]
  *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", "--", key]
  *   setNotesRoot    → ["set-notes-root", "--", path]
  *   move            → ["move", "--", issue, fromTrack, toTrack]
@@ -115,6 +117,9 @@ export function actionToArgs(action: WriteAction): string[] {
         action.repo,
         action.slug,
       ];
+
+    case "renameTrack":
+      return ["rename-track", "--", action.track, action.newSlug];
 
     case "addRepo":
       return [

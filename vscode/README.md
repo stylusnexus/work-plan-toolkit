@@ -77,6 +77,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **Slot Issue into Track** | Add a GitHub issue number to the track. |
 | **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
 | **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
+| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug; a public-repo write is gated by the confirm modal. |
 | **Refresh Track Body** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
 | **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
 | **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |

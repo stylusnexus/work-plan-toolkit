@@ -53,6 +53,7 @@ SUBCOMMANDS = {
     "export": "commands.export",
     "set": "commands.set_field",
     "new-track": "commands.new_track",
+    "rename-track": "commands.rename_track",
     "set-notes-root": "commands.set_notes_root",
 }
 
@@ -146,6 +147,10 @@ DESCRIPTIONS = [
      "Create a brand-new track file under notes_root in one headless call. <repo> is either a configured key (e.g. 'myproject') or a bare org/repo slug (e.g. 'your-org/myproject'). Writes frontmatter with status=active and optional priority/milestone. Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=<token> to proceed.",
      "When a new feature branch or initiative starts and you want the track file created immediately — especially from a non-terminal caller like the VS Code extension that can't interactively run init.",
      "/work-plan new-track stylusnexus/work-plan-toolkit my-feature"),
+    ("rename-track", "<old-slug | old@repo> <new-slug> [--repo=<key>] [--fix-refs] [--commit] [--confirm=<token>]",
+     "Rename an active track's slug: moves the .md file, updates the frontmatter `track` field + last_touched. Resolve <old-slug> with track@repo or --repo when ambiguous. Validates <new-slug> like new-track and rejects a name already taken in the same repo/tier. For shared tracks, --commit stages + commits the move (else prints a 'commit to share' hint). --fix-refs rewrites sibling tracks' depends_on that reference the old slug (otherwise they're just warned about). Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=<token>.",
+     "When a project pivots, a track name turns out misleading, or a slug needs norming — instead of hand-editing the file + frontmatter. Archived tracks are immutable (not renamable).",
+     "/work-plan rename-track old-project-name new-project-name"),
     ("plan-status", "[--repo=<key>] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive | --issues] [--draft] [--since-days=N] [--type=plan|spec]",
      "Reach a verdict on every plan/spec doc in a repo by correlating each plan's declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes. Read-only: reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. --json for machine output. Add --stamp to write each verdict into its doc as an idempotent status header (--draft previews without writing). Add --llm for a two-step AI pass that judges prose/ambiguous docs (writes a prompt; you save JSON to the cache; re-run with --llm --apply). --archive moves dead plans to archive/abandoned/ (gated); --issues opens a GitHub issue per partial plan listing its unsatisfied files (gated). Both honor --draft.",
      "When you point at a repo and need to know what's actually done vs. half-done vs. dead among accumulated plans. Run from inside the repo, or use --repo=<key> for a configured one.",
