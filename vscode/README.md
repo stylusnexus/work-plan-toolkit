@@ -8,7 +8,7 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 - A **sidebar tree** (repos → tracks) showing the live state of every tracked GitHub repo — status dot, open count, blocked/next hints, a ⚠ badge on public repos.
 - A **Mermaid dependency graph** webview + **per-track detail** panel (issue table — capped at 50 rows with a collapsible overflow — blockers, **depends-on chips**, ordered next-up) — with a focus toggle that zooms in on the selected track, and a full map scoped to the track's repo.
-- **Lenses** (filter by repo / milestone / blocked) and **sort** (default / blocked / most-open / name).
+- **Lenses** (filter by repo / milestone / status — active, shipped, parked — / blocked) and **sort** (default / blocked / most-open / name).
 - An **"Untracked" bucket** under each repo: open GitHub issues that no track references — click to open on GitHub, or right-click to slot one into a track.
 
 **Act** — every action runs the CLI under the hood:
@@ -65,7 +65,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | Control | What it does |
 |---|---|
 | **Refresh** (↻) | Re-fetch live state from the CLI and redraw the tree + graph. |
-| **Select View** (filter icon) | **Filter** the tree *and* graph by a lens: a **single repo**, a **milestone**, or **only blocked tracks**. Choose "All tracks" to clear the filter. |
+| **Select View** (filter icon) | **Filter** the tree *and* graph by a lens: a **single repo**, a **milestone**, a **status** (Active / Shipped / Parked), or **only blocked tracks**. Choose "All tracks" to clear the filter. |
 | **Sort Tracks** | **Order** tracks within each repo: **Default** (discovery order), **Blocked first**, **Most open**, or **Name (A–Z)**. |
 
 ### Track actions (right-click a track)

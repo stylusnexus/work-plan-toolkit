@@ -115,6 +115,44 @@ const expNoBlockers: Export = {
   ],
 };
 
+// A fixture spanning every StatusCategory:
+//   • blk      — blocked (blockers non-empty)
+//   • blk2     — blocked (status === "blocked", no blockers array)
+//   • act      — active
+//   • inprog   — in-progress (maps to "active")
+//   • ship     — shipped
+//   • park     — parked
+//   • aband    — abandoned (maps to "parked")
+function mkTrack(name: string, status: string, blockers: number[]): Export["tracks"][number] {
+  return {
+    name,
+    repo: "stylusnexus/status-fixture",
+    tier: "private",
+    status,
+    launch_priority: null,
+    milestone_alignment: null,
+    visibility: null,
+    blockers,
+    next_up: [],
+    rollup: { open: 1, closed: 0 },
+    issues: [{ number: 1, title: "x", state: "open", assignee: "—", milestone: null }],
+  };
+}
+
+const expStatuses: Export = {
+  schema: 1,
+  generated_at: "2026-06-07T00:00:00Z",
+  tracks: [
+    mkTrack("blk", "active", [42]),
+    mkTrack("blk2", "blocked", []),
+    mkTrack("act", "active", []),
+    mkTrack("inprog", "in-progress", []),
+    mkTrack("ship", "shipped", []),
+    mkTrack("park", "parked", []),
+    mkTrack("aband", "abandoned", []),
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // availableLenses — structure & ordering
 // ---------------------------------------------------------------------------
@@ -216,6 +254,66 @@ describe("availableLenses — blocked lens", () => {
   });
 });
 
+describe("availableLenses — status lenses", () => {
+  it("includes Status: Active/Shipped/Parked in that order when all categories have members", () => {
+    const choices = availableLenses(expStatuses);
+    const statusChoices = choices.filter(c => c.lens.kind === "status");
+    assert.deepStrictEqual(
+      statusChoices.map(c => (c.lens as { kind: "status"; status: string }).status),
+      ["active", "shipped", "parked"],
+    );
+    assert.deepStrictEqual(
+      statusChoices.map(c => c.label),
+      ["Status: Active", "Status: Shipped", "Status: Parked"],
+    );
+    assert.deepStrictEqual(
+      statusChoices.map(c => c.id),
+      ["status:active", "status:shipped", "status:parked"],
+    );
+  });
+
+  it("never surfaces a 'blocked' status lens (blocked has its own standalone lens)", () => {
+    const choices = availableLenses(expStatuses);
+    const blockedStatus = choices.find(
+      c => c.lens.kind === "status" && (c.lens as { status: string }).status === "blocked",
+    );
+    assert.strictEqual(blockedStatus, undefined);
+  });
+
+  it("status lenses appear after milestone lenses and before the standalone Blocked lens", () => {
+    const choices = availableLenses(exp);
+    const lastMilestone = choices.map(c => c.lens.kind).lastIndexOf("milestone");
+    const firstStatus = choices.findIndex(c => c.lens.kind === "status");
+    const blockedIdx = choices.findIndex(c => c.lens.kind === "blocked");
+    assert.ok(firstStatus > lastMilestone, "status should come after milestones");
+    assert.ok(firstStatus < blockedIdx, "status should come before the standalone Blocked lens");
+  });
+
+  it("omits a status category when no track falls in it (only-shipped fixture)", () => {
+    const onlyShipped: Export = {
+      schema: 1,
+      generated_at: "2026-06-07T00:00:00Z",
+      tracks: [mkTrack("s1", "shipped", []), mkTrack("s2", "shipped", [])],
+    };
+    const choices = availableLenses(onlyShipped);
+    const statusKinds = choices
+      .filter(c => c.lens.kind === "status")
+      .map(c => (c.lens as { status: string }).status);
+    assert.deepStrictEqual(statusKinds, ["shipped"]);
+  });
+
+  it("omits all status lenses when every track is blocked", () => {
+    const allBlocked: Export = {
+      schema: 1,
+      generated_at: "2026-06-07T00:00:00Z",
+      tracks: [mkTrack("b1", "active", [7]), mkTrack("b2", "blocked", [])],
+    };
+    const choices = availableLenses(allBlocked);
+    const statusChoices = choices.filter(c => c.lens.kind === "status");
+    assert.strictEqual(statusChoices.length, 0);
+  });
+});
+
 describe("availableLenses — determinism", () => {
   it("returns identical output on repeated calls", () => {
     const a = availableLenses(exp);
@@ -223,14 +321,14 @@ describe("availableLenses — determinism", () => {
     assert.deepStrictEqual(a, b);
   });
 
-  it("returns exactly all + 2 repos + 2 milestones + 1 blocked = 6 choices for main fixture", () => {
+  it("returns exactly all + 2 repos + 2 milestones + 1 status(active) + 1 blocked = 7 choices for main fixture", () => {
     const choices = availableLenses(exp);
-    assert.strictEqual(choices.length, 6);
+    assert.strictEqual(choices.length, 7);
   });
 
-  it("returns exactly all + 1 repo = 2 choices for no-blocker, no-milestone fixture", () => {
+  it("returns exactly all + 1 repo + 1 status(active) = 3 choices for no-blocker, no-milestone fixture", () => {
     const choices = availableLenses(expNoBlockers);
-    assert.strictEqual(choices.length, 2);
+    assert.strictEqual(choices.length, 3);
   });
 });
 
@@ -360,12 +458,56 @@ describe("applyLens — kind:blocked", () => {
   });
 });
 
+describe("applyLens — kind:status", () => {
+  it("status:shipped keeps only shipped tracks", () => {
+    const result = applyLens(expStatuses, { kind: "status", status: "shipped" });
+    assert.deepStrictEqual(result.tracks.map(t => t.name), ["ship"]);
+  });
+
+  it("status:parked keeps parked AND abandoned tracks", () => {
+    const result = applyLens(expStatuses, { kind: "status", status: "parked" });
+    assert.deepStrictEqual(result.tracks.map(t => t.name), ["park", "aband"]);
+  });
+
+  it("status:active keeps active AND in-progress, but excludes blocked", () => {
+    const result = applyLens(expStatuses, { kind: "status", status: "active" });
+    // act + inprog are active; blk/blk2 are blocked → excluded
+    assert.deepStrictEqual(result.tracks.map(t => t.name), ["act", "inprog"]);
+  });
+
+  it("status:blocked matches the same tracks as the standalone blocked classifier", () => {
+    const result = applyLens(expStatuses, { kind: "status", status: "blocked" });
+    // blk (blockers non-empty) + blk2 (status === "blocked")
+    assert.deepStrictEqual(result.tracks.map(t => t.name), ["blk", "blk2"]);
+  });
+
+  it("keeps matching tracks whole (all issues retained)", () => {
+    const result = applyLens(expStatuses, { kind: "status", status: "shipped" });
+    assert.strictEqual(result.tracks[0].issues.length, 1);
+  });
+
+  it("preserves schema and generated_at", () => {
+    const result = applyLens(expStatuses, { kind: "status", status: "active" });
+    assert.strictEqual(result.schema, expStatuses.schema);
+    assert.strictEqual(result.generated_at, expStatuses.generated_at);
+  });
+
+  it("does not mutate the input export's tracks", () => {
+    const before = JSON.stringify(expStatuses.tracks);
+    applyLens(expStatuses, { kind: "status", status: "active" });
+    applyLens(expStatuses, { kind: "status", status: "shipped" });
+    applyLens(expStatuses, { kind: "status", status: "parked" });
+    assert.strictEqual(JSON.stringify(expStatuses.tracks), before);
+  });
+});
+
 describe("applyLens — immutability", () => {
   it("returned Export is a new object for all lens kinds", () => {
     const lenses: Lens[] = [
       { kind: "all" },
       { kind: "repo", repo: "stylusnexus/CritForge" },
       { kind: "milestone", milestone: "M1" },
+      { kind: "status", status: "active" },
       { kind: "blocked" },
     ];
     for (const lens of lenses) {

@@ -3,7 +3,10 @@ from datetime import datetime
 from pathlib import Path
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, discover_archived_tracks, filter_tracks_by_repo
+from lib.tracks import (
+    discover_tracks, discover_archived_tracks, filter_tracks_by_repo,
+    priority_rank, recency_sort_key,
+)
 from lib.github_state import fetch_issues, extract_priority, short_milestone
 from lib.prompts import parse_flags
 from lib.git_state import (
@@ -193,11 +196,8 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
         return gap_seconds_to_label(int(gs))
 
     in_prog_rank = 0 if operational_status == "in-progress" else 1
-    pri_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}.get(meta.get("launch_priority", "P3"), 3)
-    recency_key = (
-        -parse_iso_timestamp(meta["last_touched"]).timestamp()
-        if meta.get("last_touched") else 0
-    )
+    pri_rank = priority_rank(meta)
+    recency_key = recency_sort_key(meta)
 
     return {
         "name": meta.get("track", track.name),

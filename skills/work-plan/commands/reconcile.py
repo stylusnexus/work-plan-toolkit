@@ -12,8 +12,11 @@ For a given track:
     of "anything closed looks unlabeled."
   - Compare against frontmatter `github.issues`.
   - Propose ADDS (labeled in GitHub but missing from frontmatter).
-  - Propose FLAGS (in frontmatter but no longer labeled — possible move out).
-  - User confirms before writing to the LOCAL frontmatter file.
+  - Propose MOVES (in track A's frontmatter, but now labeled for exactly one
+    other active track B in the same repo — a relabel; remove from A, add to B).
+  - Propose FLAGS (in frontmatter but no longer labeled, with no single move
+    target — possible orphan).
+  - User confirms before writing to the LOCAL frontmatter file(s).
 
 READ-ONLY GITHUB CONTRACT
   reconcile only READS GitHub via `gh issue list` and `gh pr list`. It NEVER
@@ -32,6 +35,7 @@ from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
 from lib.prompts import parse_flags, prompt_input
+from lib.write_guard import needs_confirm
 
 
 PER_TRACK_TIMEOUT = 15  # seconds; each gh call gets this budget
@@ -86,17 +90,18 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--all", "--draft", "--repo"})
+    flags, positional = parse_flags(args, {"--all", "--draft", "--repo", "--yes"})
     do_all = flags.get("--all", False)
     draft = flags.get("--draft", False)
+    yes = flags.get("--yes", False)
     repo_key = flags.get("--repo")
     if repo_key is True:
-        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
+        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft] [--yes]")
         return 2
     track_arg = positional[0] if positional else None
 
     if not do_all and not track_arg and not repo_key:
-        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft]")
+        print("usage: work_plan.py reconcile <track-name> | --all | --repo=<key> [--draft] [--yes]")
         return 2
 
     track_name = track_arg
@@ -167,7 +172,52 @@ def run(args: list[str]) -> int:
                 print(f"  [{i}/{total}] ⚠ {track.name}: {e} — skipping")
                 results[track.name] = None
 
-    # Phase 2: serial diff, report, and confirm (prompts must NOT be in threads)
+    # Phase 2a: index which fetched track(s) label each issue. Used to turn a
+    # bare FLAG (in a track's frontmatter, but it has lost that track's label)
+    # into a MOVE when the issue is now labeled for exactly one OTHER active
+    # track in the same repo.
+    labeled_index: dict = {}  # issue number -> list[track]
+    for track in targets:
+        if not track.repo or results.get(track.name) is None:
+            continue
+        for num in {i["number"] for i in results[track.name]}:
+            labeled_index.setdefault(num, []).append(track)
+
+    # Phase 2b: detect cross-track moves (#163). An issue qualifies when it is
+    # in track A's frontmatter, no longer carries A's label, and is now labeled
+    # by exactly one OTHER active track B in the same repo. Ambiguous cases
+    # (two or more candidate targets) stay as plain FLAGs.
+    moved_out: dict = {}  # src track name -> set(num)
+    moved_in: dict = {}   # dst track name -> set(num)
+    move_dst: dict = {}   # (src track name, num) -> dst track
+    for track in targets:
+        if not track.repo or results.get(track.name) is None:
+            continue
+        labeled_nums = {i["number"] for i in results[track.name]}
+        listed_nums = set(track.meta.get("github", {}).get("issues") or [])
+        for num in sorted(listed_nums - labeled_nums):
+            cands = [b for b in labeled_index.get(num, [])
+                     if b is not track and b.repo == track.repo]
+            if len(cands) == 1:
+                dst = cands[0]
+                moved_out.setdefault(track.name, set()).add(num)
+                moved_in.setdefault(dst.name, set()).add(num)
+                move_dst[(track.name, num)] = dst
+
+    # Phase 2c: per-track diff, report, confirm. Membership changes accumulate
+    # in `final` (track name -> desired issue set); each affected track is
+    # written exactly ONCE at the end, so a move that touches two tracks never
+    # double-writes or clobbers a sibling's accepted ADDs. A move is governed by
+    # the confirmation on its SOURCE track (where the issue currently lives).
+    final: dict = {}     # track name -> set(num)
+    affected: dict = {}  # track name -> track (only those we may write)
+
+    def _final_for(t):
+        if t.name not in final:
+            final[t.name] = set(t.meta.get("github", {}).get("issues") or [])
+            affected[t.name] = t
+        return final[t.name]
+
     any_changes = False
     for track in targets:
         slug = track.meta.get("track", track.name)
@@ -181,11 +231,14 @@ def run(args: list[str]) -> int:
         labels = _resolve_labels(track)
         labeled_nums = {i["number"] for i in labeled}
         listed_nums = set(track.meta.get("github", {}).get("issues") or [])
+        out_moves = sorted(moved_out.get(track.name, set()))
 
-        adds = sorted(labeled_nums - listed_nums)
-        flag_nums = sorted(listed_nums - labeled_nums)
+        # MOVE issues are reported (and applied) as moves, not as ADD on the
+        # destination or FLAG on the source.
+        adds = sorted(labeled_nums - listed_nums - moved_in.get(track.name, set()))
+        flag_nums = sorted(listed_nums - labeled_nums - moved_out.get(track.name, set()))
 
-        if not adds and not flag_nums:
+        if not adds and not flag_nums and not out_moves:
             continue
 
         any_changes = True
@@ -197,6 +250,13 @@ def run(args: list[str]) -> int:
             for num in adds:
                 i = issue_lookup[num]
                 print(f"    #{num} ({i['state'].lower()}) {i['title']}")
+        if out_moves:
+            print(f"  MOVE ({len(out_moves)}) — relabeled to another track in this repo:")
+            for num in out_moves:
+                dst = move_dst[(track.name, num)]
+                dst_slug = dst.meta.get("track", dst.name)
+                pub = " [dst PUBLIC]" if needs_confirm(dst.repo, cfg) else ""
+                print(f"    #{num}  {slug} → {dst_slug}{pub}")
         if flag_nums:
             print(f"  FLAG ({len(flag_nums)}) — in frontmatter but missing every configured label:")
             for num in flag_nums:
@@ -204,8 +264,8 @@ def run(args: list[str]) -> int:
 
         if listed_nums and len(flag_nums) / len(listed_nums) > 0.5:
             print(f"\n  ⓘ {len(flag_nums)}/{len(listed_nums)} frontmatter issues lack the configured label(s).")
-            print(f"    This track looks hand-curated, not label-driven — reconcile may not be the right tool.")
-            print(f"    If you just want to update issue state in the body table, try:")
+            print("    This track looks hand-curated, not label-driven — reconcile may not be the right tool.")
+            print("    If you just want to update issue state in the body table, try:")
             print(f"      /work-plan refresh-md {slug}")
 
         if draft:
@@ -213,12 +273,41 @@ def run(args: list[str]) -> int:
             # Useful for sweep audits and scripted reports.
             continue
 
-        choice = prompt_input(f"\n  Apply ADDs to {track.path.name}? [y/N/skip-flags]").lower()
-        if choice == "y":
-            new_issues = sorted(listed_nums | labeled_nums)
-            track.meta.setdefault("github", {})["issues"] = new_issues
-            write_file(track.path, track.meta, track.body)
-            print(f"  ✓ Updated {track.path.name} ({len(adds)} added)")
+        if yes:
+            # Non-interactive: apply ADDs + MOVEs without prompting. All writes
+            # are local frontmatter — the read-only-GitHub contract is unchanged.
+            print(f"\n  --yes: applying changes from {track.path.name}")
+            choice = "y"
+        else:
+            choice = prompt_input(f"\n  Apply ADDs/MOVEs from {track.path.name}? [y/N]").lower()
+        if choice != "y":
+            continue
+
+        if adds:
+            _final_for(track).update(adds)
+        for num in out_moves:
+            dst = move_dst[(track.name, num)]
+            # Public-repo guard (#163): under --yes we never silently write
+            # membership into a PUBLIC/shared destination track — that move is
+            # skipped with a pointer to the gated `move` verb. Interactive runs
+            # treat the prompt above as the confirmation.
+            if yes and needs_confirm(dst.repo, cfg):
+                dst_slug = dst.meta.get("track", dst.name)
+                print(f"  ⏭ skipped MOVE #{num} → {dst_slug} ({dst.repo} is PUBLIC; "
+                      f"run `/work-plan move {num} {slug} {dst_slug} --confirm` instead)")
+                continue
+            _final_for(track).discard(num)
+            _final_for(dst).add(num)
+
+    # Write each affected track exactly once, only if its set actually changed.
+    for name, issues in final.items():
+        track = affected[name]
+        original = set(track.meta.get("github", {}).get("issues") or [])
+        if issues == original:
+            continue
+        track.meta.setdefault("github", {})["issues"] = sorted(issues)
+        write_file(track.path, track.meta, track.body)
+        print(f"  ✓ Updated {track.path.name}")
 
     if not any_changes:
         print("All tracks in sync with configured labels.")
