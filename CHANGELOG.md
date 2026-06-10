@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.10+a3d10bf — 2026-06-10 (#222)
+
+feat: rename-track + milestone-ordered tracks (CLI & viewer)
+
+Production deploy. Highlights since the last release:
+
+### `rename-track` (#174)
+New `rename-track <old-slug | old@repo> <new-slug>` CLI verb — renames a track's slug: moves the `.md` file (write-new-then-unlink-old, so a failed write leaves the original intact), updates the frontmatter `track` field + `last_touched`, and reuses the public-repo confirm-token gate. Shared tracks get an opt-in `--commit`; `--fix-refs` rewrites sibling tracks' `depends_on`. Surfaced in the VS Code viewer as a **Rename Track** right-click action.
+
+### Milestone ordering within tracks (#101)
+A track that mixes near-term and far-future issues now keeps "what's next" above "someday", everywhere it renders:
+- **Viewer:** per-track milestone bands are ordered active-milestone-first (the track's `milestone_alignment` band first), not alphabetically.
+- **CLI:** the canonical issue table is a single milestone-ordered table with a `Milestone` column (active milestone first, groups divided by a blank row). `refresh-md` re-derives it each run, so it self-heals instead of decaying. Replaces the old multi-section rendering that didn't round-trip.
+- No-drift by construction: the markdown table and the viewer both derive order from the one `milestone_sort_key`; the canonicalize → refresh-md round-trip is byte-identical.
+
+### VS Code extension → v0.3.6
+Adds the Rename Track action and active-milestone-first band ordering. Marketplace + Open VSX.
+
+### Docs
+- CLAUDE.md: cross-project **model-routing** guidance; a deploy note to keep the `vscode/README.md` Status line in lockstep with the extension version.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.10+9dce675 — 2026-06-10 (#203)
 
 fix(security): CLI + VS Code extension hardening (injection fixes, extension RCE)
