@@ -113,8 +113,18 @@ def _apply(cfg: dict) -> int:
 
     print(f"Applying {len(answers)} priority labels to {repo}...")
     for ans in answers:
-        num = ans["number"]
-        priority = ans["priority"]
+        # The answers file is model-written; coerce the issue number to int and
+        # skip malformed entries so a non-numeric value can't reach `gh` argv
+        # (and a malformed file can't crash the apply). (#196)
+        if not isinstance(ans, dict):
+            print(f"  SKIP: answer is not an object: {ans!r}")
+            continue
+        try:
+            num = int(ans["number"])
+        except (KeyError, TypeError, ValueError):
+            print(f"  SKIP: answer missing a numeric 'number': {ans!r}")
+            continue
+        priority = ans.get("priority")
         if priority not in ("P0", "P1", "P2", "P3"):
             print(f"  SKIP #{num}: invalid priority '{priority}'")
             continue

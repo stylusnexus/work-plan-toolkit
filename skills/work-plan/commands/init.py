@@ -67,12 +67,22 @@ def run(args: list[str]) -> int:
             return 1
         folder = None
     else:
-        notes_root = Path(cfg["notes_root"])
+        # Containment guard (#195): a non-shared target MUST live under
+        # notes_root. Without this, `init /etc/anything` (any user-writable
+        # file with no frontmatter) would get frontmatter prepended via
+        # write_file, clobbering it. `path` is already resolved; resolve
+        # notes_root too so the comparison is symlink/relative-safe.
+        notes_root = Path(cfg["notes_root"]).expanduser().resolve()
         try:
             rel = path.relative_to(notes_root)
-            folder = rel.parts[0] if len(rel.parts) > 1 else None
         except ValueError:
-            folder = None
+            print(
+                f"ERROR: {path} is not inside notes_root ({notes_root}) or a"
+                " registered .work-plan/ directory — refusing to write"
+                " frontmatter outside the tracked tree."
+            )
+            return 1
+        folder = rel.parts[0] if len(rel.parts) > 1 else None
         repo = resolve_github_for_folder(folder, cfg) if folder else None
 
     issue_nums = sorted(set(int(m) for m in re.findall(r"#(\d+)", body)))

@@ -41,7 +41,7 @@ class IssuesTest(unittest.TestCase):
     def test_draft_previews_without_creating(self):
         with tempfile.TemporaryDirectory() as d:
             root = self._repo(d)
-            rc, out, ci = self._run(root, ["--issues", "--draft", "--repo=critforge"])
+            rc, out, ci = self._run(root, ["--issues", "--draft", "--repo=myproject"])
             self.assertEqual(rc, 0)
             self.assertIn("gone.ts", out)       # unsatisfied path shown in preview
             ci.assert_not_called()
@@ -49,7 +49,7 @@ class IssuesTest(unittest.TestCase):
     def test_apply_creates_issue_after_confirm(self):
         with tempfile.TemporaryDirectory() as d:
             root = self._repo(d)
-            rc, out, ci = self._run(root, ["--issues", "--repo=critforge"])
+            rc, out, ci = self._run(root, ["--issues", "--repo=myproject"])
             self.assertEqual(rc, 0)
             ci.assert_called_once()
             title, body = ci.call_args[0][1], ci.call_args[0][2]

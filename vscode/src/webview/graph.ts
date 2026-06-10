@@ -376,9 +376,16 @@ function trackId(name: string): string {
  * forms the Mermaid `SQE` token and terminates the label string
  * prematurely, causing "Syntax error in text".  Replacing with safe
  * literal characters avoids this entirely.
+ *
+ * Newlines (`\n` / `\r`) are collapsed to a single space: a literal line
+ * break inside a `["..."]` label aborts the node statement and produces a
+ * "Syntax error in text" (cosmetic DoS of the graph pane). GitHub issue
+ * titles are single-line in practice, but a crafted title on a tracked
+ * public repo could embed one — so neutralise it defensively (#197).
  */
 function mermaidLabel(s: string): string {
   return s
+    .replace(/[\r\n]+/g, " ")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -389,3 +396,6 @@ function mermaidLabel(s: string): string {
     .replace(/\}/g, ")")
     .replace(/`/g, "'");
 }
+
+/** Exposed for the hostile-title corpus test (#197). Not used in production. */
+export const __mermaidLabelForTest = mermaidLabel;

@@ -28,10 +28,10 @@ jobs:
       run:
         working-directory: vscode
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'           # 22.6+ provides --experimental-strip-types for `npm test`
           cache: npm
@@ -52,7 +52,7 @@ jobs:
         run: npm run package
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: work-plan-viewer-vsix
           path: vscode/work-plan-viewer.vsix

@@ -97,8 +97,8 @@ Track files live in one of two places:
 
 **Disambiguation when the same track slug exists in two repos:**
 ```
-/work-plan slot 4234 auth-flow@critforge   # @repo qualifier
-/work-plan close auth-flow --repo=critforge  # --repo=<key> flag
+/work-plan slot 4234 auth-flow@myproject   # @repo qualifier
+/work-plan close auth-flow --repo=myproject  # --repo=<key> flag
 ```
 
 Both forms work on: `slot`, `close`, `handoff`, `canonicalize`, `refresh-md`, `reconcile`, `set`.

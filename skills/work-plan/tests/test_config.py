@@ -24,15 +24,15 @@ class LoadConfigTest(unittest.TestCase):
             path = self._write(d, (
                 "notes_root: /tmp/notes\n"
                 "repos:\n"
-                "  critforge:\n"
-                "    github: stylusnexus/CritForge\n"
-                "    local: /Applications/Development/Projects/CritForge\n"
+                "  myproject:\n"
+                "    github: your-org/myproject\n"
+                "    local: /path/to/myproject\n"
             ))
             cfg = load_config(path)
             self.assertEqual(cfg["notes_root"], "/tmp/notes")
-            self.assertEqual(cfg["repos"]["critforge"]["github"], "stylusnexus/CritForge")
-            self.assertEqual(cfg["repos"]["critforge"]["local"],
-                             "/Applications/Development/Projects/CritForge")
+            self.assertEqual(cfg["repos"]["myproject"]["github"], "your-org/myproject")
+            self.assertEqual(cfg["repos"]["myproject"]["local"],
+                             "/path/to/myproject")
 
     def test_load_string_shape_normalizes_to_dict(self):
         # Backward-friendly: bare string is treated as github-only, no local
@@ -40,11 +40,11 @@ class LoadConfigTest(unittest.TestCase):
             path = self._write(d, (
                 "notes_root: /tmp/notes\n"
                 "repos:\n"
-                "  critforge: stylusnexus/CritForge\n"
+                "  myproject: your-org/myproject\n"
             ))
             cfg = load_config(path)
-            self.assertEqual(cfg["repos"]["critforge"]["github"], "stylusnexus/CritForge")
-            self.assertIsNone(cfg["repos"]["critforge"]["local"])
+            self.assertEqual(cfg["repos"]["myproject"]["github"], "your-org/myproject")
+            self.assertIsNone(cfg["repos"]["myproject"]["local"])
 
     def test_missing_file_self_seeds(self):
         # No install hook exists for plugin installs, so a missing config is
@@ -68,16 +68,16 @@ class ResolveTest(unittest.TestCase):
     def setUp(self):
         self.cfg = {
             "repos": {
-                "critforge": {"github": "stylusnexus/CritForge", "local": "/path/to/critforge"},
+                "myproject": {"github": "your-org/myproject", "local": "/path/to/myproject"},
             },
         }
 
     def test_resolve_github(self):
-        self.assertEqual(resolve_github_for_folder("critforge", self.cfg), "stylusnexus/CritForge")
+        self.assertEqual(resolve_github_for_folder("myproject", self.cfg), "your-org/myproject")
         self.assertIsNone(resolve_github_for_folder("unknown", self.cfg))
 
     def test_resolve_local_path(self):
-        self.assertEqual(resolve_local_path_for_folder("critforge", self.cfg), Path("/path/to/critforge"))
+        self.assertEqual(resolve_local_path_for_folder("myproject", self.cfg), Path("/path/to/myproject"))
         self.assertIsNone(resolve_local_path_for_folder("unknown", self.cfg))
 
 

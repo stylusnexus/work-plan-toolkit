@@ -148,8 +148,8 @@ The CLI never auto-pushes. When you create or update a shared track, it prints a
 **Multi-repo disambiguation:** if the same track slug exists in two repos, qualify with `@<repo>` or `--repo=<key>`:
 
 ```bash
-/work-plan slot 4234 auth-flow@critforge
-/work-plan close auth-flow --repo=critforge
+/work-plan slot 4234 auth-flow@myproject
+/work-plan close auth-flow --repo=myproject
 ```
 
 ## Plan & doc liveness (`plan-status`)

@@ -34,7 +34,7 @@ export interface TrackNode {
 
 export interface RepoNode {
   kind: "repo";
-  /** "stylusnexus/CritForge" or "(no repo)" for the null-repo bucket. */
+  /** "your-org/myproject" or "(no repo)" for the null-repo bucket. */
   repo: string;
   /** true when visibility === "PUBLIC" on any child track → ⚠ badge. */
   isPublic: boolean;

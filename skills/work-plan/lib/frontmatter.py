@@ -21,12 +21,21 @@ def parse_file(path: Path) -> Tuple[dict, str]:
 
 
 def write_file(path: Path, meta: dict, body: str) -> None:
-    """Write markdown with frontmatter. Empty meta = body only."""
+    """Write markdown with frontmatter. Empty meta = body only.
+
+    Refuses to write through a symlink (#195): a track file that is a symlink to
+    a target outside the notes tree would otherwise let a write land on an
+    arbitrary file. Track files are never legitimately symlinks, so this rejects
+    nothing valid; raises ValueError if one is encountered.
+    """
+    p = Path(path)
+    if p.is_symlink():
+        raise ValueError(f"refusing to write through symlink: {p}")
     if not meta:
-        Path(path).write_text(body, encoding="utf-8")
+        p.write_text(body, encoding="utf-8")
         return
     yaml_text = _dict_to_yaml(meta)
-    Path(path).write_text(f"---\n{yaml_text}---\n{body}", encoding="utf-8")
+    p.write_text(f"---\n{yaml_text}---\n{body}", encoding="utf-8")
 
 
 def _yaml_to_dict(yaml_text: str) -> dict:

@@ -60,5 +60,5 @@ None.
 
 - [ ] PR title follows Conventional Commits format (`type(scope): description`)
 - [ ] No new third-party Python dependencies added (toolkit is stdlib-only on purpose)
-- [ ] No CritForge-specific or other private paths/identifiers leaked into the toolkit
+- [ ] No private/internal project names, org-specific repo slugs, or maintainer absolute paths leaked into the toolkit (use generic examples like `your-org/myproject`)
 - [ ] Read `CONTRIBUTING.md` if this is your first PR here

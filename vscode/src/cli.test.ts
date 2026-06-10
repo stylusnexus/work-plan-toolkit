@@ -28,7 +28,7 @@ const VALID_EXPORT: Export = {
   tracks: [
     {
       name: "platform-health",
-      repo: "stylusnexus/CritForge",
+      repo: "your-org/myproject",
       tier: "private",
       status: "active",
       launch_priority: "P2",
