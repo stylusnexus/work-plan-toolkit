@@ -237,8 +237,11 @@ def main(argv: list[str]) -> int:
     # what this command changes (and never fold in pre-existing edits, #244-vcs).
     pre = _notes_precommit_state(sub)
     rc = module.run(argv[2:])
-    if rc == 0 and pre is not None:
-        _commit_changed_notes(pre, argv[1:])
+    if rc == 0:
+        if pre is not None:
+            _commit_changed_notes(pre, argv[1:])
+        # Commit any shared-tier writes on their plan_branch via the worktree (#260).
+        _commit_shared_writes(sub, argv[1:])
     return rc
 
 
@@ -303,6 +306,41 @@ def _commit_changed_notes(pre, parts: list[str]) -> None:
                   f"undo with: git -C {notes_root} revert {sha}", file=sys.stderr)
     except Exception:
         # VCS is a safety net, never a failure mode for the command itself.
+        return
+
+
+def _commit_shared_writes(sub: str, parts: list[str]) -> None:
+    """After a successful mutating command, commit each `plan_branch` repo's
+    shared-tier (.work-plan/) changes on its plan_branch via the worktree (#260).
+
+    Mirrors the notes_root auto-commit: read-only verbs skip; repos without a
+    plan_branch (the legacy default) are untouched — their shared tier is the
+    working tree and isn't auto-committed. Best-effort; never raises and never
+    changes the command's exit code. Local commit only (pushing is a deliberate
+    follow-up step).
+    """
+    if sub.lstrip("-") in _READONLY_SUBCOMMANDS:
+        return
+    try:
+        from lib.config import load_config
+        from lib import plan_worktree
+        from pathlib import Path
+
+        cfg = load_config()
+        message = "work-plan " + " ".join(parts)
+        for key, entry in (cfg.get("repos") or {}).items():
+            if not entry or not entry.get("plan_branch") or not entry.get("local"):
+                continue
+            worktree = plan_worktree.ensure_worktree(
+                Path(entry["local"]).expanduser(), entry["plan_branch"]
+            )
+            if worktree is None:
+                continue
+            sha = plan_worktree.commit_shared_tier(worktree, message)
+            if sha:
+                print(f"⏺ shared plan committed {sha} on {entry['plan_branch']} "
+                      f"({key}) — not yet pushed", file=sys.stderr)
+    except Exception:
         return
 
 

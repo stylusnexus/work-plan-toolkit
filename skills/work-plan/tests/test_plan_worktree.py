@@ -28,10 +28,13 @@ class _FakeGit:
     add_ok:        whether `worktree add` succeeds.
     missing:       if True, every call returns None (git absent / timeout).
     """
-    def __init__(self, *, branch_exists=True, add_ok=True, missing=False):
+    def __init__(self, *, branch_exists=True, add_ok=True, missing=False,
+                 staged=False, head="abc1234"):
         self.branch_exists = branch_exists
         self.add_ok = add_ok
         self.missing = missing
+        self.staged = staged   # whether `.work-plan/` has staged changes
+        self.head = head
         self.calls = []
 
     def __call__(self, cwd, *args, timeout=None):
@@ -39,11 +42,18 @@ class _FakeGit:
         if self.missing:
             return None
         sub = args[0] if args else ""
-        if sub == "rev-parse":
+        if sub == "rev-parse" and "--short" in args:
+            return _ok(self.head + "\n")
+        if sub == "rev-parse":  # --verify --quiet <ref>
             return _ok("deadbee\n") if self.branch_exists else _fail()
         if sub == "worktree" and len(args) > 1 and args[1] == "add":
             return _ok() if self.add_ok else _fail()
-        return _ok()
+        if sub == "diff" and "--cached" in args:
+            return MagicMock(returncode=1 if self.staged else 0, stdout="", stderr="")
+        if sub == "commit":
+            self.staged = False
+            return _ok()
+        return _ok()  # add, etc.
 
 
 class SharedTierDirTest(unittest.TestCase):
@@ -124,6 +134,42 @@ class EnsureWorktreeTest(unittest.TestCase):
             with patch.object(pw, "_worktree_dir", return_value=dest), \
                  patch.object(pw, "_git", _FakeGit(missing=True)):
                 self.assertIsNone(pw.ensure_worktree(Path(d), "plan"))
+
+
+class CommitSharedTierTest(unittest.TestCase):
+    @staticmethod
+    def _wt(d):
+        wt = Path(d)
+        (wt / ".work-plan").mkdir(parents=True, exist_ok=True)
+        return wt
+
+    def test_commits_only_work_plan_when_dirty(self):
+        with tempfile.TemporaryDirectory() as d:
+            wt = self._wt(d)
+            fake = _FakeGit(staged=True, head="sh4r3d1")
+            with patch.object(pw, "_git", fake):
+                self.assertEqual(pw.commit_shared_tier(wt, "work-plan slot 1 t"), "sh4r3d1")
+            self.assertIn(("add", "--", ".work-plan"), fake.calls)        # scoped add
+            self.assertIn(("commit", "-m", "work-plan slot 1 t"), fake.calls)
+
+    def test_noop_when_nothing_staged(self):
+        with tempfile.TemporaryDirectory() as d:
+            wt = self._wt(d)
+            fake = _FakeGit(staged=False)
+            with patch.object(pw, "_git", fake):
+                self.assertIsNone(pw.commit_shared_tier(wt, "msg"))
+            self.assertNotIn(("commit", "-m", "msg"), fake.calls)
+
+    def test_noop_when_no_work_plan_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(pw, "_git", _FakeGit(staged=True)):
+                self.assertIsNone(pw.commit_shared_tier(Path(d), "msg"))  # no .work-plan/
+
+    def test_none_when_git_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            wt = self._wt(d)
+            with patch.object(pw, "_git", _FakeGit(missing=True)):
+                self.assertIsNone(pw.commit_shared_tier(wt, "msg"))
 
 
 if __name__ == "__main__":

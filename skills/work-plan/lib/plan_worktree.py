@@ -81,6 +81,33 @@ def ensure_worktree(local_path: Path, branch: str) -> Optional[Path]:
     return dest
 
 
+def commit_shared_tier(worktree: Path, message: str) -> Optional[str]:
+    """Commit the worktree's `.work-plan/` changes (only) with `message`; return
+    the new short SHA, or None. Stages ONLY `.work-plan/` so a non-orphan
+    `plan_branch` worktree never sweeps in code/other files. No-op when nothing
+    under `.work-plan/` is staged. Never raises.
+
+    Commits on whatever branch the worktree is checked out — i.e. `plan_branch`.
+    Local commit only; pushing the branch (to actually share it) is a separate,
+    deliberate step (#260, follow-up).
+    """
+    wt = Path(worktree).expanduser()
+    if not (wt / ".work-plan").is_dir():
+        return None
+    if _git(wt, "add", "--", ".work-plan") is None:
+        return None
+    staged = _git(wt, "diff", "--cached", "--quiet", "--", ".work-plan")
+    if staged is None or staged.returncode == 0:
+        return None
+    proc = _git(wt, "commit", "-m", message)
+    if proc is None or proc.returncode != 0:
+        return None
+    head = _git(wt, "rev-parse", "--short", "HEAD")
+    if head is None or head.returncode != 0:
+        return None
+    return head.stdout.strip() or None
+
+
 def shared_tier_dir(entry: dict) -> Optional[Path]:
     """The `.work-plan/` directory to read/write for a repo config `entry`.
 
