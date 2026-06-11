@@ -176,12 +176,13 @@ def revert(notes_root: Path, sha: Optional[str] = None) -> Optional[str]:
 
     Keeps git inside the engine so callers (the CLI `undo` verb, the viewer's
     Undo button) never shell out to git themselves. No-op (None) when notes_root
-    isn't a git root, when there's no commit to revert, or when `sha` is unsafe
-    (empty / dash-led — git would read a dash-led value as an option). Never
-    raises. Uses --no-edit so it's non-interactive.
+    isn't a git root we OWN with no remote (same boundary as auto_commit — we
+    must never rewrite an unrelated project clone's history), when there's no
+    commit to revert, or when `sha` is unsafe (empty / dash-led — git would read
+    a dash-led value as an option). Never raises. Uses --no-edit (non-interactive).
     """
     root = Path(notes_root).expanduser()
-    if not is_git_root(root):
+    if not is_git_root(root) or not is_owned(root) or has_remotes(root):
         return None
     target = sha if sha is not None else "HEAD"
     # A dash-led ref would be parsed by git as an option, not a revision.

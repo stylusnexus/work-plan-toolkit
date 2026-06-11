@@ -373,14 +373,14 @@ class LastCommitShaTest(unittest.TestCase):
 class RevertTest(unittest.TestCase):
     def test_reverts_head_by_default(self):
         with tempfile.TemporaryDirectory() as d:
-            fake = _FakeGit(toplevel=str(Path(d).resolve()), head="rev0001")
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), head="rev0001", owned=True)
             with patch.object(notes_vcs, "_git", fake):
                 self.assertEqual(notes_vcs.revert(Path(d)), "rev0001")
             self.assertIn(("revert", "--no-edit", "HEAD"), fake.calls)
 
     def test_reverts_named_sha(self):
         with tempfile.TemporaryDirectory() as d:
-            fake = _FakeGit(toplevel=str(Path(d).resolve()), head="rev0002")
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), head="rev0002", owned=True)
             with patch.object(notes_vcs, "_git", fake):
                 self.assertEqual(notes_vcs.revert(Path(d), "abc1234"), "rev0002")
             self.assertIn(("revert", "--no-edit", "abc1234"), fake.calls)
@@ -391,16 +391,33 @@ class RevertTest(unittest.TestCase):
             with patch.object(notes_vcs, "_git", fake):
                 self.assertIsNone(notes_vcs.revert(Path(d)))
 
+    def test_refuses_unowned_repo(self):
+        # Never rewrite a repo we didn't create — it could be a project clone.
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), owned=False)
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertIsNone(notes_vcs.revert(Path(d)))
+            self.assertNotIn("revert", [c[0] for c in fake.calls])
+
+    def test_refuses_remote_backed_repo(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), owned=True,
+                            remotes="origin\n")
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertIsNone(notes_vcs.revert(Path(d)))
+            self.assertNotIn("revert", [c[0] for c in fake.calls])
+
     def test_rejects_dash_led_sha(self):
         with tempfile.TemporaryDirectory() as d:
-            fake = _FakeGit(toplevel=str(Path(d).resolve()))
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), owned=True)
             with patch.object(notes_vcs, "_git", fake):
                 self.assertIsNone(notes_vcs.revert(Path(d), "--hard"))
             self.assertNotIn("revert", [c[0] for c in fake.calls])
 
     def test_none_when_revert_fails(self):
         with tempfile.TemporaryDirectory() as d:
-            fake = _FakeGit(toplevel=str(Path(d).resolve()), fail_on={"revert"})
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), owned=True,
+                            fail_on={"revert"})
             with patch.object(notes_vcs, "_git", fake):
                 self.assertIsNone(notes_vcs.revert(Path(d)))
 
