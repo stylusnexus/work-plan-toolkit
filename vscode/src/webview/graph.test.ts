@@ -626,9 +626,10 @@ describe("toMermaid — track id collision disambiguation", () => {
 
   it("second colliding track gets a suffixed id", () => {
     const out = toMermaid(collisionExp);
-    // "my_track" is second → id should be t_my_track_1.
+    // "my_track" is second → id should be t_my_track_1. Tolerate the blocked
+    // marker (#244) — this track has a blocker, so its label is prefixed.
     assert.ok(
-      out.includes('t_my_track_1["my_track"]'),
+      /t_my_track_1\["(?:⛔ )?my_track"\]/.test(out),
       `Expected second track to get suffixed id t_my_track_1:\n${out}`,
     );
   });
@@ -1003,5 +1004,27 @@ describe("mermaidLabel — hostile-title corpus (#197)", () => {
       !out.includes('x["pwned'),
       `raw 'x["pwned' node syntax leaked into the graph:\n${out}`,
     );
+  });
+});
+
+describe("toMermaid — theme-aware classDef fills (#207)", () => {
+  it("dark option emits the dark-theme classDef palette", () => {
+    const out = toMermaid(exp, "platform-health", { dark: true });
+    assert.ok(out.includes("classDef blocked fill:#5b1d1d"), `expected dark blocked fill:\n${out}`);
+    assert.ok(out.includes("classDef selected fill:#1e3a5f"), `expected dark selected fill:\n${out}`);
+  });
+
+  it("light option emits the light-theme classDef palette", () => {
+    const out = toMermaid(exp, "platform-health", { dark: false });
+    assert.ok(out.includes("classDef blocked fill:#fee2e2"), `expected light blocked fill:\n${out}`);
+    assert.ok(out.includes("classDef selected fill:#dbeafe"), `expected light selected fill:\n${out}`);
+  });
+});
+
+describe("toMermaid — blocked nodes carry a non-colour marker (#244)", () => {
+  it("prefixes a blocked track node label with the ⛔ glyph", () => {
+    // platform-health is blocked in the fixture.
+    const out = toMermaid(exp);
+    assert.ok(out.includes('⛔ '), `expected a ⛔ marker on a blocked node:\n${out}`);
   });
 });

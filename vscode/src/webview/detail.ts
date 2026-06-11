@@ -47,8 +47,15 @@ export function renderDetail(track: Track): string {
   const groups = groupByMilestone(track.issues, track.milestone_alignment);
 
   parts.push('<table class="issues">');
+  parts.push(`<caption class="sr-only">Issues in ${esc(track.name)}</caption>`);
   parts.push(
-    "<thead><tr><th>Num</th><th>Title</th><th>State</th><th>Assignee</th><th></th></tr></thead>",
+    '<thead><tr>' +
+      '<th scope="col">Num</th>' +
+      '<th scope="col">Title</th>' +
+      '<th scope="col">State</th>' +
+      '<th scope="col">Assignee</th>' +
+      '<th scope="col"><span class="sr-only">Move</span></th>' +
+      '</tr></thead>',
   );
 
   if (groups.length <= 1) {
@@ -64,15 +71,11 @@ export function renderDetail(track: Track): string {
     parts.push("</tbody>");
 
     if (hidden.length > 0) {
-      parts.push(
-        `<tbody class="issue-cap-band collapsed"><tr class="issue-cap-toggle"><td colspan="5">` +
-          `<details><summary>Show all ${allIssues.length} issues (${hidden.length} more)</summary>` +
-          `<table>`
-      );
+      parts.push(renderCapToggle(allIssues.length, hidden.length));
       for (const issue of hidden) {
         parts.push(renderIssueRow(track, issue));
       }
-      parts.push(`</table></details></td></tr></tbody>`);
+      parts.push("</tbody>");
     }
   } else {
     // Milestone bands.
@@ -84,11 +87,23 @@ export function renderDetail(track: Track): string {
       const heading = label ? esc(label) : "No milestone";
       const count = String(issues.length);
       const collapsedClass = first ? "" : " collapsed";
+      const expanded = first ? "true" : "false";
+      // The caret + name + count is ONE collapse button (the dominant "click a
+      // section header to collapse" expectation, #248). Filtering the whole view
+      // by this milestone is a separate, explicit control to its right — only for
+      // real milestones (the "No milestone" group has no lens). Both are real
+      // <button>s (keyboard-operable, aria-labelled, #244).
+      const filterBtn = label
+        ? ` <button class="milestone-filter-btn" data-milestone="${esc(label)}"` +
+          ` title="Filter the view to ${heading}" aria-label="Filter the view to ${heading}">filter</button>`
+        : "";
       parts.push(`<tbody class="milestone-band${collapsedClass}">`);
       parts.push(
-        `<tr class="milestone-band-header"><td colspan="4">` +
-          `<span class="milestone-toggle">▸</span> ` +
-          `<b>${heading}</b> <span class="milestone-count">(${count})</span>` +
+        `<tr class="milestone-band-header"><td colspan="5">` +
+          `<button class="milestone-toggle-btn" aria-expanded="${expanded}" aria-label="Toggle ${heading} issues">` +
+          `<span class="milestone-toggle">▸</span> <b>${heading}</b> <span class="milestone-count">(${count})</span>` +
+          `</button>` +
+          filterBtn +
           `</td></tr>`,
       );
 
@@ -105,15 +120,11 @@ export function renderDetail(track: Track): string {
     }
 
     if (hiddenIssues.length > 0) {
-      parts.push(
-        `<tbody class="issue-cap-band collapsed"><tr class="issue-cap-toggle"><td colspan="5">` +
-          `<details><summary>Show all ${track.issues.length} issues (${hiddenIssues.length} more)</summary>` +
-          `<table>`
-      );
+      parts.push(renderCapToggle(track.issues.length, hiddenIssues.length));
       for (const issue of hiddenIssues) {
         parts.push(renderIssueRow(track, issue));
       }
-      parts.push(`</table></details></td></tr></tbody>`);
+      parts.push("</tbody>");
     }
   }
 
@@ -148,7 +159,7 @@ export function renderDetail(track: Track): string {
     parts.push("None.");
   } else {
     const depChips = track.depends_on.map(name =>
-      `<span class="depends-chip" data-track="${esc(name)}">${esc(name)}</span>`,
+      `<button type="button" class="depends-chip" data-track="${esc(name)}">${esc(name)}</button>`,
     );
     parts.push(depChips.join(" "));
   }
@@ -187,7 +198,7 @@ function renderIssueRow(track: Track, issue: Issue): string {
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
   const moveBtn = track.repo
-    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track">↗</button></td>`
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button></td>`
     : `<td class="move-col"></td>`;
   return (
     `<tr>` +
@@ -197,6 +208,24 @@ function renderIssueRow(track: Track, issue: Issue): string {
     `<td class="who">${esc(issue.assignee)}</td>` +
     moveBtn +
     `</tr>`
+  );
+}
+
+/**
+ * Opens an issue-cap overflow `<tbody>`: a disclosure button row that reveals the
+ * capped-off rows when toggled. The caller appends the hidden `<tr>`s and the
+ * closing `</tbody>`. Uses a real `<button>` (natively keyboard-operable) and
+ * keeps the rows inside the same table — no invalid nested `<table>`/`<details>`.
+ * The `.issue-cap-row` class marks the toggle row so the collapse CSS keeps it
+ * visible while hiding the rest of the band.
+ */
+function renderCapToggle(total: number, hidden: number): string {
+  return (
+    `<tbody class="issue-cap-band collapsed">` +
+    `<tr class="issue-cap-row"><td colspan="5">` +
+    `<button type="button" class="issue-cap-toggle" aria-expanded="false">` +
+    `<span class="issue-cap-marker">▸</span> Show all ${total} issues (${hidden} more)` +
+    `</button></td></tr>`
   );
 }
 

@@ -55,6 +55,7 @@ SUBCOMMANDS = {
     "new-track": "commands.new_track",
     "rename-track": "commands.rename_track",
     "set-notes-root": "commands.set_notes_root",
+    "notes-vcs": "commands.notes_vcs",
 }
 
 DESCRIPTIONS = [
@@ -64,7 +65,7 @@ DESCRIPTIONS = [
      "Starting a work session, after a gap, or any time you want a status snapshot. Use --repo when you only want to think about one project today.",
      "/work-plan brief --repo=myproject"),
     ("handoff", "[track] [--set-next 1,2,3 | --auto-next] [--interactive]",
-     "Wrap up a session: capture touched/next/blockers, update body status table. Use --set-next to set the next_up list explicitly. Use --auto-next to suggest a priority-sorted list from open issues (interactive: apply / edit / skip).",
+     "Wrap up a session: capture touched/next/blockers, update body status table. Use --set-next to set the next_up list explicitly — note this is a full handoff, so it also appends a session-log entry (use `set next_up=` for a field-only change with no log). Use --auto-next to suggest a priority-sorted list from open issues (interactive: apply / edit / skip).",
      "Ending a work block — before stepping away, going to bed, or switching tracks. Use --auto-next when you don't want to hand-pick issue numbers.",
      "/work-plan handoff tabletop --auto-next"),
     ("where-was-i", "[track | track@repo] [--pick] [--repo=<key>]",
@@ -88,7 +89,7 @@ DESCRIPTIONS = [
      "When a track is done, paused, or won't ship — frees mental space.",
      "/work-plan close tabletop"),
     ("refresh-md", "<track> | --all | --repo=<key> [--yes]",
-     "Update issue STATE (open/closed, status labels) inside the track body's status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place.",
+     "Sync issue STATE (open/closed, status labels) from GitHub into the track body's status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place.",
      "Usually NOT needed directly: `handoff` already refreshes the body table for its own track, and `brief` reads GitHub live. Reach for this when a sibling track has drifted because you haven't `handoff`'d it lately. `--all` sweeps every active track; `--repo=<key>` scopes the sweep to one repo (also runs as part of weekly `hygiene`).",
      "/work-plan refresh-md --repo=myproject"),
     ("list", "[--all] [--sort=recent|priority]",
@@ -116,7 +117,7 @@ DESCRIPTIONS = [
      "Periodically — when new issues have piled up outside the track model. Run /work-plan coverage first to confirm there's a gap worth triaging.",
      "/work-plan auto-triage --repo=myproject"),
     ("reconcile", "<track> | --all | --repo=<key> [--draft] [--yes]",
-     "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. In an --all/--repo sweep it also detects MOVEs — an issue relabeled from one track to another in the same repo is moved (removed from the old track, added to the new). Add --draft to preview proposed ADDs/MOVEs/FLAGs without prompting or writing; add --yes to apply without prompting (non-interactive, e.g. from the VS Code extension; PUBLIC-repo move destinations are skipped under --yes). NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
+     "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. In an --all/--repo sweep it also detects MOVEs — an issue relabeled from one track to another in the same repo is moved (removed from the old track, added to the new). Add --draft to preview the label drift (proposed ADDs/MOVEs/FLAGs) without prompting or writing; add --yes to apply without prompting (non-interactive, e.g. from the VS Code extension; PUBLIC-repo move destinations are skipped under --yes). NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
      "WEEKLY hygiene on label-driven tracks — pulls labeled issues into their tracks, flags un-labeled ones. Use --repo=<key> to scope the sweep to one repo. Skip on hand-curated tracks (it'll propose dropping curated issues every run).",
      "/work-plan reconcile --repo=myproject --draft"),
     ("duplicates", "[--min-similarity=0.7] [--limit=20] [--state=open] [--timeout=N]",
@@ -140,7 +141,7 @@ DESCRIPTIONS = [
      "When a tool (the VS Code viewer, or any script) needs structured track state instead of the human-facing brief/orient text.",
      "/work-plan export --json"),
     ("set", "<track | track@repo> field=value [field=value …] [--repo=<key>] [--confirm=<token>]",
-     "Guarded edit of a track's frontmatter fields (status, launch_priority, milestone_alignment, blockers, next_up). Validates field names + status values; blockers/next_up take comma-separated issue numbers. Writes into a PUBLIC repo only with a confirm token: without one it prints {needs_confirm, reason, token} and makes no change (the VS Code viewer surfaces that as a modal, then re-invokes with --confirm=<token>).",
+     "Guarded edit of a track's frontmatter fields (status, launch_priority, milestone_alignment, blockers, next_up). Validates field names + status values; blockers/next_up take comma-separated issue numbers. Setting `next_up` here writes ONLY the frontmatter field — for next_up plus a session-log entry (and a body refresh), use `handoff --set-next` instead. Writes into a PUBLIC repo only with a confirm token: without one it prints {needs_confirm, reason, token} and makes no change (the VS Code viewer surfaces that as a modal, then re-invokes with --confirm=<token>).",
      "Programmatic/GUI edits that have no dedicated verb — e.g. the VS Code extension changing a status or blockers list. On the terminal you'll usually use the named verbs instead.",
      "/work-plan set ux-redesign status=parked"),
     ("new-track", "<repo> <slug> [--priority=P0..P3] [--milestone=<m>] [--private] [--confirm=<token>]",
@@ -159,6 +160,10 @@ DESCRIPTIONS = [
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
      "/work-plan set-notes-root ~/Documents/work-plan-notes"),
+    ("notes-vcs", "<init|enable|disable|status|undo> [<sha>] [--no-enable] [--json]",
+     "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. For safety it REFUSES a notes_root that already has a git remote or is a repo work-plan didn't create, and only ever commits the files a command changed — private notes stay un-pushable and your unrelated edits are never swept in. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
+     "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup. `undo` reverses the last edit.",
+     "/work-plan notes-vcs init"),
 ]
 
 
@@ -190,8 +195,8 @@ def _print_help() -> int:
     print("  All-in-one (recommended)  →  /work-plan --hygiene")
     print("  Scope to one repo         →  /work-plan hygiene --repo=<key>")
     print("  Or individually:")
-    print("    Drift in status tables  →  /work-plan refresh-md --all  (or --repo=<key>)")
-    print("    Sync labels ↔ tracks    →  /work-plan reconcile --all   (or --repo=<key>)")
+    print("    Sync issue states       →  /work-plan refresh-md --all  (or --repo=<key>)")
+    print("    Check label drift       →  /work-plan reconcile --all   (or --repo=<key>)")
     print("    Find duplicate issues   →  /work-plan duplicates")
     print()
     print("FOCUS ON ONE PROJECT\n")
@@ -228,7 +233,77 @@ def main(argv: list[str]) -> int:
     except ImportError as e:
         print(f"subcommand '{sub}' not implemented yet ({e})", file=sys.stderr)
         return 1
-    return module.run(argv[2:])
+    # Snapshot notes_root's dirty set BEFORE the command so we can commit only
+    # what this command changes (and never fold in pre-existing edits, #244-vcs).
+    pre = _notes_precommit_state(sub)
+    rc = module.run(argv[2:])
+    if rc == 0 and pre is not None:
+        _commit_changed_notes(pre, argv[1:])
+    return rc
+
+
+# Read-only commands never write notes_root — skip the snapshot/commit entirely.
+# (Flag aliases like --brief/--plan-status normalise by stripping leading dashes.)
+_READONLY_SUBCOMMANDS = frozenset({
+    "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
+    "plan-status", "export", "notes-vcs",
+})
+
+
+def _notes_precommit_state(sub: str):
+    """Snapshot notes_root's dirty paths BEFORE a command, when opt-in VCS is on
+    and the command may mutate notes_root. Returns (notes_root, before_paths) or
+    None. Best-effort; never raises — VCS must never change the command's flow.
+
+    `notes-vcs` manages the repo itself; read-only verbs change nothing — both
+    skip. We only ever commit a repo work-plan OWNS that has NO remote, so a
+    pre-existing or remote-backed repo the user pointed notes_root at is left
+    alone (private notes stay un-pushable).
+    """
+    if sub.lstrip("-") in _READONLY_SUBCOMMANDS:
+        return None
+    try:
+        from lib.config import load_config, notes_vcs_auto_commit
+        from lib import notes_vcs
+        from pathlib import Path
+
+        cfg = load_config()
+        if not notes_vcs_auto_commit(cfg):
+            return None
+        notes_root = Path(cfg["notes_root"]).expanduser()
+        if not notes_vcs.is_git_root(notes_root):
+            if not notes_vcs.is_under_git(notes_root):
+                print("ℹ auto-commit is on but notes_root isn't a git repo — "
+                      "run `work-plan notes-vcs init` to enable local history.",
+                      file=sys.stderr)
+            return None
+        if not notes_vcs.is_owned(notes_root) or notes_vcs.has_remotes(notes_root):
+            return None
+        return (notes_root, notes_vcs.dirty_paths(notes_root))
+    except Exception:
+        return None
+
+
+def _commit_changed_notes(pre, parts: list[str]) -> None:
+    """Commit ONLY the paths a command newly changed (after − before), leaving
+    any pre-existing dirty files untouched. Best-effort; never raises and never
+    changes the command's exit code.
+    """
+    notes_root, before = pre
+    try:
+        from lib import notes_vcs
+
+        changed = sorted(notes_vcs.dirty_paths(notes_root) - before)
+        if not changed:
+            return
+        message = "work-plan " + " ".join(parts)
+        sha = notes_vcs.auto_commit(notes_root, message, paths=changed)
+        if sha:
+            print(f"⏺ notes_root committed {sha} ({len(changed)} file(s)) — "
+                  f"undo with: git -C {notes_root} revert {sha}", file=sys.stderr)
+    except Exception:
+        # VCS is a safety net, never a failure mode for the command itself.
+        return
 
 
 if __name__ == "__main__":

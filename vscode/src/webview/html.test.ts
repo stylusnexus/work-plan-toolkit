@@ -23,6 +23,7 @@ const BASE: WebviewHtmlOptions = {
   trackName: "alpha",
   isModule: false,
   focused: false,
+  isDark: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -120,10 +121,10 @@ describe("buildHtml — graphDef embedding", () => {
     );
   });
 
-  it("graphDef is inside a <pre class=\"mermaid\"> element", () => {
+  it("graphDef is inside a <pre class=\"mermaid\" …> element", () => {
     const html = buildHtml(BASE);
-    // The pre.mermaid wraps graphDef
-    const preStart = html.indexOf('<pre class="mermaid">');
+    // The pre.mermaid wraps graphDef (now carries a11y attrs, so match the prefix).
+    const preStart = html.indexOf('<pre class="mermaid"');
     const preEnd = html.indexOf("</pre>");
     assert.ok(preStart !== -1, "Missing <pre class=\"mermaid\"> element");
     assert.ok(preEnd > preStart, "Missing </pre> after mermaid pre");
@@ -132,6 +133,48 @@ describe("buildHtml — graphDef embedding", () => {
       inside.includes(BASE.graphDef),
       `graphDef not inside the mermaid <pre>: ${inside.slice(0, 300)}`,
     );
+  });
+
+  it("the mermaid graph has a text alternative on a wrapper that survives mermaid.run() (#217/#244)", () => {
+    const html = buildHtml({ ...BASE, trackName: "platform-health" });
+    // The alt text lives on a parent <div>, not the <pre> — Mermaid replaces the
+    // <pre>'s content with its own SVG, so a label on the pre would be lost.
+    assert.ok(
+      html.includes('<div class="graph-figure" role="img" aria-label="Dependency graph for platform-health">'),
+      `graph wrapper missing role/aria-label:\n${html}`,
+    );
+    // The pre itself no longer carries role/aria-label (avoids nested role=img).
+    assert.ok(!/<pre class="mermaid"[^>]*role=/.test(html), "pre should not carry role anymore");
+  });
+
+  it("the move button reveals on focus, not just hover (#214)", () => {
+    const html = buildHtml(BASE);
+    assert.ok(
+      html.includes(".move-btn:focus") && html.includes(".move-btn:focus-visible"),
+      "move-btn must reveal on :focus / :focus-visible, not hover-only",
+    );
+    // Resting state is dim-but-visible, never fully transparent.
+    assert.ok(!/\.move-btn\s*\{[^}]*opacity:\s*0;/.test(html), "move-btn must not rest at opacity:0");
+  });
+});
+
+describe("buildHtml — theme adaptivity (#207)", () => {
+  it("dark editor → Mermaid initialises with the dark theme", () => {
+    const html = buildHtml({ ...BASE, isDark: true });
+    assert.ok(html.includes('theme: "dark"'), `expected Mermaid dark theme:\n${html.slice(0, 400)}`);
+  });
+
+  it("light editor → Mermaid initialises with the default (light) theme, never hardcoded dark", () => {
+    const html = buildHtml({ ...BASE, isDark: false });
+    assert.ok(html.includes('theme: "default"'), "expected Mermaid default theme on a light editor");
+    assert.ok(!html.includes('theme: "dark"'), "must not hardcode the dark theme");
+  });
+
+  it("semantic pill/chip colours come from --vscode-charts-* tokens, not hardcoded hex", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes("--vscode-charts-blue"), "pills/steps should use the charts-blue token");
+    assert.ok(html.includes("--vscode-charts-red"), "blocker chips should use the charts-red token");
+    assert.ok(!html.includes("#1e3a5f") && !html.includes("#3b1f1f"), "old hardcoded pill/chip hex should be gone");
   });
 });
 
@@ -384,3 +427,13 @@ function assertAllScriptsHaveNonce(html: string, nonce: string): void {
   }
   assert.ok(count > 0, "Expected at least one <script element in output");
 }
+
+describe("buildHtml — milestone band filter wiring (#218)", () => {
+  it("posts filterMilestone and wires the keyboard collapse toggle", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes('type: "filterMilestone"'), "missing filterMilestone postMessage");
+    assert.ok(html.includes(".milestone-filter-btn"), "missing milestone-filter-btn click handler");
+    assert.ok(html.includes(".milestone-toggle-btn"), "missing milestone-toggle-btn handler");
+    assert.ok(html.includes('aria-expanded'), "toggle handler should sync aria-expanded");
+  });
+});

@@ -8,7 +8,7 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 - A **sidebar tree** (repos → tracks) showing the live state of every tracked GitHub repo — status dot, open count, blocked/next hints, a ⚠ badge on public repos.
 - A **Mermaid dependency graph** webview + **per-track detail** panel (issue table — capped at 50 rows with a collapsible overflow — blockers, **depends-on chips**, ordered next-up) — with a focus toggle that zooms in on the selected track, and a full map scoped to the track's repo.
-- **Lenses** (filter by repo / milestone / status — active, shipped, parked — / blocked) and **sort** (default / blocked / most-open / name).
+- **Lenses** (filter by repo / milestone / status — active, shipped, parked — / blocked) and **sort** (default / blocked / most-open / name). Each milestone band in the detail panel has a **filter** button that applies that milestone's lens to the whole view (the band header itself collapses); the resulting filter is clearable straight from its confirmation toast.
 - An **"Untracked" bucket** under each repo: open GitHub issues that no track references — click to open on GitHub, or right-click to slot one into a track.
 
 **Act** — every action runs the CLI under the hood:
@@ -70,17 +70,22 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 
 ### Track actions (right-click a track)
 
+The menu is grouped, with a separator between each group: **everyday edits** first, then **GitHub-sync** actions, then the **destructive** actions (Close / Rename) fenced at the bottom so they're harder to hit by accident.
+
 | Command | What it does |
 |---|---|
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
-| **Set Next-Up** | Set the ordered next-up issue list for the track. |
-| **Slot Issue into Track** | Add a GitHub issue number to the track. |
+| **Add Issue to Track** | Add a GitHub issue number to the track. |
 | **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
-| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
-| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug; a public-repo write is gated by the confirm modal. |
-| **Refresh Track Body** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
-| **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
-| **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |
+| **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
+| *— separator —* | |
+| **Sync Issue States from GitHub** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
+| **Check Label Drift (preview)** | Read-only draft of where the track's frontmatter membership disagrees with GitHub labels (no writes). Equivalent to `work-plan reconcile <track>` in draft mode. |
+| *— separator —* | |
+| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. **Abandon** asks for confirmation first (it's the destructive close). |
+| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug, then confirm; a public-repo write is additionally gated by the leak-guard modal. |
+
+(On an **Untracked** bucket item, right-click gives **Add Untracked Issue to Track** — file a loose issue into a track.)
 
 ### Create & setup (the `⋯` overflow)
 
@@ -89,7 +94,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **New Track** | Create a new track for a repo (pick the repo + a slug). |
 | **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. |
 | **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
-| **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Refresh Track Body" instead when you just need to update one track after closing issues. |
+| **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Sync Issue States from GitHub" instead when you just need to update one track after closing issues. |
 
 Before any write into a **public** (or unknown-visibility) repo, a **"Write anyway / Keep private"** modal appears — the public-repo leak guard, surfaced as a dialog. Private repos write straight through.
 
@@ -131,7 +136,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.3.6 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.6 adds a **Rename Track** right-click action and orders the per-track **milestone bands active-milestone-first**. Earlier v0.3.x added Move Issue from Track, cross-track dependency chips in the detail panel, and a repo-scoped full map.
+**Published — v0.4.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.4.0 is a broad UX + accessibility pass: a **de-noised command palette** (category-namespaced commands) with clearer names (**Sync Issue States from GitHub**, **Check Label Drift**, **Add Issue to Track**), a **frequency-grouped track menu** with confirmation modals on the destructive actions, **editor-theme-adaptive** graph + detail panel (light/dark/high-contrast), a **per-milestone filter** in the detail panel, progress feedback on every write, and an accessibility sweep (distinct status-icon shapes, keyboard-operable disclosures and chips, table semantics, graph alt text). Local history for private tracks gains hardened safety boundaries. Earlier v0.3.x added the Local History command, Rename Track, milestone bands, Move Issue from Track, and cross-track dependency chips.
 
 ## Development notes
 

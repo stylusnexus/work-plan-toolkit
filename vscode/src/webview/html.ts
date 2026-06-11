@@ -39,6 +39,13 @@ export interface WebviewHtmlOptions {
    * false → button label is "Focus on track" (click zooms in on selection)
    */
   focused: boolean;
+  /**
+   * Whether the editor is on a dark (or high-contrast-dark) colour theme.
+   * Drives the Mermaid theme so the graph follows the editor instead of being
+   * hardcoded dark (#207). Detail-card colours adapt via --vscode-* tokens and
+   * don't need this flag.
+   */
+  isDark: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,8 +64,11 @@ export interface WebviewHtmlOptions {
  *  - trackName is escaped here at the call-site boundary.
  */
 export function buildHtml(o: WebviewHtmlOptions): string {
-  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused } = o;
+  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused, isDark } = o;
   const trackNameEsc = esc(o.trackName);
+  // Mermaid can't read CSS vars inside its own SVG, so pick its built-in theme
+  // from the editor's light/dark kind instead of hardcoding "dark" (#207).
+  const mermaidTheme = isDark ? "dark" : "default";
 
   // CSP: no network; scripts only via nonce or from cspSource; wasm for mermaid.
   const csp = [
@@ -81,13 +91,13 @@ export function buildHtml(o: WebviewHtmlOptions): string {
   if (isModule) {
     loaderScript = `${scriptOpenTag}
 import mermaid from "${mermaidUri}";
-mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
+mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "${mermaidTheme}" });
 mermaid.run();
 </script>`;
   } else {
     loaderScript = `<script nonce="${nonce}" src="${mermaidUri}"></script>
 <script nonce="${nonce}">
-mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
+mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "${mermaidTheme}" });
 mermaid.run();
 </script>`;
   }
@@ -120,7 +130,12 @@ mermaid.run();
     var target = e.target;
     if (!target) { return; }
 
-    // Milestone band toggle
+    // Milestone filter button → apply that milestone's lens to the whole view
+    var msFilter = target.closest(".milestone-filter-btn");
+    if (msFilter) {
+      post({ type: "filterMilestone", milestone: msFilter.getAttribute("data-milestone") });
+      return;
+    }
 
     // Move button
     var moveBtn = target.closest(".move-btn");
@@ -130,10 +145,25 @@ mermaid.run();
       return;
     }
 
-    var bandHeader = target.closest(".milestone-band-header");
-    if (bandHeader) {
-      var band = bandHeader.closest(".milestone-band");
-      if (band) { band.classList.toggle("collapsed"); }
+    // Milestone band collapse toggle (keyboard-operable <button>)
+    var msToggle = target.closest(".milestone-toggle-btn");
+    if (msToggle) {
+      var band = msToggle.closest(".milestone-band");
+      if (band) {
+        var collapsed = band.classList.toggle("collapsed");
+        msToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      }
+      return;
+    }
+
+    // Issue-cap "Show all" disclosure toggle
+    var capToggle = target.closest(".issue-cap-toggle");
+    if (capToggle) {
+      var capBand = capToggle.closest(".issue-cap-band");
+      if (capBand) {
+        var capCollapsed = capBand.classList.toggle("collapsed");
+        capToggle.setAttribute("aria-expanded", capCollapsed ? "false" : "true");
+      }
       return;
     }
 
@@ -171,14 +201,21 @@ mermaid.run();
       --fg: var(--vscode-foreground, #d4d4d4);
       --border: var(--vscode-panel-border, #333);
       --card-bg: var(--vscode-sideBar-background, #252526);
-      --pill-open-bg: #1e3a5f;
-      --pill-open-fg: #60a5fa;
-      --pill-closed-bg: #1a2e1a;
-      --pill-closed-fg: #86efac;
-      --chip-bg: #3b1f1f;
-      --chip-fg: #fca5a5;
-      --step-bg: #1e2d3d;
-      --step-fg: #93c5fd;
+      /* Semantic colours follow the editor theme via --vscode-charts-* tokens;
+         backgrounds are a faint tint of the same token so they read on both
+         light and dark themes (#207). Hex fallbacks keep it sane if a theme
+         omits a chart token. The text label (open/closed, #num) carries the
+         meaning too, so colour is never the sole signal. */
+      --pill-open-fg: var(--vscode-charts-blue, #4fa3ff);
+      --pill-open-bg: color-mix(in srgb, var(--pill-open-fg) 18%, transparent);
+      --pill-closed-fg: var(--vscode-charts-green, #3fa45e);
+      --pill-closed-bg: color-mix(in srgb, var(--pill-closed-fg) 18%, transparent);
+      --chip-fg: var(--vscode-charts-red, #e05252);
+      --chip-bg: color-mix(in srgb, var(--chip-fg) 18%, transparent);
+      --step-fg: var(--vscode-charts-blue, #4fa3ff);
+      --step-bg: color-mix(in srgb, var(--step-fg) 18%, transparent);
+      --depends-fg: var(--vscode-charts-yellow, #d6a012);
+      --depends-bg: color-mix(in srgb, var(--depends-fg) 18%, transparent);
       --link: var(--vscode-textLink-foreground, #4fc1ff);
     }
     * { box-sizing: border-box; }
@@ -259,13 +296,16 @@ mermaid.run();
       font-size: 0.9em;
     }
     .depends-on { margin-top: 8px; }
+    /* A real <button> (keyboard-operable, #244) styled as the old chip. */
     .depends-chip {
       display: inline-block;
-      background: #2d1f0e;
-      color: #fbbf24;
+      background: var(--depends-bg);
+      color: var(--depends-fg);
+      border: none;
       padding: 2px 8px;
       border-radius: 12px;
       margin: 2px;
+      font: inherit;
       font-size: 0.9em;
       cursor: pointer;
       text-decoration: underline;
@@ -285,10 +325,35 @@ mermaid.run();
       background: var(--bg);
       border-bottom: 1px solid var(--border);
       padding: 6px 6px;
-      cursor: pointer;
       user-select: none;
     }
-    .milestone-band-header td:hover { opacity: 0.85; }
+    /* Both band-header controls are real <button>s (keyboard-operable); strip
+       the native chrome so they read as the old inline header. */
+    /* The whole caret+name+count is the collapse button — left-aligned, no chrome. */
+    .milestone-toggle-btn {
+      background: none;
+      border: none;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      padding: 0;
+      text-align: left;
+    }
+    /* The filter control reads as a distinct, explicit affordance (a small pill),
+       not a second click target hiding in the header text (#248). */
+    .milestone-filter-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--link);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.8em;
+      margin-left: 8px;
+      padding: 0 7px;
+      vertical-align: 1px;
+    }
+    .milestone-filter-btn:hover { background: var(--card-bg); }
     .milestone-toggle {
       display: inline-block;
       transition: transform 0.15s;
@@ -311,11 +376,60 @@ mermaid.run();
       cursor: pointer;
       font-size: 0.85em;
       padding: 0 4px;
-      opacity: 0;
+      opacity: 0.65;
       transition: opacity 0.1s;
     }
-    tr:hover .move-btn { opacity: 1; }
+    /* Reveal on row-hover AND on keyboard focus — never opacity:0, or the
+       button is invisible to keyboard/touch/AT users (#214). */
+    tr:hover .move-btn,
+    .move-btn:focus,
+    .move-btn:focus-visible { opacity: 1; }
     .move-btn:hover { background: var(--card-bg); }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .issue-cap-band.collapsed tr:not(.issue-cap-row) { display: none; }
+    .issue-cap-row td {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 6px;
+    }
+    .issue-cap-toggle {
+      background: none;
+      border: none;
+      color: var(--link);
+      cursor: pointer;
+      font: inherit;
+      padding: 0;
+      text-align: left;
+    }
+    .issue-cap-toggle:hover { text-decoration: underline; }
+    .issue-cap-marker {
+      display: inline-block;
+      transition: transform 0.15s;
+      font-size: 0.85em;
+      margin-right: 2px;
+    }
+    .issue-cap-band:not(.collapsed) .issue-cap-marker { transform: rotate(90deg); }
+    /* Windows High Contrast / forced-colors: the charts-token tints are ignored
+       by the forced palette and read as faint washes, so drop them and let the
+       system colours + a CanvasText border carry the chip boundary (#207). The
+       text label already carries the meaning. */
+    @media (forced-colors: active) {
+      .pill, .chip, .step, .depends-chip {
+        background: transparent;
+        border: 1px solid CanvasText;
+      }
+      .move-btn { opacity: 1; }
+    }
 
   </style>
 </head>
@@ -326,7 +440,9 @@ mermaid.run();
     <h2>Dependency graph</h2>
     <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
   </div>
-  <pre class="mermaid">${graphDef}</pre>
+  <div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
+    <pre class="mermaid">${graphDef}</pre>
+  </div>
 
   <h2>Detail</h2>
   <div class="detail-card">

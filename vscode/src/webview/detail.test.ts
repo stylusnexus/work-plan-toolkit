@@ -492,15 +492,17 @@ describe("renderDetail — issue cap", () => {
     // First 50 visible
     assert.ok(html.includes("#1"), "missing #1");
     assert.ok(html.includes("#50"), "missing #50");
-    // #51 should NOT be in the visible table — only inside <details>
+    // #51 is rendered after #50 (collapsed in the same table, not a nested one)
     const idx50 = html.indexOf("#50");
     const idx51 = html.indexOf("#51");
     assert.ok(idx51 > idx50, "#51 should appear after #50");
     // Collapsible toggle present
     assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle");
-    assert.ok(html.includes("<details>"), "missing <details> element");
     assert.ok(html.includes("Show all 75 issues"), "missing 'Show all 75 issues'");
     assert.ok(html.includes("25 more"), "missing '25 more' count");
+    // Overflow stays inside the issues table — no invalid nested <table>/<details> (#232)
+    assert.ok(!html.includes("<details>"), "overflow must not use <details>");
+    assert.ok(!html.includes("<table>"), "overflow must not nest a bare <table>");
   });
 
   it("caps within milestone bands — overflow goes to collapsible band", () => {
@@ -541,5 +543,125 @@ describe("renderDetail — issue cap", () => {
     assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle in milestone bands");
     assert.ok(html.includes("Show all 60 issues"), "missing total count");
     assert.ok(html.includes("10 more"), "missing '10 more' count");
+  });
+
+  it("milestone-band header spans all 5 columns (no colspan=4 regression)", () => {
+    // Multi-milestone track renders bands; the header must span every column,
+    // including the move column, so it never leaves a ragged cell. (#232)
+    const html = renderDetail(platformHealth);
+    assert.ok(html.includes('colspan="5"'), "band header should span 5 columns");
+    assert.ok(!html.includes('colspan="4"'), "stale colspan=4 must be gone");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table accessibility (#232)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — table accessibility", () => {
+  it("marks every header cell with scope=col", () => {
+    const html = renderDetail(platformHealth);
+    // 5 columns → 5 scoped headers (Num, Title, State, Assignee, Move)
+    const scoped = html.match(/<th scope="col">/g) ?? [];
+    assert.equal(scoped.length, 5, `expected 5 scoped <th>, got ${scoped.length}:\n${html}`);
+    // No unscoped header cells leak through.
+    assert.ok(!html.includes("<th>"), "found an unscoped <th>");
+  });
+
+  it("gives the table a caption naming the track", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<caption class="sr-only">Issues in platform-health</caption>'),
+      `expected an sr-only caption naming the track:\n${html}`,
+    );
+  });
+
+  it("labels the move column header for screen readers", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<span class="sr-only">Move</span>'),
+      `expected an sr-only 'Move' label on the move column header:\n${html}`,
+    );
+  });
+
+  it("escapes the track name in the caption", () => {
+    const evilNameTrack: Track = {
+      ...emptyTrack,
+      name: '<img src=x onerror=alert(1)>',
+    };
+    const html = renderDetail(evilNameTrack);
+    assert.ok(!html.includes("<img src=x"), `caption must escape the track name:\n${html}`);
+    assert.ok(html.includes("&lt;img"), "expected the track name escaped in the caption");
+  });
+
+  it("gives each move button an aria-label naming the issue (#214)", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('aria-label="Move issue #487 to another track"'),
+      `move button missing an issue-specific aria-label:\n${html}`,
+    );
+  });
+});
+
+describe("renderDetail — milestone band filter + keyboard toggle (#218/#248)", () => {
+  it("renders an explicit filter control (separate from the name) with data-milestone + aria-label", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<button class="milestone-filter-btn" data-milestone="M1" title="Filter the view to M1" aria-label="Filter the view to M1">filter</button>'),
+      `expected a distinct, aria-labelled filter button for M1:\n${html}`,
+    );
+  });
+
+  it("the milestone name is inside the collapse button, not the filter control (#248)", () => {
+    const html = renderDetail(platformHealth);
+    // The name + count live in the toggle button so clicking the header strip
+    // collapses (the dominant expectation); filtering is the separate control.
+    assert.ok(
+      /<button class="milestone-toggle-btn"[^>]*>\s*<span class="milestone-toggle">▸<\/span> <b>M1<\/b>/.test(html),
+      `milestone name should sit inside the collapse button:\n${html}`,
+    );
+  });
+
+  it("the 'No milestone' band is plain text, not a filter target (no lens for it)", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(html.includes("<b>No milestone</b>"), "No-milestone heading should still render");
+    assert.ok(
+      !html.includes('data-milestone="No milestone"'),
+      "the no-milestone group must not be a filter target",
+    );
+  });
+
+  it("the collapse toggle is a keyboard-operable button with aria-expanded", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('class="milestone-toggle-btn" aria-expanded="true"'),
+      "the first (active) band's toggle should be expanded",
+    );
+    assert.ok(html.includes('aria-expanded="false"'), "a later band's toggle should be collapsed");
+  });
+});
+
+describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
+  it("depends-on chips are keyboard-operable buttons", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<button type="button" class="depends-chip" data-track="idea-mode"'),
+      `depends-chip should be a <button>:\n${html}`,
+    );
+  });
+
+  it("the issue-cap 'Show all' toggle carries aria-expanded", () => {
+    const issues: Issue[] = [];
+    for (let i = 1; i <= 75; i++) {
+      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null });
+    }
+    const big: Track = {
+      ...emptyTrack, name: "big", repo: "org/repo", rollup: { open: 75, closed: 0 }, issues,
+    };
+    const html = renderDetail(big);
+    assert.ok(
+      html.includes('class="issue-cap-toggle" aria-expanded="false"'),
+      `issue-cap toggle should have aria-expanded:\n${html}`,
+    );
   });
 });

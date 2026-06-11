@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import { exportJson, makeSpawnRunner, checkVersion, CliError } from "./cli.ts";
+import {
+  exportJson, makeSpawnRunner, checkVersion, CliError,
+  notesVcsStatus, notesVcsRun, notesVcsUndo,
+} from "./cli.ts";
+import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track } from "./model.ts";
@@ -45,6 +49,65 @@ export function activate(context: vscode.ExtensionContext): void {
     const exp = provider.currentExport;
     if (panel && exp && exp.tracks.length > 0) {
       panel.render(exp, panel.currentTrackName ?? exp.tracks[0].name);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // notes-vcs local history (#103/#224): when the private notes_root tier has
+  // auto-commit on, every viewer write produces an undoable commit. We cache the
+  // last-seen commit sha so a write that advances it can offer a one-click Undo.
+  // -------------------------------------------------------------------------
+
+  let notesState: NotesVcsStatus | null = null;
+
+  // refreshAfterWrite replaces refreshAndRerender at every WRITE site: it also
+  // checks whether the write advanced notes_root's HEAD and, if so, offers Undo.
+  // Plain/auto refresh keeps calling refreshAndRerender, so background polls
+  // never pop a toast.
+  const refreshAfterWrite = async (): Promise<void> => {
+    // Snapshot the prior notes-vcs state (root + HEAD) before the refresh so the
+    // Undo decision compares against what we last saw.
+    const before = notesState;
+    await refreshAndRerender();
+    const after = await notesVcsStatus(runner);
+    notesState = after;
+    if (
+      before &&
+      after &&
+      after.auto_commit &&
+      after.is_root &&
+      // SAME notes_root — a setNotesLocation change makes these differ, so we
+      // never offer to Undo a *different* root's pre-existing history.
+      after.notes_root === before.notes_root &&
+      after.last_commit_sha &&
+      after.last_commit_sha !== before.last_commit_sha &&
+      // The new HEAD must sit DIRECTLY on the commit we last saw — i.e. this
+      // write produced exactly one commit on top. Guards against an unrelated
+      // HEAD move (external checkout/reset, a freshly selected root) looking
+      // like our commit and being reverted.
+      after.head_parent_sha === before.last_commit_sha
+    ) {
+      const sha = after.last_commit_sha;
+      // Fire-and-forget: don't block the write's own success toast on the modal.
+      void vscode.window
+        .showInformationMessage(
+          `Work Plan: saved local history (${sha}).`,
+          "Undo",
+        )
+        .then(async (choice) => {
+          if (choice !== "Undo") return;
+          try {
+            await notesVcsUndo(runner, sha);
+            await refreshAndRerender();
+            notesState = await notesVcsStatus(runner);
+            vscode.window.showInformationMessage(`Work Plan: reverted ${sha}.`);
+          } catch (err: unknown) {
+            const msg = err instanceof CliError
+              ? `Work Plan: ${err.message}`
+              : `Work Plan: undo failed — ${String(err)}`;
+            vscode.window.showErrorMessage(msg);
+          }
+        });
     }
   };
 
@@ -301,17 +364,31 @@ export function activate(context: vscode.ExtensionContext): void {
     return choice === "Write anyway" ? "writeAnyway" : "cancel";
   };
 
+  // Wrap a write in an unobtrusive status-bar progress spinner so every write
+  // verb gives "working…" feedback instead of a silent UI freeze. Covers only
+  // the executeWrite spawn — the interactive prompts run before it, and the tree
+  // reload that follows shows its own view-located progress bar. The three slow
+  // verbs (refresh-md, reconcile, hygiene) keep their Notification-located bars.
+  const withWriteProgress = <T>(title: string, task: () => Promise<T>): Thenable<T> =>
+    vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title },
+      task,
+    );
+
   // Webview drag-move goes through the same audited write path as workPlan.move:
   // executeWrite + the public-repo confirm modal (#197). No ad-hoc spawn in the panel.
   WorkPlanPanel.setMoveHandler(async (issue, fromTrack, toTrack) => {
     try {
-      const outcome: WriteOutcome = await executeWrite(
-        runner,
-        { kind: "move", fromTrack, toTrack, issue },
-        confirmPublicWrite,
+      const outcome: WriteOutcome = await withWriteProgress(
+        `Work Plan: moving #${issue} to ${toTrack}…`,
+        () => executeWrite(
+          runner,
+          { kind: "move", fromTrack, toTrack, issue },
+          confirmPublicWrite,
+        ),
       );
       if (outcome.status === "written") {
-        await refreshAndRerender();
+        await refreshAfterWrite();
         vscode.window.showInformationMessage(
           `Work Plan: moved #${issue} from ${fromTrack} to ${toTrack}`,
         );
@@ -324,6 +401,43 @@ export function activate(context: vscode.ExtensionContext): void {
         : `Work Plan: move failed — ${String(err)}`;
       vscode.window.showErrorMessage(msg);
     }
+  });
+
+  // Clicking the milestone filter control in the detail panel filters the whole
+  // view by that milestone (#218) — same milestone lens the Select View quick-pick
+  // applies. Re-render the panel from the now-filtered export, falling back to the
+  // first visible track if the current one was filtered out. The success toast
+  // carries a "Clear filter" action so the filter is reversible at the point of
+  // action, not only from the title-bar Select View (#249).
+  const rerenderPanelForLens = (): void => {
+    const panel = WorkPlanPanel.getCurrent();
+    const exp = provider.currentExport;
+    if (!panel || !exp) return;
+    const currentTrack = panel.currentTrackName;
+    const trackStillVisible =
+      currentTrack !== null && exp.tracks.some(t => t.name === currentTrack);
+    const trackToRender = trackStillVisible ? currentTrack! : exp.tracks[0]?.name ?? null;
+    if (trackToRender) {
+      panel.render(exp, trackToRender);
+    } else {
+      panel.renderEmpty("No tracks match the selected view.");
+    }
+  };
+
+  WorkPlanPanel.setFilterHandler((milestone: string) => {
+    provider.setLens({ kind: "milestone", milestone });
+    rerenderPanelForLens();
+    void vscode.window
+      .showInformationMessage(
+        `Work Plan: filtered the view to milestone "${milestone}".`,
+        "Clear filter",
+      )
+      .then((choice) => {
+        if (choice === "Clear filter") {
+          provider.setLens({ kind: "all" });
+          rerenderPanelForLens();
+        }
+      }, () => { /* ignore */ });
   });
 
   // Output channel for reconcile draft output (created once; disposed via subscriptions).
@@ -396,14 +510,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
         if (value === undefined) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "editFields", track, fields: { [field]: value } },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting ${field} on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "editFields", track, fields: { [field]: value } },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(`Work Plan: set ${field} on ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -418,7 +535,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
-  // workPlan.setNext — set the next-up issue list on a track (context menu + palette)
+  // workPlan.setNext — set next-up via a handoff. Unlike Edit Track Fields →
+  // next_up (which only writes the frontmatter field), this runs `handoff
+  // --set-next`, so it ALSO appends a session-log entry and refreshes the body
+  // status table. Surfaced as "Set Next-Up & Log Session" to signal that.
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
@@ -428,10 +548,10 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!track) return;
 
         const raw = await vscode.window.showInputBox({
-          prompt: "Next-up issue numbers (comma-separated)",
+          prompt: "Next-up issue numbers (comma-separated) — also appends a session-log entry",
           validateInput: (v) => {
             if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
-            return "Enter at least one issue number, comma-separated (e.g. 42,87). To clear next-up, use Edit Track Fields → next_up.";
+            return "Enter at least one issue number, comma-separated (e.g. 42,87). To set next-up without logging a session, use Edit Track Fields → next_up.";
           },
         });
         if (raw === undefined) return; // cancelled
@@ -440,15 +560,18 @@ export function activate(context: vscode.ExtensionContext): void {
         const issues = raw.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
         if (issues.length === 0) return;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "setNext", track, issues },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting next-up on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "setNext", track, issues },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
-          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track}`);
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track} (session logged)`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -485,7 +608,7 @@ export function activate(context: vscode.ExtensionContext): void {
             );
 
             if (outcome.status === "written") {
-              await refreshAndRerender();
+              await refreshAfterWrite();
               vscode.window.showInformationMessage(`Work Plan: refreshed ${track}`);
             } else {
               vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -502,7 +625,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
-  // workPlan.reconcile — draft reconcile preview (context menu + palette)
+  // workPlan.reconcile — draft label-drift preview (context menu + palette)
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
@@ -529,7 +652,7 @@ export function activate(context: vscode.ExtensionContext): void {
               outputChannel.append(outcome.stdout);
               outputChannel.show(true);
               vscode.window.showInformationMessage(
-                "Work Plan: reconcile preview (draft) — see the Work Plan output channel.",
+                "Work Plan: label-drift preview (draft) — see the Work Plan output channel.",
               );
             } else {
               vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -566,15 +689,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const issue = parseInt(raw, 10);
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "slot", track, issue },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: adding #${issue} to ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "slot", track, issue },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
-          vscode.window.showInformationMessage(`Work Plan: slotted #${issue} into ${track}`);
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: added #${issue} to ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -639,14 +765,17 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!toTrack) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "move", fromTrack, toTrack, issue },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: moving #${issue} from ${fromTrack} to ${toTrack}…`,
+          () => executeWrite(
+            runner,
+            { kind: "move", fromTrack, toTrack, issue },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(
             `Work Plan: moved #${issue} from ${fromTrack} to ${toTrack}`,
           );
@@ -693,15 +822,18 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!track) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "slot", track, issue },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: adding #${issue} to ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "slot", track, issue },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
-          vscode.window.showInformationMessage(`Work Plan: slotted #${issue} into ${track}`);
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: added #${issue} to ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -756,15 +888,18 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!track) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "batchSlot", track, issues: issueNumbers },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: adding ${issueNumbers.length} issue(s) to ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "batchSlot", track, issues: issueNumbers },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
-          vscode.window.showInformationMessage(`Work Plan: slotted ${issueNumbers.length} issue(s) into ${track}`);
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: added ${issueNumbers.length} issue(s) to ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -793,20 +928,35 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!state) return; // cancelled
 
+        // Abandon is the destructive close — it archives the track to
+        // archive/abandoned/. Gate it behind an explicit modal (#219); shipped
+        // and parked are routine lifecycle and proceed without the extra step.
+        if (state === "abandoned") {
+          const ok = await vscode.window.showWarningMessage(
+            `Abandon track "${track}"? It will be archived to archive/abandoned/.`,
+            { modal: true },
+            "Abandon track",
+          );
+          if (ok !== "Abandon track") return;
+        }
+
         const noteRaw = await vscode.window.showInputBox({
           prompt: "Wrap-up note (optional — press Enter or Escape to skip)",
         });
         // undefined = Esc = proceed with no note (don't hard-cancel on optional field)
         const note = noteRaw && noteRaw.trim() !== "" ? noteRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "close", track, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: closing ${track} as ${state}…`,
+          () => executeWrite(
+            runner,
+            { kind: "close", track, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(`Work Plan: closed ${track} as ${state}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -843,14 +993,26 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (newSlug === undefined) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "renameTrack", track, newSlug },
-          confirmPublicWrite,
+        // Rename moves the track's file on disk and rewrites its frontmatter —
+        // confirm before doing it (#219).
+        const okRename = await vscode.window.showWarningMessage(
+          `Rename track "${track}" to "${newSlug}"? This moves its file and rewrites the frontmatter.`,
+          { modal: true },
+          "Rename track",
+        );
+        if (okRename !== "Rename track") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: renaming ${track} → ${newSlug}…`,
+          () => executeWrite(
+            runner,
+            { kind: "renameTrack", track, newSlug },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(`Work Plan: renamed ${track} → ${newSlug}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -938,20 +1100,23 @@ export function activate(context: vscode.ExtensionContext): void {
         // undefined (Esc) or empty → proceed without milestone
         const milestone = milestoneRaw && milestoneRaw.trim() !== "" ? milestoneRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          {
-            kind: "newTrack",
-            repo,
-            slug,
-            ...(priority ? { priority } : {}),
-            ...(milestone ? { milestone } : {}),
-          },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: creating track ${slug}…`,
+          () => executeWrite(
+            runner,
+            {
+              kind: "newTrack",
+              repo,
+              slug,
+              ...(priority ? { priority } : {}),
+              ...(milestone ? { milestone } : {}),
+            },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(`Work Plan: created track ${slug} for ${repo}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -992,14 +1157,17 @@ export function activate(context: vscode.ExtensionContext): void {
         // undefined (Esc) or empty → omit local
         const local = localRaw && localRaw.trim() !== "" ? localRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "addRepo", key, github, ...(local ? { local } : {}) },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: adding repo ${github}…`,
+          () => executeWrite(
+            runner,
+            { kind: "addRepo", key, github, ...(local ? { local } : {}) },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(`Work Plan: added repo ${github} (${key})`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -1030,14 +1198,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const path = picked[0].fsPath;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "setNotesRoot", path },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          "Work Plan: setting notes location…",
+          () => executeWrite(
+            runner,
+            { kind: "setNotesRoot", path },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
-          await refreshAndRerender();
+          await refreshAfterWrite();
           vscode.window.showInformationMessage(`Work Plan: notes location set to ${path}`);
           if (outcome.stdout.includes("WARN")) {
             // Surface only the WARN line (stdout also carries the ✓ success line).
@@ -1086,7 +1257,7 @@ export function activate(context: vscode.ExtensionContext): void {
             );
 
             if (outcome.status === "written") {
-              await refreshAndRerender();
+              await refreshAfterWrite();
               vscode.window.showInformationMessage("Work Plan: hygiene complete.");
             } else {
               vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
@@ -1097,6 +1268,81 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: hygiene failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.notesVcs — manage opt-in local history for the private tier (#224)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.notesVcs", async () => {
+      try {
+        const st = await notesVcsStatus(runner);
+        notesState = st;
+
+        type Item = vscode.QuickPickItem & { action: "init" | "enable" | "disable" | "status" };
+        const items: Item[] = [];
+        if (st === null) {
+          vscode.window.showWarningMessage(
+            "Work Plan: this CLI doesn't support local history — update with: npm install -g @stylusnexus/work-plan",
+          );
+          return;
+        }
+        if (!st.is_root) {
+          items.push({
+            label: "$(repo) Enable local history",
+            detail: "git-init notes_root as a personal, never-pushed repo and turn on auto-commit",
+            action: "init",
+          });
+        } else if (st.auto_commit) {
+          items.push({
+            label: "$(circle-slash) Turn off auto-commit",
+            detail: "Stop committing edits (existing history is kept)",
+            action: "disable",
+          });
+        } else {
+          items.push({
+            label: "$(check) Turn on auto-commit",
+            detail: "Commit every track edit so it's undoable",
+            action: "enable",
+          });
+        }
+        items.push({
+          label: "$(info) Show status",
+          detail: st.is_root
+            ? `Local repo · auto-commit ${st.auto_commit ? "on" : "off"} · last: ${st.last_commit_subject ?? "none"}`
+            : "Not a git repo yet",
+          action: "status",
+        });
+
+        const pick = await vscode.window.showQuickPick(items, {
+          placeHolder: "Work Plan: local history (private notes)",
+        });
+        if (!pick) return;
+
+        if (pick.action === "status") {
+          vscode.window.showInformationMessage(
+            st.is_root
+              ? `Work Plan: local history ${st.auto_commit ? "ON" : "off"} · ${st.last_commit_subject ?? "no commits yet"}`
+              : "Work Plan: notes_root has no local history — choose “Enable local history”.",
+          );
+          return;
+        }
+
+        await notesVcsRun(runner, pick.action);
+        notesState = await notesVcsStatus(runner);
+        const done =
+          pick.action === "init" ? "local history enabled"
+          : pick.action === "enable" ? "auto-commit on"
+          : "auto-commit off";
+        vscode.window.showInformationMessage(`Work Plan: ${done}.`);
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: notes-vcs failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
@@ -1148,6 +1394,11 @@ export function activate(context: vscode.ExtensionContext): void {
   if (!vscode.workspace.isTrusted) {
     return;
   }
+
+  // Seed the notes-vcs state so the FIRST write of the session compares its
+  // commit against the real prior HEAD (not null), avoiding a false Undo offer
+  // on a no-op write. Best-effort; never blocks activation.
+  notesVcsStatus(runner).then((st) => { notesState = st; }, () => { /* ignore */ });
 
   // Initial data load.
   provider.refresh().catch((err: unknown) => {

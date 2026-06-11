@@ -72,7 +72,17 @@ interface MoveIssueMessage {
   number: number;
 }
 
-type WebviewMessage = SelectTrackMessage | OpenIssueMessage | SetFocusMessage | MoveIssueMessage;
+interface FilterMilestoneMessage {
+  type: "filterMilestone";
+  milestone: string;
+}
+
+type WebviewMessage =
+  | SelectTrackMessage
+  | OpenIssueMessage
+  | SetFocusMessage
+  | MoveIssueMessage
+  | FilterMilestoneMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -94,12 +104,26 @@ export class WorkPlanPanel {
     WorkPlanPanel._moveHandler = handler;
   }
 
+  /**
+   * Set by extension.ts — applies a milestone lens to the whole view when the
+   * user clicks a milestone band header in the detail panel (#218). Injected so
+   * the panel doesn't reach into the tree provider directly.
+   */
+  private static _filterHandler: ((milestone: string) => void) | undefined;
+
+  /** Registers the milestone-filter handler used by the band-header click (#218). */
+  static setFilterHandler(handler: (milestone: string) => void): void {
+    WorkPlanPanel._filterHandler = handler;
+  }
+
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _currentExport: Export | null = null;
   private _currentTrackName: string | null = null;
   /** Whether the graph is in focused mode (show only selected track's neighbourhood). */
   private _focused = true;
+  /** Theme-change subscription — re-renders so the graph follows the editor (#207). */
+  private _themeSub: vscode.Disposable | undefined;
 
   /** The track name most recently passed to render(), or null before first render. */
   get currentTrackName(): string | null {
@@ -155,12 +179,21 @@ export class WorkPlanPanel {
 
     // Dispose the singleton reference when the panel is closed by the user.
     panel.onDidDispose(() => {
+      this._themeSub?.dispose();
       WorkPlanPanel._instance = undefined;
     });
 
     // Handle messages from the webview.
     panel.webview.onDidReceiveMessage((raw: unknown) => {
       this._handleMessage(raw);
+    });
+
+    // Re-render when the editor's colour theme changes so the Mermaid graph
+    // (which can't read CSS vars) follows light/dark instead of staying dark (#207).
+    this._themeSub = vscode.window.onDidChangeActiveColorTheme(() => {
+      if (this._currentExport && this._currentTrackName) {
+        this.render(this._currentExport, this._currentTrackName);
+      }
     });
   }
 
@@ -202,7 +235,8 @@ export class WorkPlanPanel {
     const graphExp = this._focused
       ? exp
       : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
-    const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused });
+    const isDark = isDarkTheme();
+    const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused, dark: isDark });
     const detailHtml = renderDetail(track);
 
     const html = buildHtml({
@@ -214,6 +248,7 @@ export class WorkPlanPanel {
       trackName: selectedTrackName,
       isModule: false, // UMD bundle → global mermaid
       focused: this._focused,
+      isDark,
     });
 
     webview.html = html;
@@ -266,6 +301,10 @@ export class WorkPlanPanel {
       }
       case "moveIssue": {
         this._handleMoveIssue(raw.number);
+        break;
+      }
+      case "filterMilestone": {
+        WorkPlanPanel._filterHandler?.(raw.milestone);
         break;
       }
     }
@@ -340,6 +379,19 @@ export function nonce(): string {
   return Array.from(buf, (b) => chars[b % chars.length]).join("");
 }
 
+/**
+ * True when the editor is on a dark or high-contrast-dark theme. Drives the
+ * Mermaid theme + graph classDef palette so the webview follows the editor (#207).
+ * HighContrastLight is treated as light; HighContrast (dark) as dark.
+ */
+function isDarkTheme(): boolean {
+  const kind = vscode.window.activeColorTheme.kind;
+  return (
+    kind === vscode.ColorThemeKind.Dark ||
+    kind === vscode.ColorThemeKind.HighContrast
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Type guard for incoming webview messages
 // ---------------------------------------------------------------------------
@@ -367,6 +419,8 @@ function isWebviewMessage(raw: unknown): raw is WebviewMessage {
       return typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
         && (msg["number"] as number) > 0;
+    case "filterMilestone":
+      return typeof msg["milestone"] === "string" && (msg["milestone"] as string).length > 0;
     default:
       return false;
   }
