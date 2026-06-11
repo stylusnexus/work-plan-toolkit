@@ -83,7 +83,7 @@ export function repoDescription(node: RepoNode): string {
  * caller (tree.ts) wraps `tooltipMarkdown` in a MarkdownString.
  */
 export interface VisibilityTierBadge {
-  /** Codicon cluster for the TreeItem description prefix, e.g. "$(warning)$(globe)$(cloud)". */
+  /** Unicode glyph cluster for the plain-text TreeItem.description, e.g. "⚠️🌐☁️". */
   descriptionPrefix: string;
   /** Markdown (icons need MarkdownString with supportThemeIcons). */
   tooltipMarkdown: string;
@@ -96,9 +96,17 @@ export function visibilityTierBadge(track: Track): VisibilityTierBadge {
   const isPublic = track.visibility === "PUBLIC"; // null/PRIVATE → safe default
   const exposed = isShared && isPublic;
 
+  // The visible badge lands in TreeItem.description, which is PLAIN TEXT and
+  // does NOT resolve $(codicon) syntax — so it uses Unicode glyphs that render
+  // literally. (The tooltip below keeps codicons; it's a themed MarkdownString.)
+  const visIcon = isPublic ? "🌐" : "🔒";
+  const tierIcon = isShared ? "☁️" : "";
+  const descriptionPrefix = (exposed ? "⚠️" : "") + visIcon + tierIcon;
+
+  // Tooltip codicons render (and theme-colour the warning) inside the
+  // MarkdownString(supportThemeIcons) the caller wraps tooltipMarkdown in.
   const visGlyph = isPublic ? "$(globe)" : "$(lock)";
   const tierGlyph = isShared ? "$(cloud)" : "";
-  const descriptionPrefix = (exposed ? "$(warning)" : "") + visGlyph + tierGlyph;
 
   const visWord = isPublic ? "public repo" : "private repo";
   const tierWord = isShared ? "shared tier — travels via git push/pull" : "local only — never pushed";
