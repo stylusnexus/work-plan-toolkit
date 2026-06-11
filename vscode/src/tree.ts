@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Export } from "./model.ts";
-import { buildTree, shouldExpandRepos, sortTracks, repoDescription } from "./treeModel.ts";
+import { buildTree, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge } from "./treeModel.ts";
 import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
@@ -218,19 +218,22 @@ export class WorkPlanTreeProvider
       vscode.TreeItemCollapsibleState.None
     );
 
-    const shared = node.track.tier === "shared";
-    const tierPrefix = shared ? "shared  " : "";
+    // Visibility × tier badge (#259): a codicon cluster prefixing the description,
+    // loud only for the public+shared "exposed" state.
+    const badge = visibilityTierBadge(node.track);
     item.description = node.hint
-      ? `${tierPrefix}${node.open} open  ${node.hint}`
-      : `${tierPrefix}${node.open} open`;
+      ? `${badge.descriptionPrefix}  ${node.open} open  ${node.hint}`
+      : `${badge.descriptionPrefix}  ${node.open} open`;
 
     const { icon, color } = categoryIcon(node.category);
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
     item.contextValue = "workPlanTrack";
-    item.tooltip = `${node.name} — ${node.status} · ${node.open} open · ${
-      shared ? "Shared — travels via git push/pull" : "Private — local only"
-    }`;
+    // MarkdownString (supportThemeIcons) so the $(icon) glyphs render in the tooltip.
+    const tip = new vscode.MarkdownString(undefined, true);
+    tip.appendMarkdown(`**${node.name}** — ${node.status} · ${node.open} open\n\n`);
+    tip.appendMarkdown(badge.tooltipMarkdown);
+    item.tooltip = tip;
 
     item.command = {
       command: "workPlan.openTrack",

@@ -56,6 +56,7 @@ SUBCOMMANDS = {
     "rename-track": "commands.rename_track",
     "set-notes-root": "commands.set_notes_root",
     "notes-vcs": "commands.notes_vcs",
+    "plan-branch": "commands.plan_branch",
 }
 
 DESCRIPTIONS = [
@@ -164,6 +165,10 @@ DESCRIPTIONS = [
      "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. For safety it REFUSES a notes_root that already has a git remote or is a repo work-plan didn't create, and only ever commits the files a command changed — private notes stay un-pushable and your unrelated edits are never swept in. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
      "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup. `undo` reverses the last edit.",
      "/work-plan notes-vcs init"),
+    ("plan-branch", "<init|status|push> <repo> [--branch=<name>] [--confirm=<token>] [--dry-run] [--json]",
+     "Set up and share a repo's canonical SHARED-tier plan branch (#260). The shared `.work-plan/` tier is pinned to ONE per-repo `plan_branch`, read/written through a dedicated git worktree, so planning never diverges across code branches or pollutes PR / deploy diffs. `init <repo>` creates that branch + a `.work-plan/` skeleton (default an ORPHAN `work-plan/plan`, zero shared history with code like gh-pages; override with --branch) and records `plan_branch` in config — or CONNECTS to a teammate's already-published branch if one exists. init is LOCAL ONLY (no push). `status <repo>` reports whether the branch exists, is published to origin, and how many commits are unpushed (--json for the machine shape). `push <repo>` shares it: on a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>); --dry-run previews the commits that would push. Requires a repo registered via init-repo with a local clone path.",
+     "ONE-TIME per repo when you want the shared plan to live on its own branch (off dev/main) so planning churn never lands in feature PRs or the deploy diff — yet the CLI + VS Code viewer always show the canonical plan from any checkout. `push` is the deliberate step that shares it with teammates.",
+     "/work-plan plan-branch init work-plan-toolkit"),
 ]
 
 
@@ -236,9 +241,16 @@ def main(argv: list[str]) -> int:
     # Snapshot notes_root's dirty set BEFORE the command so we can commit only
     # what this command changes (and never fold in pre-existing edits, #244-vcs).
     pre = _notes_precommit_state(sub)
+    # Same discipline for each plan_branch repo's shared tier (#260): snapshot
+    # the dirty .work-plan/ paths per worktree BEFORE the run, commit only the
+    # delta AFTER — so an unrelated subcommand never sweeps in pre-existing edits.
+    shared_pre = _shared_precommit_state(sub)
     rc = module.run(argv[2:])
-    if rc == 0 and pre is not None:
-        _commit_changed_notes(pre, argv[1:])
+    if rc == 0:
+        if pre is not None:
+            _commit_changed_notes(pre, argv[1:])
+        if shared_pre:
+            _commit_shared_writes(shared_pre, argv[1:])
     return rc
 
 
@@ -247,6 +259,9 @@ def main(argv: list[str]) -> int:
 _READONLY_SUBCOMMANDS = frozenset({
     "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
     "plan-status", "export", "notes-vcs",
+    # plan-branch manages its OWN commits on the plan branch (init seeds +
+    # commits the skeleton itself); the auto-commit hooks must not also fire.
+    "plan-branch",
 })
 
 
@@ -304,6 +319,70 @@ def _commit_changed_notes(pre, parts: list[str]) -> None:
     except Exception:
         # VCS is a safety net, never a failure mode for the command itself.
         return
+
+
+def _shared_precommit_state(sub: str):
+    """Snapshot each `plan_branch` repo's dirty `.work-plan/` paths BEFORE a
+    command, so we can later commit only what the command changed. Returns a
+    list of (key, branch, worktree, before_paths) — one per plan_branch repo
+    whose worktree could be ensured — or None. Best-effort; never raises.
+
+    Read-only verbs and legacy (no-plan_branch) repos are skipped — the latter's
+    shared tier is the working tree and is never auto-committed.
+    """
+    if sub.lstrip("-") in _READONLY_SUBCOMMANDS:
+        return None
+    try:
+        from lib.config import load_config
+        from lib import plan_worktree
+        from pathlib import Path
+
+        cfg = load_config()
+        states = []
+        for key, entry in (cfg.get("repos") or {}).items():
+            if not entry or not entry.get("plan_branch") or not entry.get("local"):
+                continue
+            branch = entry["plan_branch"]
+            worktree = plan_worktree.ensure_worktree(
+                Path(entry["local"]).expanduser(), branch
+            )
+            if worktree is None:
+                continue
+            before = plan_worktree.dirty_work_plan_paths(worktree)
+            states.append((key, branch, worktree, set(before)))
+        return states or None
+    except Exception:
+        return None
+
+
+def _commit_shared_writes(pre_states, parts: list[str]) -> None:
+    """Commit ONLY the `.work-plan/` paths each command newly changed (after −
+    before) per plan_branch repo, on that repo's plan_branch via its worktree
+    (#260). Leaves pre-existing dirty plan files untouched. Best-effort; never
+    raises and never changes the command's exit code. Local commit only (pushing
+    is a deliberate follow-up step).
+    """
+    try:
+        from lib import plan_worktree
+    except Exception:
+        return
+    message = "work-plan " + " ".join(parts)
+    for key, branch, worktree, before in (pre_states or []):
+        # Per-repo isolation: one repo's git failure must not skip the others.
+        try:
+            changed = sorted(set(plan_worktree.dirty_work_plan_paths(worktree)) - before)
+            if not changed:
+                continue
+            sha = plan_worktree.commit_shared_tier(worktree, message, changed)
+            if sha:
+                print(f"⏺ shared plan committed {sha} on {branch} ({key}) — "
+                      f"not yet pushed", file=sys.stderr)
+            else:
+                print(f"⚠ shared plan changes in {key} ({branch}) were NOT "
+                      f"committed (git refused) — review the worktree.",
+                      file=sys.stderr)
+        except Exception:
+            continue
 
 
 if __name__ == "__main__":

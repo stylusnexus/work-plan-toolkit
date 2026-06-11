@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from lib.config import load_config, ConfigError, is_valid_git_repo
+from lib.plan_worktree import shared_tier_dir
 from lib.frontmatter import parse_file, write_file
 from lib.notes_readme import seed_readme
 from lib.scratch import cache_dir
@@ -182,7 +183,10 @@ def _apply(cfg: dict, args: list[str] = None) -> int:
     if not use_private and local_raw:
         local_path = Path(local_raw).expanduser()
         if is_valid_git_repo(local_path):
-            shared_dir = local_path / ".work-plan"
+            # Worktree-aware (#260): for a `plan_branch` repo this resolves to
+            # the worktree's .work-plan/; otherwise the working tree's. None when
+            # a plan_branch isn't bootstrapped yet → falls back to private tier.
+            shared_dir = shared_tier_dir(repo_entry)
 
     if shared_dir is not None:
         track_dir = shared_dir

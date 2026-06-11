@@ -138,6 +138,22 @@ The CLI never auto-pushes. When you create or update a shared track, it prints a
 ↑ shared — commit + push to share with teammates.
 ```
 
+### Canonical plan branch (`plan-branch`)
+
+Storing the plan as files *in* the repo makes it branch-scoped — but a track's status and priorities are facts about the **project**, not about a code branch. On a repo with `dev` + `main` + feature branches that means cross-branch plan divergence, merge conflicts on status-table edits, and planning churn polluting feature PRs and the deploy diff.
+
+`plan-branch` pins the shared tier to **one canonical branch** per repo, read and written through a dedicated git worktree, so the plan lives off your code branches entirely — yet the CLI and VS Code viewer always show it from any checkout.
+
+```bash
+/work-plan plan-branch init myproject        # orphan branch `work-plan/plan` + skeleton (local only)
+/work-plan plan-branch status myproject      # exists? published? how many unpushed commits?
+/work-plan plan-branch push myproject        # share it — gated with a confirm token on PUBLIC repos
+```
+
+The default branch is an **orphan** `work-plan/plan` (no shared history with your code, like `gh-pages`) — override with `--branch=<name>`. `init` is **local only**; a teammate who already published the branch is auto-**connected** instead of re-created. Once `plan_branch` is set, every shared-track write is committed onto that branch via the worktree (never your working branch), and `push` is the one deliberate step that shares it. `push --dry-run` previews exactly what would be exposed first.
+
+> **Tip:** exclude the plan branch from CI by adding `!work-plan/**` to your workflow's `on: push` branch filter, so planning commits never trigger builds or deploys.
+
 **Opt out per-command:** pass `--private` to route a specific track to `notes_root` instead:
 
 ```bash
@@ -504,6 +520,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `rename-track <old-slug \| old@repo> <new-slug> [--repo=<key>] [--fix-refs] [--commit]` | Rename an active track's slug: moves its `.md` file and updates the frontmatter `track` field + `last_touched`. Validates `<new-slug>` like `new-track` and rejects a name already taken in the same repo/tier. For shared tracks, `--commit` stages + commits the move (otherwise it prints a "commit to share" hint). `--fix-refs` rewrites sibling tracks' `depends_on` that reference the old slug; without it they're just warned about. Archived tracks are immutable. Public-repo gated. |
 | `set-notes-root <path>` | Relocate where your private track notes live (updates `notes_root` in config). Does not move existing tracks — it warns if any would be orphaned. |
 | `notes-vcs <init\|enable\|disable\|status\|undo> [<sha>] [--no-enable] [--json]` | Opt-in **local** version control for the private `notes_root` tier — history/undo for tracks on your machine, never pushed. `init` git-inits `notes_root` as a personal repo (baseline commit of existing tracks) and turns on auto-commit (`--no-enable` skips that). For safety it **refuses** a `notes_root` that already has a git remote or is a repo work-plan didn't create. When on, every track-mutating command (`slot`/`group`/`handoff`/`close`/`set`/…) commits **only the files it changed** (pre-existing uncommitted edits are left alone) as an undoable commit. The shared tier is unaffected — it's versioned by its own repo. `status` shows whether `notes_root` is a repo, whether auto-commit is on, and the last commit (`--json` for the machine shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — reverses the last edit. |
+| `plan-branch <init\|status\|push> <repo> [--branch=<name>] [--confirm=<token>] [--dry-run] [--json]` | Set up and share a repo's canonical **shared-tier** plan branch. The `.work-plan/` tier is pinned to ONE per-repo `plan_branch`, read/written through a dedicated git worktree, so planning never diverges across code branches or pollutes PR / deploy diffs. `init` creates that branch + a `.work-plan/` skeleton (default an **orphan** `work-plan/plan` — zero shared history with code, like `gh-pages`; override with `--branch`) and records `plan_branch` in config — or **connects** to a teammate's already-published branch if one exists. `init` is **local only** (no push). `status` reports whether the branch exists, is published to origin, and how many commits are unpushed (`--json` for the machine shape). `push` shares it: on a **public** repo it prints a confirm heads-up + token and exits (re-run with `--confirm=<token>`); `--dry-run` previews the commits that would push. Requires a repo registered via `init-repo` with a local clone path. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y] [--repo=Z] [--private] [--apply] [--limit=N]` | AI-cluster GitHub issues into thematic track files. Two-step: CLI prints prompt → you save JSON answer → `--apply` creates the tracks. `--private` routes to `notes_root` instead of `.work-plan/`. `--limit` controls how many issues are shown in the prompt (default 100). |
 | `auto-triage [--repo=<key>] [--apply] [--limit=N]` | AI-assign untracked open issues to existing tracks. Two-step (same pattern as `group`). Run `coverage` first to measure the gap. `--limit` controls how many untracked issues are shown (default 100). |

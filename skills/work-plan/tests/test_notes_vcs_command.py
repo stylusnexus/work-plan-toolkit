@@ -308,5 +308,82 @@ class DispatcherHookTest(unittest.TestCase):
             self.assertIsNone(work_plan._notes_precommit_state("slot"))
 
 
+class SharedDispatcherHookTest(unittest.TestCase):
+    """The shared-tier (#260) auto-commit hook mirrors the notes one: snapshot
+    each plan_branch repo's dirty .work-plan/ paths BEFORE the command, then
+    commit only that repo's delta — never another repo's pre-existing edits.
+    """
+
+    @staticmethod
+    def _cfg_two():
+        return {"notes_root": "/tmp/notes", "repos": {
+            "alpha": {"github": "o/alpha", "local": "/tmp/alpha", "plan_branch": "wp-plan"},
+            "beta":  {"github": "o/beta",  "local": "/tmp/beta",  "plan_branch": "wp-plan"},
+            "gamma": {"github": "o/gamma", "local": "/tmp/gamma"},  # legacy, no plan_branch
+        }}
+
+    def test_commits_only_the_touched_repo(self):
+        cfg = self._cfg_two()
+        # alpha gains a file; beta has a pre-existing dirty file that must NOT
+        # be committed; gamma has no plan_branch so it's never visited. Keyed by
+        # Path.name (not str) so the test is OS path-separator agnostic.
+        dirty = {
+            "alpha": [[], [".work-plan/x.md"]],   # before, after
+            "beta":  [[".work-plan/stale.md"], [".work-plan/stale.md"]],
+        }
+        def fake_ensure(local, branch):
+            return Path(local)  # use the repo's local path as the worktree handle
+        def fake_dirty(wt):
+            return dirty[Path(wt).name].pop(0)
+        commits = []
+        def fake_commit(wt, msg, paths):
+            commits.append((Path(wt).name, tuple(paths)))
+            return "deadbee"
+        with patch("lib.config.load_config", return_value=cfg), \
+             patch("lib.plan_worktree.ensure_worktree", side_effect=fake_ensure), \
+             patch("lib.plan_worktree.dirty_work_plan_paths", side_effect=fake_dirty), \
+             patch("lib.plan_worktree.commit_shared_tier", side_effect=fake_commit):
+            err = io.StringIO()
+            with redirect_stderr(err):
+                pre = work_plan._shared_precommit_state("slot")
+                work_plan._commit_shared_writes(pre, ["slot", "1", "x"])
+            out = err.getvalue()
+        # Only alpha committed, and only its new path.
+        self.assertEqual(commits, [("alpha", (".work-plan/x.md",))])
+        self.assertIn("alpha", out)
+        self.assertNotIn("beta", out)
+
+    def test_skips_read_only_command(self):
+        with patch("lib.config.load_config", return_value=self._cfg_two()) as mload:
+            self.assertIsNone(work_plan._shared_precommit_state("brief"))
+            mload.assert_not_called()
+
+    def test_none_when_no_plan_branch_repos(self):
+        cfg = {"notes_root": "/tmp/n", "repos": {
+            "gamma": {"github": "o/gamma", "local": "/tmp/gamma"}}}
+        with patch("lib.config.load_config", return_value=cfg):
+            self.assertIsNone(work_plan._shared_precommit_state("slot"))
+
+    def test_precommit_never_raises_on_failure(self):
+        with patch("lib.config.load_config", side_effect=RuntimeError("boom")):
+            self.assertIsNone(work_plan._shared_precommit_state("slot"))
+
+    def test_warns_when_changes_present_but_commit_refused(self):
+        cfg = {"notes_root": "/tmp/n", "repos": {
+            "alpha": {"github": "o/alpha", "local": "/tmp/alpha", "plan_branch": "wp"}}}
+        seq = {"alpha": [[], [".work-plan/x.md"]]}
+        with patch("lib.config.load_config", return_value=cfg), \
+             patch("lib.plan_worktree.ensure_worktree",
+                   side_effect=lambda l, b: Path(l)), \
+             patch("lib.plan_worktree.dirty_work_plan_paths",
+                   side_effect=lambda wt: seq[Path(wt).name].pop(0)), \
+             patch("lib.plan_worktree.commit_shared_tier", return_value=None):
+            err = io.StringIO()
+            with redirect_stderr(err):
+                pre = work_plan._shared_precommit_state("slot")
+                work_plan._commit_shared_writes(pre, ["slot", "1", "x"])
+            self.assertIn("NOT", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

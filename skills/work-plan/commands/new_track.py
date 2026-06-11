@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from lib.config import load_config, ConfigError, is_valid_git_repo
+from lib.plan_worktree import shared_tier_dir
 from lib.frontmatter import write_file
 from lib.prompts import parse_flags
 from lib.write_guard import needs_confirm, make_token, valid_token
@@ -150,11 +151,16 @@ def run(args: list[str]) -> int:
 
     shared_path: Optional[Path] = None
     if not use_private and folder in cfg.get("repos", {}):
-        local_raw = cfg["repos"][folder].get("local")
+        repo_entry = cfg["repos"][folder]
+        local_raw = repo_entry.get("local")
         if local_raw:
             local_path = Path(local_raw).expanduser()
             if is_valid_git_repo(local_path):
-                shared_path = local_path / ".work-plan" / f"{slug}.md"
+                # Worktree-aware (#260): plan_branch repos write into the
+                # worktree's .work-plan/; None → fall back to the private tier.
+                sd = shared_tier_dir(repo_entry)
+                if sd is not None:
+                    shared_path = sd / f"{slug}.md"
 
     notes_root = Path(cfg["notes_root"]).expanduser()
     if shared_path is not None:
