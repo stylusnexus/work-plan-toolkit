@@ -6,6 +6,17 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.11+51bbb9a — 2026-06-11 (#267)
+
+fix(vscode): render visibility×tier badge as Unicode glyphs in the tree
+
+Ships the VS Code extension **v0.4.2**.
+
+### Fixed
+- **Visibility × tier badge rendered raw codicon tokens.** The per-track badge emitted `$(globe)` / `$(lock)` / `$(cloud)` / `$(warning)` as literal text in the tree, because `TreeItem.description` is plain text and never resolves `$(icon)` syntax. The badge now uses Unicode glyphs (🌐 / 🔒 / ☁️, ⚠️ for the exposed state) so it renders as intended. The hover tooltip was already correct (themed `MarkdownString`) and is unchanged.
+
+No CLI changes this deploy — viewer-only fix. Extension bumped 0.4.1 → 0.4.2; `vscode/README.md` Status line updated.
+
 ## 2026.06.11+b34452d — 2026-06-11 (#265)
 
 feat: canonical plan branch for the shared tier + visibility×tier badge (extension 0.4.1)
