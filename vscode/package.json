@@ -175,6 +175,12 @@
         "command": "workPlan.handoff",
         "title": "Wrap Up Session (Handoff)",
         "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.searchIssues",
+        "title": "Search Issues…",
+        "category": "Work Plan",
+        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -198,6 +204,11 @@
           "command": "workPlan.dailyBrief",
           "when": "view == workPlan.tree",
           "group": "navigation@4"
+        },
+        {
+          "command": "workPlan.searchIssues",
+          "when": "view == workPlan.tree",
+          "group": "navigation@5"
         },
         {
           "command": "workPlan.hygiene",

@@ -9,6 +9,8 @@ import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
+import { searchIssues } from "./webview/search.ts";
+import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
 import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
@@ -1383,6 +1385,80 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: handoff failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.searchIssues — keyword search of issue titles with %wildcards (#272).
+  // Searches the in-memory export (the same snapshot every view reads); results
+  // open in a dedicated reusable panel that never clobbers the detail view.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.searchIssues", async () => {
+      try {
+        if (!provider.rawExport) {
+          await provider.refresh();
+        }
+        const loaded = provider.rawExport;
+        if (!loaded || loaded.tracks.length === 0) {
+          vscode.window.showInformationMessage("Work Plan: No issues loaded — run Refresh first.");
+          return;
+        }
+
+        const query = await vscode.window.showInputBox({
+          placeHolder: "Search issues — e.g. %depends%, fix%, %audit",
+          prompt: "Match issue titles. Bare word = contains; % = wildcard (fix% starts-with, %audit ends-with).",
+          validateInput: (v) => {
+            const t = v.trim();
+            return t !== "" && /^%+$/.test(t)
+              ? "A query of % alone matches everything — add text, e.g. %fix% or depends%"
+              : null;
+          },
+        });
+        if (query === undefined || query.trim() === "") return;
+
+        // Renders results for `q` from the latest export and wires the row
+        // actions. Reused by the panel's "Refresh & re-run" affordance.
+        const runAndShow = (q: string): void => {
+          const current = provider.rawExport;
+          if (!current) return;
+          SearchPanel.showResults(
+            { query: q, hits: searchIssues(current, q), generatedAt: current.generated_at },
+            {
+              openIssue: (repo, number) =>
+                void vscode.commands.executeCommand("workPlan.openIssue", { repo, number }),
+              revealTrack: async (repo, track) => {
+                const node = provider.findTrackNode(track, repo);
+                if (node) {
+                  await treeView.reveal(node, { focus: true, select: true, expand: true });
+                } else {
+                  vscode.window.showInformationMessage(
+                    `Work Plan: "${track}" isn't visible in the current view (it may be filtered out by the active lens).`,
+                  );
+                }
+              },
+              refreshAndSearch: async () => {
+                try {
+                  await provider.refresh();
+                  runAndShow(q);
+                } catch (err: unknown) {
+                  const m = err instanceof CliError
+                    ? `Work Plan: ${err.message}`
+                    : `Work Plan: refresh failed — ${String(err)}`;
+                  vscode.window.showErrorMessage(m);
+                }
+              },
+            },
+          );
+        };
+        runAndShow(query);
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: search failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
