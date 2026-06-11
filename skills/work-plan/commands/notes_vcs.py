@@ -7,12 +7,16 @@ Actions:
   disable  turn it off (history is kept; just stop adding new commits).
   status   report whether notes_root is under git, whether auto-commit is on,
            and the last commit — plus a nudge to `init` when it isn't a repo.
+           Add --json for the machine-readable shape the VS Code viewer polls.
+  undo     revert a commit in notes_root (default HEAD). The git side of the
+           viewer's Undo button (#224); on the CLI it reverses the last edit.
 
 Config writes use the same opaque-env `yq strenv` pattern as set-notes-root
 (#191): the value is never interpolated into the yq expression.
 
-Usage: notes-vcs <init|enable|disable|status> [--no-enable]
+Usage: notes-vcs <init|enable|disable|status|undo> [<sha>] [--no-enable] [--json]
 """
+import json as _json
 import os
 import subprocess
 from pathlib import Path
@@ -23,7 +27,7 @@ from lib.config import (
 from lib.prompts import parse_flags
 from lib import notes_vcs
 
-_ACTIONS = ("init", "enable", "disable", "status")
+_ACTIONS = ("init", "enable", "disable", "status", "undo")
 
 
 def _set_auto_commit(value: bool) -> bool:
@@ -41,6 +45,21 @@ def _set_auto_commit(value: bool) -> bool:
     except subprocess.CalledProcessError as e:
         print(f"ERROR: yq failed to update config: {e.stderr}")
         return False
+
+
+def _status_dict(notes_root: Path, cfg: dict) -> dict:
+    """Machine-readable state for the VS Code viewer (#224). last_commit_sha is
+    the handle the viewer diffs across a write to decide whether to offer Undo."""
+    is_root = notes_vcs.is_git_root(notes_root)
+    return {
+        "notes_root": str(notes_root),
+        "under_git": notes_vcs.is_under_git(notes_root),
+        "is_root": is_root,
+        "auto_commit": notes_vcs_auto_commit(cfg),
+        "last_commit_sha": notes_vcs.last_commit_sha(notes_root) if is_root else None,
+        "last_commit_subject": notes_vcs.last_commit_summary(notes_root) if is_root else None,
+        "dirty": notes_vcs.has_changes(notes_root) if is_root else False,
+    }
 
 
 def _print_status(notes_root: Path, cfg: dict) -> None:
@@ -61,11 +80,12 @@ def _print_status(notes_root: Path, cfg: dict) -> None:
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--no-enable"})
+    flags, positional = parse_flags(args, {"--no-enable", "--json"})
 
     action = positional[0] if positional else "status"
     if action not in _ACTIONS:
-        print(f"usage: work_plan.py notes-vcs <{'|'.join(_ACTIONS)}> [--no-enable]")
+        print(f"usage: work_plan.py notes-vcs <{'|'.join(_ACTIONS)}> "
+              "[<sha>] [--no-enable] [--json]")
         return 2
 
     try:
@@ -76,7 +96,23 @@ def run(args: list[str]) -> int:
     notes_root = Path(cfg["notes_root"]).expanduser()
 
     if action == "status":
-        _print_status(notes_root, cfg)
+        if "--json" in flags:
+            print(_json.dumps(_status_dict(notes_root, cfg)))
+        else:
+            _print_status(notes_root, cfg)
+        return 0
+
+    if action == "undo":
+        if not notes_vcs.is_git_root(notes_root):
+            print(f"ERROR: {notes_root} is not a git repo — nothing to undo.")
+            return 1
+        sha = positional[1] if len(positional) > 1 else None
+        new_sha = notes_vcs.revert(notes_root, sha)
+        if not new_sha:
+            print(f"ERROR: failed to revert {sha or 'HEAD'} in {notes_root} "
+                  "(nothing to revert, or a conflict — resolve it manually).")
+            return 1
+        print(f"✓ Reverted {sha or 'HEAD'} — new commit {new_sha}.")
         return 0
 
     if action == "init":

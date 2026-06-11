@@ -96,6 +96,37 @@ def last_commit_summary(notes_root: Path) -> Optional[str]:
     return proc.stdout.strip()
 
 
+def last_commit_sha(notes_root: Path) -> Optional[str]:
+    """Short sha of HEAD, or None (no commits / not a repo). The undo handle the
+    VS Code viewer diffs across a write to decide whether to offer Undo (#224)."""
+    proc = _git(notes_root, "log", "-1", "--pretty=format:%h")
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return proc.stdout.strip()
+
+
+def revert(notes_root: Path, sha: Optional[str] = None) -> Optional[str]:
+    """Revert `sha` (default HEAD) in notes_root; return the new commit's sha.
+
+    Keeps git inside the engine so callers (the CLI `undo` verb, the viewer's
+    Undo button) never shell out to git themselves. No-op (None) when notes_root
+    isn't a git root, when there's no commit to revert, or when `sha` is unsafe
+    (empty / dash-led — git would read a dash-led value as an option). Never
+    raises. Uses --no-edit so it's non-interactive.
+    """
+    root = Path(notes_root).expanduser()
+    if not is_git_root(root):
+        return None
+    target = sha if sha is not None else "HEAD"
+    # A dash-led ref would be parsed by git as an option, not a revision.
+    if not target or target.startswith("-"):
+        return None
+    proc = _git(root, "revert", "--no-edit", target)
+    if proc is None or proc.returncode != 0:
+        return None
+    return last_commit_sha(root)
+
+
 def init_repo(notes_root: Path) -> bool:
     """git-init notes_root as a personal repo and make an initial commit.
 

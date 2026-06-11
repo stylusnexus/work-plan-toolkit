@@ -160,9 +160,9 @@ DESCRIPTIONS = [
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
      "/work-plan set-notes-root ~/Documents/work-plan-notes"),
-    ("notes-vcs", "<init|enable|disable|status> [--no-enable]",
-     "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
-     "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup.",
+    ("notes-vcs", "<init|enable|disable|status|undo> [<sha>] [--no-enable] [--json]",
+     "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
+     "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup. `undo` reverses the last edit.",
      "/work-plan notes-vcs init"),
 ]
 
