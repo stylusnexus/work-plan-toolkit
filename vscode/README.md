@@ -78,8 +78,8 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
 | **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
 | **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug; a public-repo write is gated by the confirm modal. |
-| **Refresh Track Body** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
-| **Reconcile (preview)** | Read-only draft of label-vs-frontmatter membership drift (no writes). |
+| **Sync Issue States from GitHub** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
+| **Check Label Drift (preview)** | Read-only draft of where the track's frontmatter membership disagrees with GitHub labels (no writes). Equivalent to `work-plan reconcile <track>` in draft mode. |
 | **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |
 
 ### Create & setup (the `⋯` overflow)
@@ -89,7 +89,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **New Track** | Create a new track for a repo (pick the repo + a slug). |
 | **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. |
 | **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
-| **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Refresh Track Body" instead when you just need to update one track after closing issues. |
+| **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Sync Issue States from GitHub" instead when you just need to update one track after closing issues. |
 
 Before any write into a **public** (or unknown-visibility) repo, a **"Write anyway / Keep private"** modal appears — the public-repo leak guard, surfaced as a dialog. Private repos write straight through.
 

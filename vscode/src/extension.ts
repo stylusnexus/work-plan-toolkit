@@ -578,7 +578,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
-  // workPlan.reconcile — draft reconcile preview (context menu + palette)
+  // workPlan.reconcile — draft label-drift preview (context menu + palette)
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
@@ -605,7 +605,7 @@ export function activate(context: vscode.ExtensionContext): void {
               outputChannel.append(outcome.stdout);
               outputChannel.show(true);
               vscode.window.showInformationMessage(
-                "Work Plan: reconcile preview (draft) — see the Work Plan output channel.",
+                "Work Plan: label-drift preview (draft) — see the Work Plan output channel.",
               );
             } else {
               vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
