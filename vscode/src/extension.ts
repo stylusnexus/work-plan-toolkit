@@ -491,7 +491,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
-  // workPlan.setNext — set the next-up issue list on a track (context menu + palette)
+  // workPlan.setNext — set next-up via a handoff. Unlike Edit Track Fields →
+  // next_up (which only writes the frontmatter field), this runs `handoff
+  // --set-next`, so it ALSO appends a session-log entry and refreshes the body
+  // status table. Surfaced as "Set Next-Up & Log Session" to signal that.
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
@@ -501,10 +504,10 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!track) return;
 
         const raw = await vscode.window.showInputBox({
-          prompt: "Next-up issue numbers (comma-separated)",
+          prompt: "Next-up issue numbers (comma-separated) — also appends a session-log entry",
           validateInput: (v) => {
             if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
-            return "Enter at least one issue number, comma-separated (e.g. 42,87). To clear next-up, use Edit Track Fields → next_up.";
+            return "Enter at least one issue number, comma-separated (e.g. 42,87). To set next-up without logging a session, use Edit Track Fields → next_up.";
           },
         });
         if (raw === undefined) return; // cancelled
@@ -524,7 +527,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track}`);
+          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track} (session logged)`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }

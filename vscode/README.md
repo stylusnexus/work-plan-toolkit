@@ -73,7 +73,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | Command | What it does |
 |---|---|
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
-| **Set Next-Up** | Set the ordered next-up issue list for the track. |
+| **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
 | **Slot Issue into Track** | Add a GitHub issue number to the track. |
 | **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
 | **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
