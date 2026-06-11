@@ -47,8 +47,15 @@ export function renderDetail(track: Track): string {
   const groups = groupByMilestone(track.issues, track.milestone_alignment);
 
   parts.push('<table class="issues">');
+  parts.push(`<caption class="sr-only">Issues in ${esc(track.name)}</caption>`);
   parts.push(
-    "<thead><tr><th>Num</th><th>Title</th><th>State</th><th>Assignee</th><th></th></tr></thead>",
+    '<thead><tr>' +
+      '<th scope="col">Num</th>' +
+      '<th scope="col">Title</th>' +
+      '<th scope="col">State</th>' +
+      '<th scope="col">Assignee</th>' +
+      '<th scope="col"><span class="sr-only">Move</span></th>' +
+      '</tr></thead>',
   );
 
   if (groups.length <= 1) {
@@ -64,15 +71,11 @@ export function renderDetail(track: Track): string {
     parts.push("</tbody>");
 
     if (hidden.length > 0) {
-      parts.push(
-        `<tbody class="issue-cap-band collapsed"><tr class="issue-cap-toggle"><td colspan="5">` +
-          `<details><summary>Show all ${allIssues.length} issues (${hidden.length} more)</summary>` +
-          `<table>`
-      );
+      parts.push(renderCapToggle(allIssues.length, hidden.length));
       for (const issue of hidden) {
         parts.push(renderIssueRow(track, issue));
       }
-      parts.push(`</table></details></td></tr></tbody>`);
+      parts.push("</tbody>");
     }
   } else {
     // Milestone bands.
@@ -86,7 +89,7 @@ export function renderDetail(track: Track): string {
       const collapsedClass = first ? "" : " collapsed";
       parts.push(`<tbody class="milestone-band${collapsedClass}">`);
       parts.push(
-        `<tr class="milestone-band-header"><td colspan="4">` +
+        `<tr class="milestone-band-header"><td colspan="5">` +
           `<span class="milestone-toggle">▸</span> ` +
           `<b>${heading}</b> <span class="milestone-count">(${count})</span>` +
           `</td></tr>`,
@@ -105,15 +108,11 @@ export function renderDetail(track: Track): string {
     }
 
     if (hiddenIssues.length > 0) {
-      parts.push(
-        `<tbody class="issue-cap-band collapsed"><tr class="issue-cap-toggle"><td colspan="5">` +
-          `<details><summary>Show all ${track.issues.length} issues (${hiddenIssues.length} more)</summary>` +
-          `<table>`
-      );
+      parts.push(renderCapToggle(track.issues.length, hiddenIssues.length));
       for (const issue of hiddenIssues) {
         parts.push(renderIssueRow(track, issue));
       }
-      parts.push(`</table></details></td></tr></tbody>`);
+      parts.push("</tbody>");
     }
   }
 
@@ -197,6 +196,24 @@ function renderIssueRow(track: Track, issue: Issue): string {
     `<td class="who">${esc(issue.assignee)}</td>` +
     moveBtn +
     `</tr>`
+  );
+}
+
+/**
+ * Opens an issue-cap overflow `<tbody>`: a disclosure button row that reveals the
+ * capped-off rows when toggled. The caller appends the hidden `<tr>`s and the
+ * closing `</tbody>`. Uses a real `<button>` (natively keyboard-operable) and
+ * keeps the rows inside the same table — no invalid nested `<table>`/`<details>`.
+ * The `.issue-cap-row` class marks the toggle row so the collapse CSS keeps it
+ * visible while hiding the rest of the band.
+ */
+function renderCapToggle(total: number, hidden: number): string {
+  return (
+    `<tbody class="issue-cap-band collapsed">` +
+    `<tr class="issue-cap-row"><td colspan="5">` +
+    `<button type="button" class="issue-cap-toggle">` +
+    `<span class="issue-cap-marker">▸</span> Show all ${total} issues (${hidden} more)` +
+    `</button></td></tr>`
   );
 }
 

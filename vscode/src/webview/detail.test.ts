@@ -492,15 +492,17 @@ describe("renderDetail — issue cap", () => {
     // First 50 visible
     assert.ok(html.includes("#1"), "missing #1");
     assert.ok(html.includes("#50"), "missing #50");
-    // #51 should NOT be in the visible table — only inside <details>
+    // #51 is rendered after #50 (collapsed in the same table, not a nested one)
     const idx50 = html.indexOf("#50");
     const idx51 = html.indexOf("#51");
     assert.ok(idx51 > idx50, "#51 should appear after #50");
     // Collapsible toggle present
     assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle");
-    assert.ok(html.includes("<details>"), "missing <details> element");
     assert.ok(html.includes("Show all 75 issues"), "missing 'Show all 75 issues'");
     assert.ok(html.includes("25 more"), "missing '25 more' count");
+    // Overflow stays inside the issues table — no invalid nested <table>/<details> (#232)
+    assert.ok(!html.includes("<details>"), "overflow must not use <details>");
+    assert.ok(!html.includes("<table>"), "overflow must not nest a bare <table>");
   });
 
   it("caps within milestone bands — overflow goes to collapsible band", () => {
@@ -541,5 +543,54 @@ describe("renderDetail — issue cap", () => {
     assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle in milestone bands");
     assert.ok(html.includes("Show all 60 issues"), "missing total count");
     assert.ok(html.includes("10 more"), "missing '10 more' count");
+  });
+
+  it("milestone-band header spans all 5 columns (no colspan=4 regression)", () => {
+    // Multi-milestone track renders bands; the header must span every column,
+    // including the move column, so it never leaves a ragged cell. (#232)
+    const html = renderDetail(platformHealth);
+    assert.ok(html.includes('colspan="5"'), "band header should span 5 columns");
+    assert.ok(!html.includes('colspan="4"'), "stale colspan=4 must be gone");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table accessibility (#232)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — table accessibility", () => {
+  it("marks every header cell with scope=col", () => {
+    const html = renderDetail(platformHealth);
+    // 5 columns → 5 scoped headers (Num, Title, State, Assignee, Move)
+    const scoped = html.match(/<th scope="col">/g) ?? [];
+    assert.equal(scoped.length, 5, `expected 5 scoped <th>, got ${scoped.length}:\n${html}`);
+    // No unscoped header cells leak through.
+    assert.ok(!html.includes("<th>"), "found an unscoped <th>");
+  });
+
+  it("gives the table a caption naming the track", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<caption class="sr-only">Issues in platform-health</caption>'),
+      `expected an sr-only caption naming the track:\n${html}`,
+    );
+  });
+
+  it("labels the move column header for screen readers", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<span class="sr-only">Move</span>'),
+      `expected an sr-only 'Move' label on the move column header:\n${html}`,
+    );
+  });
+
+  it("escapes the track name in the caption", () => {
+    const evilNameTrack: Track = {
+      ...emptyTrack,
+      name: '<img src=x onerror=alert(1)>',
+    };
+    const html = renderDetail(evilNameTrack);
+    assert.ok(!html.includes("<img src=x"), `caption must escape the track name:\n${html}`);
+    assert.ok(html.includes("&lt;img"), "expected the track name escaped in the caption");
   });
 });
