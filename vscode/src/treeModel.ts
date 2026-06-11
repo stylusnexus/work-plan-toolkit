@@ -68,6 +68,49 @@ export function repoDescription(node: RepoNode): string {
 }
 
 /**
+ * The two independent visibility axes of a track, rendered for the tree:
+ *   - repo visibility: PUBLIC (`$(globe)`) vs PRIVATE/unknown (`$(lock)`)
+ *   - tier: shared (`$(cloud)`, travels via git) vs unshared (no glyph, local only)
+ *
+ * The only high-stakes corner is **public + shared** — the plan is committed to
+ * a public repo and is world-visible — so it (and only it) gets a leading
+ * `$(warning)` glyph (theme-coloured by VS Code automatically) and the word
+ * "exposed". The three safe states stay quiet so the one alarm keeps its meaning.
+ *
+ * Accessibility (#208 lineage): every state is distinguishable by glyph SHAPE and
+ * literal text, never colour alone. A null/unknown `visibility` is treated as
+ * PRIVATE (the safe default) so a missing field never under-warns. Pure — the
+ * caller (tree.ts) wraps `tooltipMarkdown` in a MarkdownString.
+ */
+export interface VisibilityTierBadge {
+  /** Codicon cluster for the TreeItem description prefix, e.g. "$(warning)$(globe)$(cloud)". */
+  descriptionPrefix: string;
+  /** Markdown (icons need MarkdownString with supportThemeIcons). */
+  tooltipMarkdown: string;
+  /** True only for public + shared — the world-visible leak state. */
+  exposed: boolean;
+}
+
+export function visibilityTierBadge(track: Track): VisibilityTierBadge {
+  const isShared = track.tier === "shared";
+  const isPublic = track.visibility === "PUBLIC"; // null/PRIVATE → safe default
+  const exposed = isShared && isPublic;
+
+  const visGlyph = isPublic ? "$(globe)" : "$(lock)";
+  const tierGlyph = isShared ? "$(cloud)" : "";
+  const descriptionPrefix = (exposed ? "$(warning)" : "") + visGlyph + tierGlyph;
+
+  const visWord = isPublic ? "public repo" : "private repo";
+  const tierWord = isShared ? "shared tier — travels via git push/pull" : "local only — never pushed";
+  const tooltipMarkdown = exposed
+    ? `$(warning) **Exposed** — ${visGlyph} ${visWord} · ${tierGlyph} shared tier. ` +
+      `This plan is committed to a public repo and is **world-visible**.`
+    : `${visGlyph} ${visWord} · ${isShared ? tierGlyph + " " : ""}${tierWord}.`;
+
+  return { descriptionPrefix, tooltipMarkdown, exposed };
+}
+
+/**
  * Derives a StatusCategory for a track.
  * Blocker presence (array non-empty) OR status === "blocked" → "blocked";
  * this override takes priority over every other status value.
