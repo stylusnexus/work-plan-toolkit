@@ -14,6 +14,29 @@ import { statusCategory } from "../treeModel.ts";
 export interface ToMermaidOptions {
   /** When true, render only the dependency neighborhood of selectedTrack. */
   focus?: boolean;
+  /**
+   * When true, emit dark-theme classDef fills. Mermaid's SVG can't read CSS
+   * vars, so the node-class colours are baked per editor theme here (#207).
+   * Defaults to dark (the prior hardcoded behaviour).
+   */
+  dark?: boolean;
+}
+
+/**
+ * classDef lines for the blocked / selected node classes, picked to read on the
+ * editor's light or dark theme. Returned as Mermaid source lines.
+ */
+function classDefLines(dark: boolean): string[] {
+  if (dark) {
+    return [
+      "  classDef blocked fill:#5b1d1d,stroke:#f87171,color:#fecaca",
+      "  classDef selected fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe,stroke-width:2px",
+    ];
+  }
+  return [
+    "  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d",
+    "  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px",
+  ];
 }
 
 /**
@@ -28,27 +51,27 @@ export function toMermaid(exp: Export, selectedTrack?: string, opts?: ToMermaidO
   // Focus mode: render only the selected track's neighbourhood, but only when
   // focus is requested AND the named track actually exists. Otherwise fall back
   // to the full graph.
+  const dark = opts?.dark ?? true;
   if (opts?.focus === true && selectedTrack !== undefined) {
     const selectedTrackObj = exp.tracks.find(t => t.name === selectedTrack);
     if (selectedTrackObj !== undefined) {
-      return _toMermaidFocused(exp, selectedTrackObj);
+      return _toMermaidFocused(exp, selectedTrackObj, dark);
     }
   }
-  return _toMermaidFull(exp, selectedTrack);
+  return _toMermaidFull(exp, selectedTrack, dark);
 }
 
 // ---------------------------------------------------------------------------
 // Full graph (existing behaviour, refactored into a private function)
 // ---------------------------------------------------------------------------
 
-function _toMermaidFull(exp: Export, selectedTrack?: string): string {
+function _toMermaidFull(exp: Export, selectedTrack: string | undefined, dark: boolean): string {
   const lines: string[] = [];
 
   lines.push("graph LR");
 
   // Class definitions (node styling only; edge styling is not supported here)
-  lines.push("  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d");
-  lines.push("  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px");
+  lines.push(...classDefLines(dark));
 
   // Build a unique, collision-resistant track ID for each track name.
   const tids = buildTrackIds(exp.tracks);
@@ -170,11 +193,10 @@ function _toMermaidFull(exp: Export, selectedTrack?: string): string {
 // Focused graph — only T's dependency neighbourhood
 // ---------------------------------------------------------------------------
 
-function _toMermaidFocused(exp: Export, t: Track): string {
+function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   const lines: string[] = [];
   lines.push("graph LR");
-  lines.push("  classDef blocked fill:#fee2e2,stroke:#ef4444,color:#7f1d1d");
-  lines.push("  classDef selected fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a,stroke-width:2px");
+  lines.push(...classDefLines(dark));
 
   // Build a unique, collision-resistant track ID for each track name.
   const tids = buildTrackIds(exp.tracks);
