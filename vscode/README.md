@@ -136,7 +136,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.3.7 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.7 surfaces **local history for private tracks**: a **Local History** command (enable / disable / status) and, when auto-commit is on, a one-click **Undo** toast after any edit that wrote a commit. Earlier v0.3.x added a Rename Track action, active-milestone-first milestone bands, Move Issue from Track, cross-track dependency chips, and a repo-scoped full map.
+**Published — v0.4.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.4.0 is a broad UX + accessibility pass: a **de-noised command palette** (category-namespaced commands) with clearer names (**Sync Issue States from GitHub**, **Check Label Drift**, **Add Issue to Track**), a **frequency-grouped track menu** with confirmation modals on the destructive actions, **editor-theme-adaptive** graph + detail panel (light/dark/high-contrast), a **per-milestone filter** in the detail panel, progress feedback on every write, and an accessibility sweep (distinct status-icon shapes, keyboard-operable disclosures and chips, table semantics, graph alt text). Local history for private tracks gains hardened safety boundaries. Earlier v0.3.x added the Local History command, Rename Track, milestone bands, Move Issue from Track, and cross-track dependency chips.
 
 ## Development notes
 
