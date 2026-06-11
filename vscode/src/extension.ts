@@ -357,14 +357,28 @@ export function activate(context: vscode.ExtensionContext): void {
     return choice === "Write anyway" ? "writeAnyway" : "cancel";
   };
 
+  // Wrap a write in an unobtrusive status-bar progress spinner so every write
+  // verb gives "working…" feedback instead of a silent UI freeze. Covers only
+  // the executeWrite spawn — the interactive prompts run before it, and the tree
+  // reload that follows shows its own view-located progress bar. The three slow
+  // verbs (refresh-md, reconcile, hygiene) keep their Notification-located bars.
+  const withWriteProgress = <T>(title: string, task: () => Promise<T>): Thenable<T> =>
+    vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title },
+      task,
+    );
+
   // Webview drag-move goes through the same audited write path as workPlan.move:
   // executeWrite + the public-repo confirm modal (#197). No ad-hoc spawn in the panel.
   WorkPlanPanel.setMoveHandler(async (issue, fromTrack, toTrack) => {
     try {
-      const outcome: WriteOutcome = await executeWrite(
-        runner,
-        { kind: "move", fromTrack, toTrack, issue },
-        confirmPublicWrite,
+      const outcome: WriteOutcome = await withWriteProgress(
+        `Work Plan: moving #${issue} to ${toTrack}…`,
+        () => executeWrite(
+          runner,
+          { kind: "move", fromTrack, toTrack, issue },
+          confirmPublicWrite,
+        ),
       );
       if (outcome.status === "written") {
         await refreshAfterWrite();
@@ -452,10 +466,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
         if (value === undefined) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "editFields", track, fields: { [field]: value } },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting ${field} on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "editFields", track, fields: { [field]: value } },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -496,10 +513,13 @@ export function activate(context: vscode.ExtensionContext): void {
         const issues = raw.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
         if (issues.length === 0) return;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "setNext", track, issues },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting next-up on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "setNext", track, issues },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -622,10 +642,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const issue = parseInt(raw, 10);
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "slot", track, issue },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: slotting #${issue} into ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "slot", track, issue },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -695,10 +718,13 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!toTrack) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "move", fromTrack, toTrack, issue },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: moving #${issue} from ${fromTrack} to ${toTrack}…`,
+          () => executeWrite(
+            runner,
+            { kind: "move", fromTrack, toTrack, issue },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -749,10 +775,13 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!track) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "slot", track, issue },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: slotting #${issue} into ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "slot", track, issue },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -812,10 +841,13 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!track) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "batchSlot", track, issues: issueNumbers },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: slotting ${issueNumbers.length} issue(s) into ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "batchSlot", track, issues: issueNumbers },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -855,10 +887,13 @@ export function activate(context: vscode.ExtensionContext): void {
         // undefined = Esc = proceed with no note (don't hard-cancel on optional field)
         const note = noteRaw && noteRaw.trim() !== "" ? noteRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "close", track, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: closing ${track} as ${state}…`,
+          () => executeWrite(
+            runner,
+            { kind: "close", track, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -899,10 +934,13 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (newSlug === undefined) return; // cancelled
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "renameTrack", track, newSlug },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: renaming ${track} → ${newSlug}…`,
+          () => executeWrite(
+            runner,
+            { kind: "renameTrack", track, newSlug },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -994,16 +1032,19 @@ export function activate(context: vscode.ExtensionContext): void {
         // undefined (Esc) or empty → proceed without milestone
         const milestone = milestoneRaw && milestoneRaw.trim() !== "" ? milestoneRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          {
-            kind: "newTrack",
-            repo,
-            slug,
-            ...(priority ? { priority } : {}),
-            ...(milestone ? { milestone } : {}),
-          },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: creating track ${slug}…`,
+          () => executeWrite(
+            runner,
+            {
+              kind: "newTrack",
+              repo,
+              slug,
+              ...(priority ? { priority } : {}),
+              ...(milestone ? { milestone } : {}),
+            },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -1048,10 +1089,13 @@ export function activate(context: vscode.ExtensionContext): void {
         // undefined (Esc) or empty → omit local
         const local = localRaw && localRaw.trim() !== "" ? localRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "addRepo", key, github, ...(local ? { local } : {}) },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: adding repo ${github}…`,
+          () => executeWrite(
+            runner,
+            { kind: "addRepo", key, github, ...(local ? { local } : {}) },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
@@ -1086,10 +1130,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const path = picked[0].fsPath;
 
-        const outcome: WriteOutcome = await executeWrite(
-          runner,
-          { kind: "setNotesRoot", path },
-          confirmPublicWrite,
+        const outcome: WriteOutcome = await withWriteProgress(
+          "Work Plan: setting notes location…",
+          () => executeWrite(
+            runner,
+            { kind: "setNotesRoot", path },
+            confirmPublicWrite,
+          ),
         );
 
         if (outcome.status === "written") {
