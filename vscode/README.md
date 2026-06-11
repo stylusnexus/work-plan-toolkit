@@ -68,6 +68,8 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **Select View** (filter icon) | **Filter** the tree *and* graph by a lens: a **single repo**, a **milestone**, a **status** (Active / Shipped / Parked), or **only blocked tracks**. Choose "All tracks" to clear the filter. |
 | **Sort Tracks** | **Order** tracks within each repo: **Default** (discovery order), **Blocked first**, **Most open**, or **Name (A–Z)**. |
 
+When a lens or non-default sort is active, it's shown inline next to the **Tracks** view title (e.g. `milestone: v2.0.0 · blocked-first`) so the active filter is always visible — no need to reopen the quick-pick to remember why tracks are hidden. The label clears once you return to "All tracks" with the default sort.
+
 ### Track actions (right-click a track)
 
 The menu is grouped, with a separator between each group: **everyday edits** first, then **GitHub-sync** actions, then the **destructive** actions (Close / Rename) fenced at the bottom so they're harder to hit by accident.

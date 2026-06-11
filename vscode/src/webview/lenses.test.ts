@@ -13,7 +13,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Export } from "../model.ts";
-import { availableLenses, applyLens } from "./lenses.ts";
+import { availableLenses, applyLens, describeView } from "./lenses.ts";
 import type { Lens } from "./lenses.ts";
 
 // ---------------------------------------------------------------------------
@@ -613,5 +613,72 @@ describe("applyLens — vscode-free import check", () => {
     // if it did, node:test would fail to load the module.
     assert.ok(typeof applyLens === "function");
     assert.ok(typeof availableLenses === "function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describeView — active lens/sort summary for the view title (#209)
+// ---------------------------------------------------------------------------
+
+describe("describeView — empty when nothing is active", () => {
+  it("returns '' for the all lens + default sort", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "default"), "");
+  });
+});
+
+describe("describeView — lens only (default sort)", () => {
+  it("repo lens", () => {
+    assert.strictEqual(
+      describeView({ kind: "repo", repo: "org/repo" }, "default"),
+      "repo: org/repo",
+    );
+  });
+
+  it("milestone lens", () => {
+    assert.strictEqual(
+      describeView({ kind: "milestone", milestone: "v2.0.0" }, "default"),
+      "milestone: v2.0.0",
+    );
+  });
+
+  it("status lens", () => {
+    assert.strictEqual(
+      describeView({ kind: "status", status: "active" }, "default"),
+      "status: active",
+    );
+  });
+
+  it("blocked lens", () => {
+    assert.strictEqual(describeView({ kind: "blocked" }, "default"), "blocked");
+  });
+});
+
+describe("describeView — sort only (all lens)", () => {
+  it("blocked-first", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "blocked"), "blocked-first");
+  });
+
+  it("most-open", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "open"), "most-open");
+  });
+
+  it("name A–Z", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "name"), "name A–Z");
+  });
+});
+
+describe("describeView — lens + sort combined", () => {
+  it("joins lens and sort with ' · ', lens first", () => {
+    assert.strictEqual(
+      describeView({ kind: "milestone", milestone: "v2.0.0" }, "blocked"),
+      "milestone: v2.0.0 · blocked-first",
+    );
+  });
+
+  it("blocked lens + name sort", () => {
+    assert.strictEqual(
+      describeView({ kind: "blocked" }, "name"),
+      "blocked · name A–Z",
+    );
   });
 });

@@ -8,7 +8,7 @@ import { WorkPlanTreeProvider } from "./tree.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
-import { availableLenses } from "./webview/lenses.ts";
+import { availableLenses, describeView } from "./webview/lenses.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
 import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
@@ -32,11 +32,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const provider = new WorkPlanTreeProvider(() => exportJson(runner));
 
-  context.subscriptions.push(
-    vscode.window.createTreeView("workPlan.tree", {
-      treeDataProvider: provider,
-    }),
-  );
+  const treeView = vscode.window.createTreeView("workPlan.tree", {
+    treeDataProvider: provider,
+  });
+  context.subscriptions.push(treeView);
+
+  // Surface the active lens + sort inline under the Tracks view title (#209).
+  // Every state change — refresh, setLens, setSort, the milestone-filter
+  // handler, the reset — fires onDidChangeTreeData, so recomputing here keeps
+  // the description in lockstep with what the tree actually shows. Empty string
+  // (lens "all" + sort "default") clears it back to the bare title.
+  const syncViewDescription = (): void => {
+    treeView.description =
+      describeView(provider.activeLens, provider.activeSort) || undefined;
+  };
+  context.subscriptions.push(provider.onDidChangeTreeData(syncViewDescription));
 
   // -------------------------------------------------------------------------
   // refreshAndRerender — shared helper: reload CLI data + re-render panel.

@@ -6,7 +6,7 @@
  */
 
 import type { Export } from "../model.ts";
-import type { StatusCategory } from "../treeModel.ts";
+import type { StatusCategory, TrackSort } from "../treeModel.ts";
 import { statusCategory } from "../treeModel.ts";
 
 // ---------------------------------------------------------------------------
@@ -166,4 +166,56 @@ export function applyLens(exp: Export, lens: Lens): Export {
     // would make the Untracked bucket vanish under EVERY lens, including "all".
     ...(exp.untracked !== undefined && { untracked: exp.untracked }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// describeView
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a short, human-readable label for the active lens + sort, suitable for
+ * a TreeView.description (shown inline next to the view title). Returns "" when
+ * the lens is "all" AND the sort is "default" — i.e. nothing to surface (#209).
+ *
+ * Examples:
+ *   ({kind:"milestone", milestone:"v2.0.0"}, "blocked") → "milestone: v2.0.0 · blocked-first"
+ *   ({kind:"blocked"}, "default")                       → "blocked"
+ *   ({kind:"all"}, "name")                              → "name A–Z"
+ *   ({kind:"all"}, "default")                           → ""
+ */
+export function describeView(lens: Lens, sort: TrackSort): string {
+  const parts: string[] = [];
+
+  switch (lens.kind) {
+    case "repo":
+      parts.push(`repo: ${lens.repo}`);
+      break;
+    case "milestone":
+      parts.push(`milestone: ${lens.milestone}`);
+      break;
+    case "status":
+      parts.push(`status: ${lens.status}`);
+      break;
+    case "blocked":
+      parts.push("blocked");
+      break;
+    case "all":
+      break;
+  }
+
+  switch (sort) {
+    case "blocked":
+      parts.push("blocked-first");
+      break;
+    case "open":
+      parts.push("most-open");
+      break;
+    case "name":
+      parts.push("name A–Z");
+      break;
+    case "default":
+      break;
+  }
+
+  return parts.join(" · ");
 }
