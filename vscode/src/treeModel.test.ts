@@ -550,33 +550,33 @@ describe("visibilityTierBadge — the visibility × tier 2×2 (#259)", () => {
   test("public + shared is the only EXPOSED state (warning glyph + world-visible)", () => {
     const b = visibilityTierBadge(makeTrack({ tier: "shared", visibility: "PUBLIC" }));
     assert.equal(b.exposed, true);
-    assert.equal(b.descriptionPrefix, "$(warning)$(globe)$(cloud)");
+    assert.equal(b.descriptionPrefix, "⚠️🌐☁️");
     assert.match(b.tooltipMarkdown, /world-visible/);
   });
 
   test("public + unshared is NOT exposed (globe, no warning, no cloud)", () => {
     const b = visibilityTierBadge(makeTrack({ tier: "private", visibility: "PUBLIC" }));
     assert.equal(b.exposed, false);
-    assert.equal(b.descriptionPrefix, "$(globe)");
-    assert.ok(!b.descriptionPrefix.includes("warning"));
+    assert.equal(b.descriptionPrefix, "🌐");
+    assert.ok(!b.descriptionPrefix.includes("⚠️"));
   });
 
   test("private + shared shows lock + cloud, not exposed", () => {
     const b = visibilityTierBadge(makeTrack({ tier: "shared", visibility: "PRIVATE" }));
     assert.equal(b.exposed, false);
-    assert.equal(b.descriptionPrefix, "$(lock)$(cloud)");
+    assert.equal(b.descriptionPrefix, "🔒☁️");
   });
 
   test("private + unshared shows just a lock", () => {
     const b = visibilityTierBadge(makeTrack({ tier: "private", visibility: "PRIVATE" }));
     assert.equal(b.exposed, false);
-    assert.equal(b.descriptionPrefix, "$(lock)");
+    assert.equal(b.descriptionPrefix, "🔒");
   });
 
   test("null visibility is treated as PRIVATE (safe default — never under-warns)", () => {
     const b = visibilityTierBadge(makeTrack({ tier: "shared", visibility: null }));
     assert.equal(b.exposed, false, "unknown visibility must not be treated as public");
-    assert.equal(b.descriptionPrefix, "$(lock)$(cloud)");
+    assert.equal(b.descriptionPrefix, "🔒☁️");
   });
 
   test("only colour-independent signals: every state differs by glyph + text", () => {
