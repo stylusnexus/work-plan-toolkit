@@ -1308,9 +1308,15 @@ export function activate(context: vscode.ExtensionContext): void {
     outputChannel.show(true);
   };
 
-  // workPlan.dailyBrief — multi-track daily snapshot (read-only, palette only).
+  // workPlan.dailyBrief — multi-track daily snapshot (read-only; title bar + palette).
+  // Re-entrancy guard: brief takes a few seconds, and the title-bar icon is easy
+  // to click repeatedly — without this, each click spawned another concurrent run
+  // and a stacked progress toast. While one is in flight, extra invocations no-op.
+  let briefInFlight = false;
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.dailyBrief", async () => {
+      if (briefInFlight) return;
+      briefInFlight = true;
       try {
         await vscode.window.withProgress(
           {
@@ -1325,6 +1331,8 @@ export function activate(context: vscode.ExtensionContext): void {
           ? `Work Plan: ${err.message}`
           : `Work Plan: brief failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
+      } finally {
+        briefInFlight = false;
       }
     }),
   );
