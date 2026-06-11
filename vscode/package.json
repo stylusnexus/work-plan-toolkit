@@ -164,7 +164,7 @@
         "command": "workPlan.dailyBrief",
         "title": "Daily Brief",
         "category": "Work Plan",
-        "icon": "$(list-unordered)"
+        "icon": "$(checklist)"
       },
       {
         "command": "workPlan.orient",
