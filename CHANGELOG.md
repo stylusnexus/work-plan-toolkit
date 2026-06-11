@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.11+b34452d — 2026-06-11 (#265)
+
+feat: canonical plan branch for the shared tier + visibility×tier badge (extension 0.4.1)
+
+Production deploy. Extension bumped to **0.4.1**. Ships the #260 canonical-plan-branch feature (CLI) and the #259 visibility × tier badge (VS Code viewer).
+
+## CLI — shared-tier planning on one canonical branch (#260)
+
+The shared (`.work-plan/`) tier can now be pinned to **one canonical `plan_branch`** per repo, read and written through a dedicated git worktree — so planning lives off your code branches and never pollutes feature PRs or the `dev → main` deploy diff, yet the CLI and viewer always show the canonical plan from any checkout.
+
+- **`plan-branch <init|status|push> <repo>`** — the bootstrap + share command. `init` creates an **orphan** branch (default `work-plan/plan`, like `gh-pages`; `--branch` overrides) with a `.work-plan/` skeleton, or **connects** to a teammate's already-published branch — **local only**. `status` reports exists / published / unpushed. `push` shares it, gated by a confirm token on **public** repos (with `--dry-run` to preview the exposure first).
+- Discovery, shared-track creation (`group`/`new-track`), and the dispatcher's auto-commit all route through the plan-branch worktree when one is configured; repos without a `plan_branch` keep the legacy working-tree `.work-plan/` behaviour unchanged.
+- Hardened to the notes-vcs data-safety bar across multiple adversarial review rounds: scoped commits (only the paths a command changed, NUL-delimited porcelain so spaced/non-ASCII filenames are safe), branch-verified worktree reuse, the public-repo exposure gate fails closed, and the whole path honours the never-raise contract.
+
+## VS Code viewer — visibility × tier badge (#259), extension 0.4.1
+
+Every tree item now carries a **visibility × tier badge** (🔒 private / 🌐 public repo, ☁ shared tier) that flags the one **exposed** state — a plan committed to a *public* repo's shared tier is world-visible. Theme-adaptive, with a MarkdownString tooltip explaining the state.
+
+## Docs
+README gains a "Canonical plan branch" section (with the CI-exclude tip) and a `plan-branch` command-table row; the extension README documents the badge and the 0.4.1 status.
+
+Closes #259, #260.
+
 ## 2026.06.11+8c21445 — 2026-06-11 (#258)
 
 feat: viewer UX + accessibility overhaul, notes-vcs safety, CLI clarity (extension 0.4.0)
