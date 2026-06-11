@@ -1284,6 +1284,111 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // Daily-driver relay verbs (#210): brief / orient / handoff. The CLI's
+  // verbatim-relay output is designed to be read as-is, so these pipe stdout
+  // straight to the Work Plan output channel.
+  // -------------------------------------------------------------------------
+
+  // Shared helper: run a read-only relay verb and show its stdout in the channel.
+  const runRelay = async (args: string[], failVerb: string): Promise<void> => {
+    const result = await runner(args);
+    if (result.code !== 0) {
+      throw new CliError({
+        message: result.stderr.trim() || `${failVerb} failed (exit ${result.code})`,
+        args,
+        code: result.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+    }
+    outputChannel.clear();
+    outputChannel.append(result.stdout);
+    outputChannel.show(true);
+  };
+
+  // workPlan.dailyBrief — multi-track daily snapshot (read-only, palette only).
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.dailyBrief", async () => {
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Work Plan: building daily brief…",
+            cancellable: false,
+          },
+          () => runRelay(["brief"], "brief"),
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: brief failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // workPlan.orient — re-orient on a track (read-only; context menu + palette).
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.orient", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Work Plan: re-orienting on ${track}…`,
+            cancellable: false,
+          },
+          () => runRelay(["where-was-i", "--", track], "where-was-i"),
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: where-was-i failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // workPlan.handoff — wrap up a work session on a track (writes a session log +
+  // last_handoff; context menu + palette). Routes through the public-write
+  // confirm flow, then relays the paste-ready prompt to the output channel.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.handoff", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const outcome: WriteOutcome = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Work Plan: wrapping up ${track}…`,
+            cancellable: false,
+          },
+          () => executeWrite(runner, { kind: "handoff", track }, confirmPublicWrite),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          outputChannel.clear();
+          outputChannel.append(outcome.stdout);
+          outputChannel.show(true);
+          vscode.window.showInformationMessage(
+            `Work Plan: handoff for ${track} — see the Work Plan output channel.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: handoff failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.notesVcs — manage opt-in local history for the private tier (#224)
   // -------------------------------------------------------------------------
 
