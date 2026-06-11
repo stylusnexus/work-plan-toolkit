@@ -68,6 +68,7 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 | **Select View** (filter icon) | **Filter** the tree *and* graph by a lens: a **single repo**, a **milestone**, a **status** (Active / Shipped / Parked), or **only blocked tracks**. Choose "All tracks" to clear the filter. |
 | **Sort Tracks** | **Order** tracks within each repo: **Default** (discovery order), **Blocked first**, **Most open**, or **Name (A–Z)**. |
 | **Daily Brief** | **Multi-track daily snapshot** across all your tracks — what's in-progress, closure-ready, and up next — relayed to the Work Plan output channel. Read-only. Equivalent to `work-plan brief`. Also in the command palette. |
+| **Search Issues** | **Find issues by title** across every track (and the Untracked bucket). Type a term with optional `%` wildcards — `%depends%` (contains), `fix%` (starts-with), `%audit` (ends-with); a bare word matches anywhere. Case-insensitive. Matches open in a dedicated **Issue Search** tab (grouped by repo, open issues first); click a row to open the issue on GitHub, or use the per-row reveal button to jump to its track in the tree. Searches the loaded snapshot — a **Refresh & re-run** link in the results re-pulls and re-searches. |
 
 When a lens or non-default sort is active, it's shown inline next to the **Tracks** view title (e.g. `milestone: v2.0.0 · blocked-first`) so the active filter is always visible — no need to reopen the quick-pick to remember why tracks are hidden. The label clears once you return to "All tracks" with the default sort.
 
