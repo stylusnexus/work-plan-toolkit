@@ -25,7 +25,9 @@ interface IconSpec {
 function categoryIcon(category: StatusCategory): IconSpec {
   switch (category) {
     case "blocked":
-      return { icon: "circle-filled", color: "charts.red" };
+      // Distinct SHAPE, not just a red tint — blocked vs active must be
+      // tellable apart without colour (#208).
+      return { icon: "circle-slash", color: "charts.red" };
     case "active":
       return { icon: "circle-filled", color: "charts.blue" };
     case "shipped":

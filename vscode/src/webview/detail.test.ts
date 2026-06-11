@@ -593,4 +593,12 @@ describe("renderDetail — table accessibility", () => {
     assert.ok(!html.includes("<img src=x"), `caption must escape the track name:\n${html}`);
     assert.ok(html.includes("&lt;img"), "expected the track name escaped in the caption");
   });
+
+  it("gives each move button an aria-label naming the issue (#214)", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('aria-label="Move issue #487 to another track"'),
+      `move button missing an issue-specific aria-label:\n${html}`,
+    );
+  });
 });

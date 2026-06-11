@@ -120,10 +120,10 @@ describe("buildHtml — graphDef embedding", () => {
     );
   });
 
-  it("graphDef is inside a <pre class=\"mermaid\"> element", () => {
+  it("graphDef is inside a <pre class=\"mermaid\" …> element", () => {
     const html = buildHtml(BASE);
-    // The pre.mermaid wraps graphDef
-    const preStart = html.indexOf('<pre class="mermaid">');
+    // The pre.mermaid wraps graphDef (now carries a11y attrs, so match the prefix).
+    const preStart = html.indexOf('<pre class="mermaid"');
     const preEnd = html.indexOf("</pre>");
     assert.ok(preStart !== -1, "Missing <pre class=\"mermaid\"> element");
     assert.ok(preEnd > preStart, "Missing </pre> after mermaid pre");
@@ -132,6 +132,24 @@ describe("buildHtml — graphDef embedding", () => {
       inside.includes(BASE.graphDef),
       `graphDef not inside the mermaid <pre>: ${inside.slice(0, 300)}`,
     );
+  });
+
+  it("the mermaid graph has a text alternative (role=img + aria-label) (#217)", () => {
+    const html = buildHtml({ ...BASE, trackName: "platform-health" });
+    assert.ok(
+      html.includes('<pre class="mermaid" role="img" aria-label="Dependency graph for platform-health">'),
+      `mermaid graph missing role/aria-label:\n${html}`,
+    );
+  });
+
+  it("the move button reveals on focus, not just hover (#214)", () => {
+    const html = buildHtml(BASE);
+    assert.ok(
+      html.includes(".move-btn:focus") && html.includes(".move-btn:focus-visible"),
+      "move-btn must reveal on :focus / :focus-visible, not hover-only",
+    );
+    // Resting state is dim-but-visible, never fully transparent.
+    assert.ok(!/\.move-btn\s*\{[^}]*opacity:\s*0;/.test(html), "move-btn must not rest at opacity:0");
   });
 });
 

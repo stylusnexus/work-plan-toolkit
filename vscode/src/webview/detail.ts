@@ -186,7 +186,7 @@ function renderIssueRow(track: Track, issue: Issue): string {
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
   const moveBtn = track.repo
-    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track">↗</button></td>`
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button></td>`
     : `<td class="move-col"></td>`;
   return (
     `<tr>` +
