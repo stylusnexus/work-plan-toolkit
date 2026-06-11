@@ -100,6 +100,8 @@ export class WorkPlanPanel {
   private _currentTrackName: string | null = null;
   /** Whether the graph is in focused mode (show only selected track's neighbourhood). */
   private _focused = true;
+  /** Theme-change subscription — re-renders so the graph follows the editor (#207). */
+  private _themeSub: vscode.Disposable | undefined;
 
   /** The track name most recently passed to render(), or null before first render. */
   get currentTrackName(): string | null {
@@ -155,12 +157,21 @@ export class WorkPlanPanel {
 
     // Dispose the singleton reference when the panel is closed by the user.
     panel.onDidDispose(() => {
+      this._themeSub?.dispose();
       WorkPlanPanel._instance = undefined;
     });
 
     // Handle messages from the webview.
     panel.webview.onDidReceiveMessage((raw: unknown) => {
       this._handleMessage(raw);
+    });
+
+    // Re-render when the editor's colour theme changes so the Mermaid graph
+    // (which can't read CSS vars) follows light/dark instead of staying dark (#207).
+    this._themeSub = vscode.window.onDidChangeActiveColorTheme(() => {
+      if (this._currentExport && this._currentTrackName) {
+        this.render(this._currentExport, this._currentTrackName);
+      }
     });
   }
 
@@ -202,7 +213,8 @@ export class WorkPlanPanel {
     const graphExp = this._focused
       ? exp
       : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
-    const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused });
+    const isDark = isDarkTheme();
+    const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused, dark: isDark });
     const detailHtml = renderDetail(track);
 
     const html = buildHtml({
@@ -214,6 +226,7 @@ export class WorkPlanPanel {
       trackName: selectedTrackName,
       isModule: false, // UMD bundle → global mermaid
       focused: this._focused,
+      isDark,
     });
 
     webview.html = html;
@@ -338,6 +351,19 @@ export function nonce(): string {
   const buf = new Uint8Array(32);
   globalThis.crypto.getRandomValues(buf);
   return Array.from(buf, (b) => chars[b % chars.length]).join("");
+}
+
+/**
+ * True when the editor is on a dark or high-contrast-dark theme. Drives the
+ * Mermaid theme + graph classDef palette so the webview follows the editor (#207).
+ * HighContrastLight is treated as light; HighContrast (dark) as dark.
+ */
+function isDarkTheme(): boolean {
+  const kind = vscode.window.activeColorTheme.kind;
+  return (
+    kind === vscode.ColorThemeKind.Dark ||
+    kind === vscode.ColorThemeKind.HighContrast
+  );
 }
 
 // ---------------------------------------------------------------------------

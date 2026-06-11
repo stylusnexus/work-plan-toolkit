@@ -23,6 +23,7 @@ const BASE: WebviewHtmlOptions = {
   trackName: "alpha",
   isModule: false,
   focused: false,
+  isDark: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,26 @@ describe("buildHtml — graphDef embedding", () => {
     );
     // Resting state is dim-but-visible, never fully transparent.
     assert.ok(!/\.move-btn\s*\{[^}]*opacity:\s*0;/.test(html), "move-btn must not rest at opacity:0");
+  });
+});
+
+describe("buildHtml — theme adaptivity (#207)", () => {
+  it("dark editor → Mermaid initialises with the dark theme", () => {
+    const html = buildHtml({ ...BASE, isDark: true });
+    assert.ok(html.includes('theme: "dark"'), `expected Mermaid dark theme:\n${html.slice(0, 400)}`);
+  });
+
+  it("light editor → Mermaid initialises with the default (light) theme, never hardcoded dark", () => {
+    const html = buildHtml({ ...BASE, isDark: false });
+    assert.ok(html.includes('theme: "default"'), "expected Mermaid default theme on a light editor");
+    assert.ok(!html.includes('theme: "dark"'), "must not hardcode the dark theme");
+  });
+
+  it("semantic pill/chip colours come from --vscode-charts-* tokens, not hardcoded hex", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes("--vscode-charts-blue"), "pills/steps should use the charts-blue token");
+    assert.ok(html.includes("--vscode-charts-red"), "blocker chips should use the charts-red token");
+    assert.ok(!html.includes("#1e3a5f") && !html.includes("#3b1f1f"), "old hardcoded pill/chip hex should be gone");
   });
 });
 

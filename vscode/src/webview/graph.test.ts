@@ -1005,3 +1005,17 @@ describe("mermaidLabel — hostile-title corpus (#197)", () => {
     );
   });
 });
+
+describe("toMermaid — theme-aware classDef fills (#207)", () => {
+  it("dark option emits the dark-theme classDef palette", () => {
+    const out = toMermaid(exp, "platform-health", { dark: true });
+    assert.ok(out.includes("classDef blocked fill:#5b1d1d"), `expected dark blocked fill:\n${out}`);
+    assert.ok(out.includes("classDef selected fill:#1e3a5f"), `expected dark selected fill:\n${out}`);
+  });
+
+  it("light option emits the light-theme classDef palette", () => {
+    const out = toMermaid(exp, "platform-health", { dark: false });
+    assert.ok(out.includes("classDef blocked fill:#fee2e2"), `expected light blocked fill:\n${out}`);
+    assert.ok(out.includes("classDef selected fill:#dbeafe"), `expected light selected fill:\n${out}`);
+  });
+});
