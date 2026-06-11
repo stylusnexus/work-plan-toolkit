@@ -112,7 +112,7 @@
       },
       {
         "command": "workPlan.slot",
-        "title": "Slot Issue into Track",
+        "title": "Add Issue to Track",
         "category": "Work Plan"
       },
       {
@@ -147,12 +147,12 @@
       },
       {
         "command": "workPlan.slotUntracked",
-        "title": "Slot Untracked Issue into Track",
+        "title": "Add Untracked Issue to Track",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.batchSlotUntracked",
-        "title": "Batch Slot Untracked Issues into Track",
+        "title": "Add Untracked Issues to Track",
         "category": "Work Plan"
       },
       {

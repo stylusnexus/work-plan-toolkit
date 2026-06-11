@@ -75,7 +75,7 @@ The menu is grouped, with a separator between each group: **everyday edits** fir
 | Command | What it does |
 |---|---|
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
-| **Slot Issue into Track** | Add a GitHub issue number to the track. |
+| **Add Issue to Track** | Add a GitHub issue number to the track. |
 | **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
 | **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
 | *— separator —* | |
@@ -85,7 +85,7 @@ The menu is grouped, with a separator between each group: **everyday edits** fir
 | **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. **Abandon** asks for confirmation first (it's the destructive close). |
 | **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug, then confirm; a public-repo write is additionally gated by the leak-guard modal. |
 
-(On an **Untracked** bucket item, right-click gives **Slot Untracked Issue into Track** — file a loose issue into a track.)
+(On an **Untracked** bucket item, right-click gives **Add Untracked Issue to Track** — file a loose issue into a track.)
 
 ### Create & setup (the `⋯` overflow)
 
