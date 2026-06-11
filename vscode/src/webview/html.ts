@@ -137,6 +137,14 @@ mermaid.run();
       return;
     }
 
+    // Issue-cap "Show all" disclosure toggle
+    var capToggle = target.closest(".issue-cap-toggle");
+    if (capToggle) {
+      var capBand = capToggle.closest(".issue-cap-band");
+      if (capBand) { capBand.classList.toggle("collapsed"); }
+      return;
+    }
+
     // data-track → selectTrack
     var trackBtn = target.closest("[data-track]");
     if (trackBtn) {
@@ -316,6 +324,40 @@ mermaid.run();
     }
     tr:hover .move-btn { opacity: 1; }
     .move-btn:hover { background: var(--card-bg); }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .issue-cap-band.collapsed tr:not(.issue-cap-row) { display: none; }
+    .issue-cap-row td {
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 6px;
+    }
+    .issue-cap-toggle {
+      background: none;
+      border: none;
+      color: var(--link);
+      cursor: pointer;
+      font: inherit;
+      padding: 0;
+      text-align: left;
+    }
+    .issue-cap-toggle:hover { text-decoration: underline; }
+    .issue-cap-marker {
+      display: inline-block;
+      transition: transform 0.15s;
+      font-size: 0.85em;
+      margin-right: 2px;
+    }
+    .issue-cap-band:not(.collapsed) .issue-cap-marker { transform: rotate(90deg); }
 
   </style>
 </head>
