@@ -884,6 +884,18 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (!state) return; // cancelled
 
+        // Abandon is the destructive close — it archives the track to
+        // archive/abandoned/. Gate it behind an explicit modal (#219); shipped
+        // and parked are routine lifecycle and proceed without the extra step.
+        if (state === "abandoned") {
+          const ok = await vscode.window.showWarningMessage(
+            `Abandon track "${track}"? It will be archived to archive/abandoned/.`,
+            { modal: true },
+            "Abandon track",
+          );
+          if (ok !== "Abandon track") return;
+        }
+
         const noteRaw = await vscode.window.showInputBox({
           prompt: "Wrap-up note (optional — press Enter or Escape to skip)",
         });
@@ -936,6 +948,15 @@ export function activate(context: vscode.ExtensionContext): void {
           },
         });
         if (newSlug === undefined) return; // cancelled
+
+        // Rename moves the track's file on disk and rewrites its frontmatter —
+        // confirm before doing it (#219).
+        const okRename = await vscode.window.showWarningMessage(
+          `Rename track "${track}" to "${newSlug}"? This moves its file and rewrites the frontmatter.`,
+          { modal: true },
+          "Rename track",
+        );
+        if (okRename !== "Rename track") return;
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: renaming ${track} → ${newSlug}…`,

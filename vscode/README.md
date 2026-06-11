@@ -82,8 +82,8 @@ The menu is grouped, with a separator between each group: **everyday edits** fir
 | **Sync Issue States from GitHub** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
 | **Check Label Drift (preview)** | Read-only draft of where the track's frontmatter membership disagrees with GitHub labels (no writes). Equivalent to `work-plan reconcile <track>` in draft mode. |
 | *— separator —* | |
-| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
-| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug; a public-repo write is gated by the confirm modal. |
+| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. **Abandon** asks for confirmation first (it's the destructive close). |
+| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug, then confirm; a public-repo write is additionally gated by the leak-guard modal. |
 
 (On an **Untracked** bucket item, right-click gives **Slot Untracked Issue into Track** — file a loose issue into a track.)
 
