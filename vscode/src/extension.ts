@@ -683,7 +683,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const issue = parseInt(raw, 10);
 
         const outcome: WriteOutcome = await withWriteProgress(
-          `Work Plan: slotting #${issue} into ${track}…`,
+          `Work Plan: adding #${issue} to ${track}…`,
           () => executeWrite(
             runner,
             { kind: "slot", track, issue },
@@ -693,7 +693,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: slotted #${issue} into ${track}`);
+          vscode.window.showInformationMessage(`Work Plan: added #${issue} to ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -816,7 +816,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!track) return; // cancelled
 
         const outcome: WriteOutcome = await withWriteProgress(
-          `Work Plan: slotting #${issue} into ${track}…`,
+          `Work Plan: adding #${issue} to ${track}…`,
           () => executeWrite(
             runner,
             { kind: "slot", track, issue },
@@ -826,7 +826,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: slotted #${issue} into ${track}`);
+          vscode.window.showInformationMessage(`Work Plan: added #${issue} to ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -882,7 +882,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!track) return; // cancelled
 
         const outcome: WriteOutcome = await withWriteProgress(
-          `Work Plan: slotting ${issueNumbers.length} issue(s) into ${track}…`,
+          `Work Plan: adding ${issueNumbers.length} issue(s) to ${track}…`,
           () => executeWrite(
             runner,
             { kind: "batchSlot", track, issues: issueNumbers },
@@ -892,7 +892,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: slotted ${issueNumbers.length} issue(s) into ${track}`);
+          vscode.window.showInformationMessage(`Work Plan: added ${issueNumbers.length} issue(s) to ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -1312,7 +1312,7 @@ export function activate(context: vscode.ExtensionContext): void {
         });
 
         const pick = await vscode.window.showQuickPick(items, {
-          placeHolder: "Work Plan: local history (private notes_root tier)",
+          placeHolder: "Work Plan: local history (private notes)",
         });
         if (!pick) return;
 
