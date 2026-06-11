@@ -70,17 +70,22 @@ Every action runs the CLI under the hood. Commands live where they're relevant �
 
 ### Track actions (right-click a track)
 
+The menu is grouped, with a separator between each group: **everyday edits** first, then **GitHub-sync** actions, then the **destructive** actions (Close / Rename) fenced at the bottom so they're harder to hit by accident.
+
 | Command | What it does |
 |---|---|
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
-| **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
 | **Slot Issue into Track** | Add a GitHub issue number to the track. |
 | **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
-| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
-| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug; a public-repo write is gated by the confirm modal. |
+| **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
+| *— separator —* | |
 | **Sync Issue States from GitHub** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
 | **Check Label Drift (preview)** | Read-only draft of where the track's frontmatter membership disagrees with GitHub labels (no writes). Equivalent to `work-plan reconcile <track>` in draft mode. |
-| **Slot Untracked Issue into Track** | From a repo's Untracked bucket — file a loose issue into a track. |
+| *— separator —* | |
+| **Close Track** | Mark it shipped / parked / abandoned (with an optional wrap-up note); shipped & abandoned get archived. |
+| **Rename Track** | Rename the track's slug — moves its file and updates the frontmatter. Enter a new lowercase slug; a public-repo write is gated by the confirm modal. |
+
+(On an **Untracked** bucket item, right-click gives **Slot Untracked Issue into Track** — file a loose issue into a track.)
 
 ### Create & setup (the `⋯` overflow)
 

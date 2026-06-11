@@ -208,42 +208,42 @@
         {
           "command": "workPlan.editFields",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@1"
-        },
-        {
-          "command": "workPlan.setNext",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@2"
-        },
-        {
-          "command": "workPlan.refreshMd",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@3"
-        },
-        {
-          "command": "workPlan.reconcile",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@4"
+          "group": "1_workPlanEdit@1"
         },
         {
           "command": "workPlan.slot",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@5"
-        },
-        {
-          "command": "workPlan.close",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@6"
+          "group": "1_workPlanEdit@2"
         },
         {
           "command": "workPlan.move",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@7"
+          "group": "1_workPlanEdit@3"
+        },
+        {
+          "command": "workPlan.setNext",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanEdit@4"
+        },
+        {
+          "command": "workPlan.refreshMd",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "5_workPlanSync@1"
+        },
+        {
+          "command": "workPlan.reconcile",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "5_workPlanSync@2"
+        },
+        {
+          "command": "workPlan.close",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@1"
         },
         {
           "command": "workPlan.renameTrack",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanWrite@8"
+          "group": "9_workPlanDanger@2"
         },
         {
           "command": "workPlan.slotUntracked",
