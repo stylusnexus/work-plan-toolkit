@@ -10,6 +10,7 @@ from lib.config import (
     resolve_local_path_for_folder,
     is_valid_git_repo,
 )
+from lib.plan_worktree import shared_tier_dir
 from lib.git_state import parse_iso_timestamp
 
 _PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -210,8 +211,11 @@ def _discover_shared_tracks(cfg: dict, include_archive: bool = False,
         if not is_valid_git_repo(local_path):
             continue
         github_repo = entry.get("github")
-        notes_dir = local_path / ".work-plan"
-        if not notes_dir.is_dir():
+        # The shared tier is the working tree's .work-plan/ — UNLESS the repo
+        # pins a `plan_branch`, in which case it's read from a worktree checked
+        # out at that branch so planning never rides on code branches (#260).
+        notes_dir = shared_tier_dir(entry)
+        if notes_dir is None or not notes_dir.is_dir():
             continue
         for md_path in sorted(notes_dir.rglob("*.md")):
             # Skip dotfiles, README, and dash-led names (a `--repo.md` file
