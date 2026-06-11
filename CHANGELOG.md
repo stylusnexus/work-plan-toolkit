@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.11+60c2651 — 2026-06-11 (#276)
+
+feat: VS Code extension 0.5.0 — issue search, daily-driver commands, lens/sort indicator
+
+VS Code extension **0.5.0** — a daily-driver + discoverability release. Bundles four feature PRs plus a screenshot refresh.
+
+## Highlights
+
+- **feat(vscode): keyword issue search (#272)** — new **Search Issues…** command (title-bar `$(search)` + palette) matches issue titles across every track and the Untracked bucket with a `%wildcard%` grammar: `%depends%` (contains), `fix%` (starts-with), `%audit` (ends-with), bare word = contains; case-insensitive. Matching is client-side. Results open in a dedicated, reusable **Issue Search** tab (grouped by repo, open issues first) — click a row to open on GitHub, or use the per-row reveal button to jump to the owning track in the tree. Strict-CSP, accessible, theme-adaptive; an "as of `<generated_at>`" line + Refresh & re-run.
+
+- **feat(vscode): daily-driver relay commands (#210)** — **Daily Brief**, **Re-orient (Where was I)**, and **Wrap Up Session (Handoff)** are now runnable from the title bar / track right-click menu / palette, relaying the CLI's verbatim output to the Work Plan output channel. Handoff routes through the public-write confirm flow.
+
+- **feat(vscode): active lens + sort indicator (#209)** — the active filter/sort is surfaced inline under the Tracks view title (e.g. `milestone: v2.0.0 · blocked-first`), clearing when you return to All tracks + default sort.
+
+- **fix(vscode): numeric-aware milestone sort (#268)** — milestone entries in the Select View filter now sort numerically (`v0.5.0` before `v0.10.0`) instead of issue-iteration order.
+
+- **docs(vscode): refresh dependency-graph screenshot (#223)** — community contribution (@Hritik-Kumar-dev): neutral demo-data screenshot showing current 0.4.x/0.5.0 features.
+
+## Versions
+- VS Code extension hand-bumped **0.4.2 → 0.5.0** (`vscode/package.json`); `## Status` line + root README updated.
+- CLI VERSION (CalVer) + npm version are stamped automatically on this merge.
+
+## Verification
+- vscode: typecheck clean, **416** tests pass, production build OK.
+- Full Python + vscode CI matrix green on dev.
+
 ## 2026.06.11+51bbb9a — 2026-06-11 (#267)
 
 fix(vscode): render visibility×tier badge as Unicode glyphs in the tree
