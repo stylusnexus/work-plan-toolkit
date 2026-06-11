@@ -396,28 +396,41 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
-  // Clicking a milestone band header in the detail panel filters the whole view
-  // by that milestone (#218) — same milestone lens the Select View quick-pick
-  // applies. Re-render the panel from the now-filtered export, falling back to
-  // the first visible track if the current one was filtered out.
+  // Clicking the milestone filter control in the detail panel filters the whole
+  // view by that milestone (#218) — same milestone lens the Select View quick-pick
+  // applies. Re-render the panel from the now-filtered export, falling back to the
+  // first visible track if the current one was filtered out. The success toast
+  // carries a "Clear filter" action so the filter is reversible at the point of
+  // action, not only from the title-bar Select View (#249).
+  const rerenderPanelForLens = (): void => {
+    const panel = WorkPlanPanel.getCurrent();
+    const exp = provider.currentExport;
+    if (!panel || !exp) return;
+    const currentTrack = panel.currentTrackName;
+    const trackStillVisible =
+      currentTrack !== null && exp.tracks.some(t => t.name === currentTrack);
+    const trackToRender = trackStillVisible ? currentTrack! : exp.tracks[0]?.name ?? null;
+    if (trackToRender) {
+      panel.render(exp, trackToRender);
+    } else {
+      panel.renderEmpty("No tracks match the selected view.");
+    }
+  };
+
   WorkPlanPanel.setFilterHandler((milestone: string) => {
     provider.setLens({ kind: "milestone", milestone });
-    const panel = WorkPlanPanel.getCurrent();
-    const filteredExp = provider.currentExport;
-    if (panel && filteredExp) {
-      const currentTrack = panel.currentTrackName;
-      const trackStillVisible =
-        currentTrack !== null && filteredExp.tracks.some(t => t.name === currentTrack);
-      const trackToRender = trackStillVisible
-        ? currentTrack!
-        : filteredExp.tracks[0]?.name ?? null;
-      if (trackToRender) {
-        panel.render(filteredExp, trackToRender);
-      } else {
-        panel.renderEmpty("No tracks match the selected view.");
-      }
-    }
-    vscode.window.showInformationMessage(`Work Plan: filtered the view to milestone "${milestone}".`);
+    rerenderPanelForLens();
+    void vscode.window
+      .showInformationMessage(
+        `Work Plan: filtered the view to milestone "${milestone}".`,
+        "Clear filter",
+      )
+      .then((choice) => {
+        if (choice === "Clear filter") {
+          provider.setLens({ kind: "all" });
+          rerenderPanelForLens();
+        }
+      }, () => { /* ignore */ });
   });
 
   // Output channel for reconcile draft output (created once; disposed via subscriptions).

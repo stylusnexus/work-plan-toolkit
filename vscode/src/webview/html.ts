@@ -131,7 +131,7 @@ mermaid.run();
     if (!target) { return; }
 
     // Milestone filter button → apply that milestone's lens to the whole view
-    var msFilter = target.closest(".milestone-filter");
+    var msFilter = target.closest(".milestone-filter-btn");
     if (msFilter) {
       post({ type: "filterMilestone", milestone: msFilter.getAttribute("data-milestone") });
       return;
@@ -329,16 +329,31 @@ mermaid.run();
     }
     /* Both band-header controls are real <button>s (keyboard-operable); strip
        the native chrome so they read as the old inline header. */
-    .milestone-toggle-btn,
-    .milestone-filter {
+    /* The whole caret+name+count is the collapse button — left-aligned, no chrome. */
+    .milestone-toggle-btn {
       background: none;
       border: none;
       color: inherit;
       font: inherit;
       cursor: pointer;
       padding: 0;
+      text-align: left;
     }
-    .milestone-filter:hover { text-decoration: underline; }
+    /* The filter control reads as a distinct, explicit affordance (a small pill),
+       not a second click target hiding in the header text (#248). */
+    .milestone-filter-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--link);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.8em;
+      margin-left: 8px;
+      padding: 0 7px;
+      vertical-align: 1px;
+    }
+    .milestone-filter-btn:hover { background: var(--card-bg); }
     .milestone-toggle {
       display: inline-block;
       transition: transform 0.15s;

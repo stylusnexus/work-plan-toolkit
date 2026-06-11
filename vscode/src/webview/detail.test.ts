@@ -603,12 +603,22 @@ describe("renderDetail — table accessibility", () => {
   });
 });
 
-describe("renderDetail — milestone band filter + keyboard toggle (#218)", () => {
-  it("renders the milestone name as a filter button carrying data-milestone", () => {
+describe("renderDetail — milestone band filter + keyboard toggle (#218/#248)", () => {
+  it("renders an explicit filter control (separate from the name) with data-milestone + aria-label", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('<button class="milestone-filter" data-milestone="M1"'),
-      `expected a milestone-filter button for M1:\n${html}`,
+      html.includes('<button class="milestone-filter-btn" data-milestone="M1" title="Filter the view to M1" aria-label="Filter the view to M1">filter</button>'),
+      `expected a distinct, aria-labelled filter button for M1:\n${html}`,
+    );
+  });
+
+  it("the milestone name is inside the collapse button, not the filter control (#248)", () => {
+    const html = renderDetail(platformHealth);
+    // The name + count live in the toggle button so clicking the header strip
+    // collapses (the dominant expectation); filtering is the separate control.
+    assert.ok(
+      /<button class="milestone-toggle-btn"[^>]*>\s*<span class="milestone-toggle">▸<\/span> <b>M1<\/b>/.test(html),
+      `milestone name should sit inside the collapse button:\n${html}`,
     );
   });
 
