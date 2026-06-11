@@ -65,19 +65,25 @@ export function availableLenses(exp: Export): LensChoice[] {
     }
   }
 
-  // 3. Distinct non-empty milestones in first-seen order
+  // 3. Distinct non-empty milestones, sorted numeric-aware ascending so
+  //    version-like names order naturally (v0.5.0 before v0.10.0) instead of
+  //    appearing in issue-iteration order (#268).
   const seenMilestones = new Set<string>();
   for (const track of exp.tracks) {
     for (const issue of track.issues) {
-      if (issue.milestone !== null && issue.milestone !== "" && !seenMilestones.has(issue.milestone)) {
+      if (issue.milestone !== null && issue.milestone !== "") {
         seenMilestones.add(issue.milestone);
-        choices.push({
-          id: `milestone:${issue.milestone}`,
-          label: `Milestone: ${issue.milestone}`,
-          lens: { kind: "milestone", milestone: issue.milestone },
-        });
       }
     }
+  }
+  for (const milestone of [...seenMilestones].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  )) {
+    choices.push({
+      id: `milestone:${milestone}`,
+      label: `Milestone: ${milestone}`,
+      lens: { kind: "milestone", milestone },
+    });
   }
 
   // 4. Status lenses — one per category that has at least one member.
