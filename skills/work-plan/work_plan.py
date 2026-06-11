@@ -236,12 +236,16 @@ def main(argv: list[str]) -> int:
     # Snapshot notes_root's dirty set BEFORE the command so we can commit only
     # what this command changes (and never fold in pre-existing edits, #244-vcs).
     pre = _notes_precommit_state(sub)
+    # Same discipline for each plan_branch repo's shared tier (#260): snapshot
+    # the dirty .work-plan/ paths per worktree BEFORE the run, commit only the
+    # delta AFTER — so an unrelated subcommand never sweeps in pre-existing edits.
+    shared_pre = _shared_precommit_state(sub)
     rc = module.run(argv[2:])
     if rc == 0:
         if pre is not None:
             _commit_changed_notes(pre, argv[1:])
-        # Commit any shared-tier writes on their plan_branch via the worktree (#260).
-        _commit_shared_writes(sub, argv[1:])
+        if shared_pre:
+            _commit_shared_writes(shared_pre, argv[1:])
     return rc
 
 
@@ -309,39 +313,68 @@ def _commit_changed_notes(pre, parts: list[str]) -> None:
         return
 
 
-def _commit_shared_writes(sub: str, parts: list[str]) -> None:
-    """After a successful mutating command, commit each `plan_branch` repo's
-    shared-tier (.work-plan/) changes on its plan_branch via the worktree (#260).
+def _shared_precommit_state(sub: str):
+    """Snapshot each `plan_branch` repo's dirty `.work-plan/` paths BEFORE a
+    command, so we can later commit only what the command changed. Returns a
+    list of (key, branch, worktree, before_paths) — one per plan_branch repo
+    whose worktree could be ensured — or None. Best-effort; never raises.
 
-    Mirrors the notes_root auto-commit: read-only verbs skip; repos without a
-    plan_branch (the legacy default) are untouched — their shared tier is the
-    working tree and isn't auto-committed. Best-effort; never raises and never
-    changes the command's exit code. Local commit only (pushing is a deliberate
-    follow-up step).
+    Read-only verbs and legacy (no-plan_branch) repos are skipped — the latter's
+    shared tier is the working tree and is never auto-committed.
     """
     if sub.lstrip("-") in _READONLY_SUBCOMMANDS:
-        return
+        return None
     try:
         from lib.config import load_config
         from lib import plan_worktree
         from pathlib import Path
 
         cfg = load_config()
-        message = "work-plan " + " ".join(parts)
+        states = []
         for key, entry in (cfg.get("repos") or {}).items():
             if not entry or not entry.get("plan_branch") or not entry.get("local"):
                 continue
+            branch = entry["plan_branch"]
             worktree = plan_worktree.ensure_worktree(
-                Path(entry["local"]).expanduser(), entry["plan_branch"]
+                Path(entry["local"]).expanduser(), branch
             )
             if worktree is None:
                 continue
-            sha = plan_worktree.commit_shared_tier(worktree, message)
-            if sha:
-                print(f"⏺ shared plan committed {sha} on {entry['plan_branch']} "
-                      f"({key}) — not yet pushed", file=sys.stderr)
+            before = plan_worktree.dirty_work_plan_paths(worktree)
+            states.append((key, branch, worktree, set(before)))
+        return states or None
+    except Exception:
+        return None
+
+
+def _commit_shared_writes(pre_states, parts: list[str]) -> None:
+    """Commit ONLY the `.work-plan/` paths each command newly changed (after −
+    before) per plan_branch repo, on that repo's plan_branch via its worktree
+    (#260). Leaves pre-existing dirty plan files untouched. Best-effort; never
+    raises and never changes the command's exit code. Local commit only (pushing
+    is a deliberate follow-up step).
+    """
+    try:
+        from lib import plan_worktree
     except Exception:
         return
+    message = "work-plan " + " ".join(parts)
+    for key, branch, worktree, before in pre_states:
+        # Per-repo isolation: one repo's git failure must not skip the others.
+        try:
+            changed = sorted(set(plan_worktree.dirty_work_plan_paths(worktree)) - before)
+            if not changed:
+                continue
+            sha = plan_worktree.commit_shared_tier(worktree, message, changed)
+            if sha:
+                print(f"⏺ shared plan committed {sha} on {branch} ({key}) — "
+                      f"not yet pushed", file=sys.stderr)
+            else:
+                print(f"⚠ shared plan changes in {key} ({branch}) were NOT "
+                      f"committed (git refused) — review the worktree.",
+                      file=sys.stderr)
+        except Exception:
+            continue
 
 
 if __name__ == "__main__":

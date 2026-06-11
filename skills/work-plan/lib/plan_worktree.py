@@ -10,9 +10,6 @@ behaviour, unchanged.
 
 Never raises — git absence/failure/timeout degrades to "no shared tier" (None),
 exactly like notes_vcs. A read must never break discovery.
-
-NOTE (phasing): this resolves the *path*. Committing shared-tier writes on
-`plan_branch` (so they actually travel) is a later phase — see #260.
 """
 import hashlib
 import subprocess
@@ -40,8 +37,17 @@ def _git(cwd, *args, timeout: int = GIT_TIMEOUT):
 
 
 def _worktree_dir(local_path: Path) -> Path:
-    """Stable cache dir for this repo's plan worktree (keyed by its local path)."""
-    key = hashlib.sha256(str(local_path.resolve()).encode("utf-8")).hexdigest()[:16]
+    """Stable cache dir for this repo's plan worktree (keyed by its local path).
+
+    `resolve()` can touch the filesystem and raise OSError (symlink loop,
+    permissions) — fall back to the un-resolved absolute path so this never
+    raises and the never-raise contract holds upstream.
+    """
+    try:
+        resolved = str(local_path.resolve())
+    except OSError:
+        resolved = str(local_path.absolute())
+    key = hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
     return _WORKTREE_ROOT / key
 
 
@@ -68,7 +74,14 @@ def ensure_worktree(local_path: Path, branch: str) -> Optional[Path]:
     dest = _worktree_dir(local_path)
     # A worktree's `.git` is a gitdir-pointer file (exists() catches file + dir).
     if (dest / ".git").exists():
-        return dest
+        # Reuse ONLY if it's still checked out at `branch`. A worktree left on
+        # another branch (manual `git checkout`, or the branch was renamed)
+        # would otherwise get plan commits on the wrong branch — refuse and
+        # degrade to "no shared tier" rather than commit somewhere unexpected.
+        head = _git(dest, "rev-parse", "--abbrev-ref", "HEAD")
+        if head is not None and head.returncode == 0 and head.stdout.strip() == branch:
+            return dest
+        return None
     if not _branch_exists(local_path, branch):
         return None
     try:
@@ -81,25 +94,57 @@ def ensure_worktree(local_path: Path, branch: str) -> Optional[Path]:
     return dest
 
 
-def commit_shared_tier(worktree: Path, message: str) -> Optional[str]:
-    """Commit the worktree's `.work-plan/` changes (only) with `message`; return
-    the new short SHA, or None. Stages ONLY `.work-plan/` so a non-orphan
-    `plan_branch` worktree never sweeps in code/other files. No-op when nothing
-    under `.work-plan/` is staged. Never raises.
+def dirty_work_plan_paths(worktree: Path) -> list:
+    """Repo-relative paths under `.work-plan/` with uncommitted changes in the
+    worktree (staged, unstaged, or untracked). Empty list on any failure or a
+    clean tree. Never raises.
 
-    Commits on whatever branch the worktree is checked out — i.e. `plan_branch`.
-    Local commit only; pushing the branch (to actually share it) is a separate,
-    deliberate step (#260, follow-up).
+    Mirrors notes_vcs.dirty_paths: the dispatcher snapshots these BEFORE a
+    command and commits only the paths that appear AFTER — so a pre-existing
+    dirty `.work-plan/` file from unrelated manual edits is never swept into a
+    plan commit triggered by an unrelated subcommand.
+    """
+    wt = Path(worktree).expanduser()
+    proc = _git(wt, "status", "--porcelain", "--", ".work-plan")
+    if proc is None or proc.returncode != 0:
+        return []
+    paths = []
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        # Porcelain v1: "XY <path>" (or "XY <old> -> <new>" for renames).
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        paths.append(path.strip())
+    return paths
+
+
+def commit_shared_tier(worktree: Path, message: str, paths) -> Optional[str]:
+    """Commit exactly `paths` (repo-relative, all under `.work-plan/`) in the
+    worktree with `message`; return the new short SHA, or None. Never raises.
+
+    Stages ONLY the explicit `paths` — not a blanket `.work-plan/` add — so a
+    `plan_branch` worktree never sweeps in code, other files, or pre-existing
+    dirty plan files the triggering command didn't touch. No-op when `paths` is
+    empty or nothing stages.
+
+    Commits on whatever branch the worktree is checked out — the caller has
+    already verified that's `plan_branch`. Local commit only; pushing the branch
+    (to actually share it) is a separate, deliberate step (#260, follow-up).
     """
     wt = Path(worktree).expanduser()
     if not (wt / ".work-plan").is_dir():
         return None
-    if _git(wt, "add", "--", ".work-plan") is None:
+    scoped = [p for p in (paths or []) if p]
+    if not scoped:
         return None
-    staged = _git(wt, "diff", "--cached", "--quiet", "--", ".work-plan")
+    if _git(wt, "add", "--", *scoped) is None:
+        return None
+    staged = _git(wt, "diff", "--cached", "--quiet", "--", *scoped)
     if staged is None or staged.returncode == 0:
         return None
-    proc = _git(wt, "commit", "-m", message)
+    proc = _git(wt, "commit", "-m", message, "--", *scoped)
     if proc is None or proc.returncode != 0:
         return None
     head = _git(wt, "rev-parse", "--short", "HEAD")
