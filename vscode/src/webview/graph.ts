@@ -112,7 +112,10 @@ function _toMermaidFull(exp: Export, selectedTrack: string | undefined, dark: bo
   lines.push("  %% Track nodes");
   for (const track of exp.tracks) {
     const id = tids.get(track.name)!;
-    const label = mermaidLabel(track.name);
+    // Mark blocked nodes with a non-colour glyph too — the classDef fill alone
+    // signals blocked by colour, which colourblind users can't read (#244).
+    const marker = statusCategory(track) === "blocked" ? "⛔ " : "";
+    const label = marker + mermaidLabel(track.name);
     lines.push(`  ${id}["${label}"]`);
   }
 
@@ -260,7 +263,8 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   for (const tr of exp.tracks) {
     if (!includedTrackNames.has(tr.name)) continue;
     const id = tids.get(tr.name)!;
-    const label = mermaidLabel(tr.name);
+    const marker = statusCategory(tr) === "blocked" ? "⛔ " : "";
+    const label = marker + mermaidLabel(tr.name);
     lines.push(`  ${id}["${label}"]`);
   }
 

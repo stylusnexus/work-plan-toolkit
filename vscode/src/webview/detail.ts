@@ -156,7 +156,7 @@ export function renderDetail(track: Track): string {
     parts.push("None.");
   } else {
     const depChips = track.depends_on.map(name =>
-      `<span class="depends-chip" data-track="${esc(name)}">${esc(name)}</span>`,
+      `<button type="button" class="depends-chip" data-track="${esc(name)}">${esc(name)}</button>`,
     );
     parts.push(depChips.join(" "));
   }
@@ -220,7 +220,7 @@ function renderCapToggle(total: number, hidden: number): string {
   return (
     `<tbody class="issue-cap-band collapsed">` +
     `<tr class="issue-cap-row"><td colspan="5">` +
-    `<button type="button" class="issue-cap-toggle">` +
+    `<button type="button" class="issue-cap-toggle" aria-expanded="false">` +
     `<span class="issue-cap-marker">▸</span> Show all ${total} issues (${hidden} more)` +
     `</button></td></tr>`
   );
