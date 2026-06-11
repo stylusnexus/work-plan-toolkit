@@ -319,10 +319,14 @@ mermaid.run();
       cursor: pointer;
       font-size: 0.85em;
       padding: 0 4px;
-      opacity: 0;
+      opacity: 0.45;
       transition: opacity 0.1s;
     }
-    tr:hover .move-btn { opacity: 1; }
+    /* Reveal on row-hover AND on keyboard focus — never opacity:0, or the
+       button is invisible to keyboard/touch/AT users (#214). */
+    tr:hover .move-btn,
+    .move-btn:focus,
+    .move-btn:focus-visible { opacity: 1; }
     .move-btn:hover { background: var(--card-bg); }
     .sr-only {
       position: absolute;
@@ -368,7 +372,7 @@ mermaid.run();
     <h2>Dependency graph</h2>
     <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
   </div>
-  <pre class="mermaid">${graphDef}</pre>
+  <pre class="mermaid" role="img" aria-label="Dependency graph for ${trackNameEsc}">${graphDef}</pre>
 
   <h2>Detail</h2>
   <div class="detail-card">
