@@ -99,24 +99,43 @@ def dirty_work_plan_paths(worktree: Path) -> list:
     worktree (staged, unstaged, or untracked). Empty list on any failure or a
     clean tree. Never raises.
 
-    Mirrors notes_vcs.dirty_paths: the dispatcher snapshots these BEFORE a
-    command and commits only the paths that appear AFTER — so a pre-existing
-    dirty `.work-plan/` file from unrelated manual edits is never swept into a
-    plan commit triggered by an unrelated subcommand.
+    The dispatcher snapshots these BEFORE a command and commits only the paths
+    that appear AFTER — so a pre-existing dirty `.work-plan/` file from unrelated
+    manual edits is never swept into a plan commit triggered by an unrelated
+    subcommand.
+
+    Uses NUL-delimited porcelain (`-z`): unlike the line format, `-z` never
+    quote-wraps or octal-escapes paths, so filenames with spaces or non-ASCII
+    round-trip verbatim back into `git add` (the line format would wrap them in
+    quotes and break the commit). `-uall` enumerates untracked files
+    individually instead of collapsing a new dir to one `dir/` entry, so the
+    before/after delta is per-file. A staged rename's source path is captured
+    too, so the rename commits as a unit (dest add + source delete).
     """
     wt = Path(worktree).expanduser()
-    proc = _git(wt, "status", "--porcelain", "--", ".work-plan")
+    proc = _git(wt, "-c", "core.quotepath=false", "status", "--porcelain", "-z",
+                "--untracked-files=all", "--", ".work-plan")
     if proc is None or proc.returncode != 0:
         return []
+    fields = proc.stdout.split("\0")
     paths = []
-    for line in proc.stdout.splitlines():
-        if not line.strip():
+    i, n = 0, len(fields)
+    while i < n:
+        entry = fields[i]
+        if len(entry) < 4:  # trailing empty field / malformed line
+            i += 1
             continue
-        # Porcelain v1: "XY <path>" (or "XY <old> -> <new>" for renames).
-        path = line[3:]
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        paths.append(path.strip())
+        status, path = entry[:2], entry[3:]
+        if path:
+            paths.append(path)
+        # Rename/copy: porcelain -z follows the entry with the source path in
+        # the NEXT NUL field ("R  <dest>\0<source>"). Commit both so the rename
+        # lands atomically.
+        if "R" in status or "C" in status:
+            i += 1
+            if i < n and fields[i]:
+                paths.append(fields[i])
+        i += 1
     return paths
 
 
@@ -146,6 +165,10 @@ def commit_shared_tier(worktree: Path, message: str, paths) -> Optional[str]:
         return None
     proc = _git(wt, "commit", "-m", message, "--", *scoped)
     if proc is None or proc.returncode != 0:
+        # Unstage what we just staged so a later, unrelated command doesn't
+        # commit this residue under its own message (the worktree index is
+        # durable across invocations). Working-tree content is preserved.
+        _git(wt, "reset", "--quiet", "--", *scoped)
         return None
     head = _git(wt, "rev-parse", "--short", "HEAD")
     if head is None or head.returncode != 0:

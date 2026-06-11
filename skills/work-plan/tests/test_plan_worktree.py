@@ -56,7 +56,7 @@ class _FakeGit:
             return _ok("deadbee\n") if self.branch_exists else _fail()
         if sub == "worktree" and len(args) > 1 and args[1] == "add":
             return _ok() if self.add_ok else _fail()
-        if sub == "status" and "--porcelain" in args:
+        if sub == "-c" and "status" in args:  # -c core.quotepath=false status -z …
             return _ok(self.porcelain)
         if sub == "diff" and "--cached" in args:
             return MagicMock(returncode=1 if self.staged else 0, stdout="", stderr="")
@@ -164,19 +164,29 @@ class ReuseBranchVerifyTest(unittest.TestCase):
 
 
 class DirtyWorkPlanPathsTest(unittest.TestCase):
+    # Fixtures are NUL-delimited porcelain (`status --porcelain -z`).
     def test_parses_porcelain_paths(self):
         with tempfile.TemporaryDirectory() as d:
-            fake = _FakeGit(porcelain=" M .work-plan/a.md\n?? .work-plan/b.md\n")
+            fake = _FakeGit(porcelain=" M .work-plan/a.md\0?? .work-plan/b.md\0")
             with patch.object(pw, "_git", fake):
                 got = pw.dirty_work_plan_paths(Path(d))
             self.assertEqual(got, [".work-plan/a.md", ".work-plan/b.md"])
 
-    def test_rename_takes_new_path(self):
+    def test_spaced_and_unicode_paths_roundtrip_verbatim(self):
+        # -z never quote-wraps: a space / non-ASCII path comes through clean.
         with tempfile.TemporaryDirectory() as d:
-            fake = _FakeGit(porcelain="R  .work-plan/old.md -> .work-plan/new.md\n")
+            fake = _FakeGit(porcelain="?? .work-plan/new café.md\0 M .work-plan/a b.md\0")
             with patch.object(pw, "_git", fake):
                 got = pw.dirty_work_plan_paths(Path(d))
-            self.assertEqual(got, [".work-plan/new.md"])
+            self.assertEqual(got, [".work-plan/new café.md", ".work-plan/a b.md"])
+
+    def test_rename_captures_both_dest_and_source(self):
+        # Staged rename: "R  <dest>\0<source>" — both committed so it lands atomically.
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(porcelain="R  .work-plan/new.md\0.work-plan/old.md\0?? .work-plan/c.md\0")
+            with patch.object(pw, "_git", fake):
+                got = pw.dirty_work_plan_paths(Path(d))
+            self.assertEqual(got, [".work-plan/new.md", ".work-plan/old.md", ".work-plan/c.md"])
 
     def test_empty_on_clean_or_failure(self):
         with tempfile.TemporaryDirectory() as d:
