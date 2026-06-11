@@ -97,12 +97,12 @@
       },
       {
         "command": "workPlan.refreshMd",
-        "title": "Refresh Track Body",
+        "title": "Sync Issue States from GitHub",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.reconcile",
-        "title": "Reconcile (preview)",
+        "title": "Check Label Drift (preview)",
         "category": "Work Plan"
       },
       {

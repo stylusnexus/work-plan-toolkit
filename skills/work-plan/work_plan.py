@@ -89,7 +89,7 @@ DESCRIPTIONS = [
      "When a track is done, paused, or won't ship — frees mental space.",
      "/work-plan close tabletop"),
     ("refresh-md", "<track> | --all | --repo=<key> [--yes]",
-     "Update issue STATE (open/closed, status labels) inside the track body's status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place.",
+     "Sync issue STATE (open/closed, status labels) from GitHub into the track body's status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place.",
      "Usually NOT needed directly: `handoff` already refreshes the body table for its own track, and `brief` reads GitHub live. Reach for this when a sibling track has drifted because you haven't `handoff`'d it lately. `--all` sweeps every active track; `--repo=<key>` scopes the sweep to one repo (also runs as part of weekly `hygiene`).",
      "/work-plan refresh-md --repo=myproject"),
     ("list", "[--all] [--sort=recent|priority]",
@@ -117,7 +117,7 @@ DESCRIPTIONS = [
      "Periodically — when new issues have piled up outside the track model. Run /work-plan coverage first to confirm there's a gap worth triaging.",
      "/work-plan auto-triage --repo=myproject"),
     ("reconcile", "<track> | --all | --repo=<key> [--draft] [--yes]",
-     "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. In an --all/--repo sweep it also detects MOVEs — an issue relabeled from one track to another in the same repo is moved (removed from the old track, added to the new). Add --draft to preview proposed ADDs/MOVEs/FLAGs without prompting or writing; add --yes to apply without prompting (non-interactive, e.g. from the VS Code extension; PUBLIC-repo move destinations are skipped under --yes). NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
+     "Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label. Default label is `track/<slug>`; override per-track via `github.labels: [...]` in frontmatter. Read-only on GitHub. In an --all/--repo sweep it also detects MOVEs — an issue relabeled from one track to another in the same repo is moved (removed from the old track, added to the new). Add --draft to preview the label drift (proposed ADDs/MOVEs/FLAGs) without prompting or writing; add --yes to apply without prompting (non-interactive, e.g. from the VS Code extension; PUBLIC-repo move destinations are skipped under --yes). NOT for hand-curated tracks — see `refresh-md` if you only want to update issue state.",
      "WEEKLY hygiene on label-driven tracks — pulls labeled issues into their tracks, flags un-labeled ones. Use --repo=<key> to scope the sweep to one repo. Skip on hand-curated tracks (it'll propose dropping curated issues every run).",
      "/work-plan reconcile --repo=myproject --draft"),
     ("duplicates", "[--min-similarity=0.7] [--limit=20] [--state=open] [--timeout=N]",
@@ -195,8 +195,8 @@ def _print_help() -> int:
     print("  All-in-one (recommended)  →  /work-plan --hygiene")
     print("  Scope to one repo         →  /work-plan hygiene --repo=<key>")
     print("  Or individually:")
-    print("    Drift in status tables  →  /work-plan refresh-md --all  (or --repo=<key>)")
-    print("    Sync labels ↔ tracks    →  /work-plan reconcile --all   (or --repo=<key>)")
+    print("    Sync issue states       →  /work-plan refresh-md --all  (or --repo=<key>)")
+    print("    Check label drift       →  /work-plan reconcile --all   (or --repo=<key>)")
     print("    Find duplicate issues   →  /work-plan duplicates")
     print()
     print("FOCUS ON ONE PROJECT\n")
