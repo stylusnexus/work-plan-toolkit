@@ -76,6 +76,17 @@ def is_valid_git_repo(path: Path) -> bool:
     return p.is_dir() and (p / ".git").exists()
 
 
+def notes_vcs_auto_commit(cfg: dict) -> bool:
+    """True when opt-in local VCS auto-commit is enabled for notes_root (#103).
+
+    Reads `notes_vcs.auto_commit` from config. Absent/malformed → False
+    (opt-in: the feature does nothing until the user turns it on, e.g. via
+    `work-plan notes-vcs init` or `notes-vcs enable`).
+    """
+    block = cfg.get("notes_vcs")
+    return bool(block.get("auto_commit")) if isinstance(block, dict) else False
+
+
 def resolve_github_for_folder(folder_name: str, cfg: dict) -> Optional[str]:
     entry = cfg.get("repos", {}).get(folder_name)
     return entry.get("github") if entry else None

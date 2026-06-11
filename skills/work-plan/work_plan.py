@@ -55,6 +55,7 @@ SUBCOMMANDS = {
     "new-track": "commands.new_track",
     "rename-track": "commands.rename_track",
     "set-notes-root": "commands.set_notes_root",
+    "notes-vcs": "commands.notes_vcs",
 }
 
 DESCRIPTIONS = [
@@ -159,6 +160,10 @@ DESCRIPTIONS = [
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
      "/work-plan set-notes-root ~/Documents/work-plan-notes"),
+    ("notes-vcs", "<init|enable|disable|status> [--no-enable]",
+     "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
+     "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup.",
+     "/work-plan notes-vcs init"),
 ]
 
 
@@ -228,7 +233,50 @@ def main(argv: list[str]) -> int:
     except ImportError as e:
         print(f"subcommand '{sub}' not implemented yet ({e})", file=sys.stderr)
         return 1
-    return module.run(argv[2:])
+    rc = module.run(argv[2:])
+    if rc == 0:
+        _maybe_autocommit_notes(sub, argv[1:])
+    return rc
+
+
+def _maybe_autocommit_notes(sub: str, parts: list[str]) -> None:
+    """After a successful command, commit notes_root if opt-in VCS is on (#103).
+
+    Always-attempt + commit-if-dirty: read-only commands and shared-tier writes
+    (which land outside notes_root) leave the work tree clean and are natural
+    no-ops, so there's no per-command "is this a mutator?" list to maintain.
+
+    This is best-effort and MUST NOT change the command's exit code — every
+    failure path (config error, git missing, not a repo) is swallowed. When
+    auto-commit is enabled but notes_root isn't a git repo yet, nudge once toward
+    `notes-vcs init` instead of silently skipping.
+    """
+    # `notes-vcs` manages the repo itself; don't double-commit over its actions.
+    if sub == "notes-vcs":
+        return
+    try:
+        from lib.config import load_config, notes_vcs_auto_commit
+        from lib import notes_vcs
+        from pathlib import Path
+
+        cfg = load_config()
+        if not notes_vcs_auto_commit(cfg):
+            return
+        notes_root = Path(cfg["notes_root"]).expanduser()
+        if not notes_vcs.is_git_root(notes_root):
+            if not notes_vcs.is_under_git(notes_root):
+                print("ℹ auto-commit is on but notes_root isn't a git repo — "
+                      "run `work-plan notes-vcs init` to enable local history.",
+                      file=sys.stderr)
+            return
+        message = "work-plan " + " ".join(parts)
+        sha = notes_vcs.auto_commit(notes_root, message)
+        if sha:
+            print(f"⏺ notes_root committed {sha} — undo with: "
+                  f"git -C {notes_root} revert {sha}", file=sys.stderr)
+    except Exception:
+        # VCS is a safety net, never a failure mode for the command itself.
+        return
 
 
 if __name__ == "__main__":
