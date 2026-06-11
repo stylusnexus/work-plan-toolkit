@@ -159,6 +159,22 @@
         "command": "workPlan.notesVcs",
         "title": "Local History (private notes)…",
         "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.dailyBrief",
+        "title": "Daily Brief",
+        "category": "Work Plan",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "workPlan.orient",
+        "title": "Re-orient (Where was I)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.handoff",
+        "title": "Wrap Up Session (Handoff)",
+        "category": "Work Plan"
       }
     ],
     "menus": {
@@ -177,6 +193,11 @@
           "command": "workPlan.sortTracks",
           "when": "view == workPlan.tree",
           "group": "navigation"
+        },
+        {
+          "command": "workPlan.dailyBrief",
+          "when": "view == workPlan.tree",
+          "group": "navigation@4"
         },
         {
           "command": "workPlan.hygiene",
@@ -205,6 +226,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "workPlan.orient",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "0_workPlanSession@1"
+        },
+        {
+          "command": "workPlan.handoff",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "0_workPlanSession@2"
+        },
         {
           "command": "workPlan.editFields",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",

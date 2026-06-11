@@ -289,6 +289,18 @@ describe("actionToArgs", () => {
     );
   });
 
+  test("handoff → ['handoff', '--', track]", () => {
+    const action: WriteAction = { kind: "handoff", track: "platform-health" };
+    assert.deepEqual(actionToArgs(action), ["handoff", "--", "platform-health"]);
+  });
+
+  test("handoff with a '--'-prefixed track name → track stays a positional after '--'", () => {
+    const action: WriteAction = { kind: "handoff", track: "--auto-next" };
+    const args = actionToArgs(action);
+    const sepIdx = args.indexOf("--");
+    assert.deepEqual(args.slice(sepIdx + 1), ["--auto-next"]);
+  });
+
   test("batchSlot → ['batch-slot', '--no-move', '--', ...issues, track]", () => {
     const action: WriteAction = {
       kind: "batchSlot",
