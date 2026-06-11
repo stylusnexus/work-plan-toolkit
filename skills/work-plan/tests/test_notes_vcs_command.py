@@ -325,18 +325,19 @@ class SharedDispatcherHookTest(unittest.TestCase):
     def test_commits_only_the_touched_repo(self):
         cfg = self._cfg_two()
         # alpha gains a file; beta has a pre-existing dirty file that must NOT
-        # be committed; gamma has no plan_branch so it's never visited.
+        # be committed; gamma has no plan_branch so it's never visited. Keyed by
+        # Path.name (not str) so the test is OS path-separator agnostic.
         dirty = {
-            "/tmp/alpha-wt": [[], [".work-plan/x.md"]],   # before, after
-            "/tmp/beta-wt":  [[".work-plan/stale.md"], [".work-plan/stale.md"]],
+            "alpha": [[], [".work-plan/x.md"]],   # before, after
+            "beta":  [[".work-plan/stale.md"], [".work-plan/stale.md"]],
         }
         def fake_ensure(local, branch):
-            return Path(str(local) + "-wt")
+            return Path(local)  # use the repo's local path as the worktree handle
         def fake_dirty(wt):
-            return dirty[str(wt)].pop(0)
+            return dirty[Path(wt).name].pop(0)
         commits = []
         def fake_commit(wt, msg, paths):
-            commits.append((str(wt), tuple(paths)))
+            commits.append((Path(wt).name, tuple(paths)))
             return "deadbee"
         with patch("lib.config.load_config", return_value=cfg), \
              patch("lib.plan_worktree.ensure_worktree", side_effect=fake_ensure), \
@@ -348,7 +349,7 @@ class SharedDispatcherHookTest(unittest.TestCase):
                 work_plan._commit_shared_writes(pre, ["slot", "1", "x"])
             out = err.getvalue()
         # Only alpha committed, and only its new path.
-        self.assertEqual(commits, [("/tmp/alpha-wt", (".work-plan/x.md",))])
+        self.assertEqual(commits, [("alpha", (".work-plan/x.md",))])
         self.assertIn("alpha", out)
         self.assertNotIn("beta", out)
 
@@ -370,12 +371,12 @@ class SharedDispatcherHookTest(unittest.TestCase):
     def test_warns_when_changes_present_but_commit_refused(self):
         cfg = {"notes_root": "/tmp/n", "repos": {
             "alpha": {"github": "o/alpha", "local": "/tmp/alpha", "plan_branch": "wp"}}}
-        seq = {"/tmp/alpha-wt": [[], [".work-plan/x.md"]]}
+        seq = {"alpha": [[], [".work-plan/x.md"]]}
         with patch("lib.config.load_config", return_value=cfg), \
              patch("lib.plan_worktree.ensure_worktree",
-                   side_effect=lambda l, b: Path(str(l) + "-wt")), \
+                   side_effect=lambda l, b: Path(l)), \
              patch("lib.plan_worktree.dirty_work_plan_paths",
-                   side_effect=lambda wt: seq[str(wt)].pop(0)), \
+                   side_effect=lambda wt: seq[Path(wt).name].pop(0)), \
              patch("lib.plan_worktree.commit_shared_tier", return_value=None):
             err = io.StringIO()
             with redirect_stderr(err):

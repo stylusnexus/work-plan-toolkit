@@ -359,7 +359,7 @@ def _commit_shared_writes(pre_states, parts: list[str]) -> None:
     except Exception:
         return
     message = "work-plan " + " ".join(parts)
-    for key, branch, worktree, before in pre_states:
+    for key, branch, worktree, before in (pre_states or []):
         # Per-repo isolation: one repo's git failure must not skip the others.
         try:
             changed = sorted(set(plan_worktree.dirty_work_plan_paths(worktree)) - before)
