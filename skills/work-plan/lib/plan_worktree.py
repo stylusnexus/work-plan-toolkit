@@ -51,13 +51,27 @@ def _worktree_dir(local_path: Path) -> Path:
     return _WORKTREE_ROOT / key
 
 
+def _ref_exists(local_path: Path, ref: str) -> bool:
+    proc = _git(local_path, "rev-parse", "--verify", "--quiet", ref)
+    return proc is not None and proc.returncode == 0
+
+
+def local_branch_exists(local_path: Path, branch: str) -> bool:
+    """True if `branch` exists as a local head. Never raises."""
+    return _ref_exists(Path(local_path).expanduser(), f"refs/heads/{branch}")
+
+
+def remote_branch_exists(local_path: Path, branch: str) -> bool:
+    """True if `origin/<branch>` exists in the local remote-tracking refs (may be
+    stale — fetch first for an authoritative answer). Never raises."""
+    return _ref_exists(Path(local_path).expanduser(),
+                       f"refs/remotes/origin/{branch}")
+
+
 def _branch_exists(local_path: Path, branch: str) -> bool:
     """True if `branch` exists locally or as origin/<branch>."""
-    for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
-        proc = _git(local_path, "rev-parse", "--verify", "--quiet", ref)
-        if proc is not None and proc.returncode == 0:
-            return True
-    return False
+    return (local_branch_exists(local_path, branch)
+            or remote_branch_exists(local_path, branch))
 
 
 def ensure_worktree(local_path: Path, branch: str) -> Optional[Path]:
@@ -193,3 +207,82 @@ def shared_tier_dir(entry: dict) -> Optional[Path]:
         worktree = ensure_worktree(local_path, branch)
         return (worktree / ".work-plan") if worktree else None
     return local_path / ".work-plan"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 (#260): bootstrap + push. Creating an orphan plan branch, fetching a
+# teammate's, pushing local plan commits to share them. All never-raise.
+# ---------------------------------------------------------------------------
+
+def create_orphan_worktree(local_path: Path, branch: str) -> Optional[Path]:
+    """Create a worktree at the stable cache path holding a fresh ORPHAN
+    `branch` whose tree is an empty `.work-plan/` (no shared history with the
+    repo's code — like gh-pages). Returns the worktree path with `.work-plan/`
+    created but NOT yet committed (the caller seeds it and commits via
+    commit_shared_tier), or None on any failure. Never raises.
+
+    Caller must have verified `branch` does not already exist (local or remote);
+    this is the create path, not the connect path (use ensure_worktree to
+    connect to an existing branch).
+    """
+    local_path = Path(local_path).expanduser()
+    dest = _worktree_dir(local_path)
+    if (dest / ".git").exists():
+        return None  # a worktree is already cached here — caller should connect
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    # Detached worktree at HEAD, then orphan-checkout the plan branch and clear
+    # the code out of it so only .work-plan/ remains.
+    add = _git(local_path, "worktree", "add", "--detach", "--quiet", str(dest), "HEAD")
+    if add is None or add.returncode != 0:
+        return None
+    orphan = _git(dest, "checkout", "--orphan", branch)
+    if orphan is None or orphan.returncode != 0:
+        _git(local_path, "worktree", "remove", "--force", str(dest))
+        return None
+    # Drop every code file from the orphan's index + working tree.
+    if _git(dest, "rm", "-rf", "--quiet", ".") is None:
+        _git(local_path, "worktree", "remove", "--force", str(dest))
+        return None
+    try:
+        (dest / ".work-plan").mkdir(parents=True, exist_ok=True)
+    except OSError:
+        _git(local_path, "worktree", "remove", "--force", str(dest))
+        return None
+    return dest
+
+
+def fetch_branch(local_path: Path, branch: str) -> bool:
+    """Best-effort `git fetch origin <branch>` so remote_branch_exists is
+    authoritative (a teammate may have published the plan branch). True on
+    success, False on any failure/offline. Never raises — a read-only op."""
+    proc = _git(Path(local_path).expanduser(), "fetch", "--quiet", "origin", branch)
+    return proc is not None and proc.returncode == 0
+
+
+def is_published(local_path: Path, branch: str) -> bool:
+    """True if `branch` exists on origin (it's been shared). Never raises."""
+    return remote_branch_exists(local_path, branch)
+
+
+def unpushed_oneline(local_path: Path, branch: str) -> list:
+    """One-line summaries of commits on local `branch` not yet on origin
+    (`origin/<branch>..<branch>`). If origin/<branch> doesn't exist, every commit
+    on `branch` is unpushed. Empty list on any failure. Never raises."""
+    local_path = Path(local_path).expanduser()
+    rng = (f"origin/{branch}..{branch}"
+           if remote_branch_exists(local_path, branch) else branch)
+    proc = _git(local_path, "log", "--oneline", "--no-color", rng)
+    if proc is None or proc.returncode != 0:
+        return []
+    return [ln for ln in proc.stdout.splitlines() if ln.strip()]
+
+
+def push_plan_branch(local_path: Path, branch: str):
+    """Push `branch` to origin, setting upstream. Returns the CompletedProcess
+    (inspect .returncode / .stderr — the caller surfaces protected-branch and
+    other failures) or None if git couldn't run. Never raises."""
+    return _git(Path(local_path).expanduser(), "push", "--set-upstream",
+                "origin", branch, timeout=120)

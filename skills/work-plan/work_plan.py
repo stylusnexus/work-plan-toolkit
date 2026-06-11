@@ -56,6 +56,7 @@ SUBCOMMANDS = {
     "rename-track": "commands.rename_track",
     "set-notes-root": "commands.set_notes_root",
     "notes-vcs": "commands.notes_vcs",
+    "plan-branch": "commands.plan_branch",
 }
 
 DESCRIPTIONS = [
@@ -164,6 +165,10 @@ DESCRIPTIONS = [
      "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. For safety it REFUSES a notes_root that already has a git remote or is a repo work-plan didn't create, and only ever commits the files a command changed — private notes stay un-pushable and your unrelated edits are never swept in. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
      "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup. `undo` reverses the last edit.",
      "/work-plan notes-vcs init"),
+    ("plan-branch", "<init|status|push> <repo> [--branch=<name>] [--confirm=<token>] [--dry-run] [--json]",
+     "Set up and share a repo's canonical SHARED-tier plan branch (#260). The shared `.work-plan/` tier is pinned to ONE per-repo `plan_branch`, read/written through a dedicated git worktree, so planning never diverges across code branches or pollutes PR / deploy diffs. `init <repo>` creates that branch + a `.work-plan/` skeleton (default an ORPHAN `work-plan/plan`, zero shared history with code like gh-pages; override with --branch) and records `plan_branch` in config — or CONNECTS to a teammate's already-published branch if one exists. init is LOCAL ONLY (no push). `status <repo>` reports whether the branch exists, is published to origin, and how many commits are unpushed (--json for the machine shape). `push <repo>` shares it: on a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>); --dry-run previews the commits that would push. Requires a repo registered via init-repo with a local clone path.",
+     "ONE-TIME per repo when you want the shared plan to live on its own branch (off dev/main) so planning churn never lands in feature PRs or the deploy diff — yet the CLI + VS Code viewer always show the canonical plan from any checkout. `push` is the deliberate step that shares it with teammates.",
+     "/work-plan plan-branch init work-plan-toolkit"),
 ]
 
 
@@ -254,6 +259,9 @@ def main(argv: list[str]) -> int:
 _READONLY_SUBCOMMANDS = frozenset({
     "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
     "plan-status", "export", "notes-vcs",
+    # plan-branch manages its OWN commits on the plan branch (init seeds +
+    # commits the skeleton itself); the auto-commit hooks must not also fire.
+    "plan-branch",
 })
 
 
