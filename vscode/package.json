@@ -92,7 +92,7 @@
       },
       {
         "command": "workPlan.setNext",
-        "title": "Set Next-Up",
+        "title": "Set Next-Up & Log Session",
         "category": "Work Plan"
       },
       {
