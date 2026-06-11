@@ -247,6 +247,9 @@ export type NotesVcsStatus = {
   is_root: boolean;
   auto_commit: boolean;
   last_commit_sha: string | null;
+  /** Short sha of HEAD's first parent (null at the root commit). Used to confirm
+   *  a post-write HEAD sits directly on the previously-seen commit before Undo. */
+  head_parent_sha: string | null;
   last_commit_subject: string | null;
   dirty: boolean;
 };
@@ -268,6 +271,7 @@ export async function notesVcsStatus(run: CliRunner): Promise<NotesVcsStatus | n
       is_root: Boolean(blob.is_root),
       auto_commit: Boolean(blob.auto_commit),
       last_commit_sha: blob.last_commit_sha ?? null,
+      head_parent_sha: blob.head_parent_sha ?? null,
       last_commit_subject: blob.last_commit_subject ?? null,
       dirty: Boolean(blob.dirty),
     };
