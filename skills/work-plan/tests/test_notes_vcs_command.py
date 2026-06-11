@@ -179,6 +179,18 @@ class NotesVcsUndoTest(unittest.TestCase):
         mrev.assert_not_called()
         self.assertIn("not a git repo", out)
 
+    def test_undo_refuses_remote_backed_repo(self):
+        rc, out, _, mrev = _drive(["undo"], is_root=True, remotes=True)
+        self.assertEqual(rc, 1)
+        mrev.assert_not_called()
+        self.assertIn("local-history repo", out)
+
+    def test_undo_refuses_unowned_repo(self):
+        rc, out, _, mrev = _drive(["undo"], is_root=True, remotes=False, owned=False)
+        self.assertEqual(rc, 1)
+        mrev.assert_not_called()
+        self.assertIn("local-history repo", out)
+
     def test_undo_fails_when_revert_fails(self):
         rc, out, _, mrev = _drive(["undo"], is_root=True, revert_sha=None)
         self.assertEqual(rc, 1)

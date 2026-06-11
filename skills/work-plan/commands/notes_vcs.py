@@ -107,6 +107,13 @@ def run(args: list[str]) -> int:
         if not notes_vcs.is_git_root(notes_root):
             print(f"ERROR: {notes_root} is not a git repo — nothing to undo.")
             return 1
+        # Same boundary as init/auto-commit: never rewrite a repo we don't own
+        # or one with a remote (it could be an unrelated project clone).
+        if notes_vcs.has_remotes(notes_root) or not notes_vcs.is_owned(notes_root):
+            print(f"ERROR: {notes_root} is not a work-plan local-history repo "
+                  "(it has a git remote, or wasn't created by work-plan). "
+                  "Refusing to revert — undo only operates on personal history.")
+            return 1
         sha = positional[1] if len(positional) > 1 else None
         new_sha = notes_vcs.revert(notes_root, sha)
         if not new_sha:
