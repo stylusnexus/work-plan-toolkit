@@ -130,7 +130,12 @@ mermaid.run();
     var target = e.target;
     if (!target) { return; }
 
-    // Milestone band toggle
+    // Milestone filter button → apply that milestone's lens to the whole view
+    var msFilter = target.closest(".milestone-filter");
+    if (msFilter) {
+      post({ type: "filterMilestone", milestone: msFilter.getAttribute("data-milestone") });
+      return;
+    }
 
     // Move button
     var moveBtn = target.closest(".move-btn");
@@ -140,10 +145,14 @@ mermaid.run();
       return;
     }
 
-    var bandHeader = target.closest(".milestone-band-header");
-    if (bandHeader) {
-      var band = bandHeader.closest(".milestone-band");
-      if (band) { band.classList.toggle("collapsed"); }
+    // Milestone band collapse toggle (keyboard-operable <button>)
+    var msToggle = target.closest(".milestone-toggle-btn");
+    if (msToggle) {
+      var band = msToggle.closest(".milestone-band");
+      if (band) {
+        var collapsed = band.classList.toggle("collapsed");
+        msToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      }
       return;
     }
 
@@ -310,10 +319,20 @@ mermaid.run();
       background: var(--bg);
       border-bottom: 1px solid var(--border);
       padding: 6px 6px;
-      cursor: pointer;
       user-select: none;
     }
-    .milestone-band-header td:hover { opacity: 0.85; }
+    /* Both band-header controls are real <button>s (keyboard-operable); strip
+       the native chrome so they read as the old inline header. */
+    .milestone-toggle-btn,
+    .milestone-filter {
+      background: none;
+      border: none;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      padding: 0;
+    }
+    .milestone-filter:hover { text-decoration: underline; }
     .milestone-toggle {
       display: inline-block;
       transition: transform 0.15s;

@@ -423,3 +423,13 @@ function assertAllScriptsHaveNonce(html: string, nonce: string): void {
   }
   assert.ok(count > 0, "Expected at least one <script element in output");
 }
+
+describe("buildHtml — milestone band filter wiring (#218)", () => {
+  it("posts filterMilestone and wires the keyboard collapse toggle", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes('type: "filterMilestone"'), "missing filterMilestone postMessage");
+    assert.ok(html.includes(".milestone-filter"), "missing milestone-filter click handler");
+    assert.ok(html.includes(".milestone-toggle-btn"), "missing milestone-toggle-btn handler");
+    assert.ok(html.includes('aria-expanded'), "toggle handler should sync aria-expanded");
+  });
+});

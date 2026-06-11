@@ -72,7 +72,17 @@ interface MoveIssueMessage {
   number: number;
 }
 
-type WebviewMessage = SelectTrackMessage | OpenIssueMessage | SetFocusMessage | MoveIssueMessage;
+interface FilterMilestoneMessage {
+  type: "filterMilestone";
+  milestone: string;
+}
+
+type WebviewMessage =
+  | SelectTrackMessage
+  | OpenIssueMessage
+  | SetFocusMessage
+  | MoveIssueMessage
+  | FilterMilestoneMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -92,6 +102,18 @@ export class WorkPlanPanel {
   /** Registers the move handler used by the webview drag-move (#197). */
   static setMoveHandler(handler: MoveHandler): void {
     WorkPlanPanel._moveHandler = handler;
+  }
+
+  /**
+   * Set by extension.ts — applies a milestone lens to the whole view when the
+   * user clicks a milestone band header in the detail panel (#218). Injected so
+   * the panel doesn't reach into the tree provider directly.
+   */
+  private static _filterHandler: ((milestone: string) => void) | undefined;
+
+  /** Registers the milestone-filter handler used by the band-header click (#218). */
+  static setFilterHandler(handler: (milestone: string) => void): void {
+    WorkPlanPanel._filterHandler = handler;
   }
 
   private readonly _panel: vscode.WebviewPanel;
@@ -281,6 +303,10 @@ export class WorkPlanPanel {
         this._handleMoveIssue(raw.number);
         break;
       }
+      case "filterMilestone": {
+        WorkPlanPanel._filterHandler?.(raw.milestone);
+        break;
+      }
     }
   }
 
@@ -393,6 +419,8 @@ function isWebviewMessage(raw: unknown): raw is WebviewMessage {
       return typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
         && (msg["number"] as number) > 0;
+    case "filterMilestone":
+      return typeof msg["milestone"] === "string" && (msg["milestone"] as string).length > 0;
     default:
       return false;
   }
