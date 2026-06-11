@@ -8,7 +8,7 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 - A **sidebar tree** (repos → tracks) showing the live state of every tracked GitHub repo — status dot, open count, blocked/next hints, a ⚠ badge on public repos.
 - A **Mermaid dependency graph** webview + **per-track detail** panel (issue table — capped at 50 rows with a collapsible overflow — blockers, **depends-on chips**, ordered next-up) — with a focus toggle that zooms in on the selected track, and a full map scoped to the track's repo.
-- **Lenses** (filter by repo / milestone / status — active, shipped, parked — / blocked) and **sort** (default / blocked / most-open / name).
+- **Lenses** (filter by repo / milestone / status — active, shipped, parked — / blocked) and **sort** (default / blocked / most-open / name). Clicking a milestone band header in the detail panel applies that milestone's lens to the whole view.
 - An **"Untracked" bucket** under each repo: open GitHub issues that no track references — click to open on GitHub, or right-click to slot one into a track.
 
 **Act** — every action runs the CLI under the hood:

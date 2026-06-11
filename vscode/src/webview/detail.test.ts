@@ -602,3 +602,31 @@ describe("renderDetail — table accessibility", () => {
     );
   });
 });
+
+describe("renderDetail — milestone band filter + keyboard toggle (#218)", () => {
+  it("renders the milestone name as a filter button carrying data-milestone", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<button class="milestone-filter" data-milestone="M1"'),
+      `expected a milestone-filter button for M1:\n${html}`,
+    );
+  });
+
+  it("the 'No milestone' band is plain text, not a filter target (no lens for it)", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(html.includes("<b>No milestone</b>"), "No-milestone heading should still render");
+    assert.ok(
+      !html.includes('data-milestone="No milestone"'),
+      "the no-milestone group must not be a filter target",
+    );
+  });
+
+  it("the collapse toggle is a keyboard-operable button with aria-expanded", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('class="milestone-toggle-btn" aria-expanded="true"'),
+      "the first (active) band's toggle should be expanded",
+    );
+    assert.ok(html.includes('aria-expanded="false"'), "a later band's toggle should be collapsed");
+  });
+});

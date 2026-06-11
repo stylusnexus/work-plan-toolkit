@@ -396,6 +396,30 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
+  // Clicking a milestone band header in the detail panel filters the whole view
+  // by that milestone (#218) — same milestone lens the Select View quick-pick
+  // applies. Re-render the panel from the now-filtered export, falling back to
+  // the first visible track if the current one was filtered out.
+  WorkPlanPanel.setFilterHandler((milestone: string) => {
+    provider.setLens({ kind: "milestone", milestone });
+    const panel = WorkPlanPanel.getCurrent();
+    const filteredExp = provider.currentExport;
+    if (panel && filteredExp) {
+      const currentTrack = panel.currentTrackName;
+      const trackStillVisible =
+        currentTrack !== null && filteredExp.tracks.some(t => t.name === currentTrack);
+      const trackToRender = trackStillVisible
+        ? currentTrack!
+        : filteredExp.tracks[0]?.name ?? null;
+      if (trackToRender) {
+        panel.render(filteredExp, trackToRender);
+      } else {
+        panel.renderEmpty("No tracks match the selected view.");
+      }
+    }
+    vscode.window.showInformationMessage(`Work Plan: filtered the view to milestone "${milestone}".`);
+  });
+
   // Output channel for reconcile draft output (created once; disposed via subscriptions).
   const outputChannel = vscode.window.createOutputChannel("Work Plan");
   context.subscriptions.push(outputChannel);

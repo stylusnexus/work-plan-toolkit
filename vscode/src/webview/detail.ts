@@ -87,11 +87,20 @@ export function renderDetail(track: Track): string {
       const heading = label ? esc(label) : "No milestone";
       const count = String(issues.length);
       const collapsedClass = first ? "" : " collapsed";
+      const expanded = first ? "true" : "false";
+      // The milestone name is a filter button (apply that milestone's lens to the
+      // whole view, #218); only real milestones filter — the "No milestone" group
+      // has no lens, so it stays plain text. The caret is a separate keyboard-
+      // operable collapse toggle with aria-expanded (#218/#244).
+      const headingCell = label
+        ? `<button class="milestone-filter" data-milestone="${esc(label)}" title="Filter the view to ${heading}"><b>${heading}</b></button>`
+        : `<b>${heading}</b>`;
       parts.push(`<tbody class="milestone-band${collapsedClass}">`);
       parts.push(
         `<tr class="milestone-band-header"><td colspan="5">` +
-          `<span class="milestone-toggle">▸</span> ` +
-          `<b>${heading}</b> <span class="milestone-count">(${count})</span>` +
+          `<button class="milestone-toggle-btn" aria-expanded="${expanded}" aria-label="Toggle ${heading} issues">` +
+          `<span class="milestone-toggle">▸</span></button> ` +
+          `${headingCell} <span class="milestone-count">(${count})</span>` +
           `</td></tr>`,
       );
 
