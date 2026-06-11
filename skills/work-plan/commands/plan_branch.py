@@ -66,11 +66,15 @@ def _set_plan_branch(key: str, branch: str) -> bool:
     try:
         subprocess.run(
             ["yq", "-i", expr, str(DEFAULT_CONFIG_PATH)],
-            check=True, capture_output=True, text=True, env=env,
+            check=True, capture_output=True, text=True, env=env, timeout=20,
         )
         return True
     except subprocess.CalledProcessError as e:
         print(f"ERROR: yq failed to update config: {e.stderr}")
+        return False
+    except (OSError, subprocess.TimeoutExpired) as e:
+        # yq missing / hung — degrade cleanly rather than crash with a traceback.
+        print(f"ERROR: could not run yq to update config: {e}")
         return False
 
 
@@ -239,8 +243,11 @@ def _do_push(cfg, key, entry, github, local_path, flags) -> int:
 
     # Exposure gate: publishing planning notes to a PUBLIC repo is a meaningful,
     # effectively-permanent disclosure. Same confirm-token flow as other public
-    # writes, with concrete wording about what becomes visible.
-    if github and needs_confirm(github, cfg):
+    # writes, with concrete wording about what becomes visible. No `github and`
+    # short-circuit — needs_confirm() fails CLOSED on empty/unknown visibility,
+    # and that fail-closed behaviour must NOT be defeated (a config entry with a
+    # null/empty github would otherwise push unguarded).
+    if needs_confirm(github, cfg):
         confirm = flags.get("--confirm")
         if not (isinstance(confirm, str) and valid_token(confirm, github, branch)):
             print(json.dumps({
@@ -288,8 +295,11 @@ def run(args: list[str]) -> int:
 
     try:
         cfg = load_config()
-    except ConfigError as e:
-        print(f"ERROR: {e}")
+    except (ConfigError, subprocess.CalledProcessError, OSError) as e:
+        # ConfigError is the expected case; CalledProcessError / OSError cover a
+        # malformed config or a missing `yq` so the command degrades to a clean
+        # error instead of a traceback (never-raise contract).
+        print(f"ERROR: could not load config: {e}")
         return 1
 
     resolved = _resolve_repo(cfg, repo_arg)

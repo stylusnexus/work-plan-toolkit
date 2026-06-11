@@ -235,6 +235,19 @@ class PushTest(unittest.TestCase):
         pwmod.push_plan_branch.assert_called_once()
         self.assertIn("Pushed", out)
 
+    def test_empty_github_still_gated(self):
+        # Regression: a config entry with an empty/unknown github must NOT skip
+        # the gate. needs_confirm fails CLOSED on unknown visibility; the old
+        # `github and needs_confirm(...)` short-circuit defeated that and pushed
+        # unguarded. With the guard removed the gate fires.
+        rc, out, pwmod = _run(["push", "myrepo"],
+                             cfg=_cfg(plan_branch="work-plan/plan", github=""),
+                             pw={"unpushed_oneline": ["a1 x"]},
+                             needs=True, valid=False)
+        self.assertEqual(rc, 0)
+        self.assertIn("needs_confirm", out)
+        pwmod.push_plan_branch.assert_not_called()
+
     def test_private_repo_pushes_without_gate(self):
         rc, out, pwmod = _run(["push", "myrepo"],
                              cfg=_cfg(plan_branch="work-plan/plan"),
