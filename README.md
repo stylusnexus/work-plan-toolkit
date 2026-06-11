@@ -448,7 +448,11 @@ repos:
   myproject:
     github: your-org/myproject
     local: /path/to/local/checkout           # optional, enables in-progress detection
+notes_vcs:
+  auto_commit: true                          # opt-in local history for notes_root (set by `notes-vcs init`)
 ```
+
+`notes_vcs.auto_commit` is added by `/work-plan notes-vcs init` (or `enable`) — when on, every track-mutating command commits `notes_root` so private-tier edits are undoable. Absent → off.
 
 ### Where your config lives
 
@@ -499,6 +503,7 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 | `new-track <repo> <slug> [--priority=P0..P3] [--milestone=<m>]` | One-shot, non-interactive: create a new track file under `notes_root` for `<repo>` (a config key **or** an `org/repo` slug) with frontmatter. Unlike `init`, it makes the file for you — the headless creation path the VS Code viewer uses. |
 | `rename-track <old-slug \| old@repo> <new-slug> [--repo=<key>] [--fix-refs] [--commit]` | Rename an active track's slug: moves its `.md` file and updates the frontmatter `track` field + `last_touched`. Validates `<new-slug>` like `new-track` and rejects a name already taken in the same repo/tier. For shared tracks, `--commit` stages + commits the move (otherwise it prints a "commit to share" hint). `--fix-refs` rewrites sibling tracks' `depends_on` that reference the old slug; without it they're just warned about. Archived tracks are immutable. Public-repo gated. |
 | `set-notes-root <path>` | Relocate where your private track notes live (updates `notes_root` in config). Does not move existing tracks — it warns if any would be orphaned. |
+| `notes-vcs <init\|enable\|disable\|status> [--no-enable]` | Opt-in **local** version control for the private `notes_root` tier — history/undo for tracks on your machine, never pushed. `init` git-inits `notes_root` as a personal repo (baseline commit of existing tracks) and turns on auto-commit (`--no-enable` skips that). When on, every track-mutating command (`slot`/`group`/`handoff`/`close`/`set`/…) writes an undoable commit. The shared tier is unaffected — it's versioned by its own repo. `status` shows whether `notes_root` is a repo, whether auto-commit is on, and the last commit. |
 | `suggest-priorities --repo=<key>` | Two-step AI label backfill: CLI fetches unlabeled issues, Claude proposes priorities, `--apply` writes labels via `gh`. |
 | `group [--milestone=X] [--label=Y] [--repo=Z] [--private] [--apply] [--limit=N]` | AI-cluster GitHub issues into thematic track files. Two-step: CLI prints prompt → you save JSON answer → `--apply` creates the tracks. `--private` routes to `notes_root` instead of `.work-plan/`. `--limit` controls how many issues are shown in the prompt (default 100). |
 | `auto-triage [--repo=<key>] [--apply] [--limit=N]` | AI-assign untracked open issues to existing tracks. Two-step (same pattern as `group`). Run `coverage` first to measure the gap. `--limit` controls how many untracked issues are shown (default 100). |

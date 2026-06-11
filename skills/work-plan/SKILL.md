@@ -88,6 +88,8 @@ Track files live in one of two places:
 
 **Routing logic (automatic):** if a repo has a registered `local:` path that is a valid git repo, new tracks go into `.work-plan/` by default. Pass `--private` to any write command to route to `notes_root` instead.
 
+**Local history for the private tier (opt-in):** the shared tier already gets version control from its repo. For the private tier, `/work-plan notes-vcs init` git-inits `notes_root` as a *personal, never-pushed* repo and turns on auto-commit — every track-mutating command then writes an undoable commit to `notes_root`. `notes-vcs status` reports the state; `enable`/`disable` toggle it. Off until you run it.
+
 **Setup shared tracks for a repo:**
 ```
 /work-plan init-repo myproject --github=org/myproject --local=/path/to/clone
