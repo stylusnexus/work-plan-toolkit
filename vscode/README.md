@@ -131,7 +131,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.3.6 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.6 adds a **Rename Track** right-click action and orders the per-track **milestone bands active-milestone-first**. Earlier v0.3.x added Move Issue from Track, cross-track dependency chips in the detail panel, and a repo-scoped full map.
+**Published — v0.3.7 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`). v0.3.7 surfaces **local history for private tracks**: a **Local History** command (enable / disable / status) and, when auto-commit is on, a one-click **Undo** toast after any edit that wrote a commit. Earlier v0.3.x added a Rename Track action, active-milestone-first milestone bands, Move Issue from Track, cross-track dependency chips, and a repo-scoped full map.
 
 ## Development notes
 

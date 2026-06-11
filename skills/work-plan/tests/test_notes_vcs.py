@@ -59,7 +59,12 @@ class _FakeGit:
         if sub == "status":
             return _ok(" M track.md\n" if self.dirty else "")
         if sub == "log":
-            return _ok(f"{self.head} subject\n") if self.has_commit else _ok("")
+            if not self.has_commit:
+                return _ok("")
+            # Honour the pretty format: %h alone → sha; %h %s → "sha subject".
+            fmt = next((a for a in args if a.startswith("--pretty=format:")), "")
+            body = self.head if fmt.endswith("%h") else f"{self.head} subject"
+            return _ok(body + "\n")
         if sub == "commit":
             self.dirty = False  # commit clears the working tree
             self.has_commit = True
@@ -194,6 +199,54 @@ class LastCommitSummaryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             with patch.object(notes_vcs, "_git", _FakeGit(has_commit=False)):
                 self.assertIsNone(notes_vcs.last_commit_summary(Path(d)))
+
+
+class LastCommitShaTest(unittest.TestCase):
+    def test_returns_sha(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(notes_vcs, "_git", _FakeGit(head="feed999")):
+                self.assertEqual(notes_vcs.last_commit_sha(Path(d)), "feed999")
+
+    def test_none_when_no_commits(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(notes_vcs, "_git", _FakeGit(has_commit=False)):
+                self.assertIsNone(notes_vcs.last_commit_sha(Path(d)))
+
+
+class RevertTest(unittest.TestCase):
+    def test_reverts_head_by_default(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), head="rev0001")
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertEqual(notes_vcs.revert(Path(d)), "rev0001")
+            self.assertIn(("revert", "--no-edit", "HEAD"), fake.calls)
+
+    def test_reverts_named_sha(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), head="rev0002")
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertEqual(notes_vcs.revert(Path(d), "abc1234"), "rev0002")
+            self.assertIn(("revert", "--no-edit", "abc1234"), fake.calls)
+
+    def test_noop_when_not_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=None)
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertIsNone(notes_vcs.revert(Path(d)))
+
+    def test_rejects_dash_led_sha(self):
+        # A dash-led ref would be read by git as an option, not a revision.
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=str(Path(d).resolve()))
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertIsNone(notes_vcs.revert(Path(d), "--hard"))
+            self.assertNotIn("revert", [c[0] for c in fake.calls])
+
+    def test_none_when_revert_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = _FakeGit(toplevel=str(Path(d).resolve()), fail_on={"revert"})
+            with patch.object(notes_vcs, "_git", fake):
+                self.assertIsNone(notes_vcs.revert(Path(d)))
 
 
 if __name__ == "__main__":

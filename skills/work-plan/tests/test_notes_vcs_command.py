@@ -24,91 +24,145 @@ def _cfg(notes_root="/tmp/notes", auto=None):
 
 
 def _drive(args, *, cfg=None, is_root=False, is_under=False,
-           last="ab12 subject", set_ok=True, init_ok=True, dirty=False):
+           last="ab12 subject", set_ok=True, init_ok=True, dirty=False,
+           sha="ab12", revert_sha="rev99"):
     cfg = cfg or _cfg()
     with patch("commands.notes_vcs.load_config", return_value=cfg), \
          patch("commands.notes_vcs.notes_vcs.is_git_root", return_value=is_root), \
          patch("commands.notes_vcs.notes_vcs.is_under_git", return_value=is_under), \
          patch("commands.notes_vcs.notes_vcs.last_commit_summary", return_value=last), \
+         patch("commands.notes_vcs.notes_vcs.last_commit_sha", return_value=sha), \
          patch("commands.notes_vcs.notes_vcs.has_changes", return_value=dirty), \
          patch("commands.notes_vcs.notes_vcs.init_repo", return_value=init_ok), \
+         patch("commands.notes_vcs.notes_vcs.revert", return_value=revert_sha) as mrev, \
          patch("commands.notes_vcs._set_auto_commit", return_value=set_ok) as mset:
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cmd.run(args)
-    return rc, buf.getvalue(), mset
+    return rc, buf.getvalue(), mset, mrev
 
 
 class NotesVcsStatusTest(unittest.TestCase):
     def test_status_repo_on(self):
-        rc, out, _ = _drive(["status"], cfg=_cfg(auto=True), is_root=True)
+        rc, out, _, _ = _drive(["status"], cfg=_cfg(auto=True), is_root=True)
         self.assertEqual(rc, 0)
         self.assertIn("local repo", out)
         self.assertIn("auto-commit: on", out)
 
     def test_status_not_a_repo(self):
-        rc, out, _ = _drive(["status"], cfg=_cfg(auto=False), is_root=False)
+        rc, out, _, _ = _drive(["status"], cfg=_cfg(auto=False), is_root=False)
         self.assertEqual(rc, 0)
         self.assertIn("not a repo", out)
         self.assertIn("auto-commit: off", out)
 
     def test_status_inside_other_repo(self):
-        rc, out, _ = _drive(["status"], is_root=False, is_under=True)
+        rc, out, _, _ = _drive(["status"], is_root=False, is_under=True)
         self.assertEqual(rc, 0)
         self.assertIn("NOT its root", out)
 
     def test_default_action_is_status(self):
-        rc, out, _ = _drive([], is_root=True)
+        rc, out, _, _ = _drive([], is_root=True)
         self.assertEqual(rc, 0)
         self.assertIn("notes_root:", out)
 
 
 class NotesVcsInitTest(unittest.TestCase):
     def test_init_enables_by_default(self):
-        rc, out, mset = _drive(["init"], is_root=False, is_under=False)
+        rc, out, mset, _ = _drive(["init"], is_root=False, is_under=False)
         self.assertEqual(rc, 0)
         self.assertIn("Initialized local history", out)
         mset.assert_called_once_with(True)
         self.assertIn("auto-commit enabled", out)
 
     def test_init_no_enable_skips_toggle(self):
-        rc, out, mset = _drive(["init", "--no-enable"], is_root=False)
+        rc, out, mset, _ = _drive(["init", "--no-enable"], is_root=False)
         self.assertEqual(rc, 0)
         mset.assert_not_called()
         self.assertIn("left off", out)
 
     def test_init_refuses_inside_other_repo(self):
-        rc, out, mset = _drive(["init"], is_root=False, is_under=True)
+        rc, out, mset, _ = _drive(["init"], is_root=False, is_under=True)
         self.assertEqual(rc, 1)
         self.assertIn("not its root", out.lower())
         mset.assert_not_called()
 
     def test_init_fails_when_init_repo_fails(self):
-        rc, out, mset = _drive(["init"], is_root=False, is_under=False, init_ok=False)
+        rc, out, mset, _ = _drive(["init"], is_root=False, is_under=False, init_ok=False)
         self.assertEqual(rc, 1)
         self.assertIn("failed to git-init", out)
 
 
 class NotesVcsToggleTest(unittest.TestCase):
     def test_enable(self):
-        rc, out, mset = _drive(["enable"], is_root=True)
+        rc, out, mset, _ = _drive(["enable"], is_root=True)
         self.assertEqual(rc, 0)
         mset.assert_called_once_with(True)
 
     def test_enable_warns_when_not_repo(self):
-        rc, out, mset = _drive(["enable"], is_root=False)
+        rc, out, mset, _ = _drive(["enable"], is_root=False)
         self.assertEqual(rc, 0)
         self.assertIn("WARN", out)
 
     def test_disable(self):
-        rc, out, mset = _drive(["disable"], is_root=True)
+        rc, out, mset, _ = _drive(["disable"], is_root=True)
         self.assertEqual(rc, 0)
         mset.assert_called_once_with(False)
 
     def test_unknown_action_rc2(self):
-        rc, out, _ = _drive(["frobnicate"])
+        rc, out, _, _ = _drive(["frobnicate"])
         self.assertEqual(rc, 2)
         self.assertIn("usage", out.lower())
+
+
+class NotesVcsStatusJsonTest(unittest.TestCase):
+    def test_json_shape(self):
+        import json
+        rc, out, _, _ = _drive(["status", "--json"], cfg=_cfg(auto=True),
+                               is_root=True, is_under=True, sha="ab12",
+                               last="ab12 subject", dirty=False)
+        self.assertEqual(rc, 0)
+        blob = json.loads(out)
+        self.assertEqual(blob["auto_commit"], True)
+        self.assertEqual(blob["is_root"], True)
+        self.assertEqual(blob["under_git"], True)
+        self.assertEqual(blob["last_commit_sha"], "ab12")
+        self.assertEqual(blob["dirty"], False)
+
+    def test_json_nulls_when_not_repo(self):
+        import json
+        rc, out, _, _ = _drive(["status", "--json"], cfg=_cfg(auto=False),
+                               is_root=False, is_under=False)
+        blob = json.loads(out)
+        self.assertEqual(blob["is_root"], False)
+        self.assertIsNone(blob["last_commit_sha"])
+        self.assertEqual(blob["auto_commit"], False)
+
+
+class NotesVcsUndoTest(unittest.TestCase):
+    def test_undo_head_default(self):
+        rc, out, _, mrev = _drive(["undo"], is_root=True, revert_sha="rev99")
+        self.assertEqual(rc, 0)
+        mrev.assert_called_once()
+        # default sha is None → revert(notes_root, None)
+        self.assertIsNone(mrev.call_args[0][1])
+        self.assertIn("rev99", out)
+
+    def test_undo_named_sha(self):
+        rc, out, _, mrev = _drive(["undo", "abc1234"], is_root=True,
+                                  revert_sha="rev88")
+        self.assertEqual(rc, 0)
+        self.assertEqual(mrev.call_args[0][1], "abc1234")
+
+    def test_undo_refuses_when_not_repo(self):
+        rc, out, _, mrev = _drive(["undo"], is_root=False)
+        self.assertEqual(rc, 1)
+        mrev.assert_not_called()
+        self.assertIn("not a git repo", out)
+
+    def test_undo_fails_when_revert_fails(self):
+        rc, out, _, mrev = _drive(["undo"], is_root=True, revert_sha=None)
+        self.assertEqual(rc, 1)
+        self.assertIn("failed to revert", out)
 
 
 class RegistrationTest(unittest.TestCase):

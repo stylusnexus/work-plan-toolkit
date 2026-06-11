@@ -235,3 +235,85 @@ export async function checkVersion(
     return { ok: false, version: null };
   }
 }
+
+// ---------------------------------------------------------------------------
+// notes-vcs — opt-in local history for the private notes_root tier (#103/#224)
+// ---------------------------------------------------------------------------
+
+/** Machine-readable state from `notes-vcs status --json`. */
+export type NotesVcsStatus = {
+  notes_root: string;
+  under_git: boolean;
+  is_root: boolean;
+  auto_commit: boolean;
+  last_commit_sha: string | null;
+  last_commit_subject: string | null;
+  dirty: boolean;
+};
+
+/**
+ * Runs `notes-vcs status --json` and returns the parsed state, or null on any
+ * failure. Never throws — local history is an enhancement, so a missing/old CLI
+ * must degrade to "feature absent", not break the viewer.
+ */
+export async function notesVcsStatus(run: CliRunner): Promise<NotesVcsStatus | null> {
+  try {
+    const result = await run(["notes-vcs", "status", "--json"]);
+    if (result.code !== 0) return null;
+    const blob = JSON.parse(result.stdout) as Partial<NotesVcsStatus>;
+    if (typeof blob !== "object" || blob === null) return null;
+    return {
+      notes_root: String(blob.notes_root ?? ""),
+      under_git: Boolean(blob.under_git),
+      is_root: Boolean(blob.is_root),
+      auto_commit: Boolean(blob.auto_commit),
+      last_commit_sha: blob.last_commit_sha ?? null,
+      last_commit_subject: blob.last_commit_subject ?? null,
+      dirty: Boolean(blob.dirty),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Runs a side-effecting `notes-vcs` action (init / enable / disable).
+ * Throws CliError on non-zero exit so the caller can surface the message.
+ */
+export async function notesVcsRun(
+  run: CliRunner,
+  action: "init" | "enable" | "disable",
+): Promise<string> {
+  const args = ["notes-vcs", action];
+  const result = await run(args);
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan notes-vcs ${action} failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  return result.stdout;
+}
+
+/**
+ * Reverts a notes_root commit via `notes-vcs undo [<sha>]` (git stays in the
+ * engine). The sha is placed after a `--` separator so a dash-led value can't
+ * be misread as a flag. Throws CliError on non-zero exit.
+ */
+export async function notesVcsUndo(run: CliRunner, sha?: string): Promise<string> {
+  const args = sha ? ["notes-vcs", "undo", "--", sha] : ["notes-vcs", "undo"];
+  const result = await run(args);
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan notes-vcs undo failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  return result.stdout;
+}

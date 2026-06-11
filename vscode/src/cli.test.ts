@@ -9,6 +9,9 @@ import {
   meetsMinVersion,
   checkVersion,
   MIN_CLI_VERSION,
+  notesVcsStatus,
+  notesVcsRun,
+  notesVcsUndo,
 } from "./cli.ts";
 import type { Export } from "./model.ts";
 
@@ -233,5 +236,96 @@ describe("checkVersion", () => {
     const result = await checkVersion(throwingRunner);
     assert.equal(result.ok, false);
     assert.equal(result.version, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// notes-vcs (#103/#224)
+// ---------------------------------------------------------------------------
+
+/** A runner that records the args it was called with. */
+function capturingRunner(result: CliResult): { run: CliRunner; calls: string[][] } {
+  const calls: string[][] = [];
+  const run: CliRunner = (args: string[]) => {
+    calls.push(args);
+    return Promise.resolve(result);
+  };
+  return { run, calls };
+}
+
+const STATUS_JSON = JSON.stringify({
+  notes_root: "/home/eve/notes",
+  under_git: true,
+  is_root: true,
+  auto_commit: true,
+  last_commit_sha: "ab12cd3",
+  last_commit_subject: "ab12cd3 work-plan slot 1 t",
+  dirty: false,
+});
+
+describe("notesVcsStatus", () => {
+  test("parses status --json into a typed object", async () => {
+    const { run, calls } = capturingRunner({ code: 0, stdout: STATUS_JSON, stderr: "" });
+    const st = await notesVcsStatus(run);
+    assert.deepEqual(calls[0], ["notes-vcs", "status", "--json"]);
+    assert.equal(st?.is_root, true);
+    assert.equal(st?.auto_commit, true);
+    assert.equal(st?.last_commit_sha, "ab12cd3");
+  });
+
+  test("returns null on non-zero exit (old CLI without the verb)", async () => {
+    const run = fakeRunner({ code: 2, stdout: "", stderr: "unknown subcommand" });
+    assert.equal(await notesVcsStatus(run), null);
+  });
+
+  test("returns null on unparseable stdout", async () => {
+    const run = fakeRunner({ code: 0, stdout: "not json", stderr: "" });
+    assert.equal(await notesVcsStatus(run), null);
+  });
+
+  test("never throws when the runner throws", async () => {
+    const throwing: CliRunner = () => Promise.reject(new Error("ENOENT"));
+    assert.equal(await notesVcsStatus(throwing), null);
+  });
+
+  test("coerces missing fields to safe defaults", async () => {
+    const run = fakeRunner({ code: 0, stdout: JSON.stringify({ is_root: false }), stderr: "" });
+    const st = await notesVcsStatus(run);
+    assert.equal(st?.auto_commit, false);
+    assert.equal(st?.last_commit_sha, null);
+    assert.equal(st?.under_git, false);
+  });
+});
+
+describe("notesVcsUndo", () => {
+  test("bare undo (HEAD) builds the right argv", async () => {
+    const { run, calls } = capturingRunner({ code: 0, stdout: "✓ Reverted HEAD", stderr: "" });
+    await notesVcsUndo(run);
+    assert.deepEqual(calls[0], ["notes-vcs", "undo"]);
+  });
+
+  test("undo with a sha places it after the -- separator", async () => {
+    const { run, calls } = capturingRunner({ code: 0, stdout: "✓ Reverted abc", stderr: "" });
+    await notesVcsUndo(run, "abc1234");
+    assert.deepEqual(calls[0], ["notes-vcs", "undo", "--", "abc1234"]);
+  });
+
+  test("throws CliError on non-zero exit", async () => {
+    const run = fakeRunner({ code: 1, stdout: "", stderr: "nothing to revert" });
+    await assert.rejects(() => notesVcsUndo(run), (e: unknown) => e instanceof CliError);
+  });
+});
+
+describe("notesVcsRun", () => {
+  test("builds [notes-vcs, <action>] and returns stdout", async () => {
+    const { run, calls } = capturingRunner({ code: 0, stdout: "✓ auto-commit enabled.", stderr: "" });
+    const out = await notesVcsRun(run, "enable");
+    assert.deepEqual(calls[0], ["notes-vcs", "enable"]);
+    assert.match(out, /enabled/);
+  });
+
+  test("throws CliError on non-zero exit", async () => {
+    const run = fakeRunner({ code: 1, stdout: "", stderr: "boom" });
+    await assert.rejects(() => notesVcsRun(run, "init"), (e: unknown) => e instanceof CliError);
   });
 });
