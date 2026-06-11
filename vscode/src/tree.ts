@@ -176,6 +176,45 @@ export class WorkPlanTreeProvider
     return [];
   }
 
+  /**
+   * Parent lookup — required for `TreeView.reveal()` (used by Reveal-in-tree
+   * from the search results panel, #272). Only the track→repo and
+   * untracked→repo edges are needed in practice; repos are roots.
+   */
+  getParent(
+    element: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode,
+  ): RepoNode | UntrackedGroupNode | undefined {
+    if (element.kind === "repo") return undefined;
+    if (element.kind === "track") {
+      return this.roots.find(r => r.tracks.includes(element));
+    }
+    if (element.kind === "untrackedGroup") {
+      return this.roots.find(r => r.repo === element.repo);
+    }
+    // untrackedIssue → its group
+    const repoNode = this.roots.find(r => r.repo === element.repo);
+    if (repoNode && repoNode.untracked.length > 0) {
+      return { kind: "untrackedGroup", repo: repoNode.repo, issues: repoNode.untracked };
+    }
+    return undefined;
+  }
+
+  /**
+   * Finds the live TrackNode for a (name, repo) pair among the current roots, so
+   * callers can hand the exact instance to `TreeView.reveal()`. Returns null when
+   * the track isn't visible (e.g. filtered out by the active lens).
+   */
+  findTrackNode(name: string, repo: string | null): TrackNode | null {
+    for (const r of this.roots) {
+      for (const t of r.tracks) {
+        if (t.name === name && (repo === null || t.repo === repo)) {
+          return t;
+        }
+      }
+    }
+    return null;
+  }
+
   getTreeItem(node: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode): vscode.TreeItem {
     if (node.kind === "repo") {
       return this._repoTreeItem(node);

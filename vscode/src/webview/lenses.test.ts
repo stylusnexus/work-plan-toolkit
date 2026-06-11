@@ -13,7 +13,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Export } from "../model.ts";
-import { availableLenses, applyLens } from "./lenses.ts";
+import { availableLenses, applyLens, describeView } from "./lenses.ts";
 import type { Lens } from "./lenses.ts";
 
 // ---------------------------------------------------------------------------
@@ -192,14 +192,63 @@ describe("availableLenses — repo lenses", () => {
 });
 
 describe("availableLenses — milestone lenses", () => {
-  it("includes distinct milestones in first-seen (track/issue) order", () => {
+  it("includes distinct milestones, sorted numeric-aware ascending", () => {
     const choices = availableLenses(exp);
     const milestoneChoices = choices.filter(c => c.lens.kind === "milestone");
     const milestones = milestoneChoices.map(
       c => (c.lens as { kind: "milestone"; milestone: string }).milestone,
     );
-    // M1 appears first (platform-health/issue 487), v0.4.0 appears later (org-sharing/issue 87)
+    // "M1" and "v0.4.0" — sorted ascending, "M" sorts before "v" (#268).
     assert.deepStrictEqual(milestones, ["M1", "v0.4.0"]);
+  });
+
+  it("sorts version-like milestones numeric-aware regardless of issue order (#268)", () => {
+    // Mirrors the reported jumble: milestones encountered out of order across
+    // tracks should still come back sorted, with numeric segments ordered as
+    // numbers (v0.5.0 before v0.10.0, not lexically after).
+    const jumbled: Export = {
+      schema: 1,
+      generated_at: "2026-06-11T00:00:00Z",
+      tracks: [
+        {
+          name: "t1",
+          repo: "org/repo",
+          tier: "private",
+          status: "active",
+          launch_priority: "P1",
+          milestone_alignment: null,
+          visibility: "PRIVATE",
+          blockers: [],
+          next_up: [],
+          rollup: { open: 1, closed: 0 },
+          issues: [
+            { number: 1, title: "a", state: "open", assignee: "—", milestone: "v1.0.0" },
+            { number: 2, title: "b", state: "open", assignee: "—", milestone: "v0.4.0" },
+            { number: 3, title: "c", state: "open", assignee: "—", milestone: "v0.10.0" },
+          ],
+        },
+        {
+          name: "t2",
+          repo: "org/repo",
+          tier: "private",
+          status: "active",
+          launch_priority: "P1",
+          milestone_alignment: null,
+          visibility: "PRIVATE",
+          blockers: [],
+          next_up: [],
+          rollup: { open: 1, closed: 0 },
+          issues: [
+            { number: 4, title: "d", state: "open", assignee: "—", milestone: "v0.5.0" },
+            { number: 5, title: "e", state: "open", assignee: "—", milestone: "v0.4.0" },
+          ],
+        },
+      ],
+    };
+    const milestones = availableLenses(jumbled)
+      .filter(c => c.lens.kind === "milestone")
+      .map(c => (c.lens as { kind: "milestone"; milestone: string }).milestone);
+    assert.deepStrictEqual(milestones, ["v0.4.0", "v0.5.0", "v0.10.0", "v1.0.0"]);
   });
 
   it("no duplicate milestones even when the same milestone appears in multiple tracks", () => {
@@ -564,5 +613,72 @@ describe("applyLens — vscode-free import check", () => {
     // if it did, node:test would fail to load the module.
     assert.ok(typeof applyLens === "function");
     assert.ok(typeof availableLenses === "function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describeView — active lens/sort summary for the view title (#209)
+// ---------------------------------------------------------------------------
+
+describe("describeView — empty when nothing is active", () => {
+  it("returns '' for the all lens + default sort", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "default"), "");
+  });
+});
+
+describe("describeView — lens only (default sort)", () => {
+  it("repo lens", () => {
+    assert.strictEqual(
+      describeView({ kind: "repo", repo: "org/repo" }, "default"),
+      "repo: org/repo",
+    );
+  });
+
+  it("milestone lens", () => {
+    assert.strictEqual(
+      describeView({ kind: "milestone", milestone: "v2.0.0" }, "default"),
+      "milestone: v2.0.0",
+    );
+  });
+
+  it("status lens", () => {
+    assert.strictEqual(
+      describeView({ kind: "status", status: "active" }, "default"),
+      "status: active",
+    );
+  });
+
+  it("blocked lens", () => {
+    assert.strictEqual(describeView({ kind: "blocked" }, "default"), "blocked");
+  });
+});
+
+describe("describeView — sort only (all lens)", () => {
+  it("blocked-first", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "blocked"), "blocked-first");
+  });
+
+  it("most-open", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "open"), "most-open");
+  });
+
+  it("name A–Z", () => {
+    assert.strictEqual(describeView({ kind: "all" }, "name"), "name A–Z");
+  });
+});
+
+describe("describeView — lens + sort combined", () => {
+  it("joins lens and sort with ' · ', lens first", () => {
+    assert.strictEqual(
+      describeView({ kind: "milestone", milestone: "v2.0.0" }, "blocked"),
+      "milestone: v2.0.0 · blocked-first",
+    );
+  });
+
+  it("blocked lens + name sort", () => {
+    assert.strictEqual(
+      describeView({ kind: "blocked" }, "name"),
+      "blocked · name A–Z",
+    );
   });
 });

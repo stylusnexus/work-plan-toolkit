@@ -297,7 +297,7 @@ To install for **both** Claude Code AND Codex, run the installer twice with diff
 
 ### VS Code extension
 
-The **Work Plan** extension is the visual face of the CLI — a sidebar tree (repos → tracks), a Mermaid dependency graph (with focus toggle and repo-scoped full map), the Untracked bucket, cross-track dependency chips, per-issue move buttons, and full read/write (slot/close/edit/move/new-track/…) with a public-repo confirm modal.
+The **Work Plan** extension is the visual face of the CLI — a sidebar tree (repos → tracks), a Mermaid dependency graph (with focus toggle and repo-scoped full map), the Untracked bucket, cross-track dependency chips, per-issue move buttons, **keyword issue search** (`%wildcard%` substitution, results in a dedicated tab), the daily-driver **Brief / Re-orient / Handoff** commands, an inline **active lens + sort** indicator under the view title, and full read/write (slot/close/edit/move/new-track/…) with a public-repo confirm modal.
 
 ![Work Plan VS Code extension — sidebar and dependency graph](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/dependency-graph.png)
 

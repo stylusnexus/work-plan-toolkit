@@ -8,7 +8,9 @@ import { WorkPlanTreeProvider } from "./tree.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track } from "./model.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
-import { availableLenses } from "./webview/lenses.ts";
+import { availableLenses, describeView } from "./webview/lenses.ts";
+import { searchIssues } from "./webview/search.ts";
+import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
 import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
@@ -32,11 +34,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const provider = new WorkPlanTreeProvider(() => exportJson(runner));
 
-  context.subscriptions.push(
-    vscode.window.createTreeView("workPlan.tree", {
-      treeDataProvider: provider,
-    }),
-  );
+  const treeView = vscode.window.createTreeView("workPlan.tree", {
+    treeDataProvider: provider,
+  });
+  context.subscriptions.push(treeView);
+
+  // Surface the active lens + sort inline under the Tracks view title (#209).
+  // Every state change — refresh, setLens, setSort, the milestone-filter
+  // handler, the reset — fires onDidChangeTreeData, so recomputing here keeps
+  // the description in lockstep with what the tree actually shows. Empty string
+  // (lens "all" + sort "default") clears it back to the bare title.
+  const syncViewDescription = (): void => {
+    treeView.description =
+      describeView(provider.activeLens, provider.activeSort) || undefined;
+  };
+  context.subscriptions.push(provider.onDidChangeTreeData(syncViewDescription));
 
   // -------------------------------------------------------------------------
   // refreshAndRerender — shared helper: reload CLI data + re-render panel.
@@ -1268,6 +1280,185 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: hygiene failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Daily-driver relay verbs (#210): brief / orient / handoff. The CLI's
+  // verbatim-relay output is designed to be read as-is, so these pipe stdout
+  // straight to the Work Plan output channel.
+  // -------------------------------------------------------------------------
+
+  // Shared helper: run a read-only relay verb and show its stdout in the channel.
+  const runRelay = async (args: string[], failVerb: string): Promise<void> => {
+    const result = await runner(args);
+    if (result.code !== 0) {
+      throw new CliError({
+        message: result.stderr.trim() || `${failVerb} failed (exit ${result.code})`,
+        args,
+        code: result.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+    }
+    outputChannel.clear();
+    outputChannel.append(result.stdout);
+    outputChannel.show(true);
+  };
+
+  // workPlan.dailyBrief — multi-track daily snapshot (read-only, palette only).
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.dailyBrief", async () => {
+      try {
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Work Plan: building daily brief…",
+            cancellable: false,
+          },
+          () => runRelay(["brief"], "brief"),
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: brief failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // workPlan.orient — re-orient on a track (read-only; context menu + palette).
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.orient", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Work Plan: re-orienting on ${track}…`,
+            cancellable: false,
+          },
+          () => runRelay(["where-was-i", "--", track], "where-was-i"),
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: where-was-i failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // workPlan.handoff — wrap up a work session on a track (writes a session log +
+  // last_handoff; context menu + palette). Routes through the public-write
+  // confirm flow, then relays the paste-ready prompt to the output channel.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.handoff", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const outcome: WriteOutcome = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Work Plan: wrapping up ${track}…`,
+            cancellable: false,
+          },
+          () => executeWrite(runner, { kind: "handoff", track }, confirmPublicWrite),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          outputChannel.clear();
+          outputChannel.append(outcome.stdout);
+          outputChannel.show(true);
+          vscode.window.showInformationMessage(
+            `Work Plan: handoff for ${track} — see the Work Plan output channel.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: handoff failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.searchIssues — keyword search of issue titles with %wildcards (#272).
+  // Searches the in-memory export (the same snapshot every view reads); results
+  // open in a dedicated reusable panel that never clobbers the detail view.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.searchIssues", async () => {
+      try {
+        if (!provider.rawExport) {
+          await provider.refresh();
+        }
+        const loaded = provider.rawExport;
+        if (!loaded || loaded.tracks.length === 0) {
+          vscode.window.showInformationMessage("Work Plan: No issues loaded — run Refresh first.");
+          return;
+        }
+
+        const query = await vscode.window.showInputBox({
+          placeHolder: "Search issues — e.g. %depends%, fix%, %audit",
+          prompt: "Match issue titles. Bare word = contains; % = wildcard (fix% starts-with, %audit ends-with).",
+          validateInput: (v) => {
+            const t = v.trim();
+            return t !== "" && /^%+$/.test(t)
+              ? "A query of % alone matches everything — add text, e.g. %fix% or depends%"
+              : null;
+          },
+        });
+        if (query === undefined || query.trim() === "") return;
+
+        // Renders results for `q` from the latest export and wires the row
+        // actions. Reused by the panel's "Refresh & re-run" affordance.
+        const runAndShow = (q: string): void => {
+          const current = provider.rawExport;
+          if (!current) return;
+          SearchPanel.showResults(
+            { query: q, hits: searchIssues(current, q), generatedAt: current.generated_at },
+            {
+              openIssue: (repo, number) =>
+                void vscode.commands.executeCommand("workPlan.openIssue", { repo, number }),
+              revealTrack: async (repo, track) => {
+                const node = provider.findTrackNode(track, repo);
+                if (node) {
+                  await treeView.reveal(node, { focus: true, select: true, expand: true });
+                } else {
+                  vscode.window.showInformationMessage(
+                    `Work Plan: "${track}" isn't visible in the current view (it may be filtered out by the active lens).`,
+                  );
+                }
+              },
+              refreshAndSearch: async () => {
+                try {
+                  await provider.refresh();
+                  runAndShow(q);
+                } catch (err: unknown) {
+                  const m = err instanceof CliError
+                    ? `Work Plan: ${err.message}`
+                    : `Work Plan: refresh failed — ${String(err)}`;
+                  vscode.window.showErrorMessage(m);
+                }
+              },
+            },
+          );
+        };
+        runAndShow(query);
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: search failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),

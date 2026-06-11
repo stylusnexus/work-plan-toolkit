@@ -19,7 +19,8 @@ export type WriteAction =
   | { kind: "renameTrack"; track: string; newSlug: string }
   | { kind: "addRepo"; key: string; github: string; local?: string }
   | { kind: "setNotesRoot"; path: string }
-  | { kind: "move"; fromTrack: string; toTrack: string; issue: number };
+  | { kind: "move"; fromTrack: string; toTrack: string; issue: number }
+  | { kind: "handoff"; track: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -65,6 +66,7 @@ export type WriteOutcome =
  *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", "--", key]
  *   setNotesRoot    → ["set-notes-root", "--", path]
  *   move            → ["move", "--", issue, fromTrack, toTrack]
+ *   handoff         → ["handoff", "--", track]   (derived/non-interactive mode)
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -135,6 +137,12 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "move":
       return ["move", "--", String(action.issue), action.fromTrack, action.toTrack];
+
+    case "handoff":
+      // Derived (non-interactive) handoff. The CLI's prompt helpers fall back to
+      // their defaults under non-TTY stdin (#183), so this never blocks; --auto-next
+      // and -i are deliberately omitted (they'd need a native picker — separate work).
+      return ["handoff", "--", action.track];
   }
 }
 

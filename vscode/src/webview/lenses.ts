@@ -6,7 +6,7 @@
  */
 
 import type { Export } from "../model.ts";
-import type { StatusCategory } from "../treeModel.ts";
+import type { StatusCategory, TrackSort } from "../treeModel.ts";
 import { statusCategory } from "../treeModel.ts";
 
 // ---------------------------------------------------------------------------
@@ -65,19 +65,25 @@ export function availableLenses(exp: Export): LensChoice[] {
     }
   }
 
-  // 3. Distinct non-empty milestones in first-seen order
+  // 3. Distinct non-empty milestones, sorted numeric-aware ascending so
+  //    version-like names order naturally (v0.5.0 before v0.10.0) instead of
+  //    appearing in issue-iteration order (#268).
   const seenMilestones = new Set<string>();
   for (const track of exp.tracks) {
     for (const issue of track.issues) {
-      if (issue.milestone !== null && issue.milestone !== "" && !seenMilestones.has(issue.milestone)) {
+      if (issue.milestone !== null && issue.milestone !== "") {
         seenMilestones.add(issue.milestone);
-        choices.push({
-          id: `milestone:${issue.milestone}`,
-          label: `Milestone: ${issue.milestone}`,
-          lens: { kind: "milestone", milestone: issue.milestone },
-        });
       }
     }
+  }
+  for (const milestone of [...seenMilestones].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  )) {
+    choices.push({
+      id: `milestone:${milestone}`,
+      label: `Milestone: ${milestone}`,
+      lens: { kind: "milestone", milestone },
+    });
   }
 
   // 4. Status lenses — one per category that has at least one member.
@@ -160,4 +166,56 @@ export function applyLens(exp: Export, lens: Lens): Export {
     // would make the Untracked bucket vanish under EVERY lens, including "all".
     ...(exp.untracked !== undefined && { untracked: exp.untracked }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// describeView
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a short, human-readable label for the active lens + sort, suitable for
+ * a TreeView.description (shown inline next to the view title). Returns "" when
+ * the lens is "all" AND the sort is "default" — i.e. nothing to surface (#209).
+ *
+ * Examples:
+ *   ({kind:"milestone", milestone:"v2.0.0"}, "blocked") → "milestone: v2.0.0 · blocked-first"
+ *   ({kind:"blocked"}, "default")                       → "blocked"
+ *   ({kind:"all"}, "name")                              → "name A–Z"
+ *   ({kind:"all"}, "default")                           → ""
+ */
+export function describeView(lens: Lens, sort: TrackSort): string {
+  const parts: string[] = [];
+
+  switch (lens.kind) {
+    case "repo":
+      parts.push(`repo: ${lens.repo}`);
+      break;
+    case "milestone":
+      parts.push(`milestone: ${lens.milestone}`);
+      break;
+    case "status":
+      parts.push(`status: ${lens.status}`);
+      break;
+    case "blocked":
+      parts.push("blocked");
+      break;
+    case "all":
+      break;
+  }
+
+  switch (sort) {
+    case "blocked":
+      parts.push("blocked-first");
+      break;
+    case "open":
+      parts.push("most-open");
+      break;
+    case "name":
+      parts.push("name A–Z");
+      break;
+    case "default":
+      break;
+  }
+
+  return parts.join(" · ");
 }
