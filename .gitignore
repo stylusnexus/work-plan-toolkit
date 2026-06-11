@@ -6,6 +6,9 @@ __pycache__/
 .DS_Store
 .write-test
 .claude/settings.local.json
+# Agent scratch state — machine-local, regenerates itself; never publish in this public repo.
+.claude/agent-memory/
+.claude/worktrees/
 .serena/
 
 # Editor / IDE
