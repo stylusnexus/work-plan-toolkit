@@ -57,6 +57,7 @@ def _status_dict(notes_root: Path, cfg: dict) -> dict:
         "is_root": is_root,
         "auto_commit": notes_vcs_auto_commit(cfg),
         "last_commit_sha": notes_vcs.last_commit_sha(notes_root) if is_root else None,
+        "head_parent_sha": notes_vcs.head_parent_sha(notes_root) if is_root else None,
         "last_commit_subject": notes_vcs.last_commit_summary(notes_root) if is_root else None,
         "dirty": notes_vcs.has_changes(notes_root) if is_root else False,
     }
@@ -121,6 +122,21 @@ def run(args: list[str]) -> int:
                   "root. Auto-commit would stage unrelated files there. Move "
                   "notes_root to its own folder first (see set-notes-root).")
             return 1
+        if notes_vcs.is_git_root(notes_root):
+            # Don't adopt an existing repo we didn't create, or one with a
+            # remote — private notes must never be pushable.
+            if notes_vcs.has_remotes(notes_root):
+                print(f"ERROR: {notes_root} already has a git remote. Local "
+                      "history must stay personal and never-pushed — point "
+                      "notes_root at a folder with no remote, or remove the "
+                      "remote first.")
+                return 1
+            if not notes_vcs.is_owned(notes_root):
+                print(f"ERROR: {notes_root} is an existing git repo not created "
+                      "by work-plan. Refusing to adopt it (it may hold unrelated "
+                      "history). Point notes_root at a fresh folder for local "
+                      "history.")
+                return 1
         if not notes_vcs.init_repo(notes_root):
             print(f"ERROR: failed to git-init {notes_root}. Is git installed?")
             return 1

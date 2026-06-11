@@ -26,6 +26,12 @@ GIT_TIMEOUT = 20
 _GITIGNORE = ".DS_Store\nThumbs.db\n"
 _INIT_COMMIT_MSG = "work-plan: initialize notes_root local history"
 
+# Local git-config marker stamped on the repos work-plan creates for local
+# history. We only ever auto-commit a repo carrying this marker, so we never
+# adopt (and commit into) an arbitrary pre-existing repo the user pointed
+# notes_root at.
+_OWNED_KEY = "workplan.localhistory"
+
 
 def _git(notes_root, *args, timeout: int = GIT_TIMEOUT):
     """Run `git -C <notes_root> <args>`; return CompletedProcess or None.
@@ -88,6 +94,66 @@ def has_changes(notes_root: Path) -> bool:
     return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
 
 
+def has_remotes(notes_root: Path) -> bool:
+    """True if the repo has ANY configured remote.
+
+    A personal local-history repo must have none — otherwise private notes
+    could be pushed off the machine. Used to refuse enabling/committing history
+    on a remote-backed repo.
+    """
+    proc = _git(notes_root, "remote")
+    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
+
+
+def is_owned(notes_root: Path) -> bool:
+    """True only if work-plan created this repo for local history.
+
+    `init_repo` stamps a local git-config marker; auto-commit requires it, so we
+    never commit into a repo we don't control (e.g. an existing clone the user
+    pointed notes_root at).
+    """
+    proc = _git(notes_root, "config", "--local", "--get", _OWNED_KEY)
+    return proc is not None and proc.returncode == 0 and proc.stdout.strip() == "true"
+
+
+def mark_owned(notes_root: Path) -> bool:
+    """Stamp the ownership marker into the repo's local config. Returns success."""
+    proc = _git(notes_root, "config", "--local", _OWNED_KEY, "true")
+    return proc is not None and proc.returncode == 0
+
+
+def head_parent_sha(notes_root: Path) -> Optional[str]:
+    """Short sha of HEAD's first parent, or None (root commit / no commits / not
+    a repo). The viewer compares this to the previously-seen HEAD to confirm a
+    post-write commit sits directly on top before offering Undo (#224 safety)."""
+    proc = _git(notes_root, "rev-parse", "--short", "--verify", "HEAD^")
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return proc.stdout.strip()
+
+
+def dirty_paths(notes_root: Path) -> set:
+    """Set of work-tree paths with staged/unstaged changes (raw, quotepath off).
+
+    Empty set on any failure. Renames collapse to the destination path. Used by
+    the dispatcher to commit ONLY what a command changed, leaving pre-existing
+    dirty files untouched.
+    """
+    proc = _git(notes_root, "-c", "core.quotepath=false", "status", "--porcelain")
+    if proc is None or proc.returncode != 0:
+        return set()
+    paths = set()
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:  # rename / copy → the destination path
+            path = path.split(" -> ", 1)[1]
+        if path:
+            paths.add(path)
+    return paths
+
+
 def last_commit_summary(notes_root: Path) -> Optional[str]:
     """'<short-sha> <subject>' of HEAD, or None (no commits / not a repo)."""
     proc = _git(notes_root, "log", "-1", "--pretty=format:%h %s")
@@ -135,14 +201,26 @@ def init_repo(notes_root: Path) -> bool:
     remote — the private tier is never pushed. Returns True on a clean init +
     initial commit, False on any failure (never raises).
 
-    Idempotent-ish: re-running on an already-inited root re-runs `git init`
-    (a no-op for git) and commits only if there's something new.
+    Idempotent-ish: re-running on a repo WE own re-commits only if there's
+    something new. Refuses (returns False) to adopt a repo we did not create or
+    one that has a remote — private notes must never be pushable, and we won't
+    sweep an unrelated existing repo's files into history.
     """
     root = Path(notes_root).expanduser()
     if not root.is_dir():
         return False
-    if _git(root, "init") is None:
-        return False
+    if is_git_root(root):
+        # An existing repo: only proceed if it's one we own AND has no remote.
+        if has_remotes(root) or not is_owned(root):
+            return False
+    else:
+        if _git(root, "init") is None:
+            return False
+        # Stamp ownership immediately, before any commit, so this repo can never
+        # later be mistaken for a foreign one (and a remote added after init is
+        # still caught by auto_commit's per-commit no-remote check).
+        if not mark_owned(root):
+            return False
     gitignore = root / ".gitignore"
     if not gitignore.exists():
         try:
@@ -158,19 +236,35 @@ def init_repo(notes_root: Path) -> bool:
     return proc is not None and proc.returncode == 0
 
 
-def auto_commit(notes_root: Path, message: str) -> Optional[str]:
-    """Stage all of notes_root and commit with `message`; return the new SHA.
+def auto_commit(notes_root: Path, message: str,
+                paths: Optional[list] = None) -> Optional[str]:
+    """Commit notes_root changes with `message`; return the new short SHA.
 
-    No-op (returns None) when notes_root is not a git root, or when the work
-    tree is clean. Never raises — a git failure here must not change the calling
-    command's exit code.
+    Safety gates (all must hold, else no-op None):
+      - notes_root is the git toplevel,
+      - it carries the ownership marker (work-plan created it), and
+      - it has NO remote (a personal, never-pushed history).
+
+    When `paths` is given, stages ONLY those paths so unrelated pre-existing
+    dirty files stay out of the commit; otherwise stages everything. Commits
+    only if something is actually staged. Never raises — a git failure here must
+    not change the calling command's exit code.
     """
     root = Path(notes_root).expanduser()
-    if not is_git_root(root):
+    if not is_git_root(root) or not is_owned(root) or has_remotes(root):
         return None
-    if _git(root, "add", "-A") is None:
-        return None
-    if not has_changes(root):
+    if paths is None:
+        if _git(root, "add", "-A") is None:
+            return None
+    else:
+        if not paths:
+            return None
+        if _git(root, "add", "--", *paths) is None:
+            return None
+    # Commit only what's staged — scoped `add` above keeps unrelated dirty files
+    # unstaged, so they're preserved rather than folded into this commit.
+    staged = _git(root, "diff", "--cached", "--quiet")
+    if staged is None or staged.returncode == 0:
         return None
     proc = _git(root, "commit", "-m", message)
     if proc is None or proc.returncode != 0:

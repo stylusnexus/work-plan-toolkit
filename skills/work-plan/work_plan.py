@@ -161,7 +161,7 @@ DESCRIPTIONS = [
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
      "/work-plan set-notes-root ~/Documents/work-plan-notes"),
     ("notes-vcs", "<init|enable|disable|status|undo> [<sha>] [--no-enable] [--json]",
-     "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
+     "Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. `init` git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. For safety it REFUSES a notes_root that already has a git remote or is a repo work-plan didn't create, and only ever commits the files a command changed — private notes stay un-pushable and your unrelated edits are never swept in. `enable`/`disable` toggle auto-commit (history is kept either way). `status` reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). `undo [<sha>]` reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it's versioned by its own repo).",
      "ONE-TIME setup when you want a git safety net for private tracks — so a bulk slot or a bad edit is reversible by default instead of needing a manual /tmp backup. `undo` reverses the last edit.",
      "/work-plan notes-vcs init"),
 ]
@@ -233,27 +233,35 @@ def main(argv: list[str]) -> int:
     except ImportError as e:
         print(f"subcommand '{sub}' not implemented yet ({e})", file=sys.stderr)
         return 1
+    # Snapshot notes_root's dirty set BEFORE the command so we can commit only
+    # what this command changes (and never fold in pre-existing edits, #244-vcs).
+    pre = _notes_precommit_state(sub)
     rc = module.run(argv[2:])
-    if rc == 0:
-        _maybe_autocommit_notes(sub, argv[1:])
+    if rc == 0 and pre is not None:
+        _commit_changed_notes(pre, argv[1:])
     return rc
 
 
-def _maybe_autocommit_notes(sub: str, parts: list[str]) -> None:
-    """After a successful command, commit notes_root if opt-in VCS is on (#103).
+# Read-only commands never write notes_root — skip the snapshot/commit entirely.
+# (Flag aliases like --brief/--plan-status normalise by stripping leading dashes.)
+_READONLY_SUBCOMMANDS = frozenset({
+    "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
+    "plan-status", "export", "notes-vcs",
+})
 
-    Always-attempt + commit-if-dirty: read-only commands and shared-tier writes
-    (which land outside notes_root) leave the work tree clean and are natural
-    no-ops, so there's no per-command "is this a mutator?" list to maintain.
 
-    This is best-effort and MUST NOT change the command's exit code — every
-    failure path (config error, git missing, not a repo) is swallowed. When
-    auto-commit is enabled but notes_root isn't a git repo yet, nudge once toward
-    `notes-vcs init` instead of silently skipping.
+def _notes_precommit_state(sub: str):
+    """Snapshot notes_root's dirty paths BEFORE a command, when opt-in VCS is on
+    and the command may mutate notes_root. Returns (notes_root, before_paths) or
+    None. Best-effort; never raises — VCS must never change the command's flow.
+
+    `notes-vcs` manages the repo itself; read-only verbs change nothing — both
+    skip. We only ever commit a repo work-plan OWNS that has NO remote, so a
+    pre-existing or remote-backed repo the user pointed notes_root at is left
+    alone (private notes stay un-pushable).
     """
-    # `notes-vcs` manages the repo itself; don't double-commit over its actions.
-    if sub == "notes-vcs":
-        return
+    if sub.lstrip("-") in _READONLY_SUBCOMMANDS:
+        return None
     try:
         from lib.config import load_config, notes_vcs_auto_commit
         from lib import notes_vcs
@@ -261,19 +269,38 @@ def _maybe_autocommit_notes(sub: str, parts: list[str]) -> None:
 
         cfg = load_config()
         if not notes_vcs_auto_commit(cfg):
-            return
+            return None
         notes_root = Path(cfg["notes_root"]).expanduser()
         if not notes_vcs.is_git_root(notes_root):
             if not notes_vcs.is_under_git(notes_root):
                 print("ℹ auto-commit is on but notes_root isn't a git repo — "
                       "run `work-plan notes-vcs init` to enable local history.",
                       file=sys.stderr)
+            return None
+        if not notes_vcs.is_owned(notes_root) or notes_vcs.has_remotes(notes_root):
+            return None
+        return (notes_root, notes_vcs.dirty_paths(notes_root))
+    except Exception:
+        return None
+
+
+def _commit_changed_notes(pre, parts: list[str]) -> None:
+    """Commit ONLY the paths a command newly changed (after − before), leaving
+    any pre-existing dirty files untouched. Best-effort; never raises and never
+    changes the command's exit code.
+    """
+    notes_root, before = pre
+    try:
+        from lib import notes_vcs
+
+        changed = sorted(notes_vcs.dirty_paths(notes_root) - before)
+        if not changed:
             return
         message = "work-plan " + " ".join(parts)
-        sha = notes_vcs.auto_commit(notes_root, message)
+        sha = notes_vcs.auto_commit(notes_root, message, paths=changed)
         if sha:
-            print(f"⏺ notes_root committed {sha} — undo with: "
-                  f"git -C {notes_root} revert {sha}", file=sys.stderr)
+            print(f"⏺ notes_root committed {sha} ({len(changed)} file(s)) — "
+                  f"undo with: git -C {notes_root} revert {sha}", file=sys.stderr)
     except Exception:
         # VCS is a safety net, never a failure mode for the command itself.
         return

@@ -65,20 +65,27 @@ export function activate(context: vscode.ExtensionContext): void {
   // Plain/auto refresh keeps calling refreshAndRerender, so background polls
   // never pop a toast.
   const refreshAfterWrite = async (): Promise<void> => {
-    const before = notesState?.last_commit_sha ?? null;
+    // Snapshot the prior notes-vcs state (root + HEAD) before the refresh so the
+    // Undo decision compares against what we last saw.
+    const before = notesState;
     await refreshAndRerender();
-    // Skip the extra status spawn when we positively know notes_root isn't a
-    // repo (the common feature-off case). A null cache means "unknown" — still
-    // check, since the user may have enabled history out-of-band.
-    if (notesState && !notesState.is_root) return;
     const after = await notesVcsStatus(runner);
     notesState = after;
     if (
+      before &&
       after &&
       after.auto_commit &&
       after.is_root &&
+      // SAME notes_root — a setNotesLocation change makes these differ, so we
+      // never offer to Undo a *different* root's pre-existing history.
+      after.notes_root === before.notes_root &&
       after.last_commit_sha &&
-      after.last_commit_sha !== before
+      after.last_commit_sha !== before.last_commit_sha &&
+      // The new HEAD must sit DIRECTLY on the commit we last saw — i.e. this
+      // write produced exactly one commit on top. Guards against an unrelated
+      // HEAD move (external checkout/reset, a freshly selected root) looking
+      // like our commit and being reverted.
+      after.head_parent_sha === before.last_commit_sha
     ) {
       const sha = after.last_commit_sha;
       // Fire-and-forget: don't block the write's own success toast on the modal.
