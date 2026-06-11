@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.11+8c21445 — 2026-06-11 (#258)
+
+feat: viewer UX + accessibility overhaul, notes-vcs safety, CLI clarity (extension 0.4.0)
+
+Production deploy. Extension bumped to **0.4.0** (feature-heavy, non-breaking).
+
+### VS Code viewer — UX
+- **De-noised command palette**: commands moved the `Work Plan:` prefix into the `category` field, so titles are clean, searchable verbs; argument-only commands gated out of the palette.
+- **Clearer command names**: *Refresh Track Body → Sync Issue States from GitHub*, *Reconcile (preview) → Check Label Drift (preview)*, *Slot Issue into Track → Add Issue to Track*, *Set Next-Up → Set Next-Up & Log Session* (it runs `handoff --set-next`, which also logs a session). CLI `--help` aligned.
+- **Frequency-grouped track context menu** with separators fencing the destructive actions, plus **confirmation modals** before *abandon* (Close) and *Rename*.
+- **Per-milestone filter**: an explicit *filter* control on each milestone band re-scopes the whole view; the result is clearable straight from its toast.
+- **Progress feedback** on every write command.
+
+### VS Code viewer — theming & accessibility
+- **Editor-theme-adaptive** webview: Mermaid graph + detail-card colours follow light / dark / high-contrast (via `--vscode-charts-*` tokens + a forced-colors fallback), re-rendering on theme change.
+- **Accessibility sweep**: distinct *shapes* for track status (not colour alone), keyboard-operable disclosures and depends-on chips with `aria-expanded`/labels, focus-visible move button, table `scope`/caption semantics, a graph text alternative, and a non-colour `⛔` marker on blocked graph nodes.
+
+### Local history (notes-vcs) — opt-in, hardened
+- Opt-in personal version control for the private `notes_root` tier with one-click Undo in the viewer, now with **safety boundaries**: refuses a `notes_root` that has a git remote or is a repo work-plan didn't create; commits **only the files a command changed** (pre-existing edits preserved); Undo/revert is gated on repo ownership + no-remote and on the new commit sitting directly on the previously-seen HEAD.
+
+### CLI & housekeeping
+- Clarified `refresh-md` / `reconcile` / `set` vs `handoff --set-next` help text.
+- Stopped tracking agent scratch state (`.claude/agent-memory`, worktrees) in this public repo.
+
+Closes #103, #207, #208, #214, #217, #218, #219, #224, #227, #228, #229, #230, #231, #232, #233, #238, #244, #248, #249, #250.
+
 ## 2026.06.10+a3d10bf — 2026-06-10 (#222)
 
 feat: rename-track + milestone-ordered tracks (CLI & viewer)
