@@ -135,12 +135,16 @@ describe("buildHtml — graphDef embedding", () => {
     );
   });
 
-  it("the mermaid graph has a text alternative (role=img + aria-label) (#217)", () => {
+  it("the mermaid graph has a text alternative on a wrapper that survives mermaid.run() (#217/#244)", () => {
     const html = buildHtml({ ...BASE, trackName: "platform-health" });
+    // The alt text lives on a parent <div>, not the <pre> — Mermaid replaces the
+    // <pre>'s content with its own SVG, so a label on the pre would be lost.
     assert.ok(
-      html.includes('<pre class="mermaid" role="img" aria-label="Dependency graph for platform-health">'),
-      `mermaid graph missing role/aria-label:\n${html}`,
+      html.includes('<div class="graph-figure" role="img" aria-label="Dependency graph for platform-health">'),
+      `graph wrapper missing role/aria-label:\n${html}`,
     );
+    // The pre itself no longer carries role/aria-label (avoids nested role=img).
+    assert.ok(!/<pre class="mermaid"[^>]*role=/.test(html), "pre should not carry role anymore");
   });
 
   it("the move button reveals on focus, not just hover (#214)", () => {

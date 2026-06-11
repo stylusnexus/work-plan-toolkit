@@ -160,7 +160,10 @@ mermaid.run();
     var capToggle = target.closest(".issue-cap-toggle");
     if (capToggle) {
       var capBand = capToggle.closest(".issue-cap-band");
-      if (capBand) { capBand.classList.toggle("collapsed"); }
+      if (capBand) {
+        var capCollapsed = capBand.classList.toggle("collapsed");
+        capToggle.setAttribute("aria-expanded", capCollapsed ? "false" : "true");
+      }
       return;
     }
 
@@ -293,13 +296,16 @@ mermaid.run();
       font-size: 0.9em;
     }
     .depends-on { margin-top: 8px; }
+    /* A real <button> (keyboard-operable, #244) styled as the old chip. */
     .depends-chip {
       display: inline-block;
       background: var(--depends-bg);
       color: var(--depends-fg);
+      border: none;
       padding: 2px 8px;
       border-radius: 12px;
       margin: 2px;
+      font: inherit;
       font-size: 0.9em;
       cursor: pointer;
       text-decoration: underline;
@@ -419,7 +425,9 @@ mermaid.run();
     <h2>Dependency graph</h2>
     <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
   </div>
-  <pre class="mermaid" role="img" aria-label="Dependency graph for ${trackNameEsc}">${graphDef}</pre>
+  <div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
+    <pre class="mermaid">${graphDef}</pre>
+  </div>
 
   <h2>Detail</h2>
   <div class="detail-card">

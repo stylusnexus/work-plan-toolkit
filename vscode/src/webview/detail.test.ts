@@ -630,3 +630,28 @@ describe("renderDetail — milestone band filter + keyboard toggle (#218)", () =
     assert.ok(html.includes('aria-expanded="false"'), "a later band's toggle should be collapsed");
   });
 });
+
+describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
+  it("depends-on chips are keyboard-operable buttons", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('<button type="button" class="depends-chip" data-track="idea-mode"'),
+      `depends-chip should be a <button>:\n${html}`,
+    );
+  });
+
+  it("the issue-cap 'Show all' toggle carries aria-expanded", () => {
+    const issues: Issue[] = [];
+    for (let i = 1; i <= 75; i++) {
+      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null });
+    }
+    const big: Track = {
+      ...emptyTrack, name: "big", repo: "org/repo", rollup: { open: 75, closed: 0 }, issues,
+    };
+    const html = renderDetail(big);
+    assert.ok(
+      html.includes('class="issue-cap-toggle" aria-expanded="false"'),
+      `issue-cap toggle should have aria-expanded:\n${html}`,
+    );
+  });
+});
