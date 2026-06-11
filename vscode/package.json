@@ -59,86 +59,106 @@
     "commands": [
       {
         "command": "workPlan.refresh",
-        "title": "Work Plan: Refresh",
+        "title": "Refresh",
+        "category": "Work Plan",
         "icon": "$(refresh)"
       },
       {
         "command": "workPlan.selectView",
-        "title": "Work Plan: Select View",
+        "title": "Select View",
+        "category": "Work Plan",
         "icon": "$(filter)"
       },
       {
         "command": "workPlan.sortTracks",
-        "title": "Work Plan: Sort Tracks",
+        "title": "Sort Tracks",
+        "category": "Work Plan",
         "icon": "$(sort-precedence)"
       },
       {
         "command": "workPlan.openTrack",
-        "title": "Open Track"
+        "title": "Open Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.openIssue",
-        "title": "Open Issue"
+        "title": "Open Issue",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.editFields",
-        "title": "Work Plan: Edit Track Fields"
+        "title": "Edit Track Fields",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.setNext",
-        "title": "Work Plan: Set Next-Up"
+        "title": "Set Next-Up",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.refreshMd",
-        "title": "Work Plan: Refresh Track Body"
+        "title": "Refresh Track Body",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.reconcile",
-        "title": "Work Plan: Reconcile (preview)"
+        "title": "Reconcile (preview)",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.hygiene",
-        "title": "Work Plan: Run Hygiene"
+        "title": "Run Hygiene",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.slot",
-        "title": "Work Plan: Slot Issue into Track"
+        "title": "Slot Issue into Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.close",
-        "title": "Work Plan: Close Track"
+        "title": "Close Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.move",
-        "title": "Work Plan: Move Issue from Track"
+        "title": "Move Issue from Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.renameTrack",
-        "title": "Work Plan: Rename Track"
+        "title": "Rename Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.newTrack",
-        "title": "Work Plan: New Track"
+        "title": "New Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.addRepo",
-        "title": "Work Plan: Add Repo"
+        "title": "Add Repo",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.setNotesLocation",
-        "title": "Work Plan: Set Notes Location"
+        "title": "Set Notes Location",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.slotUntracked",
-        "title": "Work Plan: Slot Untracked Issue into Track"
+        "title": "Slot Untracked Issue into Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.batchSlotUntracked",
-        "title": "Work Plan: Batch Slot Untracked Issues into Track"
+        "title": "Batch Slot Untracked Issues into Track",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.notesVcs",
-        "title": "Work Plan: Local History (private notes)…"
+        "title": "Local History (private notes)…",
+        "category": "Work Plan"
       }
     ],
     "menus": {
@@ -237,6 +257,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "workPlan.openIssue",
+          "when": "false"
+        },
         {
           "command": "workPlan.slotUntracked",
           "when": "false"
