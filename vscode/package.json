@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -135,6 +135,10 @@
       {
         "command": "workPlan.batchSlotUntracked",
         "title": "Work Plan: Batch Slot Untracked Issues into Track"
+      },
+      {
+        "command": "workPlan.notesVcs",
+        "title": "Work Plan: Local History (private notes)…"
       }
     ],
     "menus": {
@@ -173,6 +177,11 @@
           "command": "workPlan.setNotesLocation",
           "when": "view == workPlan.tree",
           "group": "8_workPlanConfig"
+        },
+        {
+          "command": "workPlan.notesVcs",
+          "when": "view == workPlan.tree",
+          "group": "8_workPlanConfig@2"
         }
       ],
       "view/item/context": [
