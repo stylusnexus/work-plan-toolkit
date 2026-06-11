@@ -6,6 +6,21 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.11+cbd3f57 — 2026-06-11 (#278)
+
+fix(vscode): Daily Brief icon + re-entrancy guard (0.5.1)
+
+Small VS Code extension fix — **0.5.1**.
+
+- **fix(vscode): clearer Daily Brief icon + re-entrancy guard** — swap the Daily Brief title-bar `$(list-unordered)` (VS Code's hamburger/list glyph) for `$(checklist)`, and guard re-entrancy so repeat-clicks no longer spawn concurrent `brief` runs + stacked progress toasts.
+
+## Versions
+- VS Code extension hand-bumped **0.5.0 → 0.5.1** (`vscode/package.json` + `## Status`).
+- **CLI/npm is unchanged** (Python skill untouched) — no npm republish this deploy; only the VS Code extension publishes.
+
+## Verification
+- vscode: typecheck clean, 416 tests pass, build OK.
+
 ## 2026.06.11+60c2651 — 2026-06-11 (#276)
 
 feat: VS Code extension 0.5.0 — issue search, daily-driver commands, lens/sort indicator
