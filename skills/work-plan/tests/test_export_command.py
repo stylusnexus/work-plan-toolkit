@@ -17,6 +17,7 @@ def _track(name, repo, issues, *, has_frontmatter=True, status="active"):
         repo=repo,
         tier="private",
         path=Path(f"/tmp/notes/{name}.md"),
+        folder="myrepo",
         has_frontmatter=has_frontmatter,
         meta={
             "status": status,
@@ -80,6 +81,14 @@ class ExportRunJsonTest(unittest.TestCase):
         # str(Path(...)) so the expected separator matches the platform (Windows
         # backslashes). The path is whatever os.sep the fixture's Path produces.
         self.assertEqual(out["tracks"][0]["path"], str(Path("/tmp/notes/alpha.md")))
+
+    def test_track_folder_key_is_emitted(self):
+        """The export carries each track's config folder key end-to-end for the
+        Plans view's `plan-status --repo=<key>` arg (#164)."""
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["tracks"][0]["folder"], "myrepo")
 
     def test_track_issues_assembled_in_declared_order(self):
         # Issues are milestone-sorted (#101): null-milestone group sorts by number.

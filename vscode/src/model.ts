@@ -32,6 +32,10 @@ export interface Track {
    * where the extension host runs elsewhere; consumers must stat before opening.
    */
   path: string | null;
+  /** Config repo key (the key under `repos:` in config.yml), or null. Used as
+   *  the `plan-status --repo=<key>` arg by the Plans view (#164) — the CLI
+   *  resolves a local checkout by folder key, not by github slug. */
+  folder: string | null;
   /** "private" today; forward-compat for a future shared tier. */
   tier: string;
   status: string;
@@ -56,6 +60,31 @@ export interface Export {
   tracks: Track[];
   /** Open issues referenced by no track, grouped by repo (CLI schema 1, additive). */
   untracked?: { repo: string; issues: Issue[] }[];
+}
+
+/** A plan/spec doc with its plan-status verdict (#164). */
+export interface PlanDoc {
+  rel: string;
+  kind: "plan" | "spec" | "adhoc";
+  verdict: "shipped" | "partial" | "dead" | "foreign" | "manifest-less";
+  glyph: string;
+  rationale: string;
+  files_present: number;
+  files_declared: number;
+  checkboxes_done: number;
+  checkboxes_total: number;
+  last_touched: string | null;
+  manifest_last_touched: string | null;
+  stalled: boolean;
+  lie_gap: boolean;
+  unchecked_items: string[];
+  stall_days: number;
+}
+
+/** `plan-status --repo=<key> --json` result. */
+export interface PlanStatus {
+  repo: string;
+  docs: PlanDoc[];
 }
 
 // ---------------------------------------------------------------------------

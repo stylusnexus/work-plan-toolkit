@@ -5,6 +5,7 @@ import {
   CliError,
   exportJson,
   listRepoOpenIssues,
+  planStatus,
   runWrite,
   parseVersion,
   meetsMinVersion,
@@ -158,6 +159,68 @@ describe("listRepoOpenIssues", () => {
       (err: unknown) => {
         assert.ok(err instanceof CliError, "should be CliError");
         assert.ok((err as CliError).message.includes("could not parse list-open-issues JSON"));
+        return true;
+      },
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planStatus (#164)
+// ---------------------------------------------------------------------------
+
+const VALID_PLAN_STATUS = {
+  repo: "your-org/myproject",
+  docs: [
+    {
+      rel: "plans/auth-refactor.md",
+      kind: "plan",
+      verdict: "partial",
+      glyph: "◐",
+      rationale: "3 of 7 declared files present; 2 of 9 checkboxes done",
+      files_present: 3,
+      files_declared: 7,
+      checkboxes_done: 2,
+      checkboxes_total: 9,
+      last_touched: "2026-05-29",
+      manifest_last_touched: "2026-05-15",
+      stalled: true,
+      lie_gap: false,
+      unchecked_items: ["wire up session store", "add logout route"],
+      stall_days: 14,
+    },
+  ],
+};
+
+describe("planStatus", () => {
+  test("parses a canned response into PlanStatus", async () => {
+    const run = fakeRunner({ code: 0, stdout: JSON.stringify(VALID_PLAN_STATUS), stderr: "" });
+    const result = await planStatus(run, "myrepo");
+    assert.equal(result.repo, "your-org/myproject");
+    assert.equal(result.docs.length, 1);
+    assert.equal(result.docs[0].stalled, true);
+    assert.equal(result.docs[0].kind, "plan");
+  });
+
+  test("passes --stall-days when provided", async () => {
+    const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_PLAN_STATUS), stderr: "" });
+    await planStatus(run, "myrepo", 30);
+    assert.deepEqual(calls[0], ["plan-status", "--repo=myrepo", "--json", "--stall-days=30"]);
+  });
+
+  test("omits --stall-days when not provided", async () => {
+    const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_PLAN_STATUS), stderr: "" });
+    await planStatus(run, "myrepo");
+    assert.deepEqual(calls[0], ["plan-status", "--repo=myrepo", "--json"]);
+  });
+
+  test("throws CliError on a non-zero exit", async () => {
+    const run = fakeRunner({ code: 1, stdout: "", stderr: "boom" });
+    await assert.rejects(
+      () => planStatus(run, "myrepo"),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError, "should be CliError");
+        assert.ok((err as CliError).stderr.includes("boom"));
         return true;
       },
     );

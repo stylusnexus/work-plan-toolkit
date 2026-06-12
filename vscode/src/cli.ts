@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { Export, Issue } from "./model.ts";
+import type { Export, Issue, PlanStatus } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Core types — the injectable seam between cli.ts and extension.ts
@@ -184,6 +184,41 @@ export async function listRepoOpenIssues(
   }
 
   return parsed as RepoOpenIssues;
+}
+
+/**
+ * Runs `work-plan plan-status --repo=<key> --json [--stall-days=<n>]` and returns
+ * the parsed plan-status report (#164). Throws CliError on non-zero exit or
+ * unparseable output.
+ */
+export async function planStatus(
+  run: CliRunner,
+  repoKey: string,
+  stallDays?: number,
+): Promise<PlanStatus> {
+  const args = ["plan-status", `--repo=${repoKey}`, "--json"];
+  if (stallDays !== undefined) args.push(`--stall-days=${stallDays}`);
+  const result = await run(args);
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan plan-status failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  try {
+    return JSON.parse(result.stdout) as PlanStatus;
+  } catch {
+    throw new CliError({
+      message: `could not parse plan-status JSON: ${result.stdout.slice(0, 200)}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
 }
 
 /**

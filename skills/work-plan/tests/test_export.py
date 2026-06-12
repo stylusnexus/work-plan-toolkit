@@ -8,7 +8,7 @@ import commands.export as export_cmd
 
 def _track(name, repo, issues, blockers=None, next_up=None, status="active", depends_on=None):
     return SimpleNamespace(name=name, repo=repo, tier="private",
-        path=Path(f"/tmp/notes/{name}.md"),
+        path=Path(f"/tmp/notes/{name}.md"), folder="myrepo",
         meta={"status": status, "launch_priority": "P2", "milestone_alignment": "v1",
               "blockers": blockers or [], "next_up": next_up or [],
               "depends_on": depends_on or [],
@@ -30,6 +30,8 @@ class BuildExportTest(unittest.TestCase):
         # (#211). Compare against str(Path(...)) so the expected separator matches
         # the platform — str(Path) yields backslashes on Windows.
         self.assertEqual(t["path"], str(Path("/tmp/notes/ph.md")))
+        # Config repo key surfaces for the Plans view's --repo arg (#164).
+        self.assertEqual(t["folder"], "myrepo")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
         self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None})

@@ -5,6 +5,8 @@ import {
 } from "./cli.ts";
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
+import { PlansProvider } from "./plansTree.ts";
+import { ackKey } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
@@ -1689,6 +1691,127 @@ export function activate(context: vscode.ExtensionContext): void {
           ? `Work Plan: ${err.message}`
           : `Work Plan: notes-vcs failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Plans view (#164): a second tree rendering plan-status verdicts, scanned
+  // lazily per-repo on expand. Repos are the distinct config FOLDER KEYS from
+  // the export (the `plan-status --repo=<key>` arg resolves a local checkout by
+  // folder key, not github slug), labelled by their slug for display.
+  // -------------------------------------------------------------------------
+
+  // Read the stall-days threshold: "match" → null (trust the CLI's own
+  // `stalled`), otherwise the parsed integer day count.
+  const stallDaysSetting = (): number | null => {
+    const raw = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<string>("stallDays", "match");
+    return raw === "match" ? null : parseInt(raw, 10);
+  };
+
+  // Distinct {repoKey: folder, label: slug} from the export, deduped by folder.
+  // Tracks without a folder key (null) are skipped — plan-status needs the key.
+  const reposForPlans = (): { repoKey: string; label: string }[] => {
+    const raw = provider.rawExport;
+    if (!raw) return [];
+    const seen = new Map<string, string>();
+    for (const t of raw.tracks) {
+      if (t.folder && !seen.has(t.folder)) {
+        seen.set(t.folder, t.repo);
+      }
+    }
+    return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));
+  };
+
+  // Ack state (#164): plans the user has chosen to stop flagging. Persisted in
+  // workspaceState (per-workspace, not global) keyed by ackKey(repoKey, rel). We
+  // persist ONLY the ack key — never stalled-ness, which is re-derived live, so a
+  // plan that's no longer stalled simply leaves the stalled bucket on its own.
+  const ACK_KEY = "workPlan.ackedPlans";
+  const ackedPlans = new Set<string>(context.workspaceState.get<string[]>(ACK_KEY, []));
+
+  // showAcked toggles whether acked docs still render (demoted/greyed, the
+  // default) or are filtered out entirely. In-memory — resets to "show" per session.
+  let showAcked = true;
+
+  const plansProvider = new PlansProvider(
+    runner,
+    reposForPlans,
+    stallDaysSetting,
+    (repoKey, rel) => ackedPlans.has(ackKey(repoKey, rel)),
+    () => showAcked,
+  );
+
+  const setAck = async (repoKey: string, rel: string, on: boolean): Promise<void> => {
+    const k = ackKey(repoKey, rel);
+    if (on) ackedPlans.add(k); else ackedPlans.delete(k);
+    await context.workspaceState.update(ACK_KEY, [...ackedPlans]);
+    plansProvider.rerender();
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.plans.acknowledge",
+      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
+        n?.kind === "doc" && n.repoKey && n.doc?.rel
+          ? setAck(n.repoKey, n.doc.rel, true)
+          : undefined,
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.unacknowledge",
+      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
+        n?.kind === "doc" && n.repoKey && n.doc?.rel
+          ? setAck(n.repoKey, n.doc.rel, false)
+          : undefined,
+    ),
+    vscode.commands.registerCommand("workPlan.plans.toggleAcknowledged", () => {
+      showAcked = !showAcked;
+      plansProvider.rerender();
+    }),
+  );
+
+  const plansView = vscode.window.createTreeView("workPlan.plans", {
+    treeDataProvider: plansProvider,
+  });
+  context.subscriptions.push(plansView);
+
+  // The Plans roots derive from provider.rawExport, which is null until the main
+  // provider's async refresh resolves — and the provider is constructed after
+  // that refresh is kicked off. Re-render the Plans tree whenever the export
+  // changes so the view fills in once data arrives (instead of staying blank
+  // until a manual Plans refresh). rerender() (not refresh()) keeps the per-repo
+  // scan cache: getChildren re-reads reposForPlans() on every render, so a new
+  // repo list is picked up while already-scanned repos (and a completed Scan All
+  // roll-up) survive a track sort/filter/auto-refresh.
+  context.subscriptions.push(
+    provider.onDidChangeTreeData(() => plansProvider.rerender()),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.refresh", () => {
+      plansProvider.refresh();
+    }),
+  );
+
+  // Scan-all — bounded-concurrent cross-repo scan that streams results into the
+  // stalled roll-up. View-scoped progress spins the Plans view title while it runs.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.scanAll", () =>
+      vscode.window.withProgress(
+        { location: { viewId: "workPlan.plans" }, title: "Work Plan: scanning plans…" },
+        () => plansProvider.scanAll(),
+      ),
+    ),
+  );
+
+  // Re-render the Plans view when the stall-days threshold changes (it shifts
+  // which partials read as stalled). The Tracks view ignores this setting.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.stallDays")) {
+        plansProvider.rerender();
       }
     }),
   );
