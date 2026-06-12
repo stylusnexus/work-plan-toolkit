@@ -542,6 +542,8 @@ Every write verb the VS Code extension drives runs **without a TTY** — explici
 
 `list-open-issues --repo=<owner/name> [--exclude=<csv>]` is a second viewer read surface: it emits a repo's **open** issues as JSON (`{repo, issues:[…]}`, the same per-issue shape as `export`). The extension's **Slot** command uses it to offer a pick-list instead of a typed number; `--exclude` drops the track's current issues so they don't reappear. Unlike `export`'s `untracked` (open issues in *no* track), this includes issues tracked by *other* tracks — they're valid slot targets. Read-only.
 
+`plan-status --json` is the viewer's **Plans view** read surface: alongside each doc's verdict it now also emits `manifest_last_touched` (the most recent commit date across the plan's declared files), `stalled`, `lie_gap`, `unchecked_items`, and `stall_days`. The staleness window honors `stall_days:` in `~/.claude/work-plan/config.yml` and a `--stall-days=<n>` flag (precedence: flag → config → default 14). The viewer consumes these to flag plans whose declared-file build has gone cold — a `partial` plan with no recent commit on its manifest ("stalled") — and plans scored shipped whose own phase checkboxes are mostly unticked ("lie-gap").
+
 ## Version
 
 ```bash

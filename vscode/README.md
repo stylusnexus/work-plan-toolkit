@@ -96,6 +96,27 @@ The menu is grouped, with a separator between each group: **open the track file*
 
 (On an **Untracked** bucket item, right-click gives **Add Untracked Issue to Track** — file a loose issue into a track.)
 
+### Plans view
+
+A second **read-only** tree below the Tracks view, in the same Work Plan container. Where the Tracks view is about *issues*, the Plans view is about *documents* — the plan/spec docs in your repos and their `plan-status` health. Its reason to exist is to catch the plans that **started executing and then drifted off** — half-built work scattered across repos that no issue-tracker view surfaces.
+
+Two states are made **loud**; everything else stays quiet:
+
+| Signal | Means |
+|---|---|
+| **stalled** | A `partial` plan whose **declared manifest files** have gone cold — no commit touched them within the staleness window. "Started executing, drifted off." (This reads the *manifest's* git activity, not the plan doc's own date — that's null for gitignored docs.) |
+| **lie-gap** | Scored shipped by its file manifest, but fewer than a quarter of its own phase checkboxes are ticked — marked done while its phases were left open. |
+
+Quiet states (active `partial`, clean shipped, `dead`) are listed without a flag.
+
+- **Lazy scan.** Each repo scans its plans on first expand, so opening the view is cheap. A title-bar **"Scan All Plans"** command opts into a cross-repo sweep that builds a **stalled roll-up** across every repo (bounded-concurrent, results stream in as repos finish).
+- **Click to open.** Clicking a plan opens its `.md` in an editor tab.
+- **Acknowledge / dismiss.** Right-click a stalled or dead plan → **Acknowledge (stop flagging)** to stop it surfacing as loud — it's demoted, not hidden, and the ack persists per workspace. A title-bar **Toggle Show Acknowledged** button brings the acknowledged ones back into view.
+- **No local clone.** Repos without a local checkout show a greyed "no local clone" state — there's no working tree to read manifest git activity from.
+- **`workPlan.stallDays` setting** controls the staleness window applied to the displayed state — **Match CLI** (the default, follows the CLI's own threshold) or a fixed 14 / 30 / 45 / 60 / 90 days. Changing it re-evaluates what's stalled instantly, no refetch.
+
+Read-only by design: no stamp, archive, or issue-opening from the GUI — those stay CLI-only. Track ↔ plan navigation (jumping from a track to its plan and back) is tracked in [#285](https://github.com/stylusnexus/work-plan-toolkit/issues/285).
+
 ### Create & setup (the `⋯` overflow)
 
 | Command | What it does |
