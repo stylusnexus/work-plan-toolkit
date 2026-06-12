@@ -84,7 +84,7 @@ The menu is grouped, with a separator between each group: **open the track file*
 | **Wrap Up Session (Handoff)** | Append a session-log entry (derived from git + GitHub activity since the last handoff) and stamp `last_handoff`, then relay the paste-ready fresh-session prompt to the output channel. A public-repo write is gated by the leak-guard modal. Equivalent to `work-plan handoff <track>`. |
 | *— separator —* | |
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
-| **Add Issue to Track** | Add a GitHub issue number to the track. |
+| **Add Issue to Track** | Add a GitHub issue to the track. **Pick from the repo's open issues** (`#142  Add SSO`, filterable; issues already in the track are excluded) — or choose *Enter an issue number…* to type one not in the list. Falls back to a plain number prompt if the repo's issues can't be fetched. |
 | **Move Issue from Track** | Move an issue to another track in the same repo. **Pick the issue from the source track's list** (`#87  Fix auth`, filterable by typing — no number to recall), then pick the destination. |
 | **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). **Pick the track's open issues one at a time, in priority order** (pick 1st, 2nd, … then Done) — pick order *is* the next-up order. To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
 | *— separator —* | |
