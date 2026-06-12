@@ -160,6 +160,81 @@ class CanonicalRederiveTest(unittest.TestCase):
         self.assertIn("## Notes\n\nkeep me", mw.call_args[0][2])
 
 
+class PartialFetchTest(unittest.TestCase):
+    """A degraded GitHub fetch must never overwrite valid rows with
+    '(not fetched)'. The track is skipped, left untouched, and the run exits
+    nonzero so --yes / hygiene callers see the degradation (#256)."""
+
+    def test_partial_fetch_skips_track_and_preserves_rows(self):
+        """One of several frontmatter issues missing → no write, rc=1, the
+        existing table is left exactly as it was."""
+        existing = [_gh(1, "first"), _gh(2, "second")]
+        track = _track(name="t", repo="o/r", issues=[1, 2, 3],
+                       body=_canon_body(existing + [_gh(3, "third")]))
+        original_body = track.body
+        # #3 fails to come back from the fetch.
+        rc, mw, out = _drive(track, existing, ["t", "--yes"])
+        self.assertEqual(rc, 1)
+        mw.assert_not_called()
+        self.assertEqual(track.body, original_body)
+        self.assertNotIn("(not fetched)", out)
+        self.assertIn("#3", out)
+        self.assertNotIn("All tracks in sync.", out)
+
+    def test_total_fetch_failure_skips_track(self):
+        """Fetch returns nothing (GitHub unreachable) → track skipped, rc=1,
+        no write, table untouched."""
+        existing = [_gh(1, "first"), _gh(2, "second")]
+        track = _track(name="t", repo="o/r", issues=[1, 2],
+                       body=_canon_body(existing))
+        rc, mw, out = _drive(track, [], ["t", "--yes"])
+        self.assertEqual(rc, 1)
+        mw.assert_not_called()
+        self.assertIn("no issues", out)
+
+    def test_healthy_track_still_refreshes_alongside_degraded(self):
+        """In an --all batch, a complete-fetch track writes normally while a
+        degraded track is skipped; the run still exits nonzero overall."""
+        good_existing = [_gh(1, "first", "OPEN")]
+        good = _track(name="good", repo="o/r", issues=[1],
+                      body=_canon_body(good_existing))
+        bad = _track(name="bad", repo="o/r", issues=[5, 6],
+                     body=_canon_body([_gh(5, "fifth"), _gh(6, "sixth")]))
+
+        # good: #1 fetched (and flipped to CLOSED so there's a write); bad: #6 missing.
+        fetched = [_gh(1, "first", "CLOSED"), _gh(5, "fifth")]
+        cfg = {"notes_root": "/tmp/fake"}
+        with patch("commands.refresh_md.load_config", return_value=cfg), \
+             patch("commands.refresh_md.discover_tracks", return_value=[good, bad]), \
+             patch("commands.refresh_md.fetch_issues", return_value=fetched), \
+             patch("commands.refresh_md.write_file") as mw:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = refresh_md.run(["--all", "--yes"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 1)
+        # Only the healthy track is written.
+        self.assertEqual(mw.call_count, 1)
+        written_path = mw.call_args[0][0]
+        self.assertEqual(written_path.name, "good.md")
+        self.assertIn("#6", out)  # degraded track's missing issue is reported
+
+    def test_table_only_number_absent_from_frontmatter_does_not_gate(self):
+        """A number that appears in the body table but NOT in frontmatter
+        doesn't feed the rebuild, so a fetch miss on it is harmless — the track
+        still refreshes (rc=0)."""
+        # Frontmatter membership is [1, 2]; the body also references #99, which
+        # is not in frontmatter. #99 is not fetched, but must not block.
+        existing = [_gh(1, "first", "OPEN"), _gh(2, "second")]
+        body = _canon_body(existing) + "\nSee also #99 for context.\n"
+        track = _track(name="t", repo="o/r", issues=[1, 2], body=body)
+        rc, mw, out = _drive(track, [_gh(1, "first", "CLOSED"), _gh(2, "second")],
+                             ["t", "--yes"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        self.assertNotIn("(not fetched)", mw.call_args[0][2])
+
+
 class NarrativeTableTest(unittest.TestCase):
     """Tracks with NO canonical marker keep the conservative in-place behavior."""
 

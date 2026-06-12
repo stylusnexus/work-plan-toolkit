@@ -41,6 +41,20 @@ from lib.write_guard import needs_confirm
 PER_TRACK_TIMEOUT = 15  # seconds; each gh call gets this budget
 
 
+def _track_key(track) -> tuple:
+    """Stable, unique identity for a track across a reconcile run.
+
+    Track slugs are NOT unique — the same slug can name a track in two different
+    repos (this is explicitly supported). Keying reconcile's in-flight state by
+    slug let a later repo's fetch overwrite an earlier same-slug track's, so
+    under `--all --yes` issues from one repo could be written into the
+    same-named track in ANOTHER repo — cross-repo membership corruption (#255).
+    The (repo, path) pair is unique per track file and stable for the whole run.
+    Display still uses `track.name`; only dict keys use this.
+    """
+    return (track.repo, str(track.path))
+
+
 def _resolve_labels(track) -> list[str]:
     """Return the GitHub label(s) marking issues as belonging to this track.
 
@@ -143,7 +157,7 @@ def run(args: list[str]) -> int:
 
     # Phase 1: parallel fetch of labeled issues for all tracks
     work_items = [(track, _resolve_labels(track)) for track in targets if track.repo]
-    results: dict = {}  # track.name → list[dict] or None (timeout/error)
+    results: dict = {}  # _track_key(track) → list[dict] or None (timeout/error)
 
     total = len(work_items)
     if total > 1:
@@ -156,21 +170,21 @@ def run(args: list[str]) -> int:
             # Iterate in submit order for readable output; futures run in parallel
             for i, track, future in submitted:
                 try:
-                    results[track.name] = future.result()
-                    print(f"  [{i}/{total}] ✓ {track.name}")
+                    results[_track_key(track)] = future.result()
+                    print(f"  [{i}/{total}] ✓ {track.name} ({track.repo})")
                 except RuntimeError as e:
-                    print(f"  [{i}/{total}] ⚠ {track.name}: {e} — skipping")
-                    results[track.name] = None
+                    print(f"  [{i}/{total}] ⚠ {track.name} ({track.repo}): {e} — skipping")
+                    results[_track_key(track)] = None
     else:
         # Single track: fetch directly (no thread overhead)
         for i, (track, labels) in enumerate(work_items, 1):
             print(f"  [{i}/{total}] fetching {track.repo} ({track.name})...", flush=True)
             try:
-                results[track.name] = _fetch_labeled_issues(track.repo, labels)
-                print(f"  [{i}/{total}] ✓ {track.name}")
+                results[_track_key(track)] = _fetch_labeled_issues(track.repo, labels)
+                print(f"  [{i}/{total}] ✓ {track.name} ({track.repo})")
             except RuntimeError as e:
-                print(f"  [{i}/{total}] ⚠ {track.name}: {e} — skipping")
-                results[track.name] = None
+                print(f"  [{i}/{total}] ⚠ {track.name} ({track.repo}): {e} — skipping")
+                results[_track_key(track)] = None
 
     # Phase 2a: index which fetched track(s) label each issue. Used to turn a
     # bare FLAG (in a track's frontmatter, but it has lost that track's label)
@@ -178,45 +192,46 @@ def run(args: list[str]) -> int:
     # track in the same repo.
     labeled_index: dict = {}  # issue number -> list[track]
     for track in targets:
-        if not track.repo or results.get(track.name) is None:
+        if not track.repo or results.get(_track_key(track)) is None:
             continue
-        for num in {i["number"] for i in results[track.name]}:
+        for num in {i["number"] for i in results[_track_key(track)]}:
             labeled_index.setdefault(num, []).append(track)
 
     # Phase 2b: detect cross-track moves (#163). An issue qualifies when it is
     # in track A's frontmatter, no longer carries A's label, and is now labeled
     # by exactly one OTHER active track B in the same repo. Ambiguous cases
     # (two or more candidate targets) stay as plain FLAGs.
-    moved_out: dict = {}  # src track name -> set(num)
-    moved_in: dict = {}   # dst track name -> set(num)
-    move_dst: dict = {}   # (src track name, num) -> dst track
+    moved_out: dict = {}  # _track_key(src) -> set(num)
+    moved_in: dict = {}   # _track_key(dst) -> set(num)
+    move_dst: dict = {}   # (_track_key(src), num) -> dst track
     for track in targets:
-        if not track.repo or results.get(track.name) is None:
+        if not track.repo or results.get(_track_key(track)) is None:
             continue
-        labeled_nums = {i["number"] for i in results[track.name]}
+        labeled_nums = {i["number"] for i in results[_track_key(track)]}
         listed_nums = set(track.meta.get("github", {}).get("issues") or [])
         for num in sorted(listed_nums - labeled_nums):
             cands = [b for b in labeled_index.get(num, [])
                      if b is not track and b.repo == track.repo]
             if len(cands) == 1:
                 dst = cands[0]
-                moved_out.setdefault(track.name, set()).add(num)
-                moved_in.setdefault(dst.name, set()).add(num)
-                move_dst[(track.name, num)] = dst
+                moved_out.setdefault(_track_key(track), set()).add(num)
+                moved_in.setdefault(_track_key(dst), set()).add(num)
+                move_dst[(_track_key(track), num)] = dst
 
     # Phase 2c: per-track diff, report, confirm. Membership changes accumulate
-    # in `final` (track name -> desired issue set); each affected track is
+    # in `final` (_track_key -> desired issue set); each affected track is
     # written exactly ONCE at the end, so a move that touches two tracks never
     # double-writes or clobbers a sibling's accepted ADDs. A move is governed by
     # the confirmation on its SOURCE track (where the issue currently lives).
-    final: dict = {}     # track name -> set(num)
-    affected: dict = {}  # track name -> track (only those we may write)
+    final: dict = {}     # _track_key(track) -> set(num)
+    affected: dict = {}  # _track_key(track) -> track (only those we may write)
 
     def _final_for(t):
-        if t.name not in final:
-            final[t.name] = set(t.meta.get("github", {}).get("issues") or [])
-            affected[t.name] = t
-        return final[t.name]
+        key = _track_key(t)
+        if key not in final:
+            final[key] = set(t.meta.get("github", {}).get("issues") or [])
+            affected[key] = t
+        return final[key]
 
     any_changes = False
     for track in targets:
@@ -224,19 +239,19 @@ def run(args: list[str]) -> int:
         if not track.repo:
             continue
 
-        labeled = results.get(track.name)
+        labeled = results.get(_track_key(track))
         if labeled is None:
             continue
 
         labels = _resolve_labels(track)
         labeled_nums = {i["number"] for i in labeled}
         listed_nums = set(track.meta.get("github", {}).get("issues") or [])
-        out_moves = sorted(moved_out.get(track.name, set()))
+        out_moves = sorted(moved_out.get(_track_key(track), set()))
 
         # MOVE issues are reported (and applied) as moves, not as ADD on the
         # destination or FLAG on the source.
-        adds = sorted(labeled_nums - listed_nums - moved_in.get(track.name, set()))
-        flag_nums = sorted(listed_nums - labeled_nums - moved_out.get(track.name, set()))
+        adds = sorted(labeled_nums - listed_nums - moved_in.get(_track_key(track), set()))
+        flag_nums = sorted(listed_nums - labeled_nums - moved_out.get(_track_key(track), set()))
 
         if not adds and not flag_nums and not out_moves:
             continue
@@ -253,7 +268,7 @@ def run(args: list[str]) -> int:
         if out_moves:
             print(f"  MOVE ({len(out_moves)}) — relabeled to another track in this repo:")
             for num in out_moves:
-                dst = move_dst[(track.name, num)]
+                dst = move_dst[(_track_key(track), num)]
                 dst_slug = dst.meta.get("track", dst.name)
                 pub = " [dst PUBLIC]" if needs_confirm(dst.repo, cfg) else ""
                 print(f"    #{num}  {slug} → {dst_slug}{pub}")
@@ -286,7 +301,7 @@ def run(args: list[str]) -> int:
         if adds:
             _final_for(track).update(adds)
         for num in out_moves:
-            dst = move_dst[(track.name, num)]
+            dst = move_dst[(_track_key(track), num)]
             # Public-repo guard (#163): under --yes we never silently write
             # membership into a PUBLIC/shared destination track — that move is
             # skipped with a pointer to the gated `move` verb. Interactive runs
@@ -300,8 +315,8 @@ def run(args: list[str]) -> int:
             _final_for(dst).add(num)
 
     # Write each affected track exactly once, only if its set actually changed.
-    for name, issues in final.items():
-        track = affected[name]
+    for key, issues in final.items():
+        track = affected[key]
         original = set(track.meta.get("github", {}).get("issues") or [])
         if issues == original:
             continue
