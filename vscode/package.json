@@ -77,8 +77,14 @@
       },
       {
         "command": "workPlan.openTrack",
-        "title": "Open Track",
+        "title": "Show in Work Plan",
         "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.openTrackFile",
+        "title": "Open Track File",
+        "category": "Work Plan",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "workPlan.openIssue",
@@ -238,6 +244,11 @@
       ],
       "view/item/context": [
         {
+          "command": "workPlan.openTrackFile",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "0_workPlanNav@1"
+        },
+        {
           "command": "workPlan.orient",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "0_workPlanSession@1"
@@ -299,6 +310,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "workPlan.openTrackFile",
+          "when": "false"
+        },
         {
           "command": "workPlan.openIssue",
           "when": "false"

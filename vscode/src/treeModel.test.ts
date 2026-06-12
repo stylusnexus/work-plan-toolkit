@@ -31,6 +31,7 @@ function makeTrack(overrides: Partial<Track> = {}): Track {
   return {
     name: "platform-health",
     repo: "your-org/myproject",
+    path: "/tmp/notes/platform-health.md",
     tier: "private",
     status: "active",
     launch_priority: "P2",
