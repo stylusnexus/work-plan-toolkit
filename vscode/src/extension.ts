@@ -7,6 +7,7 @@ import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track } from "./model.ts";
+import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
 import { searchIssues } from "./webview/search.ts";
@@ -624,18 +625,51 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = await resolveTrackName(node);
         if (!track) return;
 
-        const raw = await vscode.window.showInputBox({
-          prompt: "Next-up issue numbers (comma-separated) — also appends a session-log entry",
-          validateInput: (v) => {
-            if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
-            return "Enter at least one issue number, comma-separated (e.g. 42,87). To set next-up without logging a session, use Edit Track Fields → next_up.";
-          },
-        });
-        if (raw === undefined) return; // cancelled
+        // Pick next-up from the track's OPEN issues in priority order. Order is
+        // captured by ITERATIVE single-selects: a multi-select QuickPick returns
+        // items in display order, not click order, so it can't express a
+        // deliberate priority sequence (#212). Closed issues are excluded —
+        // next-up is forward-looking.
+        const exp = provider.rawExport ?? provider.currentExport;
+        if (!exp || exp.tracks.length === 0) {
+          vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
+          return;
+        }
+        const trackObj = exp.tracks.find(t => t.name === track);
+        if (!trackObj) {
+          vscode.window.showErrorMessage(`Work Plan: Track "${track}" not found.`);
+          return;
+        }
+        const openItems = buildIssuePickItems(trackObj.issues, { includeClosed: false });
+        if (openItems.length === 0) {
+          vscode.window.showInformationMessage(`Work Plan: ${track} has no open issues to queue.`);
+          return;
+        }
 
-        if (raw.trim() === "") return;
-        const issues = raw.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
-        if (issues.length === 0) return;
+        const DONE_SENTINEL = -1;
+        const doneItem = { label: "$(check) Done", description: "finish selection", issueNumber: DONE_SENTINEL };
+        const ordered: number[] = [];
+        for (;;) {
+          const remaining = openItems.filter(it => !ordered.includes(it.issueNumber));
+          if (remaining.length === 0) break; // everything queued
+          const soFar = ordered.length
+            ? `Next-up so far: ${ordered.map(n => `#${n}`).join(", ")} — `
+            : "";
+          const pick = await vscode.window.showQuickPick(
+            [doneItem, ...remaining],
+            {
+              placeHolder: `${soFar}pick #${ordered.length + 1} (or Done)`,
+              matchOnDescription: true,
+              ignoreFocusOut: true,
+            },
+          );
+          if (!pick) return; // Escape → cancel the whole op (no write, no session log)
+          if (pick.issueNumber === DONE_SENTINEL) break;
+          ordered.push(pick.issueNumber);
+        }
+        // Done with nothing chosen → cancel, so we never silently wipe next-up.
+        if (ordered.length === 0) return;
+        const issues = ordered;
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: setting next-up on ${track}…`,
@@ -800,30 +834,37 @@ export function activate(context: vscode.ExtensionContext): void {
         const fromTrack = await resolveTrackName(node);
         if (!fromTrack) return;
 
-        const raw = await vscode.window.showInputBox({
-          prompt: `Issue number to move from ${fromTrack}`,
-          validateInput: (v) => {
-            if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
-            return "Enter a positive integer issue number (e.g. 42)";
-          },
-        });
-        if (raw === undefined) return; // cancelled
-
-        const issue = parseInt(raw, 10);
-
-        // Build the destination track list from the RAW export.
+        // Load the export FIRST so we can offer the source track's issues as a
+        // pick-list instead of asking the user to retype a number (#212).
         const exp = provider.rawExport ?? provider.currentExport;
         if (!exp || exp.tracks.length === 0) {
           vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
           return;
         }
 
-        // Find the source track object to determine its repo.
+        // Find the source track object — for its issues and its repo.
         const srcTrack = exp.tracks.find(t => t.name === fromTrack);
         if (!srcTrack) {
           vscode.window.showErrorMessage(`Work Plan: Track "${fromTrack}" not found.`);
           return;
         }
+
+        // Pick the issue from the known list. Closed issues are shown (muted) so
+        // a "closed it in the wrong track" correction is still possible.
+        if (srcTrack.issues.length === 0) {
+          vscode.window.showInformationMessage(`Work Plan: ${fromTrack} has no issues to move.`);
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          buildIssuePickItems(srcTrack.issues, { includeClosed: true }),
+          {
+            placeHolder: `Select an issue to move from ${fromTrack}`,
+            matchOnDescription: true,
+            ignoreFocusOut: true,
+          },
+        );
+        if (!picked) return; // cancelled
+        const issue = picked.issueNumber;
 
         // Destination candidates: other active tracks in the same repo.
         const candidates = exp.tracks.filter(
@@ -838,7 +879,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const toTrack = await vscode.window.showQuickPick(
           candidates.map(t => t.name),
-          { placeHolder: `Move #${issue} from ${fromTrack} to...` },
+          { placeHolder: `Move #${issue} to which track?`, ignoreFocusOut: true },
         );
         if (!toTrack) return; // cancelled
 

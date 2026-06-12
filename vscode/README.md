@@ -85,8 +85,8 @@ The menu is grouped, with a separator between each group: **open the track file*
 | *— separator —* | |
 | **Edit Track Fields** | Change one field — status, launch priority, milestone, blockers, or next-up. |
 | **Add Issue to Track** | Add a GitHub issue number to the track. |
-| **Move Issue from Track** | Move an issue to another track in the same repo (source-first: pick the issue number, then the destination). |
-| **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
+| **Move Issue from Track** | Move an issue to another track in the same repo. **Pick the issue from the source track's list** (`#87  Fix auth`, filterable by typing — no number to recall), then pick the destination. |
+| **Set Next-Up & Log Session** | Set the ordered next-up issue list **and** append a session-log entry (runs `handoff --set-next`, which also refreshes the status table). **Pick the track's open issues one at a time, in priority order** (pick 1st, 2nd, … then Done) — pick order *is* the next-up order. To set `next_up` as a plain field with no session log, use **Edit Track Fields → next_up** instead. |
 | *— separator —* | |
 | **Sync Issue States from GitHub** | Pull live GitHub state into the track's status table. **Run this after closing or merging issues** — it re-fetches each issue's open/closed state and rewrites the status cells, refreshing the dependency graph and next-up display. Equivalent to `work-plan refresh-md <track> --yes`. |
 | **Check Label Drift (preview)** | Read-only draft of where the track's frontmatter membership disagrees with GitHub labels (no writes). Equivalent to `work-plan reconcile <track>` in draft mode. |
