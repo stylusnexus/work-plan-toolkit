@@ -5,6 +5,7 @@ import {
 } from "./cli.ts";
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
+import { PlansProvider } from "./plansTree.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
@@ -1689,6 +1690,83 @@ export function activate(context: vscode.ExtensionContext): void {
           ? `Work Plan: ${err.message}`
           : `Work Plan: notes-vcs failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Plans view (#164): a second tree rendering plan-status verdicts, scanned
+  // lazily per-repo on expand. Repos are the distinct config FOLDER KEYS from
+  // the export (the `plan-status --repo=<key>` arg resolves a local checkout by
+  // folder key, not github slug), labelled by their slug for display.
+  // -------------------------------------------------------------------------
+
+  // Read the stall-days threshold: "match" → null (trust the CLI's own
+  // `stalled`), otherwise the parsed integer day count.
+  const stallDaysSetting = (): number | null => {
+    const raw = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<string>("stallDays", "match");
+    return raw === "match" ? null : parseInt(raw, 10);
+  };
+
+  // Distinct {repoKey: folder, label: slug} from the export, deduped by folder.
+  // Tracks without a folder key (null) are skipped — plan-status needs the key.
+  const reposForPlans = (): { repoKey: string; label: string }[] => {
+    const raw = provider.rawExport;
+    if (!raw) return [];
+    const seen = new Map<string, string>();
+    for (const t of raw.tracks) {
+      if (t.folder && !seen.has(t.folder)) {
+        seen.set(t.folder, t.repo);
+      }
+    }
+    return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));
+  };
+
+  const plansProvider = new PlansProvider(
+    runner,
+    reposForPlans,
+    stallDaysSetting,
+    // Ack wiring lands in Task 10 — for now nothing is ack'd.
+    () => false,
+  );
+
+  const plansView = vscode.window.createTreeView("workPlan.plans", {
+    treeDataProvider: plansProvider,
+  });
+  context.subscriptions.push(plansView);
+
+  // The Plans roots derive from provider.rawExport, which is null until the main
+  // provider's async refresh resolves — and the provider is constructed after
+  // that refresh is kicked off. Re-render the Plans tree whenever the export
+  // changes so the view fills in once data arrives (instead of staying blank
+  // until a manual Plans refresh). Cheap: refresh() only clears the doc cache +
+  // re-fires; repos aren't re-scanned until expanded.
+  context.subscriptions.push(
+    provider.onDidChangeTreeData(() => plansProvider.refresh()),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.refresh", () => {
+      plansProvider.refresh();
+    }),
+  );
+
+  // Scan-all is fully built in Task 9; stub it now so the title-bar button is
+  // wired — a plain refresh re-scans on next expand.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.scanAll", () => {
+      plansProvider.refresh();
+    }),
+  );
+
+  // Re-render the Plans view when the stall-days threshold changes (it shifts
+  // which partials read as stalled). The Tracks view ignores this setting.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.stallDays")) {
+        plansProvider.refresh();
       }
     }),
   );

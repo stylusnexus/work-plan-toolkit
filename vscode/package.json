@@ -53,6 +53,10 @@
         {
           "id": "workPlan.tree",
           "name": "Tracks"
+        },
+        {
+          "id": "workPlan.plans",
+          "name": "Plans"
         }
       ]
     },
@@ -74,6 +78,18 @@
         "title": "Sort Tracks",
         "category": "Work Plan",
         "icon": "$(sort-precedence)"
+      },
+      {
+        "command": "workPlan.plans.refresh",
+        "title": "Refresh Plans",
+        "category": "Work Plan",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "workPlan.plans.scanAll",
+        "title": "Scan All Plans",
+        "category": "Work Plan",
+        "icon": "$(search)"
       },
       {
         "command": "workPlan.openTrack",
@@ -240,6 +256,16 @@
           "command": "workPlan.notesVcs",
           "when": "view == workPlan.tree",
           "group": "8_workPlanConfig@2"
+        },
+        {
+          "command": "workPlan.plans.scanAll",
+          "when": "view == workPlan.plans",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.plans.refresh",
+          "when": "view == workPlan.plans",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -368,6 +394,27 @@
             "Every 15 minutes"
           ],
           "description": "Auto-refresh interval in seconds (0 = off). Silently re-polls the CLI in the background — useful when teammates are pushing shared-track changes."
+        },
+        "workPlan.stallDays": {
+          "type": "string",
+          "enum": [
+            "match",
+            "14",
+            "30",
+            "45",
+            "60",
+            "90"
+          ],
+          "enumDescriptions": [
+            "Match the CLI (config.yml / 14)",
+            "14 days",
+            "30 days",
+            "45 days",
+            "60 days",
+            "90 days"
+          ],
+          "default": "match",
+          "description": "How cold a plan's build (its declared files) must be to read as 'stalled' in the Plans view."
         }
       }
     }
