@@ -84,6 +84,10 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             # editor (#211). null when a track has no backing file path (the
             # viewer disables its open-file affordance rather than erroring).
             "path": str(track_path) if track_path else None,
+            # Config repo key (the key under `repos:` in config.yml). The Plans
+            # view passes this as `plan-status --repo=<key>` (#164), which
+            # resolves a local checkout via folder key, not github slug.
+            "folder": getattr(t, "folder", None),
             "tier": getattr(t, "tier", "private") or "private",
             "status": t.meta.get("status"),
             "launch_priority": t.meta.get("launch_priority"),
