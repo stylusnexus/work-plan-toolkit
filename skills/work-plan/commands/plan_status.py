@@ -113,11 +113,7 @@ def _render(rows, repo_root) -> None:
     by = {}
     for r in rows:
         by.setdefault(r["verdict"], []).append(r)
-    lie_gap = sum(
-        1 for r in rows
-        if r["verdict"] == "shipped" and r["checkboxes_total"]
-        and r["checkboxes_done"] / r["checkboxes_total"] < 0.25
-    )
+    lie_gap = sum(1 for r in rows if r["lie_gap"])
     summary = " · ".join(f"{len(by[k])} {k}" for k in _ORDER if by.get(k))
     print(f"{len(rows)} docs · {summary}")
     print(f"lie-gap (shipped but <25% boxes checked): {lie_gap}\n")
