@@ -1753,12 +1753,15 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Scan-all is fully built in Task 9; stub it now so the title-bar button is
-  // wired — a plain refresh re-scans on next expand.
+  // Scan-all — bounded-concurrent cross-repo scan that streams results into the
+  // stalled roll-up. View-scoped progress spins the Plans view title while it runs.
   context.subscriptions.push(
-    vscode.commands.registerCommand("workPlan.plans.scanAll", () => {
-      plansProvider.refresh();
-    }),
+    vscode.commands.registerCommand("workPlan.plans.scanAll", () =>
+      vscode.window.withProgress(
+        { location: { viewId: "workPlan.plans" }, title: "Work Plan: scanning plans…" },
+        () => plansProvider.scanAll(),
+      ),
+    ),
   );
 
   // Re-render the Plans view when the stall-days threshold changes (it shifts

@@ -2,16 +2,19 @@ import * as vscode from "vscode";
 import type { PlanDoc } from "./model.ts";
 import { planStatus, CliError } from "./cli.ts";
 import type { CliRunner } from "./cli.ts";
-import { planBucket, planDescription } from "./planModel.ts";
+import { planBucket, planDescription, isStalledForDisplay } from "./planModel.ts";
 import type { PlanBucket } from "./planModel.ts";
 
 // ---------------------------------------------------------------------------
-// Node types — three variants. `repo` and `doc` are the real tree nodes;
+// Node types — four variants. `repo` and `doc` are the real tree nodes;
 // `message` is a leaf used for empty / error / no-clone states so a repo that
 // can't be scanned still renders an explanatory child instead of vanishing.
+// `rollup` is the synthetic first root: a cross-repo "stalled everywhere" view
+// populated by the Scan All command.
 // ---------------------------------------------------------------------------
 
 export type PlanNode =
+  | { kind: "rollup" }                                  // synthetic cross-repo stalled roll-up (first root)
   | { kind: "repo"; repoKey: string; label: string }   // repoKey = folder key; label = slug for display
   | { kind: "doc"; repoKey: string; repoRoot: string; doc: PlanDoc }
   | { kind: "message"; text: string; icon: string };
@@ -62,10 +65,16 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
 
   async getChildren(element?: PlanNode): Promise<PlanNode[]> {
     if (!element) {
-      // Roots — one collapsed node per distinct repo (folder key).
-      return this.repos().map(
+      // Roots — the synthetic stalled roll-up first, then one collapsed node
+      // per distinct repo (folder key).
+      const repoNodes = this.repos().map(
         (r): PlanNode => ({ kind: "repo", repoKey: r.repoKey, label: r.label }),
       );
+      return [{ kind: "rollup" }, ...repoNodes];
+    }
+
+    if (element.kind === "rollup") {
+      return this._childrenForRollup();
     }
 
     if (element.kind === "repo") {
@@ -74,6 +83,40 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
 
     // doc / message → leaves.
     return [];
+  }
+
+  /** Stalled docs across every currently-cached repo, as doc nodes. Empty cache
+   *  → prompt to scan; scanned-but-clean → "no stalled plans". */
+  private _childrenForRollup(): PlanNode[] {
+    const stalled = this._stalledDocs();
+    if (stalled.length > 0) {
+      return stalled.map(
+        ({ repoKey, repoRoot, doc }): PlanNode => ({ kind: "doc", repoKey, repoRoot, doc }),
+      );
+    }
+    if (this.cache.size === 0) {
+      return [{
+        kind: "message",
+        text: "Run 'Scan All Plans' to find stalled plans",
+        icon: "search",
+      }];
+    }
+    return [{ kind: "message", text: "No stalled plans", icon: "pass" }];
+  }
+
+  /** Gather stalled docs across the whole cache (for the roll-up + its count). */
+  private _stalledDocs(): { repoKey: string; repoRoot: string; doc: PlanDoc }[] {
+    const now = Date.now();
+    const stall = this.stallDays();
+    const out: { repoKey: string; repoRoot: string; doc: PlanDoc }[] = [];
+    for (const [repoKey, entry] of this.cache) {
+      for (const doc of entry.docs) {
+        if (isStalledForDisplay(doc, stall, now)) {
+          out.push({ repoKey, repoRoot: entry.repoRoot, doc });
+        }
+      }
+    }
+    return out;
   }
 
   /**
@@ -124,6 +167,18 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
   }
 
   getTreeItem(node: PlanNode): vscode.TreeItem {
+    if (node.kind === "rollup") {
+      const item = new vscode.TreeItem(
+        "Stalled across repos",
+        vscode.TreeItemCollapsibleState.Collapsed,
+      );
+      item.contextValue = "workPlanPlansRollup";
+      item.iconPath = new vscode.ThemeIcon("warning", new vscode.ThemeColor("charts.red"));
+      const count = this._stalledDocs().length;
+      item.description = String(count);
+      return item;
+    }
+
     if (node.kind === "repo") {
       const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Collapsed);
       item.contextValue = "workPlanPlansRepo";
@@ -187,6 +242,32 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
 
     item.contextValue = acked ? "workPlanAckedPlan" : `workPlanPlan-${bucket}`;
     return item;
+  }
+
+  /**
+   * Scans every export repo with bounded concurrency (4 workers draining a
+   * shared queue — not one git process per repo) and streams results into the
+   * cache, firing a re-render after each repo lands so the roll-up fills in
+   * progressively. Repos with no local clone / scan errors are left uncached;
+   * they'll surface their message leaf when expanded manually.
+   */
+  async scanAll(): Promise<void> {
+    const repos = this.repos();
+    const queue = [...repos];
+    const worker = async (): Promise<void> => {
+      for (let r = queue.shift(); r; r = queue.shift()) {
+        try {
+          const res = await planStatus(this.runner, r.repoKey, this.stallDays() ?? undefined);
+          this.cache.set(r.repoKey, { docs: res.docs, repoRoot: res.repo });
+        } catch {
+          // No local clone / scan error — leave uncached.
+        }
+        this._onDidChangeTreeData.fire(undefined); // STREAM: re-render per repo.
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(4, repos.length) }, () => worker()),
+    );
   }
 
   /** Clears one repo's scan cache (or all) and re-renders the Plans tree. */
