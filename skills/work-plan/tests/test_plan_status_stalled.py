@@ -184,3 +184,33 @@ class TestResolveStallDays(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDeclaredPathsOnDiskGuards(unittest.TestCase):
+    """A junk declared path ('/'), a directory, or an out-of-tree '../x' must be
+    excluded — otherwise they poison `git log -- <paths>` and falsely stall an
+    actively-built plan (regression from the smoke test for #164)."""
+
+    def test_excludes_root_slash_dirs_and_escapes_keeps_real_files(self):
+        import tempfile, os
+        from lib.manifest import DeclaredPath
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "src").mkdir()
+            real = "src/a.py"
+            (root / real).write_text("x")
+            # a sibling file outside the repo root
+            outside = Path(td).parent / "escape_probe_164.py"
+            try:
+                outside.write_text("x")
+                decls = [
+                    DeclaredPath(kind="create", path=real),       # real file -> kept
+                    DeclaredPath(kind="create", path="/"),        # resolves to FS root dir -> dropped
+                    DeclaredPath(kind="create", path="src"),      # a directory -> dropped
+                    DeclaredPath(kind="modify", path=f"../{outside.name}"),  # out-of-tree -> dropped
+                ]
+                got = plan_status._declared_paths_on_disk(decls, root)
+                self.assertEqual(got, [real])
+            finally:
+                if outside.exists():
+                    outside.unlink()

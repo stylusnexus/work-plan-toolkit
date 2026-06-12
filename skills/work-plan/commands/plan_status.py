@@ -58,8 +58,27 @@ def _read(path) -> str:
 
 
 def _declared_paths_on_disk(decls, repo_root) -> list:
-    """Repo-relative declared paths whose file currently exists on disk."""
-    return [d.path for d in decls if (Path(repo_root) / d.path).exists()]
+    """Repo-relative declared paths that point at a real FILE inside repo_root.
+
+    Both guards matter for the staleness clock: a junk declared path like `/`
+    resolves (via `repo_root / "/"`) to the filesystem root — a directory that
+    exists — and an out-of-tree `../x` path can exist too. Either one passed to
+    `git log -- <paths…>` poisons the WHOLE call (it returns nothing), which
+    would falsely mark an actively-built plan as stalled. So require an actual
+    file (`is_file`) that resolves under repo_root."""
+    root = Path(repo_root).resolve()
+    out = []
+    for d in decls:
+        p = Path(repo_root) / d.path
+        try:
+            if not p.is_file():
+                continue
+            resolved = p.resolve()
+        except OSError:
+            continue
+        if resolved == root or root in resolved.parents:
+            out.append(d.path)
+    return out
 
 
 def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
