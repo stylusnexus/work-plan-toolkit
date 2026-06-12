@@ -161,6 +161,28 @@ def path_last_commit_date(rel_path: str, repo_path: Path) -> Optional[datetime]:
         return None
 
 
+def paths_last_commit_date(rel_paths, repo_path: Path) -> Optional[datetime]:
+    """Timestamp of the most recent commit touching ANY of `rel_paths` (naive).
+
+    One `git log -1` over the whole pathspec, so the result is the latest commit
+    date across the set. None for empty input, a bad repo, or no commit found.
+    Used by the staleness clock (#164), which keys off a plan's declared manifest
+    files (committed) rather than the plan doc itself (gitignored, so dateless).
+    """
+    if not rel_paths:
+        return None
+    if not repo_path or not Path(repo_path).exists():
+        return None
+    proc = _git(repo_path, "log", "-1", "--pretty=format:%cI", "--", *rel_paths)
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        s = proc.stdout.strip().split("+")[0].split("Z")[0]
+        return datetime.fromisoformat(s)
+    except (ValueError, IndexError):
+        return None
+
+
 def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
     """True if `rel_path` has any commit on/around `since` or later (a datetime.date).
 
