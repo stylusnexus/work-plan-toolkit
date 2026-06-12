@@ -52,7 +52,10 @@ def group_issues_by_milestone(issues, milestone_alignment=None):
     return groups
 
 
-def _issue(i: dict) -> dict:
+def normalize_issue(i: dict) -> dict:
+    """Reshape a raw gh issue row into the viewer's `Issue` shape
+    ({number,title,state,assignee,milestone}). Shared by the export and the
+    `list-open-issues` command (#282) so both emit an identical issue surface."""
     state = (i.get("state") or "OPEN").lower()
     return {
         "number": i.get("number"),
@@ -67,7 +70,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None) -> dict:
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
-        issues = [_issue(i) for i in issues_by_track.get(t.name, [])]
+        issues = [normalize_issue(i) for i in issues_by_track.get(t.name, [])]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")
@@ -93,7 +96,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "issues": issues,
         })
     out["untracked"] = [
-        {"repo": repo, "issues": [_issue(r) for r in rows]}
+        {"repo": repo, "issues": [normalize_issue(r) for r in rows]}
         for repo, rows in (untracked_by_repo or {}).items()
         if rows
     ]
