@@ -155,5 +155,32 @@ class TestEvaluateStaleness(unittest.TestCase):
         self.assertFalse(row["stalled"])
 
 
+class TestResolveStallDays(unittest.TestCase):
+    def test_known_flag_set_includes_stall_days(self):
+        self.assertIn("--stall-days", plan_status.KNOWN)
+
+    def test_flag_beats_config_beats_default(self):
+        with mock.patch.object(plan_status.config_mod, "load_config",
+                               return_value={"stall_days": 30}):
+            self.assertEqual(
+                plan_status._resolve_stall_days({"--stall-days": "45"}), 45)
+
+    def test_config_beats_default(self):
+        with mock.patch.object(plan_status.config_mod, "load_config",
+                               return_value={"stall_days": 30}):
+            self.assertEqual(plan_status._resolve_stall_days({}), 30)
+
+    def test_default_when_unset(self):
+        with mock.patch.object(plan_status.config_mod, "load_config",
+                               return_value={}):
+            self.assertEqual(plan_status._resolve_stall_days({}), 14)
+
+    def test_non_integer_flag_falls_through(self):
+        with mock.patch.object(plan_status.config_mod, "load_config",
+                               return_value={}):
+            self.assertEqual(
+                plan_status._resolve_stall_days({"--stall-days": "abc"}), 14)
+
+
 if __name__ == "__main__":
     unittest.main()
