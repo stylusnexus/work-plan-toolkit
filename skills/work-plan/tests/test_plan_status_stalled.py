@@ -38,5 +38,25 @@ class TestPathsLastCommitDate(unittest.TestCase):
                 git_state.paths_last_commit_date(["a.py"], Path("/repo")))
 
 
+class TestUncheckedCheckboxLabels(unittest.TestCase):
+    def test_captures_unticked_labels_in_order(self):
+        text = (
+            "- [x] Phase 1 — git helper\n"
+            "- [x] Phase 2 — manifest\n"
+            "- [ ] Phase 4 — tests\n"
+            "- [ ] Phase 5 — docs\n"
+        )
+        self.assertEqual(
+            manifest.unchecked_checkbox_labels(text),
+            ["Phase 4 — tests", "Phase 5 — docs"],
+        )
+
+    def test_cap_limits_results(self):
+        text = "\n".join(f"- [ ] item {i}" for i in range(20))
+        got = manifest.unchecked_checkbox_labels(text)
+        self.assertEqual(len(got), 10)
+        self.assertEqual(got[0], "item 0")
+
+
 if __name__ == "__main__":
     unittest.main()
