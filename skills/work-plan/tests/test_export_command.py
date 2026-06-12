@@ -77,7 +77,9 @@ class ExportRunJsonTest(unittest.TestCase):
         tracks = [_track("alpha", _SHARED_REPO, [1])]
         rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
-        self.assertEqual(out["tracks"][0]["path"], "/tmp/notes/alpha.md")
+        # str(Path(...)) so the expected separator matches the platform (Windows
+        # backslashes). The path is whatever os.sep the fixture's Path produces.
+        self.assertEqual(out["tracks"][0]["path"], str(Path("/tmp/notes/alpha.md")))
 
     def test_track_issues_assembled_in_declared_order(self):
         # Issues are milestone-sorted (#101): null-milestone group sorts by number.

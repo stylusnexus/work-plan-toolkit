@@ -26,8 +26,10 @@ class BuildExportTest(unittest.TestCase):
         t = out["tracks"][0]
         self.assertEqual(t["name"], "ph"); self.assertEqual(t["tier"], "private")
         self.assertEqual(t["visibility"], "PRIVATE")
-        # Absolute .md path is emitted so the viewer can open the track file (#211).
-        self.assertEqual(t["path"], "/tmp/notes/ph.md")
+        # Absolute .md path is emitted so the viewer can open the track file
+        # (#211). Compare against str(Path(...)) so the expected separator matches
+        # the platform — str(Path) yields backslashes on Windows.
+        self.assertEqual(t["path"], str(Path("/tmp/notes/ph.md")))
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
         self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None})
