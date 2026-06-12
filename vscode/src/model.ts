@@ -58,6 +58,31 @@ export interface Export {
   untracked?: { repo: string; issues: Issue[] }[];
 }
 
+/** A plan/spec doc with its plan-status verdict (#164). */
+export interface PlanDoc {
+  rel: string;
+  kind: "plan" | "spec" | "adhoc";
+  verdict: "shipped" | "partial" | "dead" | "foreign" | "manifest-less";
+  glyph: string;
+  rationale: string;
+  files_present: number;
+  files_declared: number;
+  checkboxes_done: number;
+  checkboxes_total: number;
+  last_touched: string | null;
+  manifest_last_touched: string | null;
+  stalled: boolean;
+  lie_gap: boolean;
+  unchecked_items: string[];
+  stall_days: number;
+}
+
+/** `plan-status --repo=<key> --json` result. */
+export interface PlanStatus {
+  repo: string;
+  docs: PlanDoc[];
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers (vscode-free — safe to import in tests)
 // ---------------------------------------------------------------------------
