@@ -16,6 +16,7 @@ def _track(name, repo, issues, *, has_frontmatter=True, status="active"):
         name=name,
         repo=repo,
         tier="private",
+        path=Path(f"/tmp/notes/{name}.md"),
         has_frontmatter=has_frontmatter,
         meta={
             "status": status,
@@ -70,6 +71,13 @@ class ExportRunJsonTest(unittest.TestCase):
         rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
         self.assertEqual(rc, 0)
         self.assertEqual(out["schema"], 1)
+
+    def test_track_file_path_is_emitted(self):
+        """The export carries each track's .md path end-to-end (#211)."""
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["tracks"][0]["path"], "/tmp/notes/alpha.md")
 
     def test_track_issues_assembled_in_declared_order(self):
         # Issues are milestone-sorted (#101): null-milestone group sorts by number.

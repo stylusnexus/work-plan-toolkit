@@ -73,9 +73,14 @@ def build_export(tracks, issues_by_track, visibility, now: str,
         opened = sum(1 for i in issues if i["state"] == "open")
         closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
         next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
+        track_path = getattr(t, "path", None)
         out["tracks"].append({
             "name": t.name,
             "repo": t.repo,
+            # Absolute path to the track's .md, so the viewer can open it in an
+            # editor (#211). null when a track has no backing file path (the
+            # viewer disables its open-file affordance rather than erroring).
+            "path": str(track_path) if track_path else None,
             "tier": getattr(t, "tier", "private") or "private",
             "status": t.meta.get("status"),
             "launch_priority": t.meta.get("launch_priority"),

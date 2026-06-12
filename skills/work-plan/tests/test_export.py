@@ -8,6 +8,7 @@ import commands.export as export_cmd
 
 def _track(name, repo, issues, blockers=None, next_up=None, status="active", depends_on=None):
     return SimpleNamespace(name=name, repo=repo, tier="private",
+        path=Path(f"/tmp/notes/{name}.md"),
         meta={"status": status, "launch_priority": "P2", "milestone_alignment": "v1",
               "blockers": blockers or [], "next_up": next_up or [],
               "depends_on": depends_on or [],
@@ -25,10 +26,21 @@ class BuildExportTest(unittest.TestCase):
         t = out["tracks"][0]
         self.assertEqual(t["name"], "ph"); self.assertEqual(t["tier"], "private")
         self.assertEqual(t["visibility"], "PRIVATE")
+        # Absolute .md path is emitted so the viewer can open the track file (#211).
+        self.assertEqual(t["path"], "/tmp/notes/ph.md")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
         self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None})
         json.dumps(out)  # must be serializable
+
+    def test_path_is_null_when_track_has_no_path(self):
+        """A track object without a `path` attribute exports path=None, so the
+        viewer disables its open-file affordance instead of erroring (#211)."""
+        t0 = SimpleNamespace(name="np", repo="o/r", tier="private",
+            meta={"status": "active", "github": {"repo": "o/r", "issues": []}})
+        out = build_export([t0], {"np": []}, {"o/r": "PRIVATE"}, now="2026-06-12T00:00")
+        self.assertIsNone(out["tracks"][0]["path"])
+        json.dumps(out)  # null is serializable
 
 class BuildExportNextUpFilterTest(unittest.TestCase):
     """next_up entries whose issue is closed in the fetched payload are filtered out."""
