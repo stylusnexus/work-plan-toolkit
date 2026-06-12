@@ -63,5 +63,97 @@ class TestUncheckedCheckboxLabels(unittest.TestCase):
         self.assertEqual(got[0], "item 0")
 
 
+class _FakePath:
+    def __init__(self, name):
+        self.name = name
+
+
+class _Doc:
+    @classmethod
+    def make(cls, rel="plans/p.md", kind="plan", name="2026-05-01-p.md"):
+        d = cls.__new__(cls)
+        d.rel = rel
+        d.kind = kind
+        d.path = _FakePath(name)
+        return d
+
+
+def _decl(path):
+    return manifest.DeclaredPath(kind="create", path=path)
+
+
+class TestEvaluateStaleness(unittest.TestCase):
+    """The staleness ladder fires only for partial verdicts and keys off the
+    manifest files' commit date, not the plan doc's own (gitignored) date."""
+
+    def setUp(self):
+        self.today = date(2026, 6, 12)
+        self.partial = verdict_mod.Verdict("partial", "\U0001f7e1", "files")
+        self.decls = [_decl("src/a.py"), _decl("src/b.py")]
+
+    def _evaluate(self, manifest_date, on_disk, verdict=None, text="body"):
+        """Run _evaluate with manifest.* / git_state.* / classify mocked.
+
+        manifest_date: what paths_last_commit_date returns.
+        on_disk: which declared paths _declared_paths_on_disk reports present.
+        """
+        v = verdict or self.partial
+        doc = _Doc.make()
+        with mock.patch.object(plan_status, "_read", return_value=text), \
+                mock.patch.object(manifest, "parse_declared_paths", return_value=self.decls), \
+                mock.patch.object(manifest, "plan_date_from_filename", return_value=None), \
+                mock.patch.object(manifest, "score_manifest",
+                                  return_value=manifest.ManifestScore(2, 1, {})), \
+                mock.patch.object(manifest, "count_checkboxes", return_value=(1, 4)), \
+                mock.patch.object(manifest, "out_of_tree_ratio", return_value=0.0), \
+                mock.patch.object(manifest, "unchecked_checkbox_labels",
+                                  return_value=["do x"]), \
+                mock.patch.object(plan_status, "_declared_paths_on_disk",
+                                  return_value=on_disk), \
+                mock.patch.object(git_state, "path_last_commit_date", return_value=None), \
+                mock.patch.object(git_state, "paths_last_commit_date",
+                                  return_value=manifest_date), \
+                mock.patch.object(verdict_mod, "classify", return_value=v):
+            return plan_status._evaluate(doc, Path("/repo"), self.today, 60, 14)
+
+    def test_partial_cold_is_stalled(self):
+        cold = datetime(2026, 5, 1, 12, 0, 0)  # 42 days before today
+        row = self._evaluate(cold, ["src/a.py", "src/b.py"])
+        self.assertTrue(row["stalled"])
+        self.assertEqual(row["manifest_last_touched"], "2026-05-01")
+
+    def test_partial_warm_is_not_stalled(self):
+        warm = datetime(2026, 6, 10, 12, 0, 0)  # 2 days before today
+        row = self._evaluate(warm, ["src/a.py"])
+        self.assertFalse(row["stalled"])
+
+    def test_partial_no_files_on_disk_is_not_stalled(self):
+        row = self._evaluate(None, [])
+        self.assertFalse(row["stalled"])
+        self.assertIsNone(row["manifest_last_touched"])
+
+    def test_doc_uncommitted_but_manifest_committed_is_stalled(self):
+        # path_last_commit_date (doc) is None, but manifest committed 42d ago.
+        cold = datetime(2026, 5, 1, 12, 0, 0)
+        row = self._evaluate(cold, ["src/a.py"])
+        self.assertTrue(row["stalled"])
+        self.assertIsNone(row["last_touched"])  # doc date stays None
+
+    def test_present_but_never_committed_is_stalled(self):
+        # files exist on disk but manifest date is None -> never committed
+        row = self._evaluate(None, ["src/a.py"])
+        self.assertTrue(row["stalled"])
+
+    def test_emits_unchecked_items_and_stall_days(self):
+        row = self._evaluate(datetime(2026, 6, 10), ["src/a.py"])
+        self.assertEqual(row["unchecked_items"], ["do x"])
+        self.assertEqual(row["stall_days"], 14)
+
+    def test_non_partial_is_never_stalled(self):
+        shipped = verdict_mod.Verdict("shipped", "✅", "files")
+        row = self._evaluate(None, [], verdict=shipped)
+        self.assertFalse(row["stalled"])
+
+
 if __name__ == "__main__":
     unittest.main()
