@@ -65,8 +65,17 @@ def run(args: list[str]) -> int:
 
 def _refresh_many(tracks: list, yes: bool) -> int:
     """Refresh one or more tracks. Computes proposed updates, then asks one
-    confirmation (or applies all if --yes)."""
+    confirmation (or applies all if --yes).
+
+    A track whose live fetch comes back incomplete (GitHub timeout, permission
+    error, or a frontmatter issue that no longer resolves) is SKIPPED, not
+    refreshed: the canonical table is rebuilt from frontmatter membership, so a
+    missing issue would render as '(not fetched)' and silently overwrite its
+    valid last-known row (#256). Skipped tracks are reported and force a nonzero
+    exit so `--yes` / `hygiene` callers can tell a degraded run from a clean one.
+    """
     pending = []
+    degraded = []  # (track, missing_nums) — fetch was incomplete; left untouched
     for i, track in enumerate(tracks, 1):
         print(f"  [{i}/{len(tracks)}] {track.path.name}...", flush=True)
         canonical = find_canonical_status_tables(track.body)
@@ -94,6 +103,22 @@ def _refresh_many(tracks: list, yes: bool) -> int:
         issues_by_num = {i["number"]: i for i in issues}
         state_by_num = {i["number"]: state_to_status_label(i.get("state")) for i in issues}
 
+        # Both render paths rebuild the table from frontmatter membership, so a
+        # frontmatter issue we couldn't fetch would land as a '(not fetched)'
+        # row, replacing its valid last-known values. Refuse to publish that:
+        # skip the track and surface the gap (#256). Table-only numbers that
+        # aren't in frontmatter don't feed the rebuild, so they don't gate.
+        unique_fm = set(frontmatter_nums)
+        missing = sorted(n for n in unique_fm if n not in issues_by_num)
+        if missing:
+            degraded.append((track, missing))
+            scope = ("no issues" if len(missing) == len(unique_fm)
+                     else f"{len(missing)}/{len(unique_fm)} issues")
+            nums = ", ".join(f"#{n}" for n in missing)
+            print(f"      ⚠ fetch returned {scope} short ({nums}) "
+                  f"— skipping to preserve current rows")
+            continue
+
         if canonical:
             # Canonical table → RE-DERIVE the whole block from frontmatter
             # membership + live data, milestone-ordered (#101). Re-deriving from
@@ -113,6 +138,9 @@ def _refresh_many(tracks: list, yes: bool) -> int:
         pending.append((track, new_body, detail))
 
     if not pending:
+        if degraded:
+            _report_degraded(degraded)
+            return 1
         print("All tracks in sync.")
         return 0
 
@@ -127,7 +155,27 @@ def _refresh_many(tracks: list, yes: bool) -> int:
     for track, new_body, _ in pending:
         write_file(track.path, track.meta, new_body)
     print(f"\n✓ Updated {len(pending)} file(s).")
+
+    if degraded:
+        _report_degraded(degraded)
+        return 1
     return 0
+
+
+def _report_degraded(degraded: list) -> None:
+    """Summarize tracks skipped because their live fetch was incomplete (#256).
+
+    Their tables are left exactly as they were — better a stale-but-valid row
+    than a '(not fetched)' placeholder published as truth. A persistently
+    missing number usually means the issue was deleted/transferred and should
+    be dropped from frontmatter."""
+    print(f"\n⚠ Skipped {len(degraded)} track(s) — live fetch was incomplete, "
+          f"so their tables were left untouched:")
+    for track, missing in degraded:
+        nums = ", ".join(f"#{n}" for n in missing)
+        print(f"    {track.path.name}: could not fetch {nums}")
+    print("  Re-run once GitHub is reachable, or drop deleted issues from "
+          "frontmatter (`/work-plan reconcile`).")
 
 
 def _rederive_canonical(track, canonical_tables, frontmatter_nums,
