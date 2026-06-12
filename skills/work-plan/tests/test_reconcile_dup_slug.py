@@ -88,8 +88,10 @@ class DupSlugCrossRepoTest(unittest.TestCase):
         rc = h.run(extra_args=["--yes"])
         self.assertEqual(rc, 0)
         writes = dict(h.writes)
-        self.assertEqual(writes["/tmp/fake/o_a/core.md"], [11])
-        self.assertEqual(writes["/tmp/fake/o_b/core.md"], [22])
+        # Key off each track's real Path string (backslashes on Windows), not a
+        # hardcoded POSIX literal — the collision is the slug, not the path.
+        self.assertEqual(writes[str(a.path)], [11])
+        self.assertEqual(writes[str(b.path)], [22])
 
     def test_failed_fetch_does_not_corrupt_same_slug_sibling(self):
         """If repo o/a's fetch is intact but o/b's is independent, the second
@@ -109,8 +111,8 @@ class DupSlugCrossRepoTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         writes = dict(h.writes)
         # o/a unchanged → not written. o/b gains #99 only — NOT #11.
-        self.assertNotIn("/tmp/fake/o_a/core.md", writes)
-        self.assertEqual(writes["/tmp/fake/o_b/core.md"], [99])
+        self.assertNotIn(str(a.path), writes)
+        self.assertEqual(writes[str(b.path)], [99])
 
     def test_no_cross_repo_move_between_same_slug_tracks(self):
         """A move only fires within ONE repo. #50 sits in o/a's 'core'
@@ -127,9 +129,9 @@ class DupSlugCrossRepoTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         writes = dict(h.writes)
         # o/a keeps #50 (no same-repo move target) → not rewritten.
-        self.assertNotIn("/tmp/fake/o_a/core.md", writes)
+        self.assertNotIn(str(a.path), writes)
         # o/b ADDs #50 because it now carries o/b's label — legitimate, in-repo.
-        self.assertEqual(writes.get("/tmp/fake/o_b/core.md"), [50])
+        self.assertEqual(writes.get(str(b.path)), [50])
 
 
 if __name__ == "__main__":
