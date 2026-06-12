@@ -6,6 +6,7 @@ import {
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
+import { ackKey } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
@@ -1724,12 +1725,51 @@ export function activate(context: vscode.ExtensionContext): void {
     return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));
   };
 
+  // Ack state (#164): plans the user has chosen to stop flagging. Persisted in
+  // workspaceState (per-workspace, not global) keyed by ackKey(repoKey, rel). We
+  // persist ONLY the ack key — never stalled-ness, which is re-derived live, so a
+  // plan that's no longer stalled simply leaves the stalled bucket on its own.
+  const ACK_KEY = "workPlan.ackedPlans";
+  const ackedPlans = new Set<string>(context.workspaceState.get<string[]>(ACK_KEY, []));
+
+  // showAcked toggles whether acked docs still render (demoted/greyed, the
+  // default) or are filtered out entirely. In-memory — resets to "show" per session.
+  let showAcked = true;
+
   const plansProvider = new PlansProvider(
     runner,
     reposForPlans,
     stallDaysSetting,
-    // Ack wiring lands in Task 10 — for now nothing is ack'd.
-    () => false,
+    (repoKey, rel) => ackedPlans.has(ackKey(repoKey, rel)),
+    () => showAcked,
+  );
+
+  const setAck = async (repoKey: string, rel: string, on: boolean): Promise<void> => {
+    const k = ackKey(repoKey, rel);
+    if (on) ackedPlans.add(k); else ackedPlans.delete(k);
+    await context.workspaceState.update(ACK_KEY, [...ackedPlans]);
+    plansProvider.refresh();
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.plans.acknowledge",
+      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
+        n?.kind === "doc" && n.repoKey && n.doc?.rel
+          ? setAck(n.repoKey, n.doc.rel, true)
+          : undefined,
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.unacknowledge",
+      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
+        n?.kind === "doc" && n.repoKey && n.doc?.rel
+          ? setAck(n.repoKey, n.doc.rel, false)
+          : undefined,
+    ),
+    vscode.commands.registerCommand("workPlan.plans.toggleAcknowledged", () => {
+      showAcked = !showAcked;
+      plansProvider.refresh();
+    }),
   );
 
   const plansView = vscode.window.createTreeView("workPlan.plans", {

@@ -61,6 +61,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     private readonly repos: () => { repoKey: string; label: string }[],
     private readonly stallDays: () => number | null,
     private readonly isAcked: (repoKey: string, rel: string) => boolean,
+    private readonly showAcked: () => boolean,
   ) {}
 
   async getChildren(element?: PlanNode): Promise<PlanNode[]> {
@@ -88,7 +89,11 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
   /** Stalled docs across every currently-cached repo, as doc nodes. Empty cache
    *  → prompt to scan; scanned-but-clean → "no stalled plans". */
   private _childrenForRollup(): PlanNode[] {
-    const stalled = this._stalledDocs();
+    let stalled = this._stalledDocs();
+    // "Show acknowledged" off → hide acked docs entirely (default is demote-not-hide).
+    if (!this.showAcked()) {
+      stalled = stalled.filter(({ repoKey, doc }) => !this.isAcked(repoKey, doc.rel));
+    }
     if (stalled.length > 0) {
       return stalled.map(
         ({ repoKey, repoRoot, doc }): PlanNode => ({ kind: "doc", repoKey, repoRoot, doc }),
@@ -158,7 +163,11 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
 
     const now = Date.now();
     const stall = this.stallDays();
-    const sorted = [...entry.docs].sort(
+    // "Show acknowledged" off → hide acked docs in the per-repo list too.
+    const visible = this.showAcked()
+      ? entry.docs
+      : entry.docs.filter((doc) => !this.isAcked(repoKey, doc.rel));
+    const sorted = [...visible].sort(
       (a, b) => BUCKET_RANK[planBucket(a, stall, now)] - BUCKET_RANK[planBucket(b, stall, now)],
     );
     return sorted.map(

@@ -92,6 +92,22 @@
         "icon": "$(search)"
       },
       {
+        "command": "workPlan.plans.acknowledge",
+        "title": "Acknowledge (stop flagging)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.unacknowledge",
+        "title": "Un-acknowledge",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.toggleAcknowledged",
+        "title": "Toggle Show Acknowledged",
+        "category": "Work Plan",
+        "icon": "$(eye)"
+      },
+      {
         "command": "workPlan.openTrack",
         "title": "Show in Work Plan",
         "category": "Work Plan"
@@ -266,6 +282,11 @@
           "command": "workPlan.plans.refresh",
           "when": "view == workPlan.plans",
           "group": "navigation"
+        },
+        {
+          "command": "workPlan.plans.toggleAcknowledged",
+          "when": "view == workPlan.plans",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -333,6 +354,16 @@
           "command": "workPlan.batchSlotUntracked",
           "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
           "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.plans.acknowledge",
+          "when": "view == workPlan.plans && viewItem =~ /workPlanPlan-(stalled|dead)/",
+          "group": "1_ack"
+        },
+        {
+          "command": "workPlan.plans.unacknowledge",
+          "when": "view == workPlan.plans && viewItem == workPlanAckedPlan",
+          "group": "1_ack"
         }
       ],
       "commandPalette": [
