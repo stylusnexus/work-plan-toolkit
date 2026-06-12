@@ -1,0 +1,55 @@
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+import { isStalledForDisplay, planBucket, planDescription, ackKey } from "./planModel.ts";
+import type { PlanDoc } from "./model.ts";
+
+function doc(o: Partial<PlanDoc> = {}): PlanDoc {
+  return { rel: "docs/superpowers/plans/p.md", kind: "plan", verdict: "partial", glyph: "🟡",
+    rationale: "", files_present: 3, files_declared: 7, checkboxes_done: 2, checkboxes_total: 6,
+    last_touched: null, manifest_last_touched: "2026-05-01", stalled: true, lie_gap: false,
+    unchecked_items: [], stall_days: 14, ...o };
+}
+
+describe("isStalledForDisplay", () => {
+  const NOW = Date.parse("2026-06-12");
+  test("partial + manifest older than threshold = stalled", () => {
+    assert.equal(isStalledForDisplay(doc({ manifest_last_touched: "2026-05-01" }), 14, NOW), true);
+  });
+  test("raising the threshold re-thresholds to not-stalled", () => {
+    assert.equal(isStalledForDisplay(doc({ manifest_last_touched: "2026-05-01" }), 60, NOW), false);
+  });
+  test("non-partial is never stalled", () => {
+    assert.equal(isStalledForDisplay(doc({ verdict: "shipped" }), 14, NOW), false);
+  });
+  test("partial with null manifest date (present-but-never-committed) = stalled", () => {
+    assert.equal(isStalledForDisplay(doc({ manifest_last_touched: null }), 14, NOW), true);
+  });
+  test("null threshold (Match CLI) falls back to the CLI's emitted stalled boolean", () => {
+    assert.equal(isStalledForDisplay(doc({ stalled: true }), null, NOW), true);
+    assert.equal(isStalledForDisplay(doc({ stalled: false }), null, NOW), false);
+  });
+});
+
+describe("planBucket", () => {
+  const NOW = Date.parse("2026-06-12");
+  test("stalled outranks everything", () => assert.equal(planBucket(doc(), 14, NOW), "stalled"));
+  test("lie_gap shipped is lie-gap", () => assert.equal(planBucket(doc({ verdict: "shipped", lie_gap: true }), 14, NOW), "lie-gap"));
+  test("warm partial is active", () => assert.equal(planBucket(doc({ manifest_last_touched: "2026-06-11" }), 14, NOW), "active"));
+  test("clean shipped is shipped", () => assert.equal(planBucket(doc({ verdict: "shipped", lie_gap: false }), 14, NOW), "shipped"));
+  test("dead is dead", () => assert.equal(planBucket(doc({ verdict: "dead" }), 14, NOW), "dead"));
+});
+
+describe("planDescription", () => {
+  test("leads with phases, then files, then coldness for a stalled doc", () => {
+    const d = planDescription(doc({ manifest_last_touched: "2026-05-01" }), 14, Date.parse("2026-06-12"));
+    assert.match(d, /^2\/6 phases · 3\/7 files · \d+d cold$/);
+  });
+  test("warm doc omits the cold suffix", () => {
+    const d = planDescription(doc({ manifest_last_touched: "2026-06-11" }), 14, Date.parse("2026-06-12"));
+    assert.equal(d, "2/6 phases · 3/7 files");
+  });
+});
+
+describe("ackKey", () => {
+  test("is repo::rel", () => assert.equal(ackKey("org/repo", "docs/x.md"), "org/repo::docs/x.md"));
+});
