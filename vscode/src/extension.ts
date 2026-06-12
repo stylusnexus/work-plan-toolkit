@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import {
-  exportJson, makeSpawnRunner, checkVersion, CliError,
+  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, CliError,
   notesVcsStatus, notesVcsRun, notesVcsUndo,
 } from "./cli.ts";
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
-import type { Track } from "./model.ts";
+import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
@@ -789,16 +789,56 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = await resolveTrackName(node);
         if (!track) return;
 
-        const raw = await vscode.window.showInputBox({
-          prompt: `Issue number to slot into ${track}`,
-          validateInput: (v) => {
-            if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
-            return "Enter a positive integer issue number (e.g. 42)";
-          },
-        });
-        if (raw === undefined) return; // cancelled
+        // Resolve the track's repo + current issues so we can offer the repo's
+        // OPEN issues as a pick-list, excluding ones already in the track (#282).
+        const exp = provider.rawExport ?? provider.currentExport;
+        const trackObj = exp?.tracks.find(t => t.name === track);
+        const repo = trackObj?.repo;
 
-        const issue = parseInt(raw, 10);
+        let issue: number | undefined;
+        if (repo) {
+          const alreadyIn = trackObj!.issues.map(i => i.number);
+          let candidates: Issue[] = [];
+          try {
+            const res = await vscode.window.withProgress(
+              { location: vscode.ProgressLocation.Window, title: `Work Plan: fetching open issues in ${repo}…` },
+              () => listRepoOpenIssues(runner, repo, alreadyIn),
+            );
+            candidates = res.issues;
+          } catch {
+            // Fetch failed (offline, gh hiccup) — fall through to manual entry
+            // rather than blocking the whole command on the pick-list.
+            candidates = [];
+          }
+
+          if (candidates.length > 0) {
+            const MANUAL = -1;
+            const manualItem = { label: "$(edit) Enter an issue number…", description: "not in the list", issueNumber: MANUAL };
+            const picked = await vscode.window.showQuickPick(
+              [manualItem, ...buildIssuePickItems(candidates)],
+              {
+                placeHolder: `Select an open issue to add to ${track}`,
+                matchOnDescription: true,
+                ignoreFocusOut: true,
+              },
+            );
+            if (!picked) return; // cancelled
+            if (picked.issueNumber !== MANUAL) issue = picked.issueNumber;
+          }
+        }
+
+        // Manual entry: chosen explicitly, no candidates to show, or no repo.
+        if (issue === undefined) {
+          const raw = await vscode.window.showInputBox({
+            prompt: `Issue number to slot into ${track}`,
+            validateInput: (v) => {
+              if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
+              return "Enter a positive integer issue number (e.g. 42)";
+            },
+          });
+          if (raw === undefined) return; // cancelled
+          issue = parseInt(raw, 10);
+        }
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: adding #${issue} to ${track}…`,

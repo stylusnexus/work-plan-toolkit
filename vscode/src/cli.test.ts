@@ -4,6 +4,7 @@ import type { CliResult, CliRunner } from "./cli.ts";
 import {
   CliError,
   exportJson,
+  listRepoOpenIssues,
   runWrite,
   parseVersion,
   meetsMinVersion,
@@ -91,6 +92,74 @@ describe("exportJson", () => {
         assert.ok((err as CliError).message.includes("could not parse export JSON"));
         return true;
       }
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listRepoOpenIssues (#282)
+// ---------------------------------------------------------------------------
+
+/** A runner that records the args it was called with, returning a canned result. */
+function recordingRunner(result: CliResult): { run: CliRunner; calls: string[][] } {
+  const calls: string[][] = [];
+  const run: CliRunner = (args: string[]) => {
+    calls.push(args);
+    return Promise.resolve(result);
+  };
+  return { run, calls };
+}
+
+const VALID_OPEN_ISSUES = {
+  repo: "your-org/myproject",
+  issues: [
+    { number: 142, title: "Add SSO", state: "open", assignee: "—", milestone: null },
+    { number: 87, title: "Fix auth", state: "open", assignee: "@eve", milestone: "v0.6" },
+  ],
+};
+
+describe("listRepoOpenIssues", () => {
+  test("parses a canned response into RepoOpenIssues", async () => {
+    const run = fakeRunner({ code: 0, stdout: JSON.stringify(VALID_OPEN_ISSUES), stderr: "" });
+    const result = await listRepoOpenIssues(run, "your-org/myproject");
+    assert.equal(result.repo, "your-org/myproject");
+    assert.equal(result.issues.length, 2);
+    assert.equal(result.issues[0].number, 142);
+  });
+
+  test("passes --repo and omits --exclude when the exclude list is empty", async () => {
+    const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_OPEN_ISSUES), stderr: "" });
+    await listRepoOpenIssues(run, "o/r");
+    assert.deepEqual(calls[0], ["list-open-issues", "--repo=o/r"]);
+  });
+
+  test("passes --exclude as a CSV when issues are excluded", async () => {
+    const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_OPEN_ISSUES), stderr: "" });
+    await listRepoOpenIssues(run, "o/r", [87, 91]);
+    assert.deepEqual(calls[0], ["list-open-issues", "--repo=o/r", "--exclude=87,91"]);
+  });
+
+  test("throws CliError on a non-zero exit", async () => {
+    const run = fakeRunner({ code: 1, stdout: "", stderr: "boom" });
+    await assert.rejects(
+      () => listRepoOpenIssues(run, "o/r"),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError, "should be CliError");
+        assert.ok((err as CliError).stderr.includes("boom"));
+        return true;
+      },
+    );
+  });
+
+  test("throws CliError when stdout is not valid JSON", async () => {
+    const run = fakeRunner({ code: 0, stdout: "not-json{{", stderr: "" });
+    await assert.rejects(
+      () => listRepoOpenIssues(run, "o/r"),
+      (err: unknown) => {
+        assert.ok(err instanceof CliError, "should be CliError");
+        assert.ok((err as CliError).message.includes("could not parse list-open-issues JSON"));
+        return true;
+      },
     );
   });
 });

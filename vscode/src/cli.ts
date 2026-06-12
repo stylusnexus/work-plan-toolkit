@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { Export } from "./model.ts";
+import type { Export, Issue } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Core types — the injectable seam between cli.ts and extension.ts
@@ -135,6 +135,55 @@ export async function exportJson(run: CliRunner): Promise<Export> {
 
   // Return typed; schema mismatch is a soft concern handled by the caller.
   return parsed as Export;
+}
+
+/** A repo's open issues, as emitted by `work-plan list-open-issues` (#282). */
+export interface RepoOpenIssues {
+  repo: string;
+  issues: Issue[];
+}
+
+/**
+ * Runs `work-plan list-open-issues --repo <repo> [--exclude <csv>]` and returns
+ * the repo's open issues (#282). `exclude` drops issues already in the track so
+ * they don't reappear in the Slot pick-list. Throws CliError on non-zero exit or
+ * unparseable output.
+ */
+export async function listRepoOpenIssues(
+  run: CliRunner,
+  repo: string,
+  exclude: number[] = [],
+): Promise<RepoOpenIssues> {
+  const args = [`list-open-issues`, `--repo=${repo}`];
+  if (exclude.length > 0) {
+    args.push(`--exclude=${exclude.join(",")}`);
+  }
+  const result = await run(args);
+
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan list-open-issues failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    throw new CliError({
+      message: `could not parse list-open-issues JSON: ${result.stdout.slice(0, 200)}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+
+  return parsed as RepoOpenIssues;
 }
 
 /**
