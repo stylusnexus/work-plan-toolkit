@@ -4,10 +4,13 @@ The clock keys off a plan's DECLARED manifest files (which get committed) — no
 the plan doc's own git date, which is null because plan docs are gitignored.
 All git is mocked; these run offline.
 """
+import sys
 import unittest
 from datetime import date, datetime
 from pathlib import Path
 from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib import git_state
 from lib import manifest
@@ -182,10 +185,6 @@ class TestResolveStallDays(unittest.TestCase):
                 plan_status._resolve_stall_days({"--stall-days": "abc"}), 14)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestDeclaredPathsOnDiskGuards(unittest.TestCase):
     """A junk declared path ('/'), a directory, or an out-of-tree '../x' must be
     excluded — otherwise they poison `git log -- <paths>` and falsely stall an
@@ -214,3 +213,7 @@ class TestDeclaredPathsOnDiskGuards(unittest.TestCase):
             finally:
                 if outside.exists():
                     outside.unlink()
+
+
+if __name__ == "__main__":
+    unittest.main()
