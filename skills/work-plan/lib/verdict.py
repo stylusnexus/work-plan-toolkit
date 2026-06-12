@@ -11,6 +11,7 @@ SHIPPED_PCT = 80.0      # >= this % of declared files satisfied -> shipped
 PARTIAL_PCT = 20.0      # >= this % -> partial
 BOXES_STALE_PCT = 50.0  # checked-box % below this on a shipped plan -> "boxes stale"
 DEAD_DAYS = 60          # 0 files satisfied AND untouched beyond this -> dead
+STALL_DAYS = 14         # partial + manifest files cold beyond this -> stalled (#164)
 FOREIGN_RATIO = 0.7     # >= this fraction of declared paths outside repo -> foreign
 
 

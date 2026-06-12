@@ -38,6 +38,11 @@ class TestPathsLastCommitDate(unittest.TestCase):
                 git_state.paths_last_commit_date(["a.py"], Path("/repo")))
 
 
+class TestStallDaysConstant(unittest.TestCase):
+    def test_default_is_14(self):
+        self.assertEqual(verdict_mod.STALL_DAYS, 14)
+
+
 class TestUncheckedCheckboxLabels(unittest.TestCase):
     def test_captures_unticked_labels_in_order(self):
         text = (
