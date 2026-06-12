@@ -1748,7 +1748,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const k = ackKey(repoKey, rel);
     if (on) ackedPlans.add(k); else ackedPlans.delete(k);
     await context.workspaceState.update(ACK_KEY, [...ackedPlans]);
-    plansProvider.refresh();
+    plansProvider.rerender();
   };
 
   context.subscriptions.push(
@@ -1768,7 +1768,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("workPlan.plans.toggleAcknowledged", () => {
       showAcked = !showAcked;
-      plansProvider.refresh();
+      plansProvider.rerender();
     }),
   );
 
@@ -1781,10 +1781,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // provider's async refresh resolves — and the provider is constructed after
   // that refresh is kicked off. Re-render the Plans tree whenever the export
   // changes so the view fills in once data arrives (instead of staying blank
-  // until a manual Plans refresh). Cheap: refresh() only clears the doc cache +
-  // re-fires; repos aren't re-scanned until expanded.
+  // until a manual Plans refresh). rerender() (not refresh()) keeps the per-repo
+  // scan cache: getChildren re-reads reposForPlans() on every render, so a new
+  // repo list is picked up while already-scanned repos (and a completed Scan All
+  // roll-up) survive a track sort/filter/auto-refresh.
   context.subscriptions.push(
-    provider.onDidChangeTreeData(() => plansProvider.refresh()),
+    provider.onDidChangeTreeData(() => plansProvider.rerender()),
   );
 
   context.subscriptions.push(
@@ -1809,7 +1811,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("workPlan.stallDays")) {
-        plansProvider.refresh();
+        plansProvider.rerender();
       }
     }),
   );

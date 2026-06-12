@@ -288,4 +288,15 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     }
     this._onDidChangeTreeData.fire(undefined);
   }
+
+  /**
+   * Re-renders the Plans tree WITHOUT clearing the scan cache. Use for
+   * display-only changes — ack/un-ack, stall-threshold tweaks, repo-list shifts
+   * from a fresh export — where the cached per-repo docs are still valid and the
+   * render path (getChildren re-reads repos() + this.stallDays/isAcked) picks up
+   * the new state on its own. A completed "Scan All" roll-up survives.
+   */
+  rerender(): void {
+    this._onDidChangeTreeData.fire(undefined);
+  }
 }

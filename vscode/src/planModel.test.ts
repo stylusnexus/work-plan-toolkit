@@ -28,6 +28,20 @@ describe("isStalledForDisplay", () => {
     assert.equal(isStalledForDisplay(doc({ stalled: true }), null, NOW), true);
     assert.equal(isStalledForDisplay(doc({ stalled: false }), null, NOW), false);
   });
+  test("calendar-day math: exactly stallDays calendar days back is stalled; one fewer is not", () => {
+    // Build `now` from a LOCAL midnight so the count is the user's calendar-day
+    // delta, matching the CLI's date-based (today - commit_date).days — and so
+    // the assertion is timezone-independent rather than UTC-anchored.
+    const now = new Date(2026, 5, 12).getTime(); // local midnight 2026-06-12
+    const minus = (days: number): string => {
+      const dt = new Date(2026, 5, 12 - days);
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const d = String(dt.getDate()).padStart(2, "0");
+      return `${dt.getFullYear()}-${m}-${d}`;
+    };
+    assert.equal(isStalledForDisplay(doc({ manifest_last_touched: minus(14) }), 14, now), true);
+    assert.equal(isStalledForDisplay(doc({ manifest_last_touched: minus(13) }), 14, now), false);
+  });
 });
 
 describe("planBucket", () => {
