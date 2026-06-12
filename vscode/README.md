@@ -74,10 +74,12 @@ When a lens or non-default sort is active, it's shown inline next to the **Track
 
 ### Track actions (right-click a track)
 
-The menu is grouped, with a separator between each group: the **daily session** verbs first, then **everyday edits**, then **GitHub-sync** actions, then the **destructive** actions (Close / Rename) fenced at the bottom so they're harder to hit by accident.
+The menu is grouped, with a separator between each group: **open the track file** first, then the **daily session** verbs, then **everyday edits**, then **GitHub-sync** actions, then the **destructive** actions (Close / Rename) fenced at the bottom so they're harder to hit by accident.
 
 | Command | What it does |
 |---|---|
+| **Open Track File** | Open the track's underlying `.md` in an editor tab — for hand-edits the other verbs don't cover. Opens beside the active editor in preview mode, and reveals an already-open tab instead of duplicating it. Also available as an **Open file** button in the detail panel's header (disabled, with a tooltip, when the file path isn't resolvable — e.g. a remote/WSL workspace where the CLI's path doesn't match the editor's filesystem). Distinct from a single left-click on the track, which opens the **Work Plan** detail panel ("Show in Work Plan"), not the file. |
+| *— separator —* | |
 | **Re-orient (Where was I)** | Print the track's paste-ready ~15-line "where it stands" snapshot — priority, milestone, last session, open items — to the Work Plan output channel. Read-only. Equivalent to `work-plan where-was-i <track>`. |
 | **Wrap Up Session (Handoff)** | Append a session-log entry (derived from git + GitHub activity since the last handoff) and stamp `last_handoff`, then relay the paste-ready fresh-session prompt to the output channel. A public-repo write is gated by the leak-guard modal. Equivalent to `work-plan handoff <track>`. |
 | *— separator —* | |

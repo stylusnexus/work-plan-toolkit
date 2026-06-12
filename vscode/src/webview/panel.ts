@@ -77,12 +77,19 @@ interface FilterMilestoneMessage {
   milestone: string;
 }
 
+/** Open the current track's .md (#211). No payload — the host resolves the
+ *  path from the current track, so the webview never carries it. */
+interface OpenTrackFileMessage {
+  type: "openTrackFile";
+}
+
 type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
   | SetFocusMessage
   | MoveIssueMessage
-  | FilterMilestoneMessage;
+  | FilterMilestoneMessage
+  | OpenTrackFileMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -249,6 +256,7 @@ export class WorkPlanPanel {
       isModule: false, // UMD bundle → global mermaid
       focused: this._focused,
       isDark,
+      hasTrackFile: !!track.path,
     });
 
     webview.html = html;
@@ -305,6 +313,18 @@ export class WorkPlanPanel {
       }
       case "filterMilestone": {
         WorkPlanPanel._filterHandler?.(raw.milestone);
+        break;
+      }
+      case "openTrackFile": {
+        // Resolve the current track and delegate to the command so the stat /
+        // reveal / preview open logic lives in exactly one place (#211). The
+        // command reads node.track.path, so pass a node-shaped { track } arg.
+        const track = this._currentExport?.tracks.find(
+          t => t.name === this._currentTrackName,
+        );
+        if (track) {
+          void vscode.commands.executeCommand("workPlan.openTrackFile", { track });
+        }
         break;
       }
     }
@@ -421,6 +441,8 @@ function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && (msg["number"] as number) > 0;
     case "filterMilestone":
       return typeof msg["milestone"] === "string" && (msg["milestone"] as string).length > 0;
+    case "openTrackFile":
+      return true; // no payload to validate
     default:
       return false;
   }

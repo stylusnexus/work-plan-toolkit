@@ -315,6 +315,71 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.openTrackFile — open the track's underlying .md in an editor tab.
+  // Receives a Track (from the tree context menu or the detail-panel button).
+  // Distinct from workPlan.openTrack ("Show in Work Plan"), which opens the
+  // detail webview, not the file (#211).
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.openTrackFile",
+      async (node?: TrackNode): Promise<void> => {
+        // Context-menu commands receive the tree NODE (TrackNode), not the bare
+        // Track — the path lives at node.track.path. (workPlan.openTrack differs:
+        // it's a left-click item.command that's handed node.track directly.)
+        const filePath = node?.track?.path;
+        if (!filePath) {
+          vscode.window.showInformationMessage(
+            "Work Plan: track file path not available — try refreshing the view.",
+          );
+          return;
+        }
+
+        const uri = vscode.Uri.file(filePath);
+
+        // The path is emitted by the LOCAL CLI; the extension host may run on a
+        // different filesystem (remote-SSH / WSL / devcontainer), where it
+        // won't resolve. Stat first so we fail with a clear message instead of
+        // a raw throw, and name the path so the user can tell what was tried.
+        try {
+          await vscode.workspace.fs.stat(uri);
+        } catch {
+          vscode.window.showErrorMessage(
+            `Work Plan: track file not found at ${filePath} — has it moved, ` +
+              `or is it on another machine (remote/WSL)?`,
+          );
+          return;
+        }
+
+        try {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          // Reveal an already-open tab in place rather than opening a duplicate;
+          // otherwise open beside the active editor in preview mode (italic tab
+          // — promotes to a real tab as soon as the user edits).
+          const open = vscode.window.visibleTextEditors.find(
+            (e) => e.document.uri.toString() === uri.toString(),
+          );
+          if (open) {
+            await vscode.window.showTextDocument(doc, open.viewColumn);
+          } else {
+            await vscode.window.showTextDocument(doc, {
+              viewColumn: vscode.window.activeTextEditor
+                ? vscode.ViewColumn.Beside
+                : vscode.ViewColumn.Active,
+              preview: true,
+            });
+          }
+        } catch (err: unknown) {
+          vscode.window.showErrorMessage(
+            `Work Plan: failed to open track file — ${String(err)}`,
+          );
+        }
+      },
+    ),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.openIssue — open a GitHub issue in the external browser.
   // Accepts { repo: string, number: number } (from tree node or webview message).
   // -------------------------------------------------------------------------

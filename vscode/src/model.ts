@@ -25,6 +25,13 @@ export interface Rollup {
 export interface Track {
   name: string;
   repo: string;
+  /**
+   * Absolute path to the track's `.md` on disk, or null when the track has no
+   * backing file (#211). Assumes the CLI and extension share a filesystem view
+   * — true for a local install, but NOT for remote-SSH/WSL/devcontainer setups
+   * where the extension host runs elsewhere; consumers must stat before opening.
+   */
+  path: string | null;
   /** "private" today; forward-compat for a future shared tier. */
   tier: string;
   status: string;

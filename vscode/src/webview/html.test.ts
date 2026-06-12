@@ -24,6 +24,7 @@ const BASE: WebviewHtmlOptions = {
   isModule: false,
   focused: false,
   isDark: true,
+  hasTrackFile: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -427,6 +428,43 @@ function assertAllScriptsHaveNonce(html: string, nonce: string): void {
   }
   assert.ok(count > 0, "Expected at least one <script element in output");
 }
+
+// ---------------------------------------------------------------------------
+// Open-file button (#211)
+// ---------------------------------------------------------------------------
+
+describe("buildHtml — open-file button (#211)", () => {
+  it("renders an enabled button with the open-file id when hasTrackFile is true", () => {
+    const html = buildHtml({ ...BASE, hasTrackFile: true });
+    assert.ok(html.includes('id="work-plan-open-file"'), "expected the open-file button id");
+    assert.ok(html.includes(">Open file<"), "expected the 'Open file' label");
+    // Enabled button must not carry the disabled attribute.
+    assert.ok(
+      !/id="work-plan-open-file"[^>]*disabled/.test(html),
+      "enabled button must not be disabled",
+    );
+  });
+
+  it("clicking the button posts an openTrackFile message", () => {
+    const html = buildHtml({ ...BASE, hasTrackFile: true });
+    assert.ok(html.includes('type: "openTrackFile"'), "expected openTrackFile postMessage");
+    assert.ok(
+      html.includes('getElementById("work-plan-open-file")'),
+      "expected a click handler bound to the open-file button",
+    );
+  });
+
+  it("renders a disabled button (no id, aria-disabled) when hasTrackFile is false", () => {
+    const html = buildHtml({ ...BASE, hasTrackFile: false });
+    assert.ok(html.includes(">Open file<"), "the affordance stays visible when path-less");
+    assert.ok(html.includes('aria-disabled="true"'), "path-less button must be aria-disabled");
+    // No id → the click handler can't bind, so it can't post a message.
+    assert.ok(
+      !html.includes('id="work-plan-open-file"'),
+      "disabled button must not carry the actionable id",
+    );
+  });
+});
 
 describe("buildHtml — milestone band filter wiring (#218)", () => {
   it("posts filterMilestone and wires the keyboard collapse toggle", () => {
