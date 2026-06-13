@@ -6,6 +6,22 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.13+30f6244 — 2026-06-13 (#296)
+
+fix(vscode): Plans view papercuts (ext 0.6.1)
+
+Extension-only patch (no CLI change; `MIN_CLI_VERSION` unchanged). VS Code extension **0.6.1**.
+
+Post-0.6.0 UX fixes to the new Plans view, from live use:
+- **Plans section collapsed by default** so Tracks stays the hot path.
+- The **"Scan all repos for stalled plans…" empty-state is clickable** — runs the scan directly (the title-bar icon alone was undiscoverable).
+- **Scan All uses a `$(telescope)` icon** instead of `$(search)` (the magnifying glass read as the Tracks Search and was ambiguous).
+- **Trimmed the Plans title bar** — Toggle Show Acknowledged moved to the `…` overflow, leaving Scan All + Refresh.
+
+npm publish skipped (CLI unchanged); VS Code Marketplace + Open VSX publish via the release.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.13+627d944 — 2026-06-13 (#293)
 
 feat: Plans view, registered-repo management, list-pickers, Open Track File
