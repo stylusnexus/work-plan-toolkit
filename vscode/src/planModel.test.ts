@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { isStalledForDisplay, planBucket, planDescription, ackKey } from "./planModel.ts";
-import type { PlanDoc } from "./model.ts";
+import { isStalledForDisplay, planBucket, planDescription, ackKey, unregisteredTrackRepos } from "./planModel.ts";
+import type { Export, PlanDoc, Track } from "./model.ts";
 
 function doc(o: Partial<PlanDoc> = {}): PlanDoc {
   return { rel: "docs/superpowers/plans/p.md", kind: "plan", verdict: "partial", glyph: "🟡",
@@ -66,4 +66,58 @@ describe("planDescription", () => {
 
 describe("ackKey", () => {
   test("is repo::rel", () => assert.equal(ackKey("org/repo", "docs/x.md"), "org/repo::docs/x.md"));
+});
+
+describe("unregisteredTrackRepos", () => {
+  // Minimal Track — only `repo` matters for this helper.
+  const track = (repo: string | null): Track => ({
+    name: "t", repo: repo as string, path: null, folder: null, tier: "private",
+    status: "active", launch_priority: null, milestone_alignment: null, visibility: null,
+    blockers: [], next_up: [], depends_on: [], rollup: { open: 0, closed: 0 }, issues: [],
+  });
+  const configRepo = (repo: string) => ({
+    folder: repo.split("/")[1], repo, local: null, has_local: false, visibility: null,
+  });
+  const exp = (tracks: Track[], repos: Export["repos"]): Export => ({
+    schema: 1, generated_at: "", tracks, ...(repos !== undefined && { repos }),
+  });
+
+  test("returns a track slug that has no repos: entry", () => {
+    const result = unregisteredTrackRepos(exp([track("org/untracked")], []));
+    assert.deepEqual(result, ["org/untracked"]);
+  });
+
+  test("excludes a track slug that IS in repos:", () => {
+    const result = unregisteredTrackRepos(
+      exp([track("org/registered")], [configRepo("org/registered")]),
+    );
+    assert.deepEqual(result, []);
+  });
+
+  test("dedupes two tracks on the same unregistered slug", () => {
+    const result = unregisteredTrackRepos(exp([track("org/x"), track("org/x")], []));
+    assert.deepEqual(result, ["org/x"]);
+  });
+
+  test("excludes a null/empty track repo", () => {
+    const result = unregisteredTrackRepos(exp([track(null), track("")], []));
+    assert.deepEqual(result, []);
+  });
+
+  test("returns slugs sorted for a stable render", () => {
+    const result = unregisteredTrackRepos(exp([track("org/zed"), track("org/abe")], []));
+    assert.deepEqual(result, ["org/abe", "org/zed"]);
+  });
+
+  test("treats a missing repos field as zero registered (all track slugs unregistered)", () => {
+    const result = unregisteredTrackRepos(exp([track("org/x")], undefined));
+    assert.deepEqual(result, ["org/x"]);
+  });
+
+  test("empty when every track slug is registered", () => {
+    const result = unregisteredTrackRepos(
+      exp([track("org/a"), track("org/b")], [configRepo("org/a"), configRepo("org/b")]),
+    );
+    assert.deepEqual(result, []);
+  });
 });
