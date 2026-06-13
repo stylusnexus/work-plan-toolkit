@@ -83,13 +83,20 @@ interface OpenTrackFileMessage {
   type: "openTrackFile";
 }
 
+/** Open the current track's linked plan doc (#285). No payload — the host
+ *  resolves the path from the current track's `plan` badge + repo local path. */
+interface OpenPlanMessage {
+  type: "openPlan";
+}
+
 type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
   | SetFocusMessage
   | MoveIssueMessage
   | FilterMilestoneMessage
-  | OpenTrackFileMessage;
+  | OpenTrackFileMessage
+  | OpenPlanMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -324,6 +331,27 @@ export class WorkPlanPanel {
         );
         if (track) {
           void vscode.commands.executeCommand("workPlan.openTrackFile", { track });
+        }
+        break;
+      }
+      case "openPlan": {
+        // Resolve the current track's linked plan doc to an absolute path and
+        // delegate to the open command. The plan badge carries the repo-relative
+        // `rel`; the repo's local checkout comes from the export's repos[] by the
+        // track's folder key. Only resolved links have a file to open.
+        const track = this._currentExport?.tracks.find(
+          t => t.name === this._currentTrackName,
+        );
+        const plan = track?.plan;
+        if (track && plan?.resolved) {
+          const local = this._currentExport?.repos?.find(
+            r => r.folder === track.folder,
+          )?.local;
+          if (local) {
+            void vscode.commands.executeCommand(
+              "workPlan.openPlanFile", { local, rel: plan.rel },
+            );
+          }
         }
         break;
       }

@@ -169,6 +169,13 @@ mermaid.run();
       return;
     }
 
+    // Plan-open button → open the track's linked plan doc (#285)
+    var planBtn = target.closest(".plan-open");
+    if (planBtn) {
+      post({ type: "openPlan" });
+      return;
+    }
+
     // Milestone band collapse toggle (keyboard-operable <button>)
     var msToggle = target.closest(".milestone-toggle-btn");
     if (msToggle) {

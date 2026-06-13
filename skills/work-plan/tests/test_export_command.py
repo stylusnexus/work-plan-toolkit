@@ -310,5 +310,81 @@ class ExportCommandGateTest(unittest.TestCase):
         self.assertEqual(export_cmd.run([]), 2)
 
 
+class ExportPlanBadgeTest(unittest.TestCase):
+    """`_plan_badge` resolves a track's declared plan link into an execution
+    badge using the same evaluator as plan-status (#285). Real temp repo so the
+    manifest/checkbox/frontmatter read is exercised; git date is mocked."""
+
+    import tempfile as _tempfile
+
+    def _repo_with_plan(self, d, plan_text):
+        root = Path(d)
+        (root / "docs/plans").mkdir(parents=True)
+        (root / "docs/plans/p.md").write_text(plan_text)
+        (root / "src").mkdir()
+        (root / "src/new.ts").write_text("export const x = 1")  # 1/1 declared present
+        return root
+
+    def _track_with_plan(self, rel="docs/plans/p.md", folder="demo"):
+        return SimpleNamespace(
+            name="alpha", repo="o/r", tier="private", folder=folder,
+            path=Path("/tmp/notes/alpha.md"), has_frontmatter=True,
+            meta={"status": "active", "plan": rel, "github": {"repo": "o/r", "issues": []}})
+
+    def _badge(self, track, root):
+        with patch("commands.export.resolve_local_path_for_folder", return_value=root), \
+             patch("commands.plan_status.git_state.path_last_commit_date", return_value=None):
+            from datetime import date
+            return export_cmd._plan_badge(track, {"notes_root": "/tmp"}, date(2026, 6, 13), 60, 14)
+
+    # A shipped-by-files plan with 0/2 boxes -> lie_gap unless overridden.
+    BODY = ("# P\n\n**Files:**\n- Create: `src/new.ts`\n- [ ] Step 1\n- [ ] Step 2\n")
+
+    def test_no_plan_returns_none(self):
+        t = self._track_with_plan()
+        t.meta.pop("plan")
+        self.assertIsNone(self._badge(t, Path("/tmp")))
+
+    def test_resolved_badge_with_lie_gap(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo_with_plan(d, self.BODY)
+            badge = self._badge(self._track_with_plan(), root)
+            self.assertTrue(badge["resolved"])
+            self.assertEqual(badge["verdict"], "shipped")
+            self.assertEqual(badge["files_present"], 1)
+            self.assertEqual(badge["files_declared"], 1)
+            self.assertTrue(badge["lie_gap"])
+            self.assertIsNone(badge["override"])
+
+    def test_override_silences_lie_gap_in_badge(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo_with_plan(d, f"---\nverdict_override: shipped\n---\n{self.BODY}")
+            badge = self._badge(self._track_with_plan(), root)
+            self.assertEqual(badge["override"], "shipped")
+            self.assertFalse(badge["lie_gap"])
+
+    def test_unresolved_when_no_local_clone(self):
+        t = self._track_with_plan()
+        with patch("commands.export.resolve_local_path_for_folder", return_value=None):
+            from datetime import date
+            badge = export_cmd._plan_badge(t, {"notes_root": "/tmp"}, date(2026, 6, 13), 60, 14)
+        self.assertEqual(badge, {"rel": "docs/plans/p.md", "resolved": False})
+
+    def test_unresolved_when_file_absent(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)  # empty repo — declared plan file does not exist
+            badge = self._badge(self._track_with_plan(rel="docs/plans/missing.md"), root)
+            self.assertEqual(badge, {"rel": "docs/plans/missing.md", "resolved": False})
+
+    def test_no_folder_is_unresolved(self):
+        t = self._track_with_plan(folder=None)
+        from datetime import date
+        badge = export_cmd._plan_badge(t, {"notes_root": "/tmp"}, date(2026, 6, 13), 60, 14)
+        self.assertEqual(badge, {"rel": "docs/plans/p.md", "resolved": False})
+
+
 if __name__ == "__main__":
     unittest.main()

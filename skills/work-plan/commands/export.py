@@ -1,11 +1,50 @@
 """export subcommand — emit the viewer-ready JSON read surface."""
 import json
-from datetime import datetime
+from datetime import datetime, date
 from lib.config import load_config, ConfigError, resolve_local_path_for_folder
 from lib.tracks import discover_tracks
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
 from lib.export_model import build_export
 from lib.prompts import parse_flags
+from lib import doc_discovery
+from lib import verdict as verdict_mod
+from commands.plan_status import evaluate_doc
+
+
+def _plan_badge(track, cfg, today, dead_days, stall_days):
+    """Resolve a track's declared `plan:` link into an execution badge (#285).
+
+    Returns None when the track declares no plan, `{rel, resolved: false}` when
+    the link can't be resolved (no local clone, or the file is absent), and the
+    full badge — verdict/glyph/files/phases/lie_gap/stalled/override — when it
+    resolves. The verdict is computed by the SAME evaluator plan-status uses, so a
+    badge never disagrees with the Plans view. Only the declared link is trusted;
+    there is no name-matching fallback (#285 acceptance criteria)."""
+    rel = track.meta.get("plan")
+    if not isinstance(rel, str) or not rel.strip():
+        return None
+    rel = rel.strip()
+    local = resolve_local_path_for_folder(track.folder, cfg) if track.folder else None
+    if not local or not local.exists():
+        return {"rel": rel, "resolved": False}
+    doc_path = local / rel
+    if not doc_path.is_file():
+        return {"rel": rel, "resolved": False}
+    doc = doc_discovery.Doc(path=doc_path, rel=rel, kind=doc_discovery.classify_kind(rel))
+    row = evaluate_doc(doc, local, today, dead_days, stall_days)
+    return {
+        "rel": rel,
+        "resolved": True,
+        "verdict": row["verdict"],
+        "glyph": row["glyph"],
+        "files_present": row["files_present"],
+        "files_declared": row["files_declared"],
+        "checkboxes_done": row["checkboxes_done"],
+        "checkboxes_total": row["checkboxes_total"],
+        "lie_gap": row["lie_gap"],
+        "stalled": row["stalled"],
+        "override": row["override"],
+    }
 
 def run(args: list[str]) -> int:
     flags, _ = parse_flags(args, {"--json"})
@@ -77,11 +116,23 @@ def run(args: list[str]) -> int:
             "visibility": visibility.get(slug),
         })
 
+    # Resolve each track's declared plan link into an execution badge (#285).
+    # Only tracks that declare `plan:` incur the per-doc git/manifest evaluation.
+    today = date.today()
+    cfg_stall = cfg.get("stall_days")
+    stall_days = cfg_stall if isinstance(cfg_stall, int) else verdict_mod.STALL_DAYS
+    plan_by_track: dict[str, dict] = {}
+    for t in tracks:
+        badge = _plan_badge(t, cfg, today, verdict_mod.DEAD_DAYS, stall_days)
+        if badge is not None:
+            plan_by_track[t.name] = badge
+
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print(json.dumps(
         build_export(tracks, issues_by_track, visibility, now,
                      untracked_by_repo=untracked_by_repo,
-                     config_repos=config_repos),
+                     config_repos=config_repos,
+                     plan_by_track=plan_by_track),
         indent=2,
     ))
     return 0
