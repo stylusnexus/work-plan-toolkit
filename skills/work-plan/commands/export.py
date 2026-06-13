@@ -1,7 +1,7 @@
 """export subcommand — emit the viewer-ready JSON read surface."""
 import json
 from datetime import datetime
-from lib.config import load_config, ConfigError
+from lib.config import load_config, ConfigError, resolve_local_path_for_folder
 from lib.tracks import discover_tracks
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
 from lib.export_model import build_export
@@ -60,10 +60,28 @@ def run(args: list[str]) -> int:
         open_rows = fetch_open_issues(repo)
         untracked_by_repo[repo] = [r for r in open_rows if r.get("number") not in tracked]
 
+    # Every CONFIGURED repo, regardless of whether any track references it (#288).
+    # Lets the viewer show a registered-but-empty repo so the user can start
+    # adding tracks to it. visibility is filled here for repos no track covered.
+    config_repos = []
+    for folder, block in (cfg.get("repos") or {}).items():
+        slug = block.get("github") if isinstance(block, dict) else None
+        local = resolve_local_path_for_folder(folder, cfg)
+        if slug and slug not in visibility:
+            visibility[slug] = repo_visibility(slug)
+        config_repos.append({
+            "folder": folder,
+            "repo": slug,
+            "local": str(local) if local else None,
+            "has_local": bool(local and local.exists()),
+            "visibility": visibility.get(slug),
+        })
+
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print(json.dumps(
         build_export(tracks, issues_by_track, visibility, now,
-                     untracked_by_repo=untracked_by_repo),
+                     untracked_by_repo=untracked_by_repo,
+                     config_repos=config_repos),
         indent=2,
     ))
     return 0

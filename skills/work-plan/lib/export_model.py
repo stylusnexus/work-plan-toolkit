@@ -67,7 +67,7 @@ def normalize_issue(i: dict) -> dict:
 
 
 def build_export(tracks, issues_by_track, visibility, now: str,
-                 untracked_by_repo=None) -> dict:
+                 untracked_by_repo=None, config_repos=None) -> dict:
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
         issues = [normalize_issue(i) for i in issues_by_track.get(t.name, [])]
@@ -104,4 +104,9 @@ def build_export(tracks, issues_by_track, visibility, now: str,
         for repo, rows in (untracked_by_repo or {}).items()
         if rows
     ]
+    # Every CONFIGURED repo, independent of track membership (#288): so the
+    # viewer can show a registered repo even when it has no tracks/plans yet —
+    # the starting point for adding fresh tracks. Each entry:
+    # {folder, repo(slug), local, has_local, visibility}.
+    out["repos"] = list(config_repos or [])
     return out
