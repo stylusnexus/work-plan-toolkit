@@ -11,7 +11,7 @@ from lib.manifest import (
     DeclaredPath, strip_range, parse_declared_paths,
     count_checkboxes, plan_date_from_filename,
     ManifestScore, score_manifest,
-    is_in_tree, out_of_tree_ratio,
+    is_in_tree, out_of_tree_ratio, offtree_declared_paths,
 )
 
 
@@ -156,6 +156,35 @@ class ScoreManifestTest(unittest.TestCase):
                                committed_since=lambda rel: False)
         self.assertEqual(score.total, 0)
         self.assertIsNone(score.pct)
+
+
+class OfftreeDeclaredPathsTest(unittest.TestCase):
+    ROOT = "/repo"
+
+    def _decls(self, *paths):
+        return [DeclaredPath(kind="create", path=p) for p in paths]
+
+    def test_in_tree_paths_are_not_flagged(self):
+        decls = self._decls("src/a.ts", "src/b.ts")
+        self.assertEqual(offtree_declared_paths(decls, self.ROOT), [])
+
+    def test_flags_absolute_tilde_and_escape(self):
+        decls = self._decls("src/ok.ts", "/etc/passwd", "~/secrets.txt", "../sibling/x.ts")
+        self.assertEqual(
+            offtree_declared_paths(decls, self.ROOT),
+            ["/etc/passwd", "~/secrets.txt", "../sibling/x.ts"],
+        )
+
+    def test_flags_junk_root_slash(self):
+        # The literal `/` #164's smoke caught — resolves to the filesystem root.
+        self.assertEqual(offtree_declared_paths(self._decls("/x/y"), self.ROOT), ["/x/y"])
+
+    def test_dedups_preserving_first_seen_order(self):
+        decls = self._decls("../x.ts", "src/ok.ts", "../x.ts")
+        self.assertEqual(offtree_declared_paths(decls, self.ROOT), ["../x.ts"])
+
+    def test_empty_decls(self):
+        self.assertEqual(offtree_declared_paths([], self.ROOT), [])
 
 
 if __name__ == "__main__":

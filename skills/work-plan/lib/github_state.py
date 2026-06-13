@@ -28,6 +28,69 @@ def _valid_repo(repo: str) -> bool:
     return bool(repo) and _REPO_RE.match(repo) is not None
 
 
+def close_issue(repo: str, number: int, reason=None, comment=None) -> tuple:
+    """Close a GitHub issue via `gh issue close` — the toolkit's ONLY
+    GitHub-mutating call (#305). Everything else here is read-only.
+
+    Returns (ok, message). `reason` ∈ {completed, not_planned} maps to
+    `--reason`; `comment` (if given) posts a closing comment. The issue number
+    is coerced to str for argv (never shell-interpolated), and `repo` is
+    validated as owner/name first, so neither can inject. Never raises — a gh
+    failure (already-closed, no write access, network, not-found) comes back as
+    (False, <gh stderr>)."""
+    if not _valid_repo(repo):
+        return (False, f"invalid repo '{repo}'")
+    args = ["gh", "issue", "close", str(int(number)), "--repo", repo]
+    if reason in ("completed", "not_planned"):
+        args += ["--reason", reason]
+    if comment:
+        args += ["--comment", str(comment)]
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=GH_TIMEOUT)
+    except Exception as e:
+        return (False, f"gh issue close failed: {e}")
+    if proc.returncode != 0:
+        return (False, (proc.stderr or proc.stdout or "gh issue close failed").strip())
+    return (True, (proc.stdout or f"closed #{number}").strip())
+
+
+def gh_auth_status() -> dict:
+    """Probe `gh` authentication so callers can fast-fail instead of silently
+    degrading (#auth). Returns:
+
+        {"gh_present": bool, "authenticated": bool,
+         "user": str | None, "error": str | None}
+
+    Distinguishes the two failure modes the UI must handle differently:
+    `gh` not installed (`gh_present` False — fix is "install gh") vs installed
+    but not logged in (`authenticated` False — fix is "gh auth login").
+
+    Never raises. `gh auth status` exits 0 when at least one host is logged in,
+    non-zero otherwise; it prints the human status to STDERR. We parse a
+    best-effort `user` from that text but treat the EXIT CODE as authoritative."""
+    try:
+        proc = subprocess.run(
+            ["gh", "auth", "status"],
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
+        )
+    except FileNotFoundError:
+        return {"gh_present": False, "authenticated": False,
+                "user": None, "error": "gh CLI not found on PATH"}
+    except Exception as e:  # timeout / OS error — gh present but unusable now
+        return {"gh_present": True, "authenticated": False,
+                "user": None, "error": f"gh auth status failed: {e}"}
+
+    blob = f"{proc.stdout}\n{proc.stderr}"
+    authenticated = proc.returncode == 0
+    # `gh auth status` prints e.g. "✓ Logged in to github.com account USER" or
+    # the older "Logged in to github.com as USER". Match either phrasing.
+    m = re.search(r"Logged in to \S+ (?:account|as) (\S+)", blob)
+    user = m.group(1) if (authenticated and m) else None
+    error = None if authenticated else (blob.strip() or "not logged in to GitHub")
+    return {"gh_present": True, "authenticated": authenticated,
+            "user": user, "error": error}
+
+
 def fetch_issue(repo: str, number: int) -> Optional[dict]:
     """Fetch a single issue via gh. Returns parsed dict on success, None on failure.
     Never raises — a missing `gh` binary, a timeout, or a bad repo yields None."""

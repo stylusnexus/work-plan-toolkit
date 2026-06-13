@@ -4,7 +4,7 @@
  * No vscode imports. All user-supplied text is HTML-escaped.
  */
 
-import type { Track, Issue } from "../model.ts";
+import type { Track, Issue, TrackPlan } from "../model.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -167,6 +167,12 @@ export function renderDetail(track: Track): string {
   parts.push("</div>");
 
   // -------------------------------------------------------------------------
+  // Plan link + execution badge (#285)
+  // -------------------------------------------------------------------------
+
+  parts.push(renderPlanSection(track.plan));
+
+  // -------------------------------------------------------------------------
   // Next-up steps
   // -------------------------------------------------------------------------
 
@@ -192,13 +198,64 @@ export function renderDetail(track: Track): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Renders the "Plan:" row from the track's declared plan link (#285).
+ *
+ * - No link → "None linked."
+ * - Declared but unresolved → the path + a quiet "not found" note (no open
+ *   affordance — there's nothing to open).
+ * - Resolved → a clickable button (posts `openPlan`) carrying the execution
+ *   badge: glyph + verdict + files/phases, with lie-gap / ✋ confirmed markers.
+ *
+ * Exported for direct unit testing.
+ */
+export function renderPlanSection(plan: Track["plan"]): string {
+  if (!plan) {
+    return '<div class="plan"><b>Plan:</b> None linked.</div>';
+  }
+  const file = plan.rel.split("/").pop() ?? plan.rel;
+  if (!plan.resolved) {
+    return (
+      '<div class="plan"><b>Plan:</b> ' +
+      `<span class="plan-unresolved" title="${esc(plan.rel)}">${esc(file)} ` +
+      "— not found (no local clone or file missing)</span></div>"
+    );
+  }
+  return (
+    '<div class="plan"><b>Plan:</b> ' +
+    `<button type="button" class="plan-open" title="Open ${esc(plan.rel)}">` +
+    `${planBadgeLabel(plan)} — ${esc(file)}</button></div>`
+  );
+}
+
+/** Compact badge label for a resolved plan: "✅ shipped · 9/9 files · 0/24 phases". */
+function planBadgeLabel(plan: TrackPlan): string {
+  const glyph = plan.glyph ? `${esc(plan.glyph)} ` : "";
+  const bits = [`${glyph}${esc(plan.verdict ?? "")}`.trim()];
+  if (typeof plan.files_present === "number" && typeof plan.files_declared === "number") {
+    bits.push(`${plan.files_present}/${plan.files_declared} files`);
+  }
+  if (typeof plan.checkboxes_done === "number" && typeof plan.checkboxes_total === "number") {
+    bits.push(`${plan.checkboxes_done}/${plan.checkboxes_total} phases`);
+  }
+  if (plan.override) bits.push("✋ confirmed");
+  else if (plan.lie_gap) bits.push("⚠ lie-gap");
+  if (plan.stalled) bits.push("stalled");
+  return bits.join(" · ");
+}
+
 /** Renders a single <tr> for an issue, with a Move button. */
 function renderIssueRow(track: Track, issue: Issue): string {
   const numCell = track.repo
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
+  // Move + Close-on-GitHub actions (#305). Close shows only for OPEN issues in a
+  // repo'd track; a closed row shows no close affordance (already done).
+  const closeBtn = track.repo && issue.state === "open"
+    ? ` <button class="close-issue-btn" data-close="${issue.number}" title="Close #${issue.number} on GitHub" aria-label="Close issue #${issue.number} on GitHub">⊗</button>`
+    : "";
   const moveBtn = track.repo
-    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button></td>`
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}</td>`
     : `<td class="move-col"></td>`;
   return (
     `<tr>` +

@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import {
-  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, CliError,
+  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo,
 } from "./cli.ts";
-import type { NotesVcsStatus } from "./cli.ts";
+import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
@@ -36,7 +36,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // Wire up the tree provider.
   // -------------------------------------------------------------------------
 
-  const provider = new WorkPlanTreeProvider(() => exportJson(runner));
+  const provider = new WorkPlanTreeProvider(
+    () => exportJson(runner),
+    () => checkAuth(runner),
+  );
 
   const treeView = vscode.window.createTreeView("workPlan.tree", {
     treeDataProvider: provider,
@@ -325,6 +328,38 @@ export function activate(context: vscode.ExtensionContext): void {
   // detail webview, not the file (#211).
   // -------------------------------------------------------------------------
 
+  // Stat a CLI-emitted path, then open it — revealing an already-open tab in
+  // place rather than duplicating it, else opening beside in preview mode. The
+  // path comes from the LOCAL CLI; on a remote-SSH/WSL/devcontainer host it may
+  // not resolve, so we stat first and fail with a named, actionable message.
+  // Shared by openTrackFile (#211) and openPlanFile (#285).
+  const revealFileInEditor = async (uri: vscode.Uri, notFoundMsg: string): Promise<void> => {
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      vscode.window.showErrorMessage(notFoundMsg);
+      return;
+    }
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const open = vscode.window.visibleTextEditors.find(
+        (e) => e.document.uri.toString() === uri.toString(),
+      );
+      if (open) {
+        await vscode.window.showTextDocument(doc, open.viewColumn);
+      } else {
+        await vscode.window.showTextDocument(doc, {
+          viewColumn: vscode.window.activeTextEditor
+            ? vscode.ViewColumn.Beside
+            : vscode.ViewColumn.Active,
+          preview: true,
+        });
+      }
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(`Work Plan: failed to open file — ${String(err)}`);
+    }
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "workPlan.openTrackFile",
@@ -339,48 +374,108 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           return;
         }
-
-        const uri = vscode.Uri.file(filePath);
-
-        // The path is emitted by the LOCAL CLI; the extension host may run on a
-        // different filesystem (remote-SSH / WSL / devcontainer), where it
-        // won't resolve. Stat first so we fail with a clear message instead of
-        // a raw throw, and name the path so the user can tell what was tried.
-        try {
-          await vscode.workspace.fs.stat(uri);
-        } catch {
-          vscode.window.showErrorMessage(
-            `Work Plan: track file not found at ${filePath} — has it moved, ` +
-              `or is it on another machine (remote/WSL)?`,
+        await revealFileInEditor(
+          vscode.Uri.file(filePath),
+          `Work Plan: track file not found at ${filePath} — has it moved, ` +
+            `or is it on another machine (remote/WSL)?`,
+        );
+      },
+    ),
+    // workPlan.openPlanFile — open a track's linked plan doc (#285). Receives
+    // { local, rel }: the repo's local checkout path + the repo-relative doc
+    // path. joinPath (not string concat) so a Windows `local` joins cleanly with
+    // the POSIX `rel`.
+    vscode.commands.registerCommand(
+      "workPlan.openPlanFile",
+      async (arg?: { local?: string; rel?: string }): Promise<void> => {
+        if (!arg?.local || !arg?.rel) {
+          vscode.window.showInformationMessage(
+            "Work Plan: plan path not available — try refreshing the view.",
           );
           return;
         }
-
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(arg.local), arg.rel);
+        await revealFileInEditor(
+          uri,
+          `Work Plan: plan doc not found at ${uri.fsPath} — has it moved, ` +
+            `or is it on another machine (remote/WSL)?`,
+        );
+      },
+    ),
+    // workPlan.fetchOpenIssues — pull a trackless repo's open issues on demand
+    // (#303). export only emits untracked for repos that HAVE tracks, so a
+    // registered-but-trackless repo (e.g. agent-armor) never shows its issues;
+    // this fetches them via list-open-issues and renders them as that repo's
+    // Untracked bucket. All open issues are untracked here — a repo with no
+    // tracks references none of them. Accepts {repo} (affordance node) or a
+    // RepoNode (right-click on the repo).
+    vscode.commands.registerCommand(
+      "workPlan.fetchOpenIssues",
+      async (arg?: { repo?: string }): Promise<void> => {
+        const repo = arg?.repo;
+        if (!repo || repo === "(no repo)") return;
         try {
-          const doc = await vscode.workspace.openTextDocument(uri);
-          // Reveal an already-open tab in place rather than opening a duplicate;
-          // otherwise open beside the active editor in preview mode (italic tab
-          // — promotes to a real tab as soon as the user edits).
-          const open = vscode.window.visibleTextEditors.find(
-            (e) => e.document.uri.toString() === uri.toString(),
+          const res = await withWriteProgress(
+            `Work Plan: fetching open issues for ${repo}…`,
+            () => listRepoOpenIssues(runner, repo),
           );
-          if (open) {
-            await vscode.window.showTextDocument(doc, open.viewColumn);
-          } else {
-            await vscode.window.showTextDocument(doc, {
-              viewColumn: vscode.window.activeTextEditor
-                ? vscode.ViewColumn.Beside
-                : vscode.ViewColumn.Active,
-              preview: true,
-            });
-          }
+          provider.setFetchedUntracked(repo, res.issues);
+          vscode.window.showInformationMessage(
+            res.issues.length > 0
+              ? `Work Plan: ${res.issues.length} open issue(s) in ${repo}.`
+              : `Work Plan: no open issues in ${repo}.`,
+          );
         } catch (err: unknown) {
-          vscode.window.showErrorMessage(
-            `Work Plan: failed to open track file — ${String(err)}`,
-          );
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: fetch open issues failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
         }
       },
     ),
+    // GitHub sign-in path (#auth). gh auth login is INTERACTIVE (device-code /
+    // browser), so it must run in a visible terminal — never a silent spawn.
+    // We can't observe when the flow finishes, so we point the user at Retry.
+    vscode.commands.registerCommand("workPlan.signInToGitHub", () => {
+      const term = vscode.window.createTerminal({ name: "Work Plan: GitHub Sign-in" });
+      term.show(true);
+      term.sendText("gh auth login", true);
+      vscode.window
+        .showInformationMessage(
+          "Work Plan: Complete the sign-in in the terminal, then click Retry to load your tracks.",
+          "Retry",
+        )
+        .then((choice) => {
+          if (choice === "Retry") {
+            void vscode.commands.executeCommand("workPlan.checkGitHubAuth");
+          }
+        }, () => { /* ignore */ });
+    }),
+    // Re-probe auth + refresh (#auth) — the post-sign-in retry, also the Retry
+    // links in the welcome banners. Refresh re-runs the probe, so on success the
+    // banner clears and real data loads; on still-unauth we nudge, not error.
+    vscode.commands.registerCommand("workPlan.checkGitHubAuth", async () => {
+      await provider.refresh().catch(() => { /* surfaced elsewhere */ });
+      const auth = provider.lastAuth;
+      if (auth?.authenticated) {
+        const who = auth.user ? ` as @${auth.user}` : "";
+        vscode.window.showInformationMessage(`Work Plan: Signed in${who} — loading your tracks.`);
+      } else if (auth && !auth.ghPresent) {
+        vscode.window.showWarningMessage(
+          "Work Plan: GitHub CLI (gh) not found — install it, then Retry.",
+        );
+      } else {
+        vscode.window.showInformationMessage(
+          "Work Plan: Still not signed in — finish the flow in the terminal, then Retry.",
+        );
+      }
+    }),
+    // Open the gh install docs (#auth) — the fix for the "gh not found" state.
+    vscode.commands.registerCommand("workPlan.openGhInstallDocs", () => {
+      vscode.env.openExternal(vscode.Uri.parse("https://cli.github.com")).then(
+        undefined, () => { /* ignore */ },
+      );
+    }),
   );
 
   // -------------------------------------------------------------------------
@@ -426,6 +521,71 @@ export function activate(context: vscode.ExtensionContext): void {
             );
           },
         );
+      },
+    ),
+    // workPlan.closeIssue (#305) — the only GitHub-mutating action. Accepts an
+    // untracked-issue NODE ({repo, issue:{number,title}}) or a detail-panel
+    // {repo, number, title}. Flow: reason pick → optional comment → mandatory
+    // "writes to GitHub, can't be undone" modal (EVERY close) → executeWrite.
+    vscode.commands.registerCommand(
+      "workPlan.closeIssue",
+      async (arg?: { repo?: string; number?: number; title?: string; issue?: Issue }) => {
+        const repo = arg?.repo;
+        const number = arg?.number ?? arg?.issue?.number;
+        const title = arg?.title ?? arg?.issue?.title ?? (number ? `#${number}` : "");
+        if (!repo || !number) {
+          vscode.window.showInformationMessage("Work Plan: no issue to close.");
+          return;
+        }
+
+        const pick = await vscode.window.showQuickPick(
+          [
+            { label: "$(pass-filled) Completed", reason: "completed" as const, description: "Work is done (default)" },
+            { label: "$(circle-slash) Not planned", reason: "not_planned" as const, description: "Won't do / out of scope" },
+          ],
+          { title: `Close #${number} on GitHub`, placeHolder: "Close reason" },
+        );
+        if (!pick) return;
+
+        const comment = await vscode.window.showInputBox({
+          title: `Closing comment for #${number} (optional)`,
+          placeHolder: "Closed via dev-branch merge (#PR) — leave blank for no comment",
+          ignoreFocusOut: true,
+        });
+        if (comment === undefined) return; // Escape cancels the whole operation
+
+        const ok = await vscode.window.showWarningMessage(
+          `Close issue #${number} "${title}" on GitHub?\n\nThis writes to GitHub — it cannot be undone from the extension.`,
+          { modal: true },
+          "Close on GitHub",
+        );
+        if (ok !== "Close on GitHub") return;
+
+        try {
+          const outcome = await withWriteProgress(
+            `Work Plan: closing #${number} on GitHub…`,
+            () => executeWrite(
+              runner,
+              { kind: "closeIssue", repo, number, reason: pick.reason, comment: comment || undefined },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            await refreshAfterWrite();
+            vscode.window.showInformationMessage(
+              comment
+                ? `Work Plan: closed #${number} on GitHub with comment.`
+                : `Work Plan: closed #${number} on GitHub.`,
+            );
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: close failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
       },
     ),
   );
@@ -1182,6 +1342,50 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: rename-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+    // workPlan.pushTrack (#306) — promote a private track to the shared tier +
+    // push. Confirm modal names the repo and warns on a PUBLIC repo (the track
+    // becomes world-visible). executeWrite drives the CLI's public-repo token.
+    vscode.commands.registerCommand("workPlan.pushTrack", async (node?: TrackNode) => {
+      const track = node?.track;
+      if (!track) return;
+      if (track.tier === "shared") {
+        vscode.window.showInformationMessage(
+          `Work Plan: "${track.name}" is already in the shared tier.`,
+        );
+        return;
+      }
+      const repoLabel = track.repo ?? "this repo";
+      const exposure = track.visibility === "PUBLIC"
+        ? `\n\n⚠ ${repoLabel} is PUBLIC — promoting + pushing makes this track visible to anyone on the internet, and it stays in public git history.`
+        : "";
+      const ok = await vscode.window.showWarningMessage(
+        `Promote track "${track.name}" to the shared tier of ${repoLabel} and push it to the plan branch?${exposure}`,
+        { modal: true },
+        "Push to Shared Tier",
+      );
+      if (ok !== "Push to Shared Tier") return;
+      try {
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: promoting ${track.name} to shared tier…`,
+          () => executeWrite(
+            runner,
+            { kind: "pushTrack", track: track.name, repoKey: track.folder ?? undefined },
+            confirmPublicWrite,
+          ),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: promoted ${track.name} to the shared tier.`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: push-track failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
@@ -1975,6 +2179,223 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // Confirm-verdict (#286): write a human `verdict_override` into the plan's
+  // FRONTMATTER. Two gates stand in front of the write: a mandatory modal that
+  // names the exact file and states it edits only frontmatter (the #286 UI
+  // safeguard), then — for a PUBLIC repo — executeWrite's existing confirm-token
+  // modal. The write is frontmatter-only; the CLI never touches the body.
+  const confirmFrontmatterWrite = async (rel: string, verb: string): Promise<boolean> => {
+    const choice = await vscode.window.showWarningMessage(
+      `${verb} ${rel}?\n\nThis writes ONLY to the document's YAML frontmatter — never its body, checkboxes, or declared-file manifest.`,
+      { modal: true },
+      "Write frontmatter",
+    );
+    return choice === "Write frontmatter";
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.plans.confirmVerdict",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        const pick = await vscode.window.showQuickPick(
+          [
+            { label: "$(pass-filled) Shipped", verdict: "shipped" as const, description: "Done — the banner is correct" },
+            { label: "$(circle-filled) Partial", verdict: "partial" as const, description: "Still in progress" },
+            { label: "$(circle-slash) Dead", verdict: "dead" as const, description: "Abandoned" },
+          ],
+          {
+            title: `Confirm verdict for ${filename}`,
+            placeHolder: "Pick the verdict to write into the doc's frontmatter",
+          },
+        );
+        if (!pick) return;
+        if (!(await confirmFrontmatterWrite(rel, `Write verdict_override: ${pick.verdict} into the frontmatter of`))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            `Work Plan: confirming ${pick.verdict}…`,
+            () => executeWrite(
+              runner,
+              { kind: "planConfirm", repoKey, rel, verdict: pick.verdict },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: ${filename} confirmed ${pick.verdict}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: confirm failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.clearConfirmation",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Clear the verdict override from the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: clearing confirmation…",
+            () => executeWrite(
+              runner,
+              { kind: "planConfirmClear", repoKey, rel },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: cleared confirmation on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: clear failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    // Durable acknowledgment (#286): write `acknowledged: true` to the doc's
+    // frontmatter (committed + shared) — distinct from the local-only
+    // Acknowledge above. Same file-naming + public-repo gates as Confirm Verdict.
+    vscode.commands.registerCommand(
+      "workPlan.plans.acknowledgePersist",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Write acknowledged: true into the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: saving acknowledgment…",
+            () => executeWrite(runner, { kind: "planAck", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: ${filename} acknowledged (saved to doc).`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: acknowledge failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.clearDocAck",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Remove acknowledged from the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: clearing saved acknowledgment…",
+            () => executeWrite(runner, { kind: "planAckClear", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: cleared saved acknowledgment on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: clear failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    // Drift baseline (#286): stamp the current computed verdict so plan-status
+    // flags drift if it later changes. Re-running re-stamps to "now" (the
+    // accept-the-new-reality path). Same file-naming + public-repo gates.
+    vscode.commands.registerCommand(
+      "workPlan.plans.stampBaseline",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Stamp a verdict baseline (watch for drift) into the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: stamping baseline…",
+            () => executeWrite(runner, { kind: "planBaseline", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: baseline stamped on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: stamp baseline failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.clearBaseline",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Remove the verdict baseline from the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: clearing baseline…",
+            () => executeWrite(runner, { kind: "planBaselineClear", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: cleared baseline on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: clear baseline failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+  );
+
   const plansView = vscode.window.createTreeView("workPlan.plans", {
     treeDataProvider: plansProvider,
   });
@@ -2071,8 +2492,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // on a no-op write. Best-effort; never blocks activation.
   notesVcsStatus(runner).then((st) => { notesState = st; }, () => { /* ignore */ });
 
-  // Initial data load.
-  provider.refresh().catch((err: unknown) => {
+  // Initial data load. On success, surface the one-time GitHub-auth nudge off
+  // the SAME refresh (which already probed auth + set the context key driving
+  // the Tracks welcome banner) — no second `gh` call.
+  provider.refresh().then(() => {
+    maybeShowAuthToast(provider.lastAuth);
+  }, (err: unknown) => {
     if (err instanceof CliError) {
       vscode.window.showErrorMessage(
         `Work Plan: CLI not found or failed to run (${err.message}). ` +
@@ -2112,6 +2537,42 @@ export function activate(context: vscode.ExtensionContext): void {
       console.error("Work Plan: version check failed:", err);
     }
   });
+
+}
+
+// One-time guard for the activation auth toast (#auth) — the persistent
+// viewsWelcome banner is the durable surface; the toast nudges only once.
+let authToastShown = false;
+
+/**
+ * The one-time GitHub-auth nudge (#auth): a single toast (mirrors the
+ * version-check toast) shown when the activation probe found we're not signed
+ * in, so the user notices even with the Tracks view unfocused. Authenticated →
+ * nothing. gh-missing and not-signed-in get distinct copy + actions. Shown at
+ * most once per window session; the viewsWelcome banner is the durable surface.
+ */
+function maybeShowAuthToast(auth: AuthState | null): void {
+  if (authToastShown || !auth || auth.authenticated) return;
+  authToastShown = true;
+  if (!auth.ghPresent) {
+    vscode.window
+      .showWarningMessage(
+        "Work Plan: GitHub CLI (gh) not found — issue data is unavailable.",
+        "Install gh",
+      )
+      .then((c) => {
+        if (c === "Install gh") void vscode.commands.executeCommand("workPlan.openGhInstallDocs");
+      }, () => { /* ignore */ });
+  } else {
+    vscode.window
+      .showWarningMessage(
+        "Work Plan: Not signed in to GitHub — issue data is unavailable. Sign in to load tracks.",
+        "Sign in",
+      )
+      .then((c) => {
+        if (c === "Sign in") void vscode.commands.executeCommand("workPlan.signInToGitHub");
+      }, () => { /* ignore */ });
+  }
 }
 
 export function deactivate(): void {

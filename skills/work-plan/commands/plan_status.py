@@ -11,6 +11,7 @@ from pathlib import Path
 
 from lib import config as config_mod
 from lib import doc_discovery, manifest, git_state, github_state
+from lib import frontmatter
 from lib import verdict as verdict_mod
 from lib import status_header
 from lib import llm_evidence
@@ -21,6 +22,42 @@ from lib.prompts import parse_flags, prompt_yes_no
 KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
          "--llm", "--apply", "--archive", "--issues", "--stall-days"}
 _ORDER = ["shipped", "partial", "dead", "foreign", "manifest-less"]
+
+# Human verdict-override (#286): a reviewer affirms the verdict in the doc's
+# YAML frontmatter, so the mechanical heuristic (file score + checkbox %) stops
+# second-guessing it — and the "shipped but boxes unchecked" lie-gap goes quiet.
+_OVERRIDE_VERDICTS = {"shipped", "partial", "dead"}
+_OVERRIDE_GLYPH = {"shipped": "✅", "partial": "🟡", "dead": "💀"}
+
+
+def _read_fm_signals(path) -> tuple:
+    """Read the frontmatter signals plan-status honors (#286), in ONE parse:
+
+        (override, acknowledged, baseline)
+
+    `override` is the `verdict_override` value (case-insensitive shipped|partial|
+    dead, else None — a typo can't pin a bogus verdict). `acknowledged` is True
+    when the doc carries a truthy `acknowledged` (the durable ack plan-ack writes).
+    `baseline` is the `verdict_baseline` value (a verdict string, else None) that
+    plan-baseline stamps for drift detection. All frontmatter-only — never the
+    body/checkboxes. A doc with no frontmatter (most plans) parses to empty meta,
+    a clean (None, False, None) no-op."""
+    try:
+        meta, _ = frontmatter.parse_file(Path(path))
+    except Exception:
+        return (None, False, None)
+    if not isinstance(meta, dict):
+        return (None, False, None)
+    val = meta.get("verdict_override")
+    override = (val.strip().lower()
+                if isinstance(val, str) and val.strip().lower() in _OVERRIDE_VERDICTS
+                else None)
+    acknowledged = bool(meta.get("acknowledged"))
+    bval = meta.get("verdict_baseline")
+    baseline = (bval.strip().lower()
+                if isinstance(bval, str) and bval.strip().lower() in _OVERRIDE_VERDICTS
+                else None)
+    return (override, acknowledged, baseline)
 
 
 def _resolve_repo_root(flags) -> Path:
@@ -95,6 +132,14 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     else:
         v = verdict_mod.classify(score, done, total_chk, last_d, today, dead_days)
 
+    # Frontmatter signals (#286): a `verdict_override` pins the verdict over the
+    # mechanical one (applied BEFORE the staleness clock + lie-gap so both key off
+    # the confirmed verdict), and `acknowledged` is the durable, shared ack.
+    override, acknowledged, baseline = _read_fm_signals(doc.path)
+    if override:
+        v = verdict_mod.Verdict(
+            override, _OVERRIDE_GLYPH[override], f"human-confirmed · {v.rationale}")
+
     # Staleness clock (#164): a partial plan whose declared manifest files have
     # gone cold = "started executing, then drifted off." Key off the manifest
     # files' commit date, NOT the plan doc's git date — plan docs are gitignored,
@@ -111,8 +156,14 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
                 stalled = (today - manifest_dt.date()).days >= stall_days
         # else: no declared files on disk yet -> brand-new, not stalled.
 
-    lie_gap = (v.label == "shipped" and total_chk > 0
+    # A human-confirmed verdict silences the lie-gap: the reviewer has affirmed
+    # the "shipped" claim despite unchecked boxes, so it's no longer a lie.
+    lie_gap = (not override and v.label == "shipped" and total_chk > 0
                and done / total_chk < 0.25)
+    # Drift (#286): a stamped `verdict_baseline` that no longer matches the live
+    # verdict — e.g. a once-shipped plan whose declared files were deleted. A
+    # human override owns the verdict, so it suppresses drift (same as lie-gap).
+    verdict_drift = bool(baseline) and not override and baseline != v.label
     return {
         "rel": doc.rel, "kind": doc.kind,
         "verdict": v.label, "glyph": v.glyph, "rationale": v.rationale,
@@ -122,9 +173,22 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
         "manifest_last_touched": manifest_dt.date().isoformat() if manifest_dt else None,
         "stalled": stalled,
         "lie_gap": lie_gap,
+        "override": override,
+        "acknowledged": acknowledged,
+        "verdict_baseline": baseline,
+        "verdict_drift": verdict_drift,
+        "offtree_paths": manifest.offtree_declared_paths(decls, repo_root),
         "unchecked_items": manifest.unchecked_checkbox_labels(text),
         "stall_days": stall_days,
     }
+
+
+# Public alias so other commands (e.g. `export`, which resolves a track's linked
+# plan badge for #285) reuse the SAME verdict/lie-gap/override evaluation instead
+# of reimplementing it and drifting. Kept at this module path so the existing
+# tests that patch `commands.plan_status.git_state.*` and call `_evaluate`
+# directly keep working unchanged.
+evaluate_doc = _evaluate
 
 
 def _render(rows, repo_root) -> None:

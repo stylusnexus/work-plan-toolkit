@@ -1,6 +1,6 @@
 import type { Export, PlanDoc } from "./model.ts";
 
-export type PlanBucket = "stalled" | "lie-gap" | "active" | "shipped" | "dead" | "other";
+export type PlanBucket = "stalled" | "lie-gap" | "drift" | "active" | "shipped" | "dead" | "other";
 
 const DAY = 86_400_000;
 
@@ -31,6 +31,10 @@ export function isStalledForDisplay(d: PlanDoc, stallDays: number | null, nowMs:
 export function planBucket(d: PlanDoc, stallDays: number | null, nowMs: number): PlanBucket {
   if (isStalledForDisplay(d, stallDays, nowMs)) return "stalled";
   if (d.verdict === "shipped" && d.lie_gap) return "lie-gap";
+  // Baseline drift (#286): the live verdict diverged from a stamped baseline —
+  // loud, like stalled/lie-gap. The CLI already suppresses drift under an
+  // override, so a confirmed plan never lands here.
+  if (d.verdict_drift) return "drift";
   if (d.verdict === "partial") return "active";
   if (d.verdict === "shipped") return "shipped";
   if (d.verdict === "dead") return "dead";
@@ -43,6 +47,20 @@ export function planDescription(d: PlanDoc, stallDays: number | null, nowMs: num
   if (isStalledForDisplay(d, stallDays, nowMs) && d.manifest_last_touched) {
     bits.push(`${coldDays(d.manifest_last_touched, nowMs)}d cold`);
   }
+  // A human-confirmed verdict (#286) — flag it so the row reads as affirmed, not
+  // merely mechanically scored (the icon already drops to the verdict's bucket).
+  if (d.override) bits.push("✋ confirmed");
+  // Drift baseline markers (#286): loud direction when it diverged, faint
+  // "watching" marker while it still matches.
+  if (d.verdict_drift && d.verdict_baseline) {
+    bits.push(`⚠ drifted (${d.verdict_baseline} → ${d.verdict})`);
+  } else if (d.verdict_baseline) {
+    bits.push("📌 baseline");
+  }
+  // Off-tree declared paths (#286) — a read-only "your manifest points outside
+  // this repo" flag; the count earns a tooltip listing them (see plansTree).
+  const offtree = d.offtree_paths?.length ?? 0;
+  if (offtree > 0) bits.push(`⚠ ${offtree} off-tree path${offtree === 1 ? "" : "s"}`);
   return bits.join(" · ");
 }
 

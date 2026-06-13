@@ -29,16 +29,20 @@ export type PlanNode =
 const BUCKET_RANK: Record<PlanBucket, number> = {
   stalled: 0,
   "lie-gap": 1,
-  active: 2,
-  shipped: 3,
-  dead: 4,
-  other: 5,
+  drift: 2,
+  active: 3,
+  shipped: 4,
+  dead: 5,
+  other: 6,
 };
 
 /** verdict-bucket → [codicon, ThemeColor id]. */
 const BUCKET_ICON: Record<PlanBucket, [string, string]> = {
   stalled: ["warning", "charts.red"],
   "lie-gap": ["error", "charts.red"],
+  // Drift is loud — a distinct alert glyph in red so a regressed plan reads
+  // apart from stalled (warning) and lie-gap (error).
+  drift: ["alert", "charts.red"],
   active: ["circle-filled", "charts.yellow"],
   shipped: ["pass-filled", "charts.gray"],
   dead: ["circle-slash", "charts.gray"],
@@ -70,6 +74,13 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // roll-up (which both work off `repos()`/the cache) must never try them.
     private readonly unregistered: () => string[] = () => [],
   ) {}
+
+  /** A doc is acknowledged if EITHER the per-machine workspaceState ack is set
+   *  OR the doc carries a durable frontmatter `acknowledged: true` (#286). Both
+   *  demote the doc; the durable one also survives across machines/teammates. */
+  private _acked(repoKey: string, doc: PlanDoc): boolean {
+    return this.isAcked(repoKey, doc.rel) || doc.acknowledged === true;
+  }
 
   async getChildren(element?: PlanNode): Promise<PlanNode[]> {
     if (!element) {
@@ -104,7 +115,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     let stalled = this._stalledDocs();
     // "Show acknowledged" off → hide acked docs entirely (default is demote-not-hide).
     if (!this.showAcked()) {
-      stalled = stalled.filter(({ repoKey, doc }) => !this.isAcked(repoKey, doc.rel));
+      stalled = stalled.filter(({ repoKey, doc }) => !this._acked(repoKey, doc));
     }
     if (stalled.length > 0) {
       return stalled.map(
@@ -179,7 +190,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // "Show acknowledged" off → hide acked docs in the per-repo list too.
     const visible = this.showAcked()
       ? entry.docs
-      : entry.docs.filter((doc) => !this.isAcked(repoKey, doc.rel));
+      : entry.docs.filter((doc) => !this._acked(repoKey, doc));
     const sorted = [...visible].sort(
       (a, b) => BUCKET_RANK[planBucket(a, stall, now)] - BUCKET_RANK[planBucket(b, stall, now)],
     );
@@ -251,7 +262,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const now = Date.now();
     const stall = this.stallDays();
     const bucket = planBucket(doc, stall, now);
-    const acked = this.isAcked(repoKey, doc.rel);
+    // Two ack flavors (#286): a durable frontmatter ack (committed, shared) and
+    // the per-machine workspaceState ack. Either demotes the row; the durable
+    // one reads "ack'd (saved)" and offers a different (write) menu.
+    const docAcked = doc.acknowledged === true;
+    const localAcked = this.isAcked(repoKey, doc.rel);
+    const acked = docAcked || localAcked;
 
     const filename = doc.rel.split("/").pop() ?? doc.rel;
     const item = new vscode.TreeItem(filename, vscode.TreeItemCollapsibleState.None);
@@ -260,7 +276,8 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const [icon, color] = acked ? ["circle-outline", "charts.gray"] : BUCKET_ICON[bucket];
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
-    item.description = planDescription(doc, stall, now) + (acked ? " · ack'd" : "");
+    const ackLabel = docAcked ? " · ✅ ack'd (saved)" : localAcked ? " · ack'd" : "";
+    item.description = planDescription(doc, stall, now) + ackLabel;
 
     // joinPath (not string concat) so a Windows repoRoot — backslashes from
     // Python's str(repo_root) — joins with doc.rel's forward slashes without a
@@ -283,6 +300,14 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
         tip.appendMarkdown(`- ${u}\n`);
       }
     }
+    // Off-tree declared paths (#286) — name them so a typo/misfile is obvious;
+    // these resolve outside the repo and can never satisfy the manifest.
+    if (doc.offtree_paths && doc.offtree_paths.length > 0) {
+      tip.appendMarkdown(`\n\n**⚠ Off-tree declared paths** (resolve outside this repo):\n`);
+      for (const p of doc.offtree_paths) {
+        tip.appendMarkdown(`- \`${p}\`\n`);
+      }
+    }
     item.tooltip = tip;
 
     item.command = {
@@ -291,7 +316,24 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       arguments: [resourceUri],
     };
 
-    item.contextValue = acked ? "workPlanAckedPlan" : `workPlanPlan-${bucket}`;
+    // contextValue drives the right-click menu (#286). Precedence (a node has
+    // ONE value): confirmed → "clear confirmation"; durable frontmatter-ack →
+    // "clear saved acknowledgment"; local ack → "un-acknowledge"; otherwise the
+    // bucket value, which offers "confirm verdict…", the two acks, and the
+    // baseline actions. A " baselined" token is appended on bucket-state docs
+    // that carry a baseline so "Clear Baseline" can match via a regex when-clause
+    // (the existing bucket menus use prefix/contains matches, so the suffix is
+    // transparent to them).
+    const base = doc.override
+      ? "workPlanPlanConfirmed"
+      : docAcked
+        ? "workPlanPlanDocAcked"
+        : localAcked
+          ? "workPlanAckedPlan"
+          : `workPlanPlan-${bucket}`;
+    item.contextValue = base.startsWith("workPlanPlan-") && doc.verdict_baseline
+      ? `${base} baselined`
+      : base;
     return item;
   }
 

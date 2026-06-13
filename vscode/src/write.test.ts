@@ -764,3 +764,158 @@ describe("executeWrite — CliError propagation", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// planConfirm / planConfirmClear — verdict-override frontmatter writes (#286)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — planConfirm", () => {
+  test("set verdict → plan-confirm --repo --verdict, rel after --", () => {
+    const action: WriteAction = {
+      kind: "planConfirm",
+      repoKey: "critforge",
+      rel: "docs/superpowers/plans/p.md",
+      verdict: "shipped",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "plan-confirm",
+      "--repo=critforge",
+      "--verdict=shipped",
+      "--",
+      "docs/superpowers/plans/p.md",
+    ]);
+  });
+
+  test("clear → plan-confirm --repo --clear, rel after --", () => {
+    const action: WriteAction = {
+      kind: "planConfirmClear",
+      repoKey: "critforge",
+      rel: "docs/superpowers/plans/p.md",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "plan-confirm",
+      "--repo=critforge",
+      "--clear",
+      "--",
+      "docs/superpowers/plans/p.md",
+    ]);
+  });
+
+  test("inherits the public-repo confirm-token flow (token lands before --)", async () => {
+    const action: WriteAction = {
+      kind: "planConfirm",
+      repoKey: "critforge",
+      rel: "docs/superpowers/plans/p.md",
+      verdict: "shipped",
+    };
+    const { run, calls } = recordingRunner([
+      {
+        code: 0,
+        stdout: JSON.stringify({ needs_confirm: true, reason: "PUBLIC", token: "tok123" }),
+        stderr: "",
+      },
+      { code: 0, stdout: "✓ confirmed", stderr: "" },
+    ]);
+    const outcome = await executeWrite(run, action, alwaysConfirm("writeAnyway"));
+    assert.equal(outcome.status, "written");
+    assert.equal(calls.length, 2);
+    // Second call carries --confirm=<token> as a flag BEFORE the -- separator.
+    assert.deepEqual(calls[1], [
+      "plan-confirm",
+      "--repo=critforge",
+      "--verdict=shipped",
+      "--confirm=tok123",
+      "--",
+      "docs/superpowers/plans/p.md",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planAck / planAckClear — durable frontmatter acknowledgment (#286 slice 1)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — planAck", () => {
+  test("ack → plan-ack --repo, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planAck", repoKey: "critforge", rel: "docs/plans/p.md" }),
+      ["plan-ack", "--repo=critforge", "--", "docs/plans/p.md"],
+    );
+  });
+
+  test("clear → plan-ack --repo --clear, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planAckClear", repoKey: "critforge", rel: "docs/plans/p.md" }),
+      ["plan-ack", "--repo=critforge", "--clear", "--", "docs/plans/p.md"],
+    );
+  });
+
+  test("inherits the public-repo confirm-token flow (token before --)", async () => {
+    const { run, calls } = recordingRunner([
+      { code: 0, stdout: JSON.stringify({ needs_confirm: true, reason: "PUBLIC", token: "tk" }), stderr: "" },
+      { code: 0, stdout: "✓ acknowledged", stderr: "" },
+    ]);
+    const outcome = await executeWrite(
+      run, { kind: "planAck", repoKey: "cf", rel: "docs/plans/p.md" }, alwaysConfirm("writeAnyway"),
+    );
+    assert.equal(outcome.status, "written");
+    assert.deepEqual(calls[1], ["plan-ack", "--repo=cf", "--confirm=tk", "--", "docs/plans/p.md"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planBaseline / planBaselineClear — drift baseline (#286 slice 2)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — planBaseline", () => {
+  test("stamp → plan-baseline --repo, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planBaseline", repoKey: "cf", rel: "docs/plans/p.md" }),
+      ["plan-baseline", "--repo=cf", "--", "docs/plans/p.md"],
+    );
+  });
+  test("clear → plan-baseline --repo --clear, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planBaselineClear", repoKey: "cf", rel: "docs/plans/p.md" }),
+      ["plan-baseline", "--repo=cf", "--clear", "--", "docs/plans/p.md"],
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// closeIssue — the only GitHub-mutating action (#305)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — closeIssue", () => {
+  test("with reason + comment", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "closeIssue", repo: "o/r", number: 287, reason: "completed", comment: "done via dev" }),
+      ["close-issue", "--repo=o/r", "--reason=completed", "--comment=done via dev", "--", "287"],
+    );
+  });
+  test("omits --comment when absent", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "closeIssue", repo: "o/r", number: 5, reason: "not_planned" }),
+      ["close-issue", "--repo=o/r", "--reason=not_planned", "--", "5"],
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pushTrack — promote a private track to the shared tier (#306)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — pushTrack", () => {
+  test("with repoKey → push-track --repo, track after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "pushTrack", track: "my-feature", repoKey: "demo" }),
+      ["push-track", "--repo=demo", "--", "my-feature"],
+    );
+  });
+  test("without repoKey → omits --repo", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "pushTrack", track: "my-feature" }),
+      ["push-track", "--", "my-feature"],
+    );
+  });
+});

@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Track } from "../model.ts";
-import { renderDetail } from "./detail.ts";
+import { renderDetail, renderPlanSection } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -663,5 +663,69 @@ describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
       html.includes('class="issue-cap-toggle" aria-expanded="false"'),
       `issue-cap toggle should have aria-expanded:\n${html}`,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: plan section (#285)
+// ---------------------------------------------------------------------------
+
+describe("renderPlanSection", () => {
+  it("shows 'None linked' when the track declares no plan", () => {
+    assert.ok(renderPlanSection(null).includes("None linked"));
+    assert.ok(renderPlanSection(undefined).includes("None linked"));
+  });
+
+  it("renders a clickable badge for a resolved plan", () => {
+    const html = renderPlanSection({
+      rel: "docs/superpowers/plans/idea-mode-ui.md", resolved: true,
+      verdict: "shipped", glyph: "✅", files_present: 9, files_declared: 9,
+      checkboxes_done: 0, checkboxes_total: 24, lie_gap: false, stalled: false,
+      override: "shipped",
+    });
+    assert.ok(html.includes('class="plan-open"'), html);
+    assert.ok(html.includes("✅ shipped"), html);
+    assert.ok(html.includes("9/9 files"), html);
+    assert.ok(html.includes("0/24 phases"), html);
+    assert.ok(html.includes("✋ confirmed"), html);   // override marker
+    assert.ok(html.includes("idea-mode-ui.md"), html);
+  });
+
+  it("shows the lie-gap marker when unconfirmed", () => {
+    const html = renderPlanSection({
+      rel: "p.md", resolved: true, verdict: "shipped", glyph: "✅",
+      files_present: 9, files_declared: 9, checkboxes_done: 0, checkboxes_total: 24,
+      lie_gap: true, stalled: false, override: null,
+    });
+    assert.ok(html.includes("⚠ lie-gap"), html);
+    assert.ok(!html.includes("✋ confirmed"), html);
+  });
+
+  it("renders a non-clickable not-found note for an unresolved link", () => {
+    const html = renderPlanSection({ rel: "docs/plans/gone.md", resolved: false });
+    assert.ok(!html.includes('class="plan-open"'), html);  // nothing to open
+    assert.ok(html.includes("not found"), html);
+    assert.ok(html.includes("gone.md"), html);
+  });
+
+  it("escapes the plan path", () => {
+    const html = renderPlanSection({ rel: "docs/<script>.md", resolved: false });
+    assert.ok(!html.includes("<script>"), html);
+  });
+});
+
+describe("renderDetail — close-on-GitHub button (#305)", () => {
+  it("renders a close button for an OPEN issue in a repo'd track", () => {
+    const html = renderDetail(platformHealth);   // #487 is open
+    assert.ok(html.includes('class="close-issue-btn" data-close="487"'), html);
+  });
+  it("does not render a close button for a CLOSED issue", () => {
+    // #2196 RLS audit is closed → no close affordance
+    const html = renderDetail(platformHealth);
+    assert.ok(!html.includes('data-close="2196"'), html);
+  });
+  it("no close button when the track has no repo", () => {
+    const noRepo: Track = { ...platformHealth, repo: null as unknown as string };
+    assert.ok(!renderDetail(noRepo).includes("close-issue-btn"));
   });
 });

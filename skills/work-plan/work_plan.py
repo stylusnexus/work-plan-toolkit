@@ -51,7 +51,12 @@ SUBCOMMANDS = {
     "--hygiene": "commands.hygiene",      # flag-style alias
     "plan-status": "commands.plan_status",
     "--plan-status": "commands.plan_status",  # flag-style alias
+    "plan-confirm": "commands.plan_confirm",
+    "plan-ack": "commands.plan_ack",
+    "plan-baseline": "commands.plan_baseline",
+    "close-issue": "commands.close_issue",
     "export": "commands.export",
+    "auth-status": "commands.auth_status",
     "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
     "new-track": "commands.new_track",
@@ -59,6 +64,7 @@ SUBCOMMANDS = {
     "set-notes-root": "commands.set_notes_root",
     "notes-vcs": "commands.notes_vcs",
     "plan-branch": "commands.plan_branch",
+    "push-track": "commands.push_track",
 }
 
 DESCRIPTIONS = [
@@ -147,6 +153,10 @@ DESCRIPTIONS = [
      "Emit the viewer-ready JSON read surface (schema 1): every frontmatter'd track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone. Read-only; derives live from gh. Consumed by the VS Code extension.",
      "When a tool (the VS Code viewer, or any script) needs structured track state instead of the human-facing brief/orient text.",
      "/work-plan export --json"),
+    ("auth-status", "[--json]",
+     "Report whether `gh` is installed and authenticated to GitHub. Read-only probe (`gh auth status`) — the toolkit's GitHub reads/writes all go through gh, and the fetch helpers return empty rather than erroring, so an unauthenticated session otherwise looks like an empty-but-working one. `--json` emits {gh_present, authenticated, user, error}; exit code: 0 authenticated, 1 gh present but not logged in, 2 gh not found. The VS Code viewer calls this at activation to fast-fail with a sign-in path instead of a misleadingly empty tree.",
+     "When you (or the viewer) need to know up front whether GitHub calls will work, instead of discovering it via empty results.",
+     "/work-plan auth-status --json"),
     ("list-open-issues", "--repo=<owner/name> [--exclude=<csv-issue-numbers>]",
      "Emit a repo's OPEN issues as JSON ({repo, issues:[{number,title,state,assignee,milestone}]}) — the same issue shape as export. Read-only; derives live from gh. --repo takes a bare org/repo slug; --exclude drops the given issue numbers (the viewer passes a track's current issues so already-slotted ones don't reappear). Unlike export's `untracked`, this includes issues tracked by OTHER tracks, since those are valid slot targets.",
      "When the VS Code viewer's Slot command needs the repo's open issues as a pick-list (the per-track export can't supply issues not yet in the track).",
@@ -167,6 +177,22 @@ DESCRIPTIONS = [
      "Reach a verdict on every plan/spec doc in a repo by correlating each plan's declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes. Read-only: reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. --json for machine output. Add --stamp to write each verdict into its doc as an idempotent status header (--draft previews without writing). Add --llm for a two-step AI pass that judges prose/ambiguous docs (writes a prompt; you save JSON to the cache; re-run with --llm --apply). --archive moves dead plans to archive/abandoned/ (gated); --issues opens a GitHub issue per partial plan listing its unsatisfied files (gated). Both honor --draft.",
      "When you point at a repo and need to know what's actually done vs. half-done vs. dead among accumulated plans. Run from inside the repo, or use --repo=<key> for a configured one.",
      "/work-plan plan-status --repo=myproject"),
+    ("plan-confirm", "--repo=<key> --verdict=shipped|partial|dead [--clear] [--confirm=<token>] -- <rel>",
+     "Affirm a human verdict on ONE plan/spec doc by writing `verdict_override` into its YAML frontmatter — FRONTMATTER-ONLY (never the body, manifest, checkboxes, or status banner) (#286). plan-status then pins that verdict over the mechanical one and silences the 'shipped but boxes unchecked' lie-gap. Use when a plan genuinely shipped but its phase checkboxes were never ticked, so the red lie-gap X is a false alarm. `<rel>` is the repo-relative doc path from `plan-status --json`. On a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>) — the VS Code viewer surfaces this as a modal. --clear removes the override.",
+     "When the Plans view flags a genuinely-done plan with a lie-gap (red X) only because nobody ticked its checkboxes — confirm it instead of hand-ticking 24 boxes.",
+     "/work-plan plan-confirm --repo=myproject --verdict=shipped -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
+    ("plan-ack", "--repo=<key> [--clear] [--confirm=<token>] -- <rel>",
+     "Persist an acknowledgment into ONE plan/spec doc's YAML **frontmatter only** (`acknowledged: true`) — never the body/manifest/checkboxes/banner (#286). Unlike the VS Code viewer's default ack (per-machine, ephemeral `workspaceState`), this is durable + shared: it's committed with the repo, and `plan-status` reads it back to demote the doc. `<rel>` is the repo-relative doc path. Public-repo gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`). `--clear` removes it.",
+     "When you want a 'stop flagging this plan' that sticks across machines and teammates, not just on your laptop.",
+     "/work-plan plan-ack --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
+    ("plan-baseline", "--repo=<key> [--clear] [--confirm=<token>] -- <rel>",
+     "Stamp the CURRENT computed verdict into ONE plan/spec doc's YAML **frontmatter only** as a drift baseline (`verdict_baseline`) (#286). Distinct from `plan-confirm` (a human pin) and the body banner. `plan-status` then flags **drift** when the live verdict diverges from the baseline — catching a once-shipped plan that silently regressed (its declared files were deleted/moved). The baseline value is computed authoritatively here. Public-repo gated; `--clear` removes it. `verdict_override`, if present, suppresses drift.",
+     "When you want a tripwire on a plan you believe is done: stamp its baseline, and get alerted if it later regresses.",
+     "/work-plan plan-baseline --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
+    ("close-issue", "--repo=<key|slug> [--reason=completed|not_planned] [--comment=<text>] -- <number>",
+     "⚠️ The toolkit's ONLY GitHub-mutating command — closes a GitHub issue via `gh issue close` (everything else is read-only on GitHub). PRs merged to `dev` don't auto-close issues (GitHub auto-closes only from the default branch), so done-but-OPEN issues pile up; this closes one. `--reason` maps to GitHub's completed/not-planned; `--comment` posts a closing note. `--repo` takes a config key or an org/repo slug. The VS Code viewer gates this behind a mandatory 'Close on GitHub?' modal on every close.",
+     "When an issue is actually done but stayed open because its PR merged to dev, not main — close it without leaving the editor.",
+     "/work-plan close-issue --repo=stylusnexus/work-plan-toolkit --reason=completed --comment='Closed via dev merge' -- 287"),
     ("set-notes-root", "<path>",
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
@@ -179,6 +205,10 @@ DESCRIPTIONS = [
      "Set up and share a repo's canonical SHARED-tier plan branch (#260). The shared `.work-plan/` tier is pinned to ONE per-repo `plan_branch`, read/written through a dedicated git worktree, so planning never diverges across code branches or pollutes PR / deploy diffs. `init <repo>` creates that branch + a `.work-plan/` skeleton (default an ORPHAN `work-plan/plan`, zero shared history with code like gh-pages; override with --branch) and records `plan_branch` in config — or CONNECTS to a teammate's already-published branch if one exists. init is LOCAL ONLY (no push). `status <repo>` reports whether the branch exists, is published to origin, and how many commits are unpushed (--json for the machine shape). `push <repo>` shares it: on a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>); --dry-run previews the commits that would push. Requires a repo registered via init-repo with a local clone path.",
      "ONE-TIME per repo when you want the shared plan to live on its own branch (off dev/main) so planning churn never lands in feature PRs or the deploy diff — yet the CLI + VS Code viewer always show the canonical plan from any checkout. `push` is the deliberate step that shares it with teammates.",
      "/work-plan plan-branch init work-plan-toolkit"),
+    ("push-track", "<track | track@repo> [--repo=<key>] [--no-push] [--confirm=<token>]",
+     "Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it (#306). Moves the track's `.md` into the repo's `.work-plan/` (on its `plan_branch`, via a worktree), removes the private copy so it isn't duplicated, commits to the plan branch, and pushes — unless `--no-push` (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a `plan_branch` (else hints `plan-branch init`). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`).",
+     "When a private track is ready to share with teammates — promote it to the shared plan branch in one step instead of hand-moving the file.",
+     "/work-plan push-track my-feature --repo=myproject"),
 ]
 
 
@@ -268,7 +298,7 @@ def main(argv: list[str]) -> int:
 # (Flag aliases like --brief/--plan-status normalise by stripping leading dashes.)
 _READONLY_SUBCOMMANDS = frozenset({
     "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
-    "plan-status", "export", "list-open-issues", "notes-vcs",
+    "plan-status", "export", "list-open-issues", "auth-status", "notes-vcs",
     # plan-branch manages its OWN commits on the plan branch (init seeds +
     # commits the skeleton itself); the auto-commit hooks must not also fire.
     "plan-branch",

@@ -290,6 +290,31 @@ class GroupIssuesByMilestoneTest(unittest.TestCase):
         self.assertEqual(group_issues_by_milestone([]), [])
 
 
+class BuildExportPlanTest(unittest.TestCase):
+    """The track↔plan link badge on each Track (#285)."""
+
+    def test_plan_null_when_no_badge(self):
+        tracks = [_track("alpha", "o/r", [1])]
+        out = build_export(tracks, {"alpha": []}, {"o/r": "PRIVATE"}, now="t")
+        self.assertIsNone(out["tracks"][0]["plan"])
+
+    def test_plan_badge_passed_through(self):
+        tracks = [_track("alpha", "o/r", [1])]
+        badge = {"rel": "docs/plans/p.md", "resolved": True, "verdict": "shipped",
+                 "glyph": "✅", "files_present": 9, "files_declared": 9,
+                 "checkboxes_done": 0, "checkboxes_total": 24, "lie_gap": False,
+                 "stalled": False, "override": "shipped"}
+        out = build_export(tracks, {"alpha": []}, {"o/r": "PRIVATE"}, now="t",
+                           plan_by_track={"alpha": badge})
+        self.assertEqual(out["tracks"][0]["plan"], badge)
+
+    def test_unresolved_badge_passed_through(self):
+        tracks = [_track("alpha", "o/r", [1])]
+        out = build_export(tracks, {"alpha": []}, {"o/r": "PRIVATE"}, now="t",
+                           plan_by_track={"alpha": {"rel": "docs/plans/p.md", "resolved": False}})
+        self.assertEqual(out["tracks"][0]["plan"], {"rel": "docs/plans/p.md", "resolved": False})
+
+
 class BuildExportDependsOnTest(unittest.TestCase):
     """Tests that depends_on is surfaced in the export JSON (#102)."""
 

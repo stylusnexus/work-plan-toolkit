@@ -21,7 +21,28 @@ export type WriteAction =
   | { kind: "removeRepo"; key: string }
   | { kind: "setNotesRoot"; path: string }
   | { kind: "move"; fromTrack: string; toTrack: string; issue: number }
-  | { kind: "handoff"; track: string };
+  | { kind: "handoff"; track: string }
+  // Plan verdict-override (#286) — frontmatter-only write to a plan/spec doc.
+  // repoKey is the config folder key (the `plan-status --repo=<key>` arg); rel is
+  // the repo-relative doc path. clear=true removes the override instead of setting.
+  | { kind: "planConfirm"; repoKey: string; rel: string; verdict: "shipped" | "partial" | "dead" }
+  | { kind: "planConfirmClear"; repoKey: string; rel: string }
+  // Durable frontmatter acknowledgment (#286) — writes `acknowledged: true`
+  // (clear removes it). Frontmatter-only, same shape as planConfirm.
+  | { kind: "planAck"; repoKey: string; rel: string }
+  | { kind: "planAckClear"; repoKey: string; rel: string }
+  // Drift baseline (#286) — stamps the current computed verdict into frontmatter
+  // (clear removes it). Frontmatter-only, same shape as planConfirm/planAck.
+  | { kind: "planBaseline"; repoKey: string; rel: string }
+  | { kind: "planBaselineClear"; repoKey: string; rel: string }
+  // Close a GitHub issue (#305) — the ONLY GitHub-mutating action. `repo` is the
+  // org/repo slug; gated by a mandatory UI modal in the command handler (no
+  // needs_confirm token — closing doesn't leak private content to a public repo).
+  | { kind: "closeIssue"; repo: string; number: number; reason: "completed" | "not_planned"; comment?: string }
+  // Promote a private track to the shared tier + push (#306). repoKey is the
+  // config folder key (disambiguates the track). Public-repo gated by the CLI's
+  // needs_confirm, which executeWrite drives.
+  | { kind: "pushTrack"; track: string; repoKey?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -69,6 +90,14 @@ export type WriteOutcome =
  *   setNotesRoot    → ["set-notes-root", "--", path]
  *   move            → ["move", "--", issue, fromTrack, toTrack]
  *   handoff         → ["handoff", "--", track]   (derived/non-interactive mode)
+ *   planConfirm     → ["plan-confirm", "--repo=<key>", "--verdict=<v>", "--", rel]
+ *   planConfirmClear→ ["plan-confirm", "--repo=<key>", "--clear", "--", rel]
+ *   planAck         → ["plan-ack", "--repo=<key>", "--", rel]
+ *   planAckClear    → ["plan-ack", "--repo=<key>", "--clear", "--", rel]
+ *   planBaseline    → ["plan-baseline", "--repo=<key>", "--", rel]
+ *   planBaselineClear→ ["plan-baseline", "--repo=<key>", "--clear", "--", rel]
+ *   closeIssue      → ["close-issue", "--repo=<slug>", "--reason=<r>", ..."--comment=<c>", "--", number]
+ *   pushTrack       → ["push-track", ..."--repo=<key>", "--", track]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -152,6 +181,48 @@ export function actionToArgs(action: WriteAction): string[] {
       // their defaults under non-TTY stdin (#183), so this never blocks; --auto-next
       // and -i are deliberately omitted (they'd need a native picker — separate work).
       return ["handoff", "--", action.track];
+
+    case "planConfirm":
+      return [
+        "plan-confirm",
+        `--repo=${action.repoKey}`,
+        `--verdict=${action.verdict}`,
+        "--",
+        action.rel,
+      ];
+
+    case "planConfirmClear":
+      return ["plan-confirm", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "planAck":
+      return ["plan-ack", `--repo=${action.repoKey}`, "--", action.rel];
+
+    case "planAckClear":
+      return ["plan-ack", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "planBaseline":
+      return ["plan-baseline", `--repo=${action.repoKey}`, "--", action.rel];
+
+    case "planBaselineClear":
+      return ["plan-baseline", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "closeIssue":
+      return [
+        "close-issue",
+        `--repo=${action.repo}`,
+        `--reason=${action.reason}`,
+        ...(action.comment ? [`--comment=${action.comment}`] : []),
+        "--",
+        String(action.number),
+      ];
+
+    case "pushTrack":
+      return [
+        "push-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
   }
 }
 

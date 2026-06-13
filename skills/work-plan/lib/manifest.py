@@ -92,6 +92,24 @@ def out_of_tree_ratio(decls: list, repo_root) -> float:
     return out / len(decls)
 
 
+def offtree_declared_paths(decls: list, repo_root) -> list:
+    """Declared paths that resolve OUTSIDE repo_root — absolute paths, `~`-rooted,
+    `..`-escapes, or junk like a literal `/` (#286 slice 3, surfaced read-only).
+
+    Distinct from "not yet created": these can never be satisfied by THIS repo,
+    so they silently drag the file score down and usually mean a typo or a
+    misfiled plan. Returned de-duped in first-declared order so the viewer can
+    flag them; the toolkit never auto-edits the manifest (that'd be a body
+    write, which #286 forbids). Below `out_of_tree_ratio`'s FOREIGN_RATIO the
+    🧳 verdict doesn't fire, so without this they'd be invisible."""
+    out, seen = [], set()
+    for d in decls:
+        if d.path not in seen and not is_in_tree(d.path, repo_root):
+            seen.add(d.path)
+            out.append(d.path)
+    return out
+
+
 @dataclass
 class ManifestScore:
     total: int

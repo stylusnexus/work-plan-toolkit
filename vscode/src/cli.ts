@@ -341,6 +341,41 @@ export async function checkVersion(
 }
 
 // ---------------------------------------------------------------------------
+// GitHub auth probe (#auth) — fast-fail instead of silent degradation
+// ---------------------------------------------------------------------------
+
+/** Parsed `auth-status --json` result. `ghPresent` false ⇒ gh not installed
+ *  (a different fix than "not signed in"); both leave `authenticated` false. */
+export type AuthState = {
+  authenticated: boolean;
+  ghPresent: boolean;
+  user: string | null;
+};
+
+/**
+ * Runs `auth-status --json` and reports whether `gh` is installed + signed in.
+ * Never throws — auth detection must degrade gracefully, not break activation.
+ * A spawn failure or unparseable output is treated as "gh present, not
+ * authenticated" (the conservative state that surfaces the sign-in path) UNLESS
+ * the CLI itself couldn't be found, which the caller already reports separately.
+ */
+export async function checkAuth(run: CliRunner): Promise<AuthState> {
+  try {
+    const result = await run(["auth-status", "--json"]);
+    const blob = JSON.parse(result.stdout) as Partial<{
+      authenticated: boolean; gh_present: boolean; user: string | null;
+    }>;
+    return {
+      authenticated: Boolean(blob.authenticated),
+      ghPresent: blob.gh_present !== false, // default true unless explicitly false
+      user: blob.user ?? null,
+    };
+  } catch {
+    return { authenticated: false, ghPresent: true, user: null };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // notes-vcs — opt-in local history for the private notes_root tier (#103/#224)
 // ---------------------------------------------------------------------------
 

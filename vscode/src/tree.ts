@@ -1,16 +1,17 @@
 import * as vscode from "vscode";
-import type { Export } from "./model.ts";
-import { buildTree, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge } from "./treeModel.ts";
-import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, StatusCategory, TrackSort } from "./treeModel.ts";
+import type { Export, Issue } from "./model.ts";
+import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge } from "./treeModel.ts";
+import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
+import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
-export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode };
+export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode };
 
 /** Every node kind the Tracks tree can render. */
-type TreeNode = RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode | EmptyRepoNode;
+type TreeNode = RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode | EmptyRepoNode | FetchUntrackedNode;
 // Re-export Lens so extension.ts only needs to import from tree.ts.
 export type { Lens };
 // Re-export TrackSort so extension.ts only needs to import from tree.ts.
@@ -55,10 +56,28 @@ export class WorkPlanTreeProvider
   private roots: RepoNode[] = [];
   private _activeLens: Lens = { kind: "all" };
   private _activeSort: TrackSort = "default";
+  // On-demand open-issue fetches for trackless repos (#303), keyed by github
+  // slug. `export` doesn't emit untracked for repos with no tracks, so the user
+  // fetches them explicitly; we cache the result here and merge it into the repo
+  // node's `untracked` on every (re)build. Survives lens/sort re-renders and a
+  // full refresh (a snapshot until the user re-fetches), cleared on nothing.
+  private readonly _fetchedUntracked = new Map<string, Issue[]>();
+  // Last GitHub-auth probe result (#auth). null before the first probe. Drives
+  // the `workPlanGitHubAuthed` context key + lets activation show its one-time
+  // toast off the same probe the tree already ran (no second `gh` call).
+  private _lastAuth: AuthState | null = null;
   private readonly _refreshFlight: SingleFlight;
 
-  constructor(private readonly load: () => Promise<Export>) {
+  constructor(
+    private readonly load: () => Promise<Export>,
+    private readonly checkAuth: () => Promise<AuthState>,
+  ) {
     this._refreshFlight = new SingleFlight(() => this._doRefresh());
+  }
+
+  /** The most recent auth probe result (null before the first refresh). */
+  get lastAuth(): AuthState | null {
+    return this._lastAuth;
   }
 
   /**
@@ -97,6 +116,18 @@ export class WorkPlanTreeProvider
   }
 
   /**
+   * Records an on-demand open-issue fetch for `repo` (#303) and re-renders so
+   * the trackless repo shows its Untracked bucket. Works off the cached filtered
+   * export — no CLI re-fetch of the whole export.
+   */
+  setFetchedUntracked(repo: string, issues: Issue[]): void {
+    this._fetchedUntracked.set(repo, issues);
+    const built = this._filteredCache ? buildTree(this._filteredCache) : [];
+    this.roots = this._applySortToRepos(mergeFetchedUntracked(built, this._fetchedUntracked));
+    this._onDidChangeTreeData.fire();
+  }
+
+  /**
    * Changes the sort mode and re-renders the tree from the cached filtered
    * export. Does not re-fetch from the CLI. Sort is applied to `roots` (tree)
    * only — `currentExport`/`rawExport` are unaffected.
@@ -104,7 +135,7 @@ export class WorkPlanTreeProvider
   setSort(mode: TrackSort): void {
     this._activeSort = mode;
     const filtered = this._filteredCache ? buildTree(this._filteredCache) : [];
-    this.roots = this._applySortToRepos(filtered);
+    this.roots = this._applySortToRepos(mergeFetchedUntracked(filtered, this._fetchedUntracked));
     this._onDidChangeTreeData.fire();
   }
 
@@ -116,7 +147,10 @@ export class WorkPlanTreeProvider
     this._activeLens = lens;
     this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
     this.roots = this._applySortToRepos(
-      this._filteredCache ? buildTree(this._filteredCache) : []
+      mergeFetchedUntracked(
+        this._filteredCache ? buildTree(this._filteredCache) : [],
+        this._fetchedUntracked,
+      ),
     );
     this._onDidChangeTreeData.fire();
   }
@@ -141,9 +175,24 @@ export class WorkPlanTreeProvider
     await vscode.window.withProgress(
       { location: { viewId: "workPlan.tree" } },
       async () => {
+        // Probe GitHub auth FIRST (#auth). Without it, the export below returns
+        // tracks with zeroed issues and unknown visibility — a misleading
+        // "empty but working" tree. When unauthenticated we suppress that tree
+        // and let the gated viewsWelcome banner explain the real problem.
+        const auth = await this.checkAuth();
+        this._lastAuth = auth;
+        this._setAuthContext(auth);
+        if (!auth.authenticated) {
+          this.roots = [];
+          this._onDidChangeTreeData.fire();
+          return;
+        }
+
         this.cache = await this.load();
         this._filteredCache = applyLens(this.cache, this._activeLens);
-        this.roots = this._applySortToRepos(buildTree(this._filteredCache));
+        this.roots = this._applySortToRepos(
+          mergeFetchedUntracked(buildTree(this._filteredCache), this._fetchedUntracked),
+        );
         this._onDidChangeTreeData.fire();
         // Drive viewsWelcome off the RAW (unfiltered) data so an active lens
         // that hides everything doesn't incorrectly show "No repos yet."
@@ -156,21 +205,48 @@ export class WorkPlanTreeProvider
     );
   }
 
+  /** Sets the tri-state `workPlanGitHubAuthed` context key that gates the
+   *  Tracks viewsWelcome banners: `true` (signed in), `false` (gh present, not
+   *  signed in), or `"no-gh"` (gh not installed — a different fix). */
+  private _setAuthContext(auth: AuthState): void {
+    const value: boolean | string = auth.authenticated
+      ? true
+      : auth.ghPresent
+        ? false
+        : "no-gh";
+    void vscode.commands.executeCommand("setContext", "workPlanGitHubAuthed", value);
+  }
+
   getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
       // Root: return the cached repo nodes (empty [] before first refresh).
       return this.roots;
     }
     if (element.kind === "repo") {
-      // A configured-but-empty repo (#288): show a single dimmed affordance that
-      // starts a New Track prefilled for this repo, instead of an empty branch.
-      if (element.tracks.length === 0) {
-        return [{ kind: "emptyRepo", repo: element.repo, folder: element.folder }];
-      }
       const untrackedGroup: UntrackedGroupNode[] =
         element.untracked.length > 0
           ? [{ kind: "untrackedGroup", repo: element.repo, issues: element.untracked }]
           : [];
+
+      // A configured-but-empty repo (#288): the dimmed "add a track" affordance,
+      // plus — for a real repo (has a slug to query) — an on-demand fetch of its
+      // open issues (#303), since `export` doesn't emit untracked for a trackless
+      // repo. After a fetch, the Untracked bucket renders alongside.
+      if (element.tracks.length === 0) {
+        const children: TreeNode[] = [
+          { kind: "emptyRepo", repo: element.repo, folder: element.folder },
+          ...untrackedGroup,
+        ];
+        if (element.repo !== "(no repo)") {
+          children.push({
+            kind: "fetchUntracked",
+            repo: element.repo,
+            fetched: this._fetchedUntracked.has(element.repo),
+            count: element.untracked.length,
+          });
+        }
+        return children;
+      }
       return [...element.tracks, ...untrackedGroup];
     }
     if (element.kind === "untrackedGroup") {
@@ -198,6 +274,9 @@ export class WorkPlanTreeProvider
       return this.roots.find(r => r.tracks.includes(element));
     }
     if (element.kind === "untrackedGroup") {
+      return this.roots.find(r => r.repo === element.repo);
+    }
+    if (element.kind === "fetchUntracked") {
       return this.roots.find(r => r.repo === element.repo);
     }
     // untrackedIssue → its group
@@ -230,6 +309,9 @@ export class WorkPlanTreeProvider
     }
     if (node.kind === "emptyRepo") {
       return this._emptyRepoTreeItem(node);
+    }
+    if (node.kind === "fetchUntracked") {
+      return this._fetchUntrackedTreeItem(node);
     }
     if (node.kind === "untrackedGroup") {
       return this._untrackedGroupTreeItem(node);
@@ -332,6 +414,26 @@ export class WorkPlanTreeProvider
         hasLocal: false,
       }
     );
+  }
+
+  private _fetchUntrackedTreeItem(node: FetchUntrackedNode): vscode.TreeItem {
+    const label = node.fetched
+      ? node.count > 0
+        ? "Refresh open issues"
+        : "No open issues — re-check"
+      : "Fetch open issues";
+    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+    item.iconPath = new vscode.ThemeIcon("cloud-download");
+    item.contextValue = "workPlanFetchUntracked";
+    item.tooltip =
+      `Fetch this repo's open GitHub issues (issues in no track) for ${node.repo}. ` +
+      "export doesn't pull these automatically for a repo with no tracks.";
+    item.command = {
+      command: "workPlan.fetchOpenIssues",
+      title: "Fetch open issues",
+      arguments: [{ repo: node.repo }],
+    };
+    return item;
   }
 
   private _untrackedGroupTreeItem(node: UntrackedGroupNode): vscode.TreeItem {

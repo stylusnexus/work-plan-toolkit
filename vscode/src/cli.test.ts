@@ -11,6 +11,7 @@ import {
   parseVersion,
   meetsMinVersion,
   checkVersion,
+  checkAuth,
   MIN_CLI_VERSION,
   notesVcsStatus,
   notesVcsRun,
@@ -506,5 +507,53 @@ describe("isAlreadyExistsError", () => {
       stderr: "",
     });
     assert.equal(isAlreadyExistsError(err), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkAuth (#auth)
+// ---------------------------------------------------------------------------
+
+describe("checkAuth", () => {
+  function throwingRunner(): CliRunner {
+    return () => Promise.reject(new Error("spawn fail"));
+  }
+
+  test("authenticated → authenticated:true, ghPresent:true, user", async () => {
+    const run = fakeRunner({
+      code: 0,
+      stdout: JSON.stringify({ gh_present: true, authenticated: true, user: "eve", error: null }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), { authenticated: true, ghPresent: true, user: "eve" });
+  });
+
+  test("gh present but not signed in → authenticated:false, ghPresent:true", async () => {
+    const run = fakeRunner({
+      code: 1,
+      stdout: JSON.stringify({ gh_present: true, authenticated: false, user: null, error: "x" }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, ghPresent: true, user: null });
+  });
+
+  test("gh not installed → ghPresent:false", async () => {
+    const run = fakeRunner({
+      code: 2,
+      stdout: JSON.stringify({ gh_present: false, authenticated: false, user: null, error: "x" }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, ghPresent: false, user: null });
+  });
+
+  test("unparseable output → conservative not-authenticated, gh present", async () => {
+    const run = fakeRunner({ code: 0, stdout: "not json{{", stderr: "" });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, ghPresent: true, user: null });
+  });
+
+  test("never throws on spawn failure", async () => {
+    assert.deepEqual(await checkAuth(throwingRunner()), {
+      authenticated: false, ghPresent: true, user: null,
+    });
   });
 });

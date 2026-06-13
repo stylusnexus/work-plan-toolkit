@@ -19,6 +19,28 @@ export interface Rollup {
 }
 
 /**
+ * A track's declared plan/spec doc and its execution badge (#285). The link is
+ * declared track-side (`plan:` in track frontmatter) and resolved by the CLI
+ * against the track's repo checkout. `resolved` false → the link is declared but
+ * couldn't be evaluated (no local clone, or the file is absent); the badge fields
+ * are then absent and only `rel` is meaningful.
+ */
+export interface TrackPlan {
+  /** Repo-relative POSIX path of the linked doc, as declared in frontmatter. */
+  rel: string;
+  resolved: boolean;
+  verdict?: PlanDoc["verdict"];
+  glyph?: string;
+  files_present?: number;
+  files_declared?: number;
+  checkboxes_done?: number;
+  checkboxes_total?: number;
+  lie_gap?: boolean;
+  stalled?: boolean;
+  override?: "shipped" | "partial" | "dead" | null;
+}
+
+/**
  * A single work-plan track with its associated issues.
  * `status` is a free string: active | in-progress | blocked | parked | shipped | abandoned.
  */
@@ -51,6 +73,10 @@ export interface Track {
   depends_on: string[];
   rollup: Rollup;
   issues: Issue[];
+  /** The track's declared plan/spec doc + execution badge (#285), or null/absent
+   *  when the track declares no `plan:`. Optional on the wire so an older CLI
+   *  (no `plan` field) deserializes cleanly. */
+  plan?: TrackPlan | null;
 }
 
 /**
@@ -97,6 +123,34 @@ export interface PlanDoc {
   manifest_last_touched: string | null;
   stalled: boolean;
   lie_gap: boolean;
+  /**
+   * Human verdict-override from the doc's frontmatter (#286): "shipped" |
+   * "partial" | "dead" when a reviewer has affirmed the verdict, else null.
+   * When set, the CLI pins `verdict` to it and forces `lie_gap` false. Optional
+   * on the wire so an older CLI (no override field) deserializes to undefined.
+   */
+  override?: "shipped" | "partial" | "dead" | null;
+  /**
+   * Durable, shared acknowledgment from the doc's frontmatter (`acknowledged:
+   * true`), written by `plan-ack` (#286). Distinct from the viewer's per-machine
+   * workspaceState ack — this one is committed with the repo. Optional on the
+   * wire so an older CLI (no field) deserializes to undefined.
+   */
+  acknowledged?: boolean;
+  /**
+   * Drift baseline (#286): the verdict stamped by `plan-baseline` (a verdict
+   * string, or null). `verdict_drift` is true when the live `verdict` no longer
+   * matches this baseline (and no override is pinning it) — a once-shipped plan
+   * that silently regressed. Optional on the wire for older-CLI compatibility.
+   */
+  verdict_baseline?: "shipped" | "partial" | "dead" | null;
+  verdict_drift?: boolean;
+  /**
+   * Declared manifest paths that resolve OUTSIDE the repo (absolute, ~, ..-escape,
+   * junk `/`) — surfaced read-only (#286). They silently drag the file score
+   * down and usually mean a typo/misfiled plan. Optional for older-CLI compat.
+   */
+  offtree_paths?: string[];
   unchecked_items: string[];
   stall_days: number;
 }

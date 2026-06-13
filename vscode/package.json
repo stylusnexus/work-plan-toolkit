@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -107,6 +107,70 @@
         "title": "Toggle Show Acknowledged",
         "category": "Work Plan",
         "icon": "$(eye)"
+      },
+      {
+        "command": "workPlan.fetchOpenIssues",
+        "title": "Fetch Open Issues",
+        "category": "Work Plan",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "workPlan.closeIssue",
+        "title": "Close Issue on GitHub…",
+        "category": "Work Plan",
+        "icon": "$(issue-closed)"
+      },
+      {
+        "command": "workPlan.pushTrack",
+        "title": "Push to Shared Tier…",
+        "category": "Work Plan",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "workPlan.signInToGitHub",
+        "title": "Sign in to GitHub",
+        "category": "Work Plan",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "workPlan.checkGitHubAuth",
+        "title": "Retry GitHub Sign-in Check",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.openGhInstallDocs",
+        "title": "Install the GitHub CLI",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.confirmVerdict",
+        "title": "Confirm Verdict… (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.clearConfirmation",
+        "title": "Clear Confirmation (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.acknowledgePersist",
+        "title": "Acknowledge & Save to Doc (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.clearDocAck",
+        "title": "Clear Saved Acknowledgment (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.stampBaseline",
+        "title": "Stamp Baseline — Watch for Drift (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.clearBaseline",
+        "title": "Clear Baseline (writes frontmatter)",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.openTrack",
@@ -307,6 +371,11 @@
           "group": "0_workPlanRepo@1"
         },
         {
+          "command": "workPlan.fetchOpenIssues",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@2"
+        },
+        {
           "command": "workPlan.clearRepoLocal",
           "when": "view == workPlan.tree && viewItem == workPlanRepo",
           "group": "9_workPlanRepoDanger@1"
@@ -362,6 +431,11 @@
           "group": "5_workPlanSync@2"
         },
         {
+          "command": "workPlan.pushTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "5_workPlanSync@3"
+        },
+        {
           "command": "workPlan.close",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "9_workPlanDanger@1"
@@ -377,6 +451,11 @@
           "group": "1_workPlanWrite@1"
         },
         {
+          "command": "workPlan.closeIssue",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedIssue",
+          "group": "1_workPlanWrite@2"
+        },
+        {
           "command": "workPlan.batchSlotUntracked",
           "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
           "group": "1_workPlanWrite@1"
@@ -390,9 +469,75 @@
           "command": "workPlan.plans.unacknowledge",
           "when": "view == workPlan.plans && viewItem == workPlanAckedPlan",
           "group": "1_ack"
+        },
+        {
+          "command": "workPlan.plans.acknowledgePersist",
+          "when": "view == workPlan.plans && viewItem =~ /workPlanPlan-(stalled|dead)/",
+          "group": "1_ack@2"
+        },
+        {
+          "command": "workPlan.plans.clearDocAck",
+          "when": "view == workPlan.plans && viewItem == workPlanPlanDocAcked",
+          "group": "1_ack"
+        },
+        {
+          "command": "workPlan.plans.stampBaseline",
+          "when": "view == workPlan.plans && viewItem =~ /^workPlanPlan-/",
+          "group": "3_baseline"
+        },
+        {
+          "command": "workPlan.plans.clearBaseline",
+          "when": "view == workPlan.plans && viewItem =~ /baselined/",
+          "group": "3_baseline"
+        },
+        {
+          "command": "workPlan.plans.confirmVerdict",
+          "when": "view == workPlan.plans && (viewItem =~ /^workPlanPlan-/ || viewItem == workPlanAckedPlan)",
+          "group": "2_confirm"
+        },
+        {
+          "command": "workPlan.plans.clearConfirmation",
+          "when": "view == workPlan.plans && viewItem == workPlanPlanConfirmed",
+          "group": "2_confirm"
         }
       ],
       "commandPalette": [
+        {
+          "command": "workPlan.fetchOpenIssues",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.closeIssue",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.pushTrack",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.confirmVerdict",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.acknowledgePersist",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.stampBaseline",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.clearBaseline",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.clearDocAck",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.clearConfirmation",
+          "when": "false"
+        },
         {
           "command": "workPlan.openTrackFile",
           "when": "false"
@@ -422,7 +567,17 @@
     "viewsWelcome": [
       {
         "view": "workPlan.tree",
-        "when": "workPlanHasRepos == false",
+        "when": "workPlanGitHubAuthed == no-gh",
+        "contents": "GitHub CLI not found.\n\nWork Plan reads issue state through the GitHub CLI (gh), which isn't installed or isn't on your PATH.\n\n[Install the GitHub CLI](command:workPlan.openGhInstallDocs)\n\nAlready installed it?\n[Retry](command:workPlan.checkGitHubAuth)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed == false",
+        "contents": "Not signed in to GitHub.\n\nWork Plan can't read issue state until you sign in with the GitHub CLI. Tracks and issue counts stay hidden until then — they aren't empty, just unauthenticated.\n\n[Sign in to GitHub](command:workPlan.signInToGitHub)\n\nFinished signing in?\n[Retry](command:workPlan.checkGitHubAuth)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanHasRepos == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
       }
     ],
