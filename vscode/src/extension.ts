@@ -2163,6 +2163,67 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+    // Durable acknowledgment (#286): write `acknowledged: true` to the doc's
+    // frontmatter (committed + shared) — distinct from the local-only
+    // Acknowledge above. Same file-naming + public-repo gates as Confirm Verdict.
+    vscode.commands.registerCommand(
+      "workPlan.plans.acknowledgePersist",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Write acknowledged: true into the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: saving acknowledgment…",
+            () => executeWrite(runner, { kind: "planAck", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: ${filename} acknowledged (saved to doc).`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: acknowledge failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.clearDocAck",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Remove acknowledged from the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: clearing saved acknowledgment…",
+            () => executeWrite(runner, { kind: "planAckClear", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: cleared saved acknowledgment on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: clear failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
   );
 
   const plansView = vscode.window.createTreeView("workPlan.plans", {

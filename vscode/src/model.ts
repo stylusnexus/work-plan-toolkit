@@ -130,6 +130,13 @@ export interface PlanDoc {
    * on the wire so an older CLI (no override field) deserializes to undefined.
    */
   override?: "shipped" | "partial" | "dead" | null;
+  /**
+   * Durable, shared acknowledgment from the doc's frontmatter (`acknowledged:
+   * true`), written by `plan-ack` (#286). Distinct from the viewer's per-machine
+   * workspaceState ack — this one is committed with the repo. Optional on the
+   * wire so an older CLI (no field) deserializes to undefined.
+   */
+  acknowledged?: boolean;
   unchecked_items: string[];
   stall_days: number;
 }

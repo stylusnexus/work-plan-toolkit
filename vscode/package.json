@@ -141,6 +141,16 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.plans.acknowledgePersist",
+        "title": "Acknowledge & Save to Doc (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.clearDocAck",
+        "title": "Clear Saved Acknowledgment (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.openTrack",
         "title": "Show in Work Plan",
         "category": "Work Plan"
@@ -429,6 +439,16 @@
           "group": "1_ack"
         },
         {
+          "command": "workPlan.plans.acknowledgePersist",
+          "when": "view == workPlan.plans && viewItem =~ /workPlanPlan-(stalled|dead)/",
+          "group": "1_ack@2"
+        },
+        {
+          "command": "workPlan.plans.clearDocAck",
+          "when": "view == workPlan.plans && viewItem == workPlanPlanDocAcked",
+          "group": "1_ack"
+        },
+        {
           "command": "workPlan.plans.confirmVerdict",
           "when": "view == workPlan.plans && (viewItem =~ /^workPlanPlan-/ || viewItem == workPlanAckedPlan)",
           "group": "2_confirm"
@@ -446,6 +466,14 @@
         },
         {
           "command": "workPlan.plans.confirmVerdict",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.acknowledgePersist",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.clearDocAck",
           "when": "false"
         },
         {

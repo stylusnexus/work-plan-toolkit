@@ -71,6 +71,13 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     private readonly unregistered: () => string[] = () => [],
   ) {}
 
+  /** A doc is acknowledged if EITHER the per-machine workspaceState ack is set
+   *  OR the doc carries a durable frontmatter `acknowledged: true` (#286). Both
+   *  demote the doc; the durable one also survives across machines/teammates. */
+  private _acked(repoKey: string, doc: PlanDoc): boolean {
+    return this.isAcked(repoKey, doc.rel) || doc.acknowledged === true;
+  }
+
   async getChildren(element?: PlanNode): Promise<PlanNode[]> {
     if (!element) {
       // Roots — the synthetic stalled roll-up first, then one collapsed node
@@ -104,7 +111,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     let stalled = this._stalledDocs();
     // "Show acknowledged" off → hide acked docs entirely (default is demote-not-hide).
     if (!this.showAcked()) {
-      stalled = stalled.filter(({ repoKey, doc }) => !this.isAcked(repoKey, doc.rel));
+      stalled = stalled.filter(({ repoKey, doc }) => !this._acked(repoKey, doc));
     }
     if (stalled.length > 0) {
       return stalled.map(
@@ -179,7 +186,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // "Show acknowledged" off → hide acked docs in the per-repo list too.
     const visible = this.showAcked()
       ? entry.docs
-      : entry.docs.filter((doc) => !this.isAcked(repoKey, doc.rel));
+      : entry.docs.filter((doc) => !this._acked(repoKey, doc));
     const sorted = [...visible].sort(
       (a, b) => BUCKET_RANK[planBucket(a, stall, now)] - BUCKET_RANK[planBucket(b, stall, now)],
     );
@@ -251,7 +258,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const now = Date.now();
     const stall = this.stallDays();
     const bucket = planBucket(doc, stall, now);
-    const acked = this.isAcked(repoKey, doc.rel);
+    // Two ack flavors (#286): a durable frontmatter ack (committed, shared) and
+    // the per-machine workspaceState ack. Either demotes the row; the durable
+    // one reads "ack'd (saved)" and offers a different (write) menu.
+    const docAcked = doc.acknowledged === true;
+    const localAcked = this.isAcked(repoKey, doc.rel);
+    const acked = docAcked || localAcked;
 
     const filename = doc.rel.split("/").pop() ?? doc.rel;
     const item = new vscode.TreeItem(filename, vscode.TreeItemCollapsibleState.None);
@@ -260,7 +272,8 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const [icon, color] = acked ? ["circle-outline", "charts.gray"] : BUCKET_ICON[bucket];
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
-    item.description = planDescription(doc, stall, now) + (acked ? " · ack'd" : "");
+    const ackLabel = docAcked ? " · ✅ ack'd (saved)" : localAcked ? " · ack'd" : "";
+    item.description = planDescription(doc, stall, now) + ackLabel;
 
     // joinPath (not string concat) so a Windows repoRoot — backslashes from
     // Python's str(repo_root) — joins with doc.rel's forward slashes without a
@@ -291,15 +304,17 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       arguments: [resourceUri],
     };
 
-    // contextValue drives the right-click menu (#286): a confirmed doc offers
-    // "Clear confirmation"; any other doc offers "Confirm verdict…". Confirmed
-    // takes precedence over the ack/bucket value so the two menu items never
-    // both show on one row.
+    // contextValue drives the right-click menu (#286). Precedence (a node has
+    // ONE value): confirmed → "clear confirmation"; durable frontmatter-ack →
+    // "clear saved acknowledgment"; local ack → "un-acknowledge"; otherwise the
+    // bucket value, which offers both "confirm verdict…" and the two acks.
     item.contextValue = doc.override
       ? "workPlanPlanConfirmed"
-      : acked
-        ? "workPlanAckedPlan"
-        : `workPlanPlan-${bucket}`;
+      : docAcked
+        ? "workPlanPlanDocAcked"
+        : localAcked
+          ? "workPlanAckedPlan"
+          : `workPlanPlan-${bucket}`;
     return item;
   }
 

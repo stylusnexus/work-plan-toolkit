@@ -830,3 +830,35 @@ describe("actionToArgs — planConfirm", () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// planAck / planAckClear — durable frontmatter acknowledgment (#286 slice 1)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — planAck", () => {
+  test("ack → plan-ack --repo, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planAck", repoKey: "critforge", rel: "docs/plans/p.md" }),
+      ["plan-ack", "--repo=critforge", "--", "docs/plans/p.md"],
+    );
+  });
+
+  test("clear → plan-ack --repo --clear, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planAckClear", repoKey: "critforge", rel: "docs/plans/p.md" }),
+      ["plan-ack", "--repo=critforge", "--clear", "--", "docs/plans/p.md"],
+    );
+  });
+
+  test("inherits the public-repo confirm-token flow (token before --)", async () => {
+    const { run, calls } = recordingRunner([
+      { code: 0, stdout: JSON.stringify({ needs_confirm: true, reason: "PUBLIC", token: "tk" }), stderr: "" },
+      { code: 0, stdout: "✓ acknowledged", stderr: "" },
+    ]);
+    const outcome = await executeWrite(
+      run, { kind: "planAck", repoKey: "cf", rel: "docs/plans/p.md" }, alwaysConfirm("writeAnyway"),
+    );
+    assert.equal(outcome.status, "written");
+    assert.deepEqual(calls[1], ["plan-ack", "--repo=cf", "--confirm=tk", "--", "docs/plans/p.md"]);
+  });
+});

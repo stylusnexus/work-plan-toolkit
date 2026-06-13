@@ -26,7 +26,11 @@ export type WriteAction =
   // repoKey is the config folder key (the `plan-status --repo=<key>` arg); rel is
   // the repo-relative doc path. clear=true removes the override instead of setting.
   | { kind: "planConfirm"; repoKey: string; rel: string; verdict: "shipped" | "partial" | "dead" }
-  | { kind: "planConfirmClear"; repoKey: string; rel: string };
+  | { kind: "planConfirmClear"; repoKey: string; rel: string }
+  // Durable frontmatter acknowledgment (#286) — writes `acknowledged: true`
+  // (clear removes it). Frontmatter-only, same shape as planConfirm.
+  | { kind: "planAck"; repoKey: string; rel: string }
+  | { kind: "planAckClear"; repoKey: string; rel: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -76,6 +80,8 @@ export type WriteOutcome =
  *   handoff         → ["handoff", "--", track]   (derived/non-interactive mode)
  *   planConfirm     → ["plan-confirm", "--repo=<key>", "--verdict=<v>", "--", rel]
  *   planConfirmClear→ ["plan-confirm", "--repo=<key>", "--clear", "--", rel]
+ *   planAck         → ["plan-ack", "--repo=<key>", "--", rel]
+ *   planAckClear    → ["plan-ack", "--repo=<key>", "--clear", "--", rel]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -171,6 +177,12 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "planConfirmClear":
       return ["plan-confirm", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "planAck":
+      return ["plan-ack", `--repo=${action.repoKey}`, "--", action.rel];
+
+    case "planAckClear":
+      return ["plan-ack", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
   }
 }
 
