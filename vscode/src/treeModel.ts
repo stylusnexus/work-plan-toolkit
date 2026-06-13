@@ -71,6 +71,21 @@ export interface EmptyRepoNode {
   folder: string | null;
 }
 
+/**
+ * On-demand "fetch open issues" affordance under a trackless registered repo
+ * (#303). `export` only emits untracked issues for repos that have tracks, so a
+ * trackless repo's open issues never arrive automatically — this node fetches
+ * them via `list-open-issues` on click. `fetched` drives the label (Fetch →
+ * Refresh), `count` is the number found once fetched.
+ */
+export interface FetchUntrackedNode {
+  kind: "fetchUntracked";
+  /** The parent repo's github slug (never "(no repo)" — that can't be queried). */
+  repo: string;
+  fetched: boolean;
+  count: number;
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -263,6 +278,23 @@ export function buildTree(exp: Export): RepoNode[] {
   }
 
   return Array.from(repoMap.values());
+}
+
+/**
+ * Merges on-demand fetched open issues (#303) into matching repo nodes'
+ * `untracked`. A trackless repo's export `untracked` is empty; this fills it
+ * from the fetch cache so its Untracked bucket renders. Pure + non-mutating —
+ * returns a new array, with new node objects only for the repos that had a
+ * fetch. Repos absent from `fetched` pass through unchanged.
+ */
+export function mergeFetchedUntracked(
+  repos: RepoNode[],
+  fetched: Map<string, Issue[]>,
+): RepoNode[] {
+  if (fetched.size === 0) return repos;
+  return repos.map(repo =>
+    fetched.has(repo.repo) ? { ...repo, untracked: fetched.get(repo.repo)! } : repo,
+  );
 }
 
 // ---------------------------------------------------------------------------

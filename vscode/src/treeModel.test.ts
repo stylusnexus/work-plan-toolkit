@@ -4,6 +4,7 @@ import {
   statusCategory,
   trackHint,
   buildTree,
+  mergeFetchedUntracked,
   shouldExpandRepos,
   sortTracks,
   repoDescription,
@@ -700,5 +701,44 @@ describe("visibilityTierBadge — the visibility × tier 2×2 (#259)", () => {
       visibilityTierBadge(makeTrack({ tier: "private", visibility: "PRIVATE" })),
     ].map(b => b.descriptionPrefix);
     assert.equal(new Set(states).size, 4, "all four states must be visually distinct");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeFetchedUntracked (#303)
+// ---------------------------------------------------------------------------
+
+describe("mergeFetchedUntracked", () => {
+  const repoNode = (repo: string, untracked: Issue[] = []): RepoNode => ({
+    kind: "repo", repo, isPublic: false, tier: "private",
+    tracks: [], untracked, folder: repo, hasLocal: true,
+  });
+  const issue = (n: number): Issue => ({
+    number: n, title: `#${n}`, state: "open", assignee: "—", milestone: null,
+  });
+
+  test("empty fetch map returns the same array reference", () => {
+    const repos = [repoNode("o/a")];
+    assert.equal(mergeFetchedUntracked(repos, new Map()), repos);
+  });
+
+  test("fills untracked for a fetched trackless repo", () => {
+    const repos = [repoNode("o/a"), repoNode("o/b")];
+    const fetched = new Map([["o/a", [issue(49), issue(40)]]]);
+    const out = mergeFetchedUntracked(repos, fetched);
+    assert.deepEqual(out[0].untracked.map(i => i.number), [49, 40]);
+    assert.equal(out[1].untracked.length, 0);           // o/b untouched
+  });
+
+  test("does not mutate the input nodes", () => {
+    const repos = [repoNode("o/a")];
+    mergeFetchedUntracked(repos, new Map([["o/a", [issue(1)]]]));
+    assert.equal(repos[0].untracked.length, 0);          // original unchanged
+  });
+
+  test("a repo absent from the fetch map passes through by reference", () => {
+    const a = repoNode("o/a");
+    const out = mergeFetchedUntracked([a], new Map([["o/other", [issue(1)]]]));
+    assert.equal(out[0], a);
   });
 });
