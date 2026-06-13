@@ -291,7 +291,15 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       arguments: [resourceUri],
     };
 
-    item.contextValue = acked ? "workPlanAckedPlan" : `workPlanPlan-${bucket}`;
+    // contextValue drives the right-click menu (#286): a confirmed doc offers
+    // "Clear confirmation"; any other doc offers "Confirm verdict…". Confirmed
+    // takes precedence over the ack/bucket value so the two menu items never
+    // both show on one row.
+    item.contextValue = doc.override
+      ? "workPlanPlanConfirmed"
+      : acked
+        ? "workPlanAckedPlan"
+        : `workPlanPlan-${bucket}`;
     return item;
   }
 

@@ -764,3 +764,69 @@ describe("executeWrite — CliError propagation", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// planConfirm / planConfirmClear — verdict-override frontmatter writes (#286)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — planConfirm", () => {
+  test("set verdict → plan-confirm --repo --verdict, rel after --", () => {
+    const action: WriteAction = {
+      kind: "planConfirm",
+      repoKey: "critforge",
+      rel: "docs/superpowers/plans/p.md",
+      verdict: "shipped",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "plan-confirm",
+      "--repo=critforge",
+      "--verdict=shipped",
+      "--",
+      "docs/superpowers/plans/p.md",
+    ]);
+  });
+
+  test("clear → plan-confirm --repo --clear, rel after --", () => {
+    const action: WriteAction = {
+      kind: "planConfirmClear",
+      repoKey: "critforge",
+      rel: "docs/superpowers/plans/p.md",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "plan-confirm",
+      "--repo=critforge",
+      "--clear",
+      "--",
+      "docs/superpowers/plans/p.md",
+    ]);
+  });
+
+  test("inherits the public-repo confirm-token flow (token lands before --)", async () => {
+    const action: WriteAction = {
+      kind: "planConfirm",
+      repoKey: "critforge",
+      rel: "docs/superpowers/plans/p.md",
+      verdict: "shipped",
+    };
+    const { run, calls } = recordingRunner([
+      {
+        code: 0,
+        stdout: JSON.stringify({ needs_confirm: true, reason: "PUBLIC", token: "tok123" }),
+        stderr: "",
+      },
+      { code: 0, stdout: "✓ confirmed", stderr: "" },
+    ]);
+    const outcome = await executeWrite(run, action, alwaysConfirm("writeAnyway"));
+    assert.equal(outcome.status, "written");
+    assert.equal(calls.length, 2);
+    // Second call carries --confirm=<token> as a flag BEFORE the -- separator.
+    assert.deepEqual(calls[1], [
+      "plan-confirm",
+      "--repo=critforge",
+      "--verdict=shipped",
+      "--confirm=tok123",
+      "--",
+      "docs/superpowers/plans/p.md",
+    ]);
+  });
+});

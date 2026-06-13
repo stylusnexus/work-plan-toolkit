@@ -11,6 +11,7 @@ from pathlib import Path
 
 from lib import config as config_mod
 from lib import doc_discovery, manifest, git_state, github_state
+from lib import frontmatter
 from lib import verdict as verdict_mod
 from lib import status_header
 from lib import llm_evidence
@@ -21,6 +22,29 @@ from lib.prompts import parse_flags, prompt_yes_no
 KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
          "--llm", "--apply", "--archive", "--issues", "--stall-days"}
 _ORDER = ["shipped", "partial", "dead", "foreign", "manifest-less"]
+
+# Human verdict-override (#286): a reviewer affirms the verdict in the doc's
+# YAML frontmatter, so the mechanical heuristic (file score + checkbox %) stops
+# second-guessing it — and the "shipped but boxes unchecked" lie-gap goes quiet.
+_OVERRIDE_VERDICTS = {"shipped", "partial", "dead"}
+_OVERRIDE_GLYPH = {"shipped": "✅", "partial": "🟡", "dead": "💀"}
+
+
+def _read_override(path) -> "str | None":
+    """The `verdict_override` value from a doc's YAML frontmatter, or None.
+
+    Frontmatter-only signal — never the body/checkboxes (#286 hard constraint).
+    Accepts a case-insensitive shipped|partial|dead; anything else is ignored so
+    a typo can't silently pin a bogus verdict. A doc with no frontmatter (most
+    plans) parses to an empty meta, so this is a clean no-op there."""
+    try:
+        meta, _ = frontmatter.parse_file(Path(path))
+    except Exception:
+        return None
+    val = meta.get("verdict_override") if isinstance(meta, dict) else None
+    if isinstance(val, str) and val.strip().lower() in _OVERRIDE_VERDICTS:
+        return val.strip().lower()
+    return None
 
 
 def _resolve_repo_root(flags) -> Path:
@@ -95,6 +119,14 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     else:
         v = verdict_mod.classify(score, done, total_chk, last_d, today, dead_days)
 
+    # Human verdict-override (#286): a `verdict_override` in frontmatter pins the
+    # verdict over the mechanical one. Applied BEFORE the staleness clock and the
+    # lie-gap below so both key off the confirmed verdict, not the heuristic's.
+    override = _read_override(doc.path)
+    if override:
+        v = verdict_mod.Verdict(
+            override, _OVERRIDE_GLYPH[override], f"human-confirmed · {v.rationale}")
+
     # Staleness clock (#164): a partial plan whose declared manifest files have
     # gone cold = "started executing, then drifted off." Key off the manifest
     # files' commit date, NOT the plan doc's git date — plan docs are gitignored,
@@ -111,7 +143,9 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
                 stalled = (today - manifest_dt.date()).days >= stall_days
         # else: no declared files on disk yet -> brand-new, not stalled.
 
-    lie_gap = (v.label == "shipped" and total_chk > 0
+    # A human-confirmed verdict silences the lie-gap: the reviewer has affirmed
+    # the "shipped" claim despite unchecked boxes, so it's no longer a lie.
+    lie_gap = (not override and v.label == "shipped" and total_chk > 0
                and done / total_chk < 0.25)
     return {
         "rel": doc.rel, "kind": doc.kind,
@@ -122,6 +156,7 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
         "manifest_last_touched": manifest_dt.date().isoformat() if manifest_dt else None,
         "stalled": stalled,
         "lie_gap": lie_gap,
+        "override": override,
         "unchecked_items": manifest.unchecked_checkbox_labels(text),
         "stall_days": stall_days,
     }
