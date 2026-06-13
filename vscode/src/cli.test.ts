@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { CliResult, CliRunner } from "./cli.ts";
 import {
   CliError,
+  isAlreadyExistsError,
   exportJson,
   listRepoOpenIssues,
   planStatus,
@@ -459,5 +460,51 @@ describe("notesVcsRun", () => {
   test("throws CliError on non-zero exit", async () => {
     const run = fakeRunner({ code: 1, stdout: "", stderr: "boom" });
     await assert.rejects(() => notesVcsRun(run, "init"), (e: unknown) => e instanceof CliError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isAlreadyExistsError — detection lives in the tested pure layer (#290)
+// ---------------------------------------------------------------------------
+
+describe("isAlreadyExistsError", () => {
+  test("true for a CliError whose STDOUT contains 'already exists'", () => {
+    // init-repo prints the error to stdout (print), not stderr.
+    const err = new CliError({
+      message: "work-plan failed (exit 1): ",
+      args: ["init-repo", "--github=org/x", "--", "x"],
+      code: 1,
+      stdout: "ERROR: repo 'x' already exists in ~/.claude/work-plan/config.yml.\n",
+      stderr: "",
+    });
+    assert.equal(isAlreadyExistsError(err), true);
+  });
+
+  test("true when 'already exists' is on stderr instead", () => {
+    const err = new CliError({
+      message: "failed",
+      args: [],
+      code: 1,
+      stdout: "",
+      stderr: "ERROR: repo 'x' already exists",
+    });
+    assert.equal(isAlreadyExistsError(err), true);
+  });
+
+  test("false for a non-CliError", () => {
+    assert.equal(isAlreadyExistsError(new Error("repo already exists")), false);
+    assert.equal(isAlreadyExistsError("already exists"), false);
+    assert.equal(isAlreadyExistsError(undefined), false);
+  });
+
+  test("false for an unrelated CliError", () => {
+    const err = new CliError({
+      message: "work-plan failed (exit 1): notes_root does not exist",
+      args: [],
+      code: 1,
+      stdout: "ERROR: notes_root /x does not exist.\n",
+      stderr: "",
+    });
+    assert.equal(isAlreadyExistsError(err), false);
   });
 });

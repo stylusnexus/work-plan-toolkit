@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, CliError,
+  isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo,
 } from "./cli.ts";
 import type { NotesVcsStatus } from "./cli.ts";
@@ -1344,7 +1345,7 @@ export function activate(context: vscode.ExtensionContext): void {
           // --update). Offer to set/update its local path instead of just
           // surfacing the error — the common 2nd-run intent is "add the path I
           // skipped".
-          if (addErr instanceof CliError && /already exists/i.test(addErr.message)) {
+          if (isAlreadyExistsError(addErr)) {
             const choice = await vscode.window.showWarningMessage(
               `Repo ${key} is already registered. Set/update its local checkout path?`,
               "Set path",
