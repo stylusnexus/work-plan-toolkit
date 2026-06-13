@@ -112,6 +112,7 @@ Quiet states (active `partial`, clean shipped, `dead`) are listed without a flag
 - **Lazy scan.** Each repo scans its plans on first expand, so opening the view is cheap. A title-bar **"Scan All Plans"** command opts into a cross-repo sweep that builds a **stalled roll-up** across every repo (bounded-concurrent, results stream in as repos finish).
 - **Click to open.** Clicking a plan opens its `.md` in an editor tab.
 - **Acknowledge / dismiss.** Right-click a stalled or dead plan → **Acknowledge (stop flagging)** to stop it surfacing as loud — it's demoted, not hidden, and the ack persists per workspace. A title-bar **Toggle Show Acknowledged** button brings the acknowledged ones back into view.
+- **Every configured repo with a local clone is listed** — not just repos that already have tracks. A freshly registered repo (with a local path) shows up here ready to scan, so plans aren't hidden behind having a track first.
 - **No local clone.** Repos without a local checkout show a greyed "no local clone" state — there's no working tree to read manifest git activity from.
 - **`workPlan.stallDays` setting** controls the staleness window applied to the displayed state — **Match CLI** (the default, follows the CLI's own threshold) or a fixed 14 / 30 / 45 / 60 / 90 days. Changing it re-evaluates what's stalled instantly, no refetch.
 
@@ -122,7 +123,9 @@ Read-only by design: no stamp, archive, or issue-opening from the GUI — those 
 | Command | What it does |
 |---|---|
 | **New Track** | Create a new track for a repo (pick the repo + a slug). |
-| **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. |
+| **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. The repo appears in the sidebar straight away even with no tracks; right-click it → **New Track** to start. The local path is what enables plan scanning (the Plans view), so add it when you have a checkout. Re-running Add Repo on a key that's already registered offers to set/update its local path instead of erroring — the fix for "I skipped the path the first time." |
+| **Clear Local Path** *(right-click a repo)* | Drop a repo's saved local checkout path while keeping it registered — handy when the checkout moved or you no longer want it scanned. Asks first; the repo and its tracks stay put. |
+| **Remove Repo** *(right-click a repo)* | Unregister a repo so it leaves the sidebar and brief. **Config-only:** your notes, tracks, and the local clone are left untouched (any notes folder or tracks that referenced it are simply orphaned — clean them up by hand if you want). Asks for confirmation first. |
 | **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
 | **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Sync Issue States from GitHub" instead when you just need to update one track after closing issues. |
 

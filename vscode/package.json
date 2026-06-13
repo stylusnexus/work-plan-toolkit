@@ -179,6 +179,16 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.removeRepo",
+        "title": "Remove Repo",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.clearRepoLocal",
+        "title": "Clear Local Path",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.setNotesLocation",
         "title": "Set Notes Location",
         "category": "Work Plan"
@@ -291,6 +301,21 @@
       ],
       "view/item/context": [
         {
+          "command": "workPlan.newTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@1"
+        },
+        {
+          "command": "workPlan.clearRepoLocal",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "9_workPlanRepoDanger@1"
+        },
+        {
+          "command": "workPlan.removeRepo",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "9_workPlanRepoDanger@2"
+        },
+        {
           "command": "workPlan.openTrackFile",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "0_workPlanNav@1"
@@ -381,6 +406,14 @@
         },
         {
           "command": "workPlan.batchSlotUntracked",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.removeRepo",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.clearRepoLocal",
           "when": "false"
         }
       ]

@@ -38,6 +38,23 @@ export class CliError extends Error {
   }
 }
 
+/**
+ * True when `err` is a CliError signalling an "already exists" failure from the
+ * CLI — e.g. `init-repo` on an already-registered key.
+ *
+ * CliError.message is built from **stderr only** (see runWrite), but init-repo
+ * prints "already exists" to **stdout** (it uses `print(...)`). So matching on
+ * the message misses it; we scan stdout AND stderr to be channel-agnostic.
+ * Kept here in the tested pure layer rather than in the vscode glue so the
+ * detection can't silently rot (#290).
+ */
+export function isAlreadyExistsError(err: unknown): boolean {
+  return (
+    err instanceof CliError &&
+    /already exists/i.test((err.stdout ?? "") + (err.stderr ?? ""))
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Real process runner — thin by design; not unit-tested
 // ---------------------------------------------------------------------------

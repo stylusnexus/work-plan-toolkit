@@ -308,3 +308,27 @@ class BuildExportDependsOnTest(unittest.TestCase):
         ]}
         out = build_export(tracks, issues_by_track, {"o/r": "PRIVATE"}, now="t")
         self.assertEqual(out["tracks"][0]["depends_on"], [])
+
+
+class BuildExportReposListTest(unittest.TestCase):
+    """build_export emits a top-level `repos` list of ALL configured repos,
+    independent of track membership (#288)."""
+
+    def test_emits_config_repos_including_trackless(self):
+        tracks = [_track("ph", "o/r", [1])]
+        issues_by_track = {"ph": [{"number": 1, "title": "a", "state": "OPEN", "assignees": []}]}
+        config_repos = [
+            {"folder": "r", "repo": "o/r", "local": "/x/r", "has_local": True, "visibility": "PRIVATE"},
+            {"folder": "fresh", "repo": "o/fresh", "local": None, "has_local": False, "visibility": "PUBLIC"},
+        ]
+        out = build_export(tracks, issues_by_track, {"o/r": "PRIVATE"}, now="2026-06-12T00:00",
+                           config_repos=config_repos)
+        self.assertEqual([r["folder"] for r in out["repos"]], ["r", "fresh"])
+        # the trackless repo is present even though no track references it
+        fresh = next(r for r in out["repos"] if r["folder"] == "fresh")
+        self.assertEqual(fresh["has_local"], False)
+        self.assertEqual(fresh["repo"], "o/fresh")
+
+    def test_repos_defaults_to_empty_list(self):
+        out = build_export([], {}, {}, now="2026-06-12T00:00")
+        self.assertEqual(out["repos"], [])

@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
 import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, CliError,
+  isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo,
 } from "./cli.ts";
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
 import { ackKey } from "./planModel.ts";
-import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
+import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
@@ -1191,47 +1192,59 @@ export function activate(context: vscode.ExtensionContext): void {
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("workPlan.newTrack", async () => {
+    vscode.commands.registerCommand("workPlan.newTrack", async (node?: RepoNode) => {
       try {
-        // --- Repo selection ---
-        const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
-        const existingRepos = Array.from(
-          new Set(
-            (provider.currentExport?.tracks ?? [])
-              .map(t => t.repo)
-              .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
-          ),
-        );
-
-        type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
-        const repoItems: RepoItem[] = [
-          ...existingRepos.map(r => ({ label: r })),
-          { label: MANUAL_ENTRY_LABEL, isManual: true },
-        ];
-
         let repo: string | undefined;
 
-        if (existingRepos.length === 0) {
-          // No repos loaded — go straight to manual entry.
-          repo = await vscode.window.showInputBox({
-            prompt: "Repo (org/repo)",
-            validateInput: (v) =>
-              /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
-          });
-        } else {
-          const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
-            placeHolder: "Select a repo or enter a new one",
-          });
-          if (!repoPick) return; // cancelled
+        // Invoked from a repo node (context menu / empty-state click): prefill the
+        // github slug and skip the repo prompt. A "(no repo)" node has no real slug,
+        // so fall through to prompting as if invoked bare.
+        const prefilledRepo =
+          node && node.kind === "repo" && node.repo && node.repo !== "(no repo)"
+            ? node.repo
+            : undefined;
 
-          if (repoPick.isManual) {
+        if (prefilledRepo) {
+          repo = prefilledRepo;
+        } else {
+          // --- Repo selection (palette / title-bar invocation) ---
+          const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
+          const existingRepos = Array.from(
+            new Set(
+              (provider.currentExport?.tracks ?? [])
+                .map(t => t.repo)
+                .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
+            ),
+          );
+
+          type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
+          const repoItems: RepoItem[] = [
+            ...existingRepos.map(r => ({ label: r })),
+            { label: MANUAL_ENTRY_LABEL, isManual: true },
+          ];
+
+          if (existingRepos.length === 0) {
+            // No repos loaded — go straight to manual entry.
             repo = await vscode.window.showInputBox({
               prompt: "Repo (org/repo)",
               validateInput: (v) =>
                 /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
             });
           } else {
-            repo = repoPick.label;
+            const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
+              placeHolder: "Select a repo or enter a new one",
+            });
+            if (!repoPick) return; // cancelled
+
+            if (repoPick.isManual) {
+              repo = await vscode.window.showInputBox({
+                prompt: "Repo (org/repo)",
+                validateInput: (v) =>
+                  /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
+              });
+            } else {
+              repo = repoPick.label;
+            }
           }
         }
         if (!repo) return; // cancelled
@@ -1312,23 +1325,72 @@ export function activate(context: vscode.ExtensionContext): void {
         if (github === undefined) return; // cancelled
 
         const localRaw = await vscode.window.showInputBox({
-          prompt: "Local checkout path (optional — press Enter or Escape to skip)",
+          prompt: "Local checkout path (optional — needed to scan this repo's plans; press Enter to skip)",
         });
         // undefined (Esc) or empty → omit local
         const local = localRaw && localRaw.trim() !== "" ? localRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await withWriteProgress(
-          `Work Plan: adding repo ${github}…`,
-          () => executeWrite(
-            runner,
-            { kind: "addRepo", key, github, ...(local ? { local } : {}) },
-            confirmPublicWrite,
-          ),
-        );
+        let outcome: WriteOutcome;
+        try {
+          outcome = await withWriteProgress(
+            `Work Plan: adding repo ${github}…`,
+            () => executeWrite(
+              runner,
+              { kind: "addRepo", key, github, ...(local ? { local } : {}) },
+              confirmPublicWrite,
+            ),
+          );
+        } catch (addErr: unknown) {
+          // The CLI hard-errors on an already-registered key (now pointing at
+          // --update). Offer to set/update its local path instead of just
+          // surfacing the error — the common 2nd-run intent is "add the path I
+          // skipped".
+          if (isAlreadyExistsError(addErr)) {
+            const choice = await vscode.window.showWarningMessage(
+              `Repo ${key} is already registered. Set/update its local checkout path?`,
+              "Set path",
+              "Cancel",
+            );
+            if (choice !== "Set path") return;
+
+            const updateLocalRaw = await vscode.window.showInputBox({
+              prompt: "Local checkout path (needed to scan this repo's plans)",
+              value: local ?? "",
+            });
+            if (updateLocalRaw === undefined) return; // cancelled
+            const updateLocal = updateLocalRaw.trim();
+            if (updateLocal === "") {
+              vscode.window.showInformationMessage("Work Plan: no path entered — nothing changed.");
+              return;
+            }
+
+            const updateOutcome: WriteOutcome = await withWriteProgress(
+              `Work Plan: updating repo ${key}…`,
+              () => executeWrite(
+                runner,
+                { kind: "addRepo", key, github, local: updateLocal, update: true },
+                confirmPublicWrite,
+              ),
+            );
+            if (updateOutcome.status === "written") {
+              await refreshAfterWrite();
+              vscode.window.showInformationMessage(
+                `Work Plan: set ${key}'s local path — its plans will now be scanned.`,
+              );
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+            return;
+          }
+          throw addErr;
+        }
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: added repo ${github} (${key})`);
+          vscode.window.showInformationMessage(
+            `Work Plan: registered ${github} as ${key} — it's now in the sidebar. ` +
+              "Right-click it → New Track to start; add a local path to scan its plans.",
+          );
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -1336,6 +1398,122 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: add-repo failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.removeRepo — unregister a repo (config-only; repo-node context menu)
+  // Completes the add/update/remove trio. Removal is config-only: notes, tracks,
+  // and the local clone are untouched, so no public-leak guard is needed — but
+  // routing through executeWrite keeps the write path uniform (removeRepo never
+  // trips needs_confirm).
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.removeRepo", async (node?: RepoNode) => {
+      try {
+        const key = node?.folder;
+        if (!key) {
+          vscode.window.showInformationMessage(
+            "Work Plan: not a configured repo — nothing to remove.",
+          );
+          return;
+        }
+
+        const ok = await vscode.window.showWarningMessage(
+          `Remove “${node!.repo}” from Work Plan?`,
+          {
+            modal: true,
+            detail:
+              `Unregisters the repo (key “${key}”) — it disappears from this sidebar.\n\n` +
+              "This does NOT delete anything: your track notes, the local clone on " +
+              "disk, and everything on GitHub stay exactly as they are. You can " +
+              "re-add it any time with Add Repo.",
+          },
+          "Remove from Work Plan",
+        );
+        if (ok !== "Remove from Work Plan") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: removing ${node!.repo}…`,
+          () => executeWrite(runner, { kind: "removeRepo", key }, confirmPublicWrite),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: removed ${node!.repo} — notes, tracks, and clone left in place.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: remove-repo failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.clearRepoLocal — drop a configured repo's local path (keeps the
+  // repo). Repo-node context menu. Routes through init-repo --update --clear-local.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.clearRepoLocal", async (node?: RepoNode) => {
+      try {
+        const key = node?.folder;
+        if (!key) {
+          vscode.window.showInformationMessage(
+            "Work Plan: not a configured repo — nothing to clear.",
+          );
+          return;
+        }
+        if (!node!.hasLocal) {
+          vscode.window.showInformationMessage(
+            `Work Plan: ${node!.repo} has no local path set.`,
+          );
+          return;
+        }
+
+        const ok = await vscode.window.showWarningMessage(
+          `Clear the local checkout path for “${node!.repo}”?`,
+          {
+            modal: true,
+            detail:
+              `The repo stays registered (key “${key}”) — only the saved local ` +
+              "path is forgotten. Plan scanning for this repo turns off until you " +
+              "set a path again. The clone on disk is untouched.",
+          },
+          "Clear path",
+        );
+        if (ok !== "Clear path") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: clearing local path for ${node!.repo}…`,
+          () => executeWrite(
+            runner,
+            { kind: "addRepo", key, github: node!.repo, update: true, clearLocal: true },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: cleared local path for ${node!.repo}.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: clear-local failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
@@ -1711,15 +1889,18 @@ export function activate(context: vscode.ExtensionContext): void {
     return raw === "match" ? null : parseInt(raw, 10);
   };
 
-  // Distinct {repoKey: folder, label: slug} from the export, deduped by folder.
-  // Tracks without a folder key (null) are skipped — plan-status needs the key.
+  // Distinct {repoKey: folder, label: slug} from the export's CONFIGURED repos
+  // (#288), deduped by folder. Sourcing from `exp.repos` (not `exp.tracks`) means
+  // a registered repo with a local clone but NO track (e.g. agent-armor) still
+  // appears and scans in the Plans view. Repos without a folder key are skipped —
+  // plan-status resolves a local checkout by folder key, not github slug.
   const reposForPlans = (): { repoKey: string; label: string }[] => {
     const raw = provider.rawExport;
     if (!raw) return [];
     const seen = new Map<string, string>();
-    for (const t of raw.tracks) {
-      if (t.folder && !seen.has(t.folder)) {
-        seen.set(t.folder, t.repo);
+    for (const r of raw.repos ?? []) {
+      if (r.folder && !seen.has(r.folder)) {
+        seen.set(r.folder, r.repo ?? r.folder);
       }
     }
     return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));

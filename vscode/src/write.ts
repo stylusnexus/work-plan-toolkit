@@ -17,7 +17,8 @@ export type WriteAction =
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
   | { kind: "renameTrack"; track: string; newSlug: string }
-  | { kind: "addRepo"; key: string; github: string; local?: string }
+  | { kind: "addRepo"; key: string; github: string; local?: string; update?: boolean; clearLocal?: boolean }
+  | { kind: "removeRepo"; key: string }
   | { kind: "setNotesRoot"; path: string }
   | { kind: "move"; fromTrack: string; toTrack: string; issue: number }
   | { kind: "handoff"; track: string };
@@ -63,7 +64,8 @@ export type WriteOutcome =
  *   close           → ["close", "--state=<state>", ..."--note=<text>", "--", track]
  *   newTrack        → ["new-track", ..."--priority=<p>", ..."--milestone=<m>", "--", repo, slug]
  *   renameTrack     → ["rename-track", "--", track, newSlug]
- *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", "--", key]
+ *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", ..."--update", ..."--clear-local", "--", key]
+ *   removeRepo      → ["remove-repo", "--", key]
  *   setNotesRoot    → ["set-notes-root", "--", path]
  *   move            → ["move", "--", issue, fromTrack, toTrack]
  *   handoff         → ["handoff", "--", track]   (derived/non-interactive mode)
@@ -127,10 +129,17 @@ export function actionToArgs(action: WriteAction): string[] {
       return [
         "init-repo",
         `--github=${action.github}`,
-        ...(action.local ? [`--local=${action.local}`] : []),
+        // --clear-local and --local are mutually exclusive in the CLI; when
+        // clearing, drop --local and force --update (clear is update-only).
+        ...(action.clearLocal ? [] : action.local ? [`--local=${action.local}`] : []),
+        ...(action.update || action.clearLocal ? ["--update"] : []),
+        ...(action.clearLocal ? ["--clear-local"] : []),
         "--",
         action.key,
       ];
+
+    case "removeRepo":
+      return ["remove-repo", "--", action.key];
 
     case "setNotesRoot":
       return ["set-notes-root", "--", action.path];

@@ -50,10 +50,56 @@ def _report_shared_tracks(local_path: "Path | None") -> None:
         )
 
 
+def _update_existing(key: str, github: str, local: "str | None", clear_local: bool = False) -> int:
+    """Update an already-registered repo's local (and github if it differs).
+
+    Does NOT recreate the notes folder / archive dirs — they already exist.
+    Uses the same env()-via-opaque-block yq pattern as a fresh add, setting only
+    the fields that change so other keys in the block are preserved.
+
+    clear_local sets `.repos.<key>.local = null` (forget a stale checkout path)
+    while keeping github + every other field. Mutually exclusive with `local`
+    (enforced in run() before this is called).
+    """
+    updates = {}
+    if clear_local:
+        # JSON null → YAML null; the * merge overwrites local with null, leaving
+        # github + other keys intact (same opaque-env discipline as below).
+        updates["local"] = None
+    elif local:
+        updates["local"] = local
+    if github:
+        updates["github"] = github
+    if not updates:
+        print(f"ℹ Nothing to update for repo '{key}' (no --local, --clear-local, or --github given).")
+        return 0
+
+    # `key` is validated against ^[a-z][a-z0-9-]*$ in run() before this is called,
+    # so it's safe in the yq path. Field values travel as an OPAQUE env value via
+    # env() (parsed as JSON), never interpolated — uniform with the add path.
+    env = {**os.environ, "WP_REPO_UPDATES": json.dumps(updates)}
+    yq_expr = f".repos.{key} = (.repos.{key} // {{}}) * env(WP_REPO_UPDATES)"
+    try:
+        subprocess.run(
+            ["yq", "-i", yq_expr, str(DEFAULT_CONFIG_PATH)],
+            check=True, capture_output=True, text=True, env=env,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: yq failed to update config: {e.stderr}")
+        return 1
+    if clear_local:
+        print(f"✓ Cleared local path for '{key}'")
+    elif local:
+        print(f"✓ Updated repo '{key}' local path → {local}")
+    else:
+        print(f"✓ Updated repo '{key}' in {DEFAULT_CONFIG_PATH}")
+    return 0
+
+
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--github", "--local"})
+    flags, positional = parse_flags(args, {"--github", "--local", "--update", "--clear-local"})
     if not positional:
-        print("usage: work_plan.py init-repo <key> --github=<org/repo> [--local=<path>]")
+        print("usage: work_plan.py init-repo <key> --github=<org/repo> [--local=<path>] [--update [--clear-local]]")
         return 2
 
     key = positional[0]
@@ -61,13 +107,23 @@ def run(args: list[str]) -> int:
         print(f"ERROR: '{key}' is not a valid key. Use lowercase letters, digits, hyphens; must start with a letter.")
         return 2
 
-    # --github is required; no prompt fallback
+    clear_local = bool(flags.get("--clear-local"))
+    local = flags.get("--local") or None
+
+    # --clear-local forgets the saved local path; pairing it with --local (which
+    # SETS a path) is contradictory.
+    if clear_local and local:
+        print("ERROR: --clear-local and --local are mutually exclusive.")
+        return 2
+
+    # --github is required for a fresh add / a github change, but --clear-local is
+    # a field-only edit on an existing block, so we don't force it there.
     github = flags.get("--github")
-    if not github or "/" not in github:
-        if not github:
-            print("ERROR: --github is required (e.g. --github=org/repo).")
-        else:
-            print("ERROR: github slug must be in the form 'org/repo'.")
+    if github and "/" not in github:
+        print("ERROR: github slug must be in the form 'org/repo'.")
+        return 2
+    if not github and not clear_local:
+        print("ERROR: --github is required (e.g. --github=org/repo).")
         return 2
 
     try:
@@ -77,18 +133,32 @@ def run(args: list[str]) -> int:
         print("\nRun ./install.sh from the toolkit root to seed your config first.")
         return 1
 
-    if key in cfg.get("repos", {}):
-        print(f"ERROR: repo '{key}' already exists in {DEFAULT_CONFIG_PATH}.")
-        print("Edit it manually, or pick a different key.")
-        return 1
+    update = bool(flags.get("--update"))
+    existing = cfg.get("repos", {})
 
-    # --local is optional; if absent, skip (no prompt)
-    local = flags.get("--local") or None
+    # --clear-local is an update-only operation on an existing key.
+    if clear_local:
+        if not update:
+            print("ERROR: --clear-local requires --update (it edits an existing repo).")
+            return 2
+        if key not in existing:
+            print(f"ERROR: repo '{key}' not found in {DEFAULT_CONFIG_PATH} — nothing to clear.")
+            return 1
+        return _update_existing(key, github or "", None, clear_local=True)
+
+    # --local is optional; if absent, skip (no prompt). Validate it exists.
     local_path = None
     if local:
         local_path = Path(local).expanduser()
         if not local_path.exists():
             print(f"WARN: {local_path} does not exist. Saving anyway — fix later if wrong.")
+
+    if key in existing:
+        if not update:
+            print(f"ERROR: repo '{key}' already exists in {DEFAULT_CONFIG_PATH}.")
+            print("Pass --update to change its local path, or pick a different key.")
+            return 1
+        return _update_existing(key, github, local)
 
     notes_root = Path(cfg["notes_root"]).expanduser()
     if not notes_root.exists():
