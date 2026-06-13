@@ -17,12 +17,16 @@ _ORPHAN_RE = re.compile(
 
 
 def render_block(row: dict) -> str:
-    """Render the delimited status block from an evaluated row dict."""
+    """Render the delimited status block from an evaluated row dict.
+
+    A `verdict_override` (#286) appends a `✋ confirmed` marker so the banner
+    reads as a human-affirmed verdict, not a purely mechanical one."""
     last = row.get("last_touched") or "unknown"
+    confirmed = " · ✋ confirmed" if row.get("override") else ""
     line = (
         f"> **Status:** {row['glyph']} {row['verdict']} · "
         f"{row['files_present']}/{row['files_declared']} files · "
-        f"last touched {last}"
+        f"last touched {last}{confirmed}"
     )
     return f"{BEGIN}\n{line}\n{END}"
 

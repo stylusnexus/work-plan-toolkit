@@ -51,6 +51,7 @@ SUBCOMMANDS = {
     "--hygiene": "commands.hygiene",      # flag-style alias
     "plan-status": "commands.plan_status",
     "--plan-status": "commands.plan_status",  # flag-style alias
+    "plan-confirm": "commands.plan_confirm",
     "export": "commands.export",
     "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
@@ -167,6 +168,10 @@ DESCRIPTIONS = [
      "Reach a verdict on every plan/spec doc in a repo by correlating each plan's declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes. Read-only: reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. --json for machine output. Add --stamp to write each verdict into its doc as an idempotent status header (--draft previews without writing). Add --llm for a two-step AI pass that judges prose/ambiguous docs (writes a prompt; you save JSON to the cache; re-run with --llm --apply). --archive moves dead plans to archive/abandoned/ (gated); --issues opens a GitHub issue per partial plan listing its unsatisfied files (gated). Both honor --draft.",
      "When you point at a repo and need to know what's actually done vs. half-done vs. dead among accumulated plans. Run from inside the repo, or use --repo=<key> for a configured one.",
      "/work-plan plan-status --repo=myproject"),
+    ("plan-confirm", "--repo=<key> --verdict=shipped|partial|dead [--clear] [--confirm=<token>] -- <rel>",
+     "Affirm a human verdict on ONE plan/spec doc by writing `verdict_override` into its YAML frontmatter — FRONTMATTER-ONLY (never the body, manifest, checkboxes, or status banner) (#286). plan-status then pins that verdict over the mechanical one and silences the 'shipped but boxes unchecked' lie-gap. Use when a plan genuinely shipped but its phase checkboxes were never ticked, so the red lie-gap X is a false alarm. `<rel>` is the repo-relative doc path from `plan-status --json`. On a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>) — the VS Code viewer surfaces this as a modal. --clear removes the override.",
+     "When the Plans view flags a genuinely-done plan with a lie-gap (red X) only because nobody ticked its checkboxes — confirm it instead of hand-ticking 24 boxes.",
+     "/work-plan plan-confirm --repo=myproject --verdict=shipped -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
     ("set-notes-root", "<path>",
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",
