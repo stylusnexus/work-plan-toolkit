@@ -5,6 +5,7 @@ import {
   trackHint,
   buildTree,
   mergeFetchedUntracked,
+  badgeCounts,
   shouldExpandRepos,
   sortTracks,
   repoDescription,
@@ -730,6 +731,19 @@ describe("mergeFetchedUntracked", () => {
     assert.equal(out[1].untracked.length, 0);           // o/b untouched
   });
 
+  test("does NOT override a repo that HAS tracks — export stays authoritative (#303 follow-up)", () => {
+    const tracked: RepoNode = {
+      ...repoNode("o/a", [issue(5)]),       // export-provided untracked = [#5]
+      tracks: [{ kind: "track", name: "t", repo: "o/a", status: "active",
+                 category: "active", open: 1, closed: 0, hint: null,
+                 track: {} as unknown as Track }],
+    };
+    // A stale fetch snapshot that (wrongly) includes a now-tracked issue.
+    const out = mergeFetchedUntracked([tracked], new Map([["o/a", [issue(287), issue(5)]]]));
+    assert.deepEqual(out[0].untracked.map(i => i.number), [5]); // export wins, #287 not shown
+    assert.equal(out[0], tracked);          // passed through unchanged
+  });
+
   test("does not mutate the input nodes", () => {
     const repos = [repoNode("o/a")];
     mergeFetchedUntracked(repos, new Map([["o/a", [issue(1)]]]));
@@ -740,5 +754,44 @@ describe("mergeFetchedUntracked", () => {
     const a = repoNode("o/a");
     const out = mergeFetchedUntracked([a], new Map([["o/other", [issue(1)]]]));
     assert.equal(out[0], a);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// badgeCounts (#215)
+// ---------------------------------------------------------------------------
+
+describe("badgeCounts", () => {
+  const t = (over: Partial<Track> = {}): Track => ({
+    name: "t", repo: "o/r", path: null, folder: "f", tier: "private",
+    status: "active", launch_priority: null, milestone_alignment: null,
+    visibility: null, blockers: [], next_up: [], depends_on: [],
+    rollup: { open: 0, closed: 0 }, issues: [], ...over,
+  });
+
+  test("counts blocked tracks + sums open issues", () => {
+    const tracks = [
+      t({ status: "blocked", rollup: { open: 3, closed: 1 } }),
+      t({ blockers: [9], rollup: { open: 2, closed: 0 } }),   // blocked via blockers
+      t({ status: "active", rollup: { open: 4, closed: 2 } }),
+    ];
+    assert.deepEqual(badgeCounts(tracks), { blocked: 2, open: 9 });
+  });
+
+  test("zero blocked, zero open", () => {
+    assert.deepEqual(badgeCounts([t({ status: "shipped" })]), { blocked: 0, open: 0 });
+  });
+
+  test("empty tracks", () => {
+    assert.deepEqual(badgeCounts([]), { blocked: 0, open: 0 });
+  });
+});
+
+describe("buildTree — TrackNode.closed (#220)", () => {
+  test("carries rollup.closed onto the node", () => {
+    const tree = buildTree(MOCKUP_EXPORT);
+    const ph = tree[0].tracks[0];   // platform-health: rollup 12/8
+    assert.equal(ph.open, 12);
+    assert.equal(ph.closed, 8);
   });
 });

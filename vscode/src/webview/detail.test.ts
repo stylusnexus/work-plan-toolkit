@@ -576,11 +576,11 @@ describe("renderDetail — table accessibility", () => {
     );
   });
 
-  it("labels the move column header for screen readers", () => {
+  it("labels the actions column header for screen readers", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('<span class="sr-only">Move</span>'),
-      `expected an sr-only 'Move' label on the move column header:\n${html}`,
+      html.includes('<span class="sr-only">Actions</span>'),
+      `expected an sr-only 'Actions' label on the actions column header:\n${html}`,
     );
   });
 
@@ -727,5 +727,18 @@ describe("renderDetail — close-on-GitHub button (#305)", () => {
   it("no close button when the track has no repo", () => {
     const noRepo: Track = { ...platformHealth, repo: null as unknown as string };
     assert.ok(!renderDetail(noRepo).includes("close-issue-btn"));
+  });
+});
+
+describe("renderDetail — progress bar (#220)", () => {
+  it("renders a labelled role=progressbar for a non-empty track", () => {
+    const html = renderDetail(platformHealth);   // rollup 12 open / 8 closed → 20 total, 40%
+    assert.ok(html.includes('role="progressbar"'), html);
+    assert.ok(html.includes('aria-valuenow="8"') && html.includes('aria-valuemax="20"'), html);
+    assert.ok(html.includes('aria-label="8 of 20 issues closed (40%)"'), html);
+    assert.ok(html.includes("width:40%"), html);
+  });
+  it("omits the bar for an empty track (no divide-by-zero)", () => {
+    assert.ok(!renderDetail(emptyTrack).includes("progressbar"));
   });
 });

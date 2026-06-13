@@ -40,6 +40,20 @@ export function renderDetail(track: Track): string {
     `<p class="rollup"><b>${track.rollup.open}</b> open · <b>${track.rollup.closed}</b> closed</p>`,
   );
 
+  // Closed/total progress bar (#220) — a redundant visual of the rollup text
+  // above (which is the WCAG 1.4.1 label), with role=progressbar for AT. Tokens
+  // are theme-guaranteed to contrast (a11y audit). Omitted for an empty track.
+  const ptotal = track.rollup.open + track.rollup.closed;
+  if (ptotal > 0) {
+    const pct = Math.round((track.rollup.closed / ptotal) * 100);
+    parts.push(
+      `<div class="progress" role="progressbar" aria-valuemin="0" ` +
+      `aria-valuemax="${ptotal}" aria-valuenow="${track.rollup.closed}" ` +
+      `aria-label="${track.rollup.closed} of ${ptotal} issues closed (${pct}%)">` +
+      `<div class="progress-fill" style="width:${pct}%"></div></div>`,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Issues table (with milestone bands when multiple groups exist)
   // -------------------------------------------------------------------------
@@ -54,7 +68,7 @@ export function renderDetail(track: Track): string {
       '<th scope="col">Title</th>' +
       '<th scope="col">State</th>' +
       '<th scope="col">Assignee</th>' +
-      '<th scope="col"><span class="sr-only">Move</span></th>' +
+      '<th scope="col"><span class="sr-only">Actions</span></th>' +
       '</tr></thead>',
   );
 
@@ -252,7 +266,7 @@ function renderIssueRow(track: Track, issue: Issue): string {
   // Move + Close-on-GitHub actions (#305). Close shows only for OPEN issues in a
   // repo'd track; a closed row shows no close affordance (already done).
   const closeBtn = track.repo && issue.state === "open"
-    ? ` <button class="close-issue-btn" data-close="${issue.number}" title="Close #${issue.number} on GitHub" aria-label="Close issue #${issue.number} on GitHub">⊗</button>`
+    ? ` <button class="close-issue-btn" data-close="${issue.number}" title="Close #${issue.number} on GitHub" aria-label="Close issue #${issue.number} on GitHub">✕</button>`
     : "";
   const moveBtn = track.repo
     ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}</td>`
