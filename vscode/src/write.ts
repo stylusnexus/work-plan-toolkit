@@ -17,7 +17,7 @@ export type WriteAction =
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
   | { kind: "renameTrack"; track: string; newSlug: string }
-  | { kind: "addRepo"; key: string; github: string; local?: string }
+  | { kind: "addRepo"; key: string; github: string; local?: string; update?: boolean }
   | { kind: "setNotesRoot"; path: string }
   | { kind: "move"; fromTrack: string; toTrack: string; issue: number }
   | { kind: "handoff"; track: string };
@@ -63,7 +63,7 @@ export type WriteOutcome =
  *   close           → ["close", "--state=<state>", ..."--note=<text>", "--", track]
  *   newTrack        → ["new-track", ..."--priority=<p>", ..."--milestone=<m>", "--", repo, slug]
  *   renameTrack     → ["rename-track", "--", track, newSlug]
- *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", "--", key]
+ *   addRepo         → ["init-repo", "--github=<org/repo>", ..."--local=<path>", ..."--update", "--", key]
  *   setNotesRoot    → ["set-notes-root", "--", path]
  *   move            → ["move", "--", issue, fromTrack, toTrack]
  *   handoff         → ["handoff", "--", track]   (derived/non-interactive mode)
@@ -128,6 +128,7 @@ export function actionToArgs(action: WriteAction): string[] {
         "init-repo",
         `--github=${action.github}`,
         ...(action.local ? [`--local=${action.local}`] : []),
+        ...(action.update ? ["--update"] : []),
         "--",
         action.key,
       ];

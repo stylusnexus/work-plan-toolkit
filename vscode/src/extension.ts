@@ -1324,23 +1324,72 @@ export function activate(context: vscode.ExtensionContext): void {
         if (github === undefined) return; // cancelled
 
         const localRaw = await vscode.window.showInputBox({
-          prompt: "Local checkout path (optional — press Enter or Escape to skip)",
+          prompt: "Local checkout path (optional — needed to scan this repo's plans; press Enter to skip)",
         });
         // undefined (Esc) or empty → omit local
         const local = localRaw && localRaw.trim() !== "" ? localRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await withWriteProgress(
-          `Work Plan: adding repo ${github}…`,
-          () => executeWrite(
-            runner,
-            { kind: "addRepo", key, github, ...(local ? { local } : {}) },
-            confirmPublicWrite,
-          ),
-        );
+        let outcome: WriteOutcome;
+        try {
+          outcome = await withWriteProgress(
+            `Work Plan: adding repo ${github}…`,
+            () => executeWrite(
+              runner,
+              { kind: "addRepo", key, github, ...(local ? { local } : {}) },
+              confirmPublicWrite,
+            ),
+          );
+        } catch (addErr: unknown) {
+          // The CLI hard-errors on an already-registered key (now pointing at
+          // --update). Offer to set/update its local path instead of just
+          // surfacing the error — the common 2nd-run intent is "add the path I
+          // skipped".
+          if (addErr instanceof CliError && /already exists/i.test(addErr.message)) {
+            const choice = await vscode.window.showWarningMessage(
+              `Repo ${key} is already registered. Set/update its local checkout path?`,
+              "Set path",
+              "Cancel",
+            );
+            if (choice !== "Set path") return;
+
+            const updateLocalRaw = await vscode.window.showInputBox({
+              prompt: "Local checkout path (needed to scan this repo's plans)",
+              value: local ?? "",
+            });
+            if (updateLocalRaw === undefined) return; // cancelled
+            const updateLocal = updateLocalRaw.trim();
+            if (updateLocal === "") {
+              vscode.window.showInformationMessage("Work Plan: no path entered — nothing changed.");
+              return;
+            }
+
+            const updateOutcome: WriteOutcome = await withWriteProgress(
+              `Work Plan: updating repo ${key}…`,
+              () => executeWrite(
+                runner,
+                { kind: "addRepo", key, github, local: updateLocal, update: true },
+                confirmPublicWrite,
+              ),
+            );
+            if (updateOutcome.status === "written") {
+              await refreshAfterWrite();
+              vscode.window.showInformationMessage(
+                `Work Plan: set ${key}'s local path — its plans will now be scanned.`,
+              );
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+            return;
+          }
+          throw addErr;
+        }
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: added repo ${github} (${key})`);
+          vscode.window.showInformationMessage(
+            `Work Plan: registered ${github} as ${key} — it's now in the sidebar. ` +
+              "Right-click it → New Track to start; add a local path to scan its plans.",
+          );
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }

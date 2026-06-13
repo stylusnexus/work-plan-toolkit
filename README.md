@@ -538,7 +538,7 @@ Every write verb the VS Code extension drives runs **without a TTY** — explici
 
 `needs_confirm` fails **closed** — unknown visibility prompts too. An all-private team can opt out of the *unknown-visibility* case (e.g. when a `gh` lookup flakes) by setting `assume_private_when_unknown: true` in `~/.claude/work-plan/config.yml`; **public repos always prompt regardless.**
 
-`export --json` is the viewer's read surface (schema 1): every frontmatter'd track plus an additive `untracked` list of open issues that no track references, per repo.
+`export --json` is the viewer's read surface (schema 1): every frontmatter'd track plus an additive `untracked` list of open issues that no track references, per repo. It also emits a top-level `repos` list — every configured repo (`folder`/`repo`/`local`/`has_local`/`visibility`), tracked or not — so the viewer can show a freshly registered repo in the sidebar independent of whether it has any tracks yet.
 
 `list-open-issues --repo=<owner/name> [--exclude=<csv>]` is a second viewer read surface: it emits a repo's **open** issues as JSON (`{repo, issues:[…]}`, the same per-issue shape as `export`). The extension's **Slot** command uses it to offer a pick-list instead of a typed number; `--exclude` drops the track's current issues so they don't reappear. Unlike `export`'s `untracked` (open issues in *no* track), this includes issues tracked by *other* tracks — they're valid slot targets. Read-only.
 

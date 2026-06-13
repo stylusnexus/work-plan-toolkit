@@ -268,6 +268,24 @@ describe("actionToArgs", () => {
     ]);
   });
 
+  test("addRepo with update → appends '--update' before '--'", () => {
+    const action: WriteAction = {
+      kind: "addRepo",
+      key: "myrepo",
+      github: "org/myrepo",
+      local: "/path/to/repo",
+      update: true,
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "init-repo",
+      "--github=org/myrepo",
+      "--local=/path/to/repo",
+      "--update",
+      "--",
+      "myrepo",
+    ]);
+  });
+
   test("setNotesRoot → ['set-notes-root', '--', path]", () => {
     const action: WriteAction = {
       kind: "setNotesRoot",

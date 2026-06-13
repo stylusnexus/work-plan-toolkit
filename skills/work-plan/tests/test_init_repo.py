@@ -136,12 +136,55 @@ class InitRepoNonInteractiveTest(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_repo_already_exists_returns_rc1(self):
-        """Key already in config.repos → rc 1, yq NOT called."""
+        """Key already in config.repos (no --update) → rc 1, yq NOT called,
+        and the message points at --update."""
         existing = {"mykey": {"github": "org/myrepo", "local": None}}
         rc, msub, out = _drive(["mykey", "--github=org/myrepo"], existing_repos=existing)
         self.assertEqual(rc, 1)
         msub.assert_not_called()
         self.assertIn("already exists", out)
+        self.assertIn("--update", out)
+
+    # ------------------------------------------------------------------
+    # --update on an existing key → updates its local path
+    # ------------------------------------------------------------------
+
+    def test_update_existing_sets_local(self):
+        """Existing key + --update --local=/new/path → yq merges local into the
+        existing block; rc 0; no 'already exists' error."""
+        existing = {"mykey": {"github": "org/myrepo"}}
+        rc, msub, out = _drive(
+            ["mykey", "--github=org/myrepo", "--local=/new/path", "--update"],
+            existing_repos=existing,
+        )
+        self.assertEqual(rc, 0)
+        msub.assert_called_once()
+        yq_args = msub.call_args[0][0]
+        self.assertEqual(yq_args[0], "yq")
+        self.assertEqual(yq_args[1], "-i")
+        # Merge expression preserves other keys via `* env(...)`.
+        expr = yq_args[2]
+        self.assertIn(".repos.mykey", expr)
+        self.assertIn("env(WP_REPO_UPDATES)", expr)
+        updates = json.loads(msub.call_args.kwargs["env"]["WP_REPO_UPDATES"])
+        self.assertEqual(updates["local"], "/new/path")
+        self.assertIn("Updated", out)
+        self.assertNotIn("already exists", out)
+
+    def test_update_nonexistent_key_falls_back_to_add(self):
+        """--update on a key NOT in config → behaves as a plain add (creates the
+        block via the add path), rc 0."""
+        rc, msub, out = _drive(
+            ["mykey", "--github=org/myrepo", "--local=/some/path", "--update"],
+            existing_repos={},
+        )
+        self.assertEqual(rc, 0)
+        msub.assert_called_once()
+        expr = msub.call_args[0][0][2]
+        # Add path uses the assignment form, not the merge form.
+        self.assertEqual(expr, ".repos.mykey = env(WP_REPO_BLOCK)")
+        block = json.loads(msub.call_args.kwargs["env"]["WP_REPO_BLOCK"])
+        self.assertEqual(block["local"], "/some/path")
 
     # ------------------------------------------------------------------
     # No key → rc 2

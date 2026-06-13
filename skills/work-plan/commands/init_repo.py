@@ -50,10 +50,46 @@ def _report_shared_tracks(local_path: "Path | None") -> None:
         )
 
 
+def _update_existing(key: str, github: str, local: "str | None") -> int:
+    """Update an already-registered repo's local (and github if it differs).
+
+    Does NOT recreate the notes folder / archive dirs — they already exist.
+    Uses the same env()-via-opaque-block yq pattern as a fresh add, setting only
+    the fields that change so other keys in the block are preserved.
+    """
+    updates = {}
+    if local:
+        updates["local"] = local
+    if github:
+        updates["github"] = github
+    if not updates:
+        print(f"ℹ Nothing to update for repo '{key}' (no --local or --github given).")
+        return 0
+
+    # `key` is validated against ^[a-z][a-z0-9-]*$ in run() before this is called,
+    # so it's safe in the yq path. Field values travel as an OPAQUE env value via
+    # env() (parsed as JSON), never interpolated — uniform with the add path.
+    env = {**os.environ, "WP_REPO_UPDATES": json.dumps(updates)}
+    yq_expr = f".repos.{key} = (.repos.{key} // {{}}) * env(WP_REPO_UPDATES)"
+    try:
+        subprocess.run(
+            ["yq", "-i", yq_expr, str(DEFAULT_CONFIG_PATH)],
+            check=True, capture_output=True, text=True, env=env,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: yq failed to update config: {e.stderr}")
+        return 1
+    if local:
+        print(f"✓ Updated repo '{key}' local path → {local}")
+    else:
+        print(f"✓ Updated repo '{key}' in {DEFAULT_CONFIG_PATH}")
+    return 0
+
+
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--github", "--local"})
+    flags, positional = parse_flags(args, {"--github", "--local", "--update"})
     if not positional:
-        print("usage: work_plan.py init-repo <key> --github=<org/repo> [--local=<path>]")
+        print("usage: work_plan.py init-repo <key> --github=<org/repo> [--local=<path>] [--update]")
         return 2
 
     key = positional[0]
@@ -77,10 +113,8 @@ def run(args: list[str]) -> int:
         print("\nRun ./install.sh from the toolkit root to seed your config first.")
         return 1
 
-    if key in cfg.get("repos", {}):
-        print(f"ERROR: repo '{key}' already exists in {DEFAULT_CONFIG_PATH}.")
-        print("Edit it manually, or pick a different key.")
-        return 1
+    update = bool(flags.get("--update"))
+    existing = cfg.get("repos", {})
 
     # --local is optional; if absent, skip (no prompt)
     local = flags.get("--local") or None
@@ -89,6 +123,13 @@ def run(args: list[str]) -> int:
         local_path = Path(local).expanduser()
         if not local_path.exists():
             print(f"WARN: {local_path} does not exist. Saving anyway — fix later if wrong.")
+
+    if key in existing:
+        if not update:
+            print(f"ERROR: repo '{key}' already exists in {DEFAULT_CONFIG_PATH}.")
+            print("Pass --update to change its local path, or pick a different key.")
+            return 1
+        return _update_existing(key, github, local)
 
     notes_root = Path(cfg["notes_root"]).expanduser()
     if not notes_root.exists():
