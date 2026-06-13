@@ -399,6 +399,37 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
+    // workPlan.fetchOpenIssues — pull a trackless repo's open issues on demand
+    // (#303). export only emits untracked for repos that HAVE tracks, so a
+    // registered-but-trackless repo (e.g. agent-armor) never shows its issues;
+    // this fetches them via list-open-issues and renders them as that repo's
+    // Untracked bucket. All open issues are untracked here — a repo with no
+    // tracks references none of them. Accepts {repo} (affordance node) or a
+    // RepoNode (right-click on the repo).
+    vscode.commands.registerCommand(
+      "workPlan.fetchOpenIssues",
+      async (arg?: { repo?: string }): Promise<void> => {
+        const repo = arg?.repo;
+        if (!repo || repo === "(no repo)") return;
+        try {
+          const res = await withWriteProgress(
+            `Work Plan: fetching open issues for ${repo}…`,
+            () => listRepoOpenIssues(runner, repo),
+          );
+          provider.setFetchedUntracked(repo, res.issues);
+          vscode.window.showInformationMessage(
+            res.issues.length > 0
+              ? `Work Plan: ${res.issues.length} open issue(s) in ${repo}.`
+              : `Work Plan: no open issues in ${repo}.`,
+          );
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: fetch open issues failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
   );
 
   // -------------------------------------------------------------------------
