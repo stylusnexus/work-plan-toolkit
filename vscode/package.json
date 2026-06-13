@@ -115,6 +115,22 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "workPlan.signInToGitHub",
+        "title": "Sign in to GitHub",
+        "category": "Work Plan",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "workPlan.checkGitHubAuth",
+        "title": "Retry GitHub Sign-in Check",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.openGhInstallDocs",
+        "title": "Install the GitHub CLI",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.plans.confirmVerdict",
         "title": "Confirm Verdict… (writes frontmatter)",
         "category": "Work Plan"
@@ -465,7 +481,17 @@
     "viewsWelcome": [
       {
         "view": "workPlan.tree",
-        "when": "workPlanHasRepos == false",
+        "when": "workPlanGitHubAuthed == no-gh",
+        "contents": "GitHub CLI not found.\n\nWork Plan reads issue state through the GitHub CLI (gh), which isn't installed or isn't on your PATH.\n\n[Install the GitHub CLI](command:workPlan.openGhInstallDocs)\n\nAlready installed it?\n[Retry](command:workPlan.checkGitHubAuth)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed == false",
+        "contents": "Not signed in to GitHub.\n\nWork Plan can't read issue state until you sign in with the GitHub CLI. Tracks and issue counts stay hidden until then — they aren't empty, just unauthenticated.\n\n[Sign in to GitHub](command:workPlan.signInToGitHub)\n\nFinished signing in?\n[Retry](command:workPlan.checkGitHubAuth)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanHasRepos == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
       }
     ],
