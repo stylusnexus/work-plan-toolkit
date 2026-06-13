@@ -38,7 +38,11 @@ export type WriteAction =
   // Close a GitHub issue (#305) — the ONLY GitHub-mutating action. `repo` is the
   // org/repo slug; gated by a mandatory UI modal in the command handler (no
   // needs_confirm token — closing doesn't leak private content to a public repo).
-  | { kind: "closeIssue"; repo: string; number: number; reason: "completed" | "not_planned"; comment?: string };
+  | { kind: "closeIssue"; repo: string; number: number; reason: "completed" | "not_planned"; comment?: string }
+  // Promote a private track to the shared tier + push (#306). repoKey is the
+  // config folder key (disambiguates the track). Public-repo gated by the CLI's
+  // needs_confirm, which executeWrite drives.
+  | { kind: "pushTrack"; track: string; repoKey?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -93,6 +97,7 @@ export type WriteOutcome =
  *   planBaseline    → ["plan-baseline", "--repo=<key>", "--", rel]
  *   planBaselineClear→ ["plan-baseline", "--repo=<key>", "--clear", "--", rel]
  *   closeIssue      → ["close-issue", "--repo=<slug>", "--reason=<r>", ..."--comment=<c>", "--", number]
+ *   pushTrack       → ["push-track", ..."--repo=<key>", "--", track]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -209,6 +214,14 @@ export function actionToArgs(action: WriteAction): string[] {
         ...(action.comment ? [`--comment=${action.comment}`] : []),
         "--",
         String(action.number),
+      ];
+
+    case "pushTrack":
+      return [
+        "push-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
       ];
   }
 }

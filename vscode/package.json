@@ -121,6 +121,12 @@
         "icon": "$(issue-closed)"
       },
       {
+        "command": "workPlan.pushTrack",
+        "title": "Push to Shared Tier…",
+        "category": "Work Plan",
+        "icon": "$(cloud-upload)"
+      },
+      {
         "command": "workPlan.signInToGitHub",
         "title": "Sign in to GitHub",
         "category": "Work Plan",
@@ -425,6 +431,11 @@
           "group": "5_workPlanSync@2"
         },
         {
+          "command": "workPlan.pushTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "5_workPlanSync@3"
+        },
+        {
           "command": "workPlan.close",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "9_workPlanDanger@1"
@@ -497,6 +508,10 @@
         },
         {
           "command": "workPlan.closeIssue",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.pushTrack",
           "when": "false"
         },
         {

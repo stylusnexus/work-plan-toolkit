@@ -1345,6 +1345,50 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage(msg);
       }
     }),
+    // workPlan.pushTrack (#306) — promote a private track to the shared tier +
+    // push. Confirm modal names the repo and warns on a PUBLIC repo (the track
+    // becomes world-visible). executeWrite drives the CLI's public-repo token.
+    vscode.commands.registerCommand("workPlan.pushTrack", async (node?: TrackNode) => {
+      const track = node?.track;
+      if (!track) return;
+      if (track.tier === "shared") {
+        vscode.window.showInformationMessage(
+          `Work Plan: "${track.name}" is already in the shared tier.`,
+        );
+        return;
+      }
+      const repoLabel = track.repo ?? "this repo";
+      const exposure = track.visibility === "PUBLIC"
+        ? `\n\n⚠ ${repoLabel} is PUBLIC — promoting + pushing makes this track visible to anyone on the internet, and it stays in public git history.`
+        : "";
+      const ok = await vscode.window.showWarningMessage(
+        `Promote track "${track.name}" to the shared tier of ${repoLabel} and push it to the plan branch?${exposure}`,
+        { modal: true },
+        "Push to Shared Tier",
+      );
+      if (ok !== "Push to Shared Tier") return;
+      try {
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: promoting ${track.name} to shared tier…`,
+          () => executeWrite(
+            runner,
+            { kind: "pushTrack", track: track.name, repoKey: track.folder ?? undefined },
+            confirmPublicWrite,
+          ),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: promoted ${track.name} to the shared tier.`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: push-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
   );
 
   // -------------------------------------------------------------------------
