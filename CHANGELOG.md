@@ -6,6 +6,30 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.13+22f59a8 — 2026-06-13 (#316)
+
+fix+feat: dark-mode a11y contrast, progress bar (#220) + activity badge (#215), Untracked/close-button fixes
+
+Accessibility + polish follow-up to the 0.7.0 release. VS Code extension **0.7.0 → 0.7.1**.
+
+## Accessibility (dark-mode contrast)
+The reported "hard to see in dark mode" traced to `charts.*` ThemeColors (built for chart fills, muted on dark, missing WCAG 1.4.3 3:1 for icons). Swapped the tree's status/verdict icon colors to theme-tuned, list-semantic tokens — blocked/lie-gap → `list.errorForeground`, stalled/drift → `list.warningForeground`, shipped → `charts.green`, parked/dead/ack'd → `descriptionForeground`, plan "active" unified on `charts.blue`. Distinct icon **shapes** still carry the meaning, so nothing is colour-only. Webview: dropped compounding `opacity` on muted text, raised the detail-panel Move/Close action icons to legible-at-rest, extended the forced-colors override, bumped search closed-state weight.
+
+## Features
+- **#220** — a labelled open/closed progress bar in the per-track detail card + a `N open · C/T` count in the tree description.
+- **#215** — an activity-bar badge: blocked-track count (fallback total open), host-themed.
+
+## Fixes (v0.7.0 regressions)
+- **#303** — Fetch Open Issues now excludes already-tracked issues (a tracked issue no longer surfaces under Untracked), and the on-demand fetch cache no longer overrides a tracked repo's live untracked list.
+- **#305** — the detail-panel Close-on-GitHub button rendered as a gray box (font-fragile glyph + unstyled); now styled + a reliable glyph.
+
+## Docs
+README + vscode/README document the new surfaces; the agent-plugins catalog README was brought current to the 0.7.0 surface in a companion commit.
+
+CI green across the 3.9–3.12 × {ubuntu,macos,windows} matrix + lint + vscode build. CLI 959 tests, viewer 527.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.13+bb0dbea — 2026-06-13 (#314)
 
 feat: Plans-view plan-writes, GitHub issue-close + auth fast-fail, track↔plan link & push-track
