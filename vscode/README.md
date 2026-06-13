@@ -124,6 +124,8 @@ Read-only by design: no stamp, archive, or issue-opening from the GUI — those 
 |---|---|
 | **New Track** | Create a new track for a repo (pick the repo + a slug). |
 | **Add Repo** | Register a repo — a key, the `org/repo` slug, and an optional local checkout path. The repo appears in the sidebar straight away even with no tracks; right-click it → **New Track** to start. The local path is what enables plan scanning (the Plans view), so add it when you have a checkout. Re-running Add Repo on a key that's already registered offers to set/update its local path instead of erroring — the fix for "I skipped the path the first time." |
+| **Clear Local Path** *(right-click a repo)* | Drop a repo's saved local checkout path while keeping it registered — handy when the checkout moved or you no longer want it scanned. Asks first; the repo and its tracks stay put. |
+| **Remove Repo** *(right-click a repo)* | Unregister a repo so it leaves the sidebar and brief. **Config-only:** your notes, tracks, and the local clone are left untouched (any notes folder or tracks that referenced it are simply orphaned — clean them up by hand if you want). Asks for confirmation first. |
 | **Set Notes Location** | Choose where your private track notes live (the CLI's `notes_root`). |
 | **Run Hygiene** | **Weekly all-in-one cleanup.** Three steps: ① refresh every active track's status table from GitHub, ② reconcile track frontmatter against GitHub labels, ③ scan for duplicate issues. Use "Sync Issue States from GitHub" instead when you just need to update one track after closing issues. |
 

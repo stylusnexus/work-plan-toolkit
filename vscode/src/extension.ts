@@ -1404,6 +1404,111 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.removeRepo — unregister a repo (config-only; repo-node context menu)
+  // Completes the add/update/remove trio. Removal is config-only: notes, tracks,
+  // and the local clone are untouched, so no public-leak guard is needed — but
+  // routing through executeWrite keeps the write path uniform (removeRepo never
+  // trips needs_confirm).
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.removeRepo", async (node?: RepoNode) => {
+      try {
+        const key = node?.folder;
+        if (!key) {
+          vscode.window.showInformationMessage(
+            "Work Plan: not a configured repo — nothing to remove.",
+          );
+          return;
+        }
+
+        const ok = await vscode.window.showWarningMessage(
+          `Remove ${node!.repo} from work-plan? This only unregisters it — ` +
+            "your notes, tracks, and local clone are untouched.",
+          { modal: true },
+          "Remove",
+        );
+        if (ok !== "Remove") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: removing ${node!.repo}…`,
+          () => executeWrite(runner, { kind: "removeRepo", key }, confirmPublicWrite),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: removed ${node!.repo} — notes, tracks, and clone left in place.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: remove-repo failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.clearRepoLocal — drop a configured repo's local path (keeps the
+  // repo). Repo-node context menu. Routes through init-repo --update --clear-local.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.clearRepoLocal", async (node?: RepoNode) => {
+      try {
+        const key = node?.folder;
+        if (!key) {
+          vscode.window.showInformationMessage(
+            "Work Plan: not a configured repo — nothing to clear.",
+          );
+          return;
+        }
+        if (!node!.hasLocal) {
+          vscode.window.showInformationMessage(
+            `Work Plan: ${node!.repo} has no local path set.`,
+          );
+          return;
+        }
+
+        const ok = await vscode.window.showWarningMessage(
+          `Clear the local checkout path for ${node!.repo}? The repo stays ` +
+            "registered — only the saved path is forgotten.",
+          { modal: true },
+          "Clear path",
+        );
+        if (ok !== "Clear path") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: clearing local path for ${node!.repo}…`,
+          () => executeWrite(
+            runner,
+            { kind: "addRepo", key, github: node!.repo, update: true, clearLocal: true },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: cleared local path for ${node!.repo}.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: clear-local failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.setNotesLocation — set notes root path (view/title overflow + palette + welcome)
   // -------------------------------------------------------------------------
 

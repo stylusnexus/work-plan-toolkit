@@ -286,6 +286,46 @@ describe("actionToArgs", () => {
     ]);
   });
 
+  test("addRepo with clearLocal → forces '--update --clear-local', drops --local", () => {
+    const action: WriteAction = {
+      kind: "addRepo",
+      key: "myrepo",
+      github: "org/myrepo",
+      update: true,
+      clearLocal: true,
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "init-repo",
+      "--github=org/myrepo",
+      "--update",
+      "--clear-local",
+      "--",
+      "myrepo",
+    ]);
+  });
+
+  test("addRepo clearLocal implies --update even when update is unset", () => {
+    const action: WriteAction = {
+      kind: "addRepo",
+      key: "myrepo",
+      github: "org/myrepo",
+      clearLocal: true,
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "init-repo",
+      "--github=org/myrepo",
+      "--update",
+      "--clear-local",
+      "--",
+      "myrepo",
+    ]);
+  });
+
+  test("removeRepo → ['remove-repo', '--', key]", () => {
+    const action: WriteAction = { kind: "removeRepo", key: "myrepo" };
+    assert.deepEqual(actionToArgs(action), ["remove-repo", "--", "myrepo"]);
+  });
+
   test("setNotesRoot → ['set-notes-root', '--', path]", () => {
     const action: WriteAction = {
       kind: "setNotesRoot",
