@@ -26,6 +26,8 @@ export interface TrackNode {
   category: StatusCategory;
   /** rollup.open */
   open: number;
+  /** rollup.closed — for the tree's closed/total count (#220). */
+  closed: number;
   /** "⛔ #4821" | "→ #87" | null */
   hint: string | null;
   /** The raw track — passed to commands/webview by the provider. */
@@ -264,6 +266,7 @@ export function buildTree(exp: Export): RepoNode[] {
       status: track.status,
       category: statusCategory(track),
       open: track.rollup.open,
+      closed: track.rollup.closed,
       hint: trackHint(track),
       track,
     });
@@ -278,6 +281,21 @@ export function buildTree(exp: Export): RepoNode[] {
   }
 
   return Array.from(repoMap.values());
+}
+
+/**
+ * Activity-bar badge counts (#215): blocked tracks + total open issues, across
+ * every track. Pure. The caller prefers `blocked` (the louder signal) and falls
+ * back to `open`. "Blocked" matches the tree's own notion (`statusCategory`).
+ */
+export function badgeCounts(tracks: Track[]): { blocked: number; open: number } {
+  let blocked = 0;
+  let open = 0;
+  for (const t of tracks) {
+    if (statusCategory(t) === "blocked") blocked++;
+    open += t.rollup.open;
+  }
+  return { blocked, open };
 }
 
 /**

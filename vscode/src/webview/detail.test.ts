@@ -729,3 +729,16 @@ describe("renderDetail — close-on-GitHub button (#305)", () => {
     assert.ok(!renderDetail(noRepo).includes("close-issue-btn"));
   });
 });
+
+describe("renderDetail — progress bar (#220)", () => {
+  it("renders a labelled role=progressbar for a non-empty track", () => {
+    const html = renderDetail(platformHealth);   // rollup 12 open / 8 closed → 20 total, 40%
+    assert.ok(html.includes('role="progressbar"'), html);
+    assert.ok(html.includes('aria-valuenow="8"') && html.includes('aria-valuemax="20"'), html);
+    assert.ok(html.includes('aria-label="8 of 20 issues closed (40%)"'), html);
+    assert.ok(html.includes("width:40%"), html);
+  });
+  it("omits the bar for an empty track (no divide-by-zero)", () => {
+    assert.ok(!renderDetail(emptyTrack).includes("progressbar"));
+  });
+});

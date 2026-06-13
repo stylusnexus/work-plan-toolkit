@@ -11,6 +11,7 @@ import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { trackedIssueNumbers } from "./model.ts";
+import { badgeCounts } from "./treeModel.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
@@ -57,6 +58,21 @@ export function activate(context: vscode.ExtensionContext): void {
       describeView(provider.activeLens, provider.activeSort) || undefined;
   };
   context.subscriptions.push(provider.onDidChangeTreeData(syncViewDescription));
+
+  // Activity-bar badge (#215): blocked-track count (the loud signal), falling
+  // back to total open issues, cleared at zero. Recomputed on every tree change
+  // (refresh/lens/sort) off the RAW export so a lens can't shrink the count.
+  const syncBadge = (): void => {
+    const exp = provider.rawExport;
+    if (!exp) { treeView.badge = undefined; return; }
+    const { blocked, open } = badgeCounts(exp.tracks);
+    treeView.badge = blocked > 0
+      ? { value: blocked, tooltip: `${blocked} blocked track${blocked === 1 ? "" : "s"}` }
+      : open > 0
+        ? { value: open, tooltip: `${open} open issue${open === 1 ? "" : "s"}` }
+        : undefined;
+  };
+  context.subscriptions.push(provider.onDidChangeTreeData(syncBadge));
 
   // -------------------------------------------------------------------------
   // refreshAndRerender — shared helper: reload CLI data + re-render panel.

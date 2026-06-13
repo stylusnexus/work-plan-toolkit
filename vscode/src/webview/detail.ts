@@ -40,6 +40,20 @@ export function renderDetail(track: Track): string {
     `<p class="rollup"><b>${track.rollup.open}</b> open · <b>${track.rollup.closed}</b> closed</p>`,
   );
 
+  // Closed/total progress bar (#220) — a redundant visual of the rollup text
+  // above (which is the WCAG 1.4.1 label), with role=progressbar for AT. Tokens
+  // are theme-guaranteed to contrast (a11y audit). Omitted for an empty track.
+  const ptotal = track.rollup.open + track.rollup.closed;
+  if (ptotal > 0) {
+    const pct = Math.round((track.rollup.closed / ptotal) * 100);
+    parts.push(
+      `<div class="progress" role="progressbar" aria-valuemin="0" ` +
+      `aria-valuemax="${ptotal}" aria-valuenow="${track.rollup.closed}" ` +
+      `aria-label="${track.rollup.closed} of ${ptotal} issues closed (${pct}%)">` +
+      `<div class="progress-fill" style="width:${pct}%"></div></div>`,
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Issues table (with milestone bands when multiple groups exist)
   // -------------------------------------------------------------------------

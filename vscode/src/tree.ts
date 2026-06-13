@@ -30,14 +30,18 @@ function categoryIcon(category: StatusCategory): IconSpec {
   switch (category) {
     case "blocked":
       // Distinct SHAPE, not just a red tint — blocked vs active must be
-      // tellable apart without colour (#208).
-      return { icon: "circle-slash", color: "charts.red" };
+      // tellable apart without colour (#208). List-semantic token (not
+      // charts.red) so it meets non-text contrast in dark themes (a11y pass).
+      return { icon: "circle-slash", color: "list.errorForeground" };
     case "active":
       return { icon: "circle-filled", color: "charts.blue" };
     case "shipped":
-      return { icon: "pass-filled", color: "charts.gray" };
+      // charts.green (vivid "done") not charts.gray, which goes muted on dark.
+      return { icon: "pass-filled", color: "charts.green" };
     case "parked":
-      return { icon: "circle-outline", color: "charts.gray" };
+      // descriptionForeground is the theme-tuned de-emphasized token — legible
+      // where charts.gray dipped below 3:1 on dark themes.
+      return { icon: "circle-outline", color: "descriptionForeground" };
   }
 }
 
@@ -354,9 +358,15 @@ export class WorkPlanTreeProvider
     // Visibility × tier badge (#259): a codicon cluster prefixing the description,
     // loud only for the public+shared "exposed" state.
     const badge = visibilityTierBadge(node.track);
+    // "N open · C/T" — the closed/total count (#220) makes progress glanceable
+    // in the tree (the detail panel has the bar). Omit C/T for an empty track.
+    const total = node.open + node.closed;
+    const counts = total > 0
+      ? `${node.open} open · ${node.closed}/${total}`
+      : `${node.open} open`;
     item.description = node.hint
-      ? `${badge.descriptionPrefix}  ${node.open} open  ${node.hint}`
-      : `${badge.descriptionPrefix}  ${node.open} open`;
+      ? `${badge.descriptionPrefix}  ${counts}  ${node.hint}`
+      : `${badge.descriptionPrefix}  ${counts}`;
 
     const { icon, color } = categoryIcon(node.category);
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));

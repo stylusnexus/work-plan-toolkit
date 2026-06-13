@@ -314,7 +314,27 @@ mermaid.run();
       padding: 12px;
       margin-top: 12px;
     }
-    .rollup { margin: 0 0 8px 0; }
+    .rollup { margin: 0 0 4px 0; }
+    /* Closed/total progress bar (#220). Filled = the canonical progress token
+       (vivid in every theme); track = a faint foreground tint with a panel
+       border so its extent stays visible even when the tint washes out. The
+       numeric meaning lives in the rollup text + aria-label, not the colour. */
+    .progress {
+      height: 4px;
+      margin: 0 0 10px 0;
+      border-radius: 2px;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+      border: 1px solid var(--vscode-panel-border, var(--border));
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--vscode-progressBar-background, #0e70c0);
+    }
+    @media (forced-colors: active) {
+      .progress { background: Canvas; border: 1px solid CanvasText; }
+      .progress-fill { background: Highlight; }
+    }
     table.issues {
       width: 100%;
       border-collapse: collapse;
@@ -325,9 +345,12 @@ mermaid.run();
       padding: 4px 6px;
       border-bottom: 1px solid var(--border);
     }
-    table.issues th { opacity: 0.7; font-weight: 600; }
+    /* Use the theme-tuned de-emphasized token directly rather than opacity —
+       opacity compounds on an already-reduced foreground and can dip below
+       4.5:1 in dark themes (a11y pass). */
+    table.issues th { color: var(--vscode-descriptionForeground); font-weight: 600; }
     .num { white-space: nowrap; }
-    .who { white-space: nowrap; opacity: 0.8; }
+    .who { white-space: nowrap; color: var(--vscode-descriptionForeground); }
     .pill {
       display: inline-block;
       padding: 1px 6px;
@@ -414,7 +437,7 @@ mermaid.run();
     }
     .milestone-band:not(.collapsed) .milestone-toggle { transform: rotate(90deg); }
     .milestone-count {
-      opacity: 0.6;
+      color: var(--vscode-descriptionForeground);
       font-weight: normal;
       margin-left: 4px;
     }
@@ -428,7 +451,9 @@ mermaid.run();
       cursor: pointer;
       font-size: 0.85em;
       padding: 0 4px;
-      opacity: 0.65;
+      /* Legible at rest (was 0.65 → too faint for low-vision users on dark, the
+         reported issue); hover/focus still bumps to full as an emphasis cue. */
+      opacity: 0.9;
       transition: opacity 0.1s;
     }
     /* Reveal on row-hover AND on keyboard focus — never opacity:0, or the
@@ -480,7 +505,7 @@ mermaid.run();
         background: transparent;
         border: 1px solid CanvasText;
       }
-      .move-btn { opacity: 1; }
+      .move-btn, .close-issue-btn { opacity: 1; }
     }
 
   </style>

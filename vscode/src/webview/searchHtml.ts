@@ -149,7 +149,7 @@ export function buildSearchHtml(o: SearchHtmlOptions): string {
     a.issue-link:hover { text-decoration: underline; }
     a.issue-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
     td.state.open { color: var(--open-fg); font-weight: 600; }
-    td.state.closed { color: var(--closed-fg); font-weight: 400; }
+    td.state.closed { color: var(--closed-fg); font-weight: 600; }
     .reveal-btn {
       background: none; border: none; color: var(--link); cursor: pointer;
       margin-left: 8px; padding: 0 3px; font: inherit; opacity: 0; border-radius: 2px;
