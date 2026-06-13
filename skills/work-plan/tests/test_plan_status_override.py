@@ -81,6 +81,16 @@ class OverrideTest(unittest.TestCase):
             self.assertIsNone(row["override"])
             self.assertTrue(row["lie_gap"])      # falls back to mechanical
 
+    def test_acknowledged_frontmatter_emitted(self):
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(d, f"---\nacknowledged: true\n---\n{BODY}"))
+            self.assertTrue(row["acknowledged"])
+
+    def test_acknowledged_false_without_frontmatter(self):
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(d, BODY))
+            self.assertFalse(row["acknowledged"])
+
 
 if __name__ == "__main__":
     unittest.main()

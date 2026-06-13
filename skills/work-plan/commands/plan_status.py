@@ -30,21 +30,29 @@ _OVERRIDE_VERDICTS = {"shipped", "partial", "dead"}
 _OVERRIDE_GLYPH = {"shipped": "✅", "partial": "🟡", "dead": "💀"}
 
 
-def _read_override(path) -> "str | None":
-    """The `verdict_override` value from a doc's YAML frontmatter, or None.
+def _read_fm_signals(path) -> tuple:
+    """Read the frontmatter signals plan-status honors (#286), in ONE parse:
 
-    Frontmatter-only signal — never the body/checkboxes (#286 hard constraint).
-    Accepts a case-insensitive shipped|partial|dead; anything else is ignored so
-    a typo can't silently pin a bogus verdict. A doc with no frontmatter (most
-    plans) parses to an empty meta, so this is a clean no-op there."""
+        (override, acknowledged)
+
+    `override` is the `verdict_override` value (case-insensitive shipped|partial|
+    dead, else None — a typo can't pin a bogus verdict). `acknowledged` is True
+    when the doc carries a truthy `acknowledged` (the durable, frontmatter-based
+    ack that the viewer's plan-ack writes). Both are frontmatter-only — never the
+    body/checkboxes. A doc with no frontmatter (most plans) parses to empty meta,
+    so this is a clean (override=None, acknowledged=False) no-op there."""
     try:
         meta, _ = frontmatter.parse_file(Path(path))
     except Exception:
-        return None
-    val = meta.get("verdict_override") if isinstance(meta, dict) else None
-    if isinstance(val, str) and val.strip().lower() in _OVERRIDE_VERDICTS:
-        return val.strip().lower()
-    return None
+        return (None, False)
+    if not isinstance(meta, dict):
+        return (None, False)
+    val = meta.get("verdict_override")
+    override = (val.strip().lower()
+                if isinstance(val, str) and val.strip().lower() in _OVERRIDE_VERDICTS
+                else None)
+    acknowledged = bool(meta.get("acknowledged"))
+    return (override, acknowledged)
 
 
 def _resolve_repo_root(flags) -> Path:
@@ -119,10 +127,10 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     else:
         v = verdict_mod.classify(score, done, total_chk, last_d, today, dead_days)
 
-    # Human verdict-override (#286): a `verdict_override` in frontmatter pins the
-    # verdict over the mechanical one. Applied BEFORE the staleness clock and the
-    # lie-gap below so both key off the confirmed verdict, not the heuristic's.
-    override = _read_override(doc.path)
+    # Frontmatter signals (#286): a `verdict_override` pins the verdict over the
+    # mechanical one (applied BEFORE the staleness clock + lie-gap so both key off
+    # the confirmed verdict), and `acknowledged` is the durable, shared ack.
+    override, acknowledged = _read_fm_signals(doc.path)
     if override:
         v = verdict_mod.Verdict(
             override, _OVERRIDE_GLYPH[override], f"human-confirmed · {v.rationale}")
@@ -157,6 +165,7 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
         "stalled": stalled,
         "lie_gap": lie_gap,
         "override": override,
+        "acknowledged": acknowledged,
         "unchecked_items": manifest.unchecked_checkbox_labels(text),
         "stall_days": stall_days,
     }
