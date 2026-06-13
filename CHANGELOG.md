@@ -6,6 +6,39 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.13+bb0dbea — 2026-06-13 (#314)
+
+feat: Plans-view plan-writes, GitHub issue-close + auth fast-fail, track↔plan link & push-track
+
+A large feature batch (9 PRs) making the VS Code Plans view *act* instead of only report, plus GitHub-path hardening and track-sharing.
+
+## Plan frontmatter writes (#286 — all confirm-gated, frontmatter-only)
+- **Confirm Verdict** (`plan-confirm`) — pin a human `verdict_override` to silence a false "shipped but boxes unchecked" lie-gap.
+- **Acknowledge & Save to Doc** (`plan-ack`) — a durable, shared `acknowledged` ack (vs the per-machine default).
+- **Stamp Baseline — Watch for Drift** (`plan-baseline`) — records the verdict; `plan-status` then flags **drift** when a once-shipped plan silently regresses (declared files deleted/moved).
+- Read-only **off-tree manifest** flag — surfaces declared paths that resolve outside the repo.
+- Shared, escape-guarded + public-repo-gated frontmatter writer (`lib/plan_fm`).
+
+## Track ↔ plan link (#285)
+- A track declares its plan via `plan:` frontmatter; `export` resolves an execution badge; the detail panel offers one-click **Plan** navigation. No fuzzy matching.
+
+## GitHub path
+- **Close Issue on GitHub** (`close-issue`, #305) — close an issue (optional comment) from the untracked-issue right-click or a detail-panel row, gated by a mandatory "cannot be undone" modal. Joins `plan-status --issues` (create) as the toolkit's second opt-in, gated GitHub write.
+- **Fast-fail auth** (`auth-status`, #307) — a "Not signed in to GitHub" / "GitHub CLI not found" banner + Sign-in path replaces the silently-empty tree.
+- **Fetch Open Issues** (#303) — pull a trackless registered repo's open issues on demand into its Untracked bucket.
+
+## Track sharing (#306)
+- **Push to Shared Tier** (`push-track`) — promote a private track into the repo's shared `.work-plan/` plan branch and push (public-repo exposure gated).
+
+## Docs/security
+- READMEs reframe the GitHub-write posture (two opt-in gated writes: create + close) and SECURITY.md documents the new write surfaces (frontmatter writers, close-issue, push-track).
+
+CI green across the 3.9–3.12 × {ubuntu,macos,windows} matrix + lint + vscode build on every PR; the full dev→main diff was code-reviewed clean (no blockers/highs). CLI 959 tests, viewer 516.
+
+VS Code extension bumped 0.6.3 → **0.7.0**.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.13+d35a663 — 2026-06-13 (#300)
 
 feat(vscode): track-only repos show as a greyed "not registered" row in Plans (ext 0.6.3)
