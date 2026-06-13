@@ -1423,12 +1423,18 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         const ok = await vscode.window.showWarningMessage(
-          `Remove ${node!.repo} from work-plan? This only unregisters it — ` +
-            "your notes, tracks, and local clone are untouched.",
-          { modal: true },
-          "Remove",
+          `Remove “${node!.repo}” from Work Plan?`,
+          {
+            modal: true,
+            detail:
+              `Unregisters the repo (key “${key}”) — it disappears from this sidebar.\n\n` +
+              "This does NOT delete anything: your track notes, the local clone on " +
+              "disk, and everything on GitHub stay exactly as they are. You can " +
+              "re-add it any time with Add Repo.",
+          },
+          "Remove from Work Plan",
         );
-        if (ok !== "Remove") return;
+        if (ok !== "Remove from Work Plan") return;
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: removing ${node!.repo}…`,
@@ -1475,9 +1481,14 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         const ok = await vscode.window.showWarningMessage(
-          `Clear the local checkout path for ${node!.repo}? The repo stays ` +
-            "registered — only the saved path is forgotten.",
-          { modal: true },
+          `Clear the local checkout path for “${node!.repo}”?`,
+          {
+            modal: true,
+            detail:
+              `The repo stays registered (key “${key}”) — only the saved local ` +
+              "path is forgotten. Plan scanning for this repo turns off until you " +
+              "set a path again. The clone on disk is untouched.",
+          },
           "Clear path",
         );
         if (ok !== "Clear path") return;
