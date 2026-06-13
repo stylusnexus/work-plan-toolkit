@@ -1,4 +1,4 @@
-import type { PlanDoc } from "./model.ts";
+import type { Export, PlanDoc } from "./model.ts";
 
 export type PlanBucket = "stalled" | "lie-gap" | "active" | "shipped" | "dead" | "other";
 
@@ -48,4 +48,26 @@ export function planDescription(d: PlanDoc, stallDays: number | null, nowMs: num
 
 export function ackKey(repo: string, rel: string): string {
   return `${repo}::${rel}`;
+}
+
+/**
+ * GitHub slugs that tracks reference but that have NO `repos:` config entry
+ * (#288 follow-up). The Plans view scans by config folder key — a track-only
+ * repo has no registered local clone to scan, so it can't be a real repo node;
+ * the view surfaces it as a greyed "not registered — Add Repo to scan" row
+ * instead of silently dropping it (the asymmetry that made it look like a bug).
+ *
+ * Returns distinct slugs sorted for a stable render. A null/empty track `repo`
+ * is excluded — it can't be registered or scanned, so there's nothing to offer.
+ * Pure (no vscode) so the detection is unit-tested without a provider mock.
+ */
+export function unregisteredTrackRepos(exp: Export): string[] {
+  const registered = new Set(
+    (exp.repos ?? []).map((r) => r.repo).filter((s): s is string => !!s),
+  );
+  const out = new Set<string>();
+  for (const t of exp.tracks) {
+    if (t.repo && !registered.has(t.repo)) out.add(t.repo);
+  }
+  return Array.from(out).sort();
 }
