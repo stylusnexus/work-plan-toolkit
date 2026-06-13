@@ -137,6 +137,14 @@ export interface PlanDoc {
    * wire so an older CLI (no field) deserializes to undefined.
    */
   acknowledged?: boolean;
+  /**
+   * Drift baseline (#286): the verdict stamped by `plan-baseline` (a verdict
+   * string, or null). `verdict_drift` is true when the live `verdict` no longer
+   * matches this baseline (and no override is pinning it) — a once-shipped plan
+   * that silently regressed. Optional on the wire for older-CLI compatibility.
+   */
+  verdict_baseline?: "shipped" | "partial" | "dead" | null;
+  verdict_drift?: boolean;
   unchecked_items: string[];
   stall_days: number;
 }

@@ -151,6 +151,16 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.plans.stampBaseline",
+        "title": "Stamp Baseline — Watch for Drift (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.clearBaseline",
+        "title": "Clear Baseline (writes frontmatter)",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.openTrack",
         "title": "Show in Work Plan",
         "category": "Work Plan"
@@ -449,6 +459,16 @@
           "group": "1_ack"
         },
         {
+          "command": "workPlan.plans.stampBaseline",
+          "when": "view == workPlan.plans && viewItem =~ /^workPlanPlan-/",
+          "group": "3_baseline"
+        },
+        {
+          "command": "workPlan.plans.clearBaseline",
+          "when": "view == workPlan.plans && viewItem =~ /baselined/",
+          "group": "3_baseline"
+        },
+        {
           "command": "workPlan.plans.confirmVerdict",
           "when": "view == workPlan.plans && (viewItem =~ /^workPlanPlan-/ || viewItem == workPlanAckedPlan)",
           "group": "2_confirm"
@@ -470,6 +490,14 @@
         },
         {
           "command": "workPlan.plans.acknowledgePersist",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.stampBaseline",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.clearBaseline",
           "when": "false"
         },
         {

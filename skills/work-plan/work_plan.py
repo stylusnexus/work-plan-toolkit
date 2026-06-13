@@ -53,6 +53,7 @@ SUBCOMMANDS = {
     "--plan-status": "commands.plan_status",  # flag-style alias
     "plan-confirm": "commands.plan_confirm",
     "plan-ack": "commands.plan_ack",
+    "plan-baseline": "commands.plan_baseline",
     "export": "commands.export",
     "auth-status": "commands.auth_status",
     "list-open-issues": "commands.list_open_issues",
@@ -182,6 +183,10 @@ DESCRIPTIONS = [
      "Persist an acknowledgment into ONE plan/spec doc's YAML **frontmatter only** (`acknowledged: true`) — never the body/manifest/checkboxes/banner (#286). Unlike the VS Code viewer's default ack (per-machine, ephemeral `workspaceState`), this is durable + shared: it's committed with the repo, and `plan-status` reads it back to demote the doc. `<rel>` is the repo-relative doc path. Public-repo gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`). `--clear` removes it.",
      "When you want a 'stop flagging this plan' that sticks across machines and teammates, not just on your laptop.",
      "/work-plan plan-ack --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
+    ("plan-baseline", "--repo=<key> [--clear] [--confirm=<token>] -- <rel>",
+     "Stamp the CURRENT computed verdict into ONE plan/spec doc's YAML **frontmatter only** as a drift baseline (`verdict_baseline`) (#286). Distinct from `plan-confirm` (a human pin) and the body banner. `plan-status` then flags **drift** when the live verdict diverges from the baseline — catching a once-shipped plan that silently regressed (its declared files were deleted/moved). The baseline value is computed authoritatively here. Public-repo gated; `--clear` removes it. `verdict_override`, if present, suppresses drift.",
+     "When you want a tripwire on a plan you believe is done: stamp its baseline, and get alerted if it later regresses.",
+     "/work-plan plan-baseline --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
     ("set-notes-root", "<path>",
      "Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter'd tracks live at the old location (they won't be moved — manual migration required). Non-interactive: safe to call from a GUI or script.",
      "VS Code viewer cold-start: user has picked a folder for their private track notes and the extension invokes this to persist the choice. Also useful on the CLI to relocate notes without hand-editing config.yml.",

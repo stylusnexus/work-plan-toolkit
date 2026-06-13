@@ -126,3 +126,39 @@ describe("unregisteredTrackRepos", () => {
     assert.deepEqual(result, []);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Drift baseline (#286 slice 2)
+// ---------------------------------------------------------------------------
+
+describe("planBucket — drift", () => {
+  const NOW = Date.parse("2026-06-12");
+  test("verdict_drift → 'drift' bucket (loud)", () => {
+    assert.equal(planBucket(doc({ verdict: "partial", verdict_drift: true, manifest_last_touched: "2026-06-11" }), 14, NOW), "drift");
+  });
+  test("no drift → normal verdict bucket", () => {
+    assert.equal(planBucket(doc({ verdict: "shipped", lie_gap: false, verdict_drift: false }), 14, NOW), "shipped");
+  });
+  test("stalled outranks drift", () => {
+    // stalled (cold partial) takes precedence even if drift is also set
+    assert.equal(planBucket(doc({ verdict: "partial", verdict_drift: true, manifest_last_touched: "2026-05-01" }), 14, NOW), "stalled");
+  });
+});
+
+describe("planDescription — baseline markers", () => {
+  const NOW = Date.parse("2026-06-12");
+  test("drifted shows direction baseline → live", () => {
+    const d = planDescription(doc({ verdict: "partial", verdict_baseline: "shipped", verdict_drift: true, manifest_last_touched: "2026-06-11" }), 14, NOW);
+    assert.ok(d.includes("⚠ drifted (shipped → partial)"), d);
+  });
+  test("baseline present but matching shows faint marker", () => {
+    const d = planDescription(doc({ verdict: "shipped", lie_gap: false, verdict_baseline: "shipped", verdict_drift: false, manifest_last_touched: "2026-06-11" }), 14, NOW);
+    assert.ok(d.includes("📌 baseline"), d);
+    assert.ok(!d.includes("drifted"), d);
+  });
+  test("no baseline → no marker", () => {
+    const d = planDescription(doc({ verdict: "shipped", lie_gap: false, manifest_last_touched: "2026-06-11" }), 14, NOW);
+    assert.ok(!d.includes("baseline"), d);
+    assert.ok(!d.includes("drifted"), d);
+  });
+});

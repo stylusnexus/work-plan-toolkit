@@ -2224,6 +2224,67 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+    // Drift baseline (#286): stamp the current computed verdict so plan-status
+    // flags drift if it later changes. Re-running re-stamps to "now" (the
+    // accept-the-new-reality path). Same file-naming + public-repo gates.
+    vscode.commands.registerCommand(
+      "workPlan.plans.stampBaseline",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Stamp a verdict baseline (watch for drift) into the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: stamping baseline…",
+            () => executeWrite(runner, { kind: "planBaseline", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: baseline stamped on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: stamp baseline failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.clearBaseline",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Remove the verdict baseline from the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: clearing baseline…",
+            () => executeWrite(runner, { kind: "planBaselineClear", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: cleared baseline on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: clear baseline failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
   );
 
   const plansView = vscode.window.createTreeView("workPlan.plans", {

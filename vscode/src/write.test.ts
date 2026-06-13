@@ -862,3 +862,22 @@ describe("actionToArgs — planAck", () => {
     assert.deepEqual(calls[1], ["plan-ack", "--repo=cf", "--confirm=tk", "--", "docs/plans/p.md"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// planBaseline / planBaselineClear — drift baseline (#286 slice 2)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — planBaseline", () => {
+  test("stamp → plan-baseline --repo, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planBaseline", repoKey: "cf", rel: "docs/plans/p.md" }),
+      ["plan-baseline", "--repo=cf", "--", "docs/plans/p.md"],
+    );
+  });
+  test("clear → plan-baseline --repo --clear, rel after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "planBaselineClear", repoKey: "cf", rel: "docs/plans/p.md" }),
+      ["plan-baseline", "--repo=cf", "--clear", "--", "docs/plans/p.md"],
+    );
+  });
+});
