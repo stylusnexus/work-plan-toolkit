@@ -328,11 +328,11 @@ describe("parseVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkVersion", () => {
-  test("returns {ok:true, version:'2026.06.07'} for a current version", async () => {
-    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.07+abc", stderr: "" });
+  test("returns {ok:true, version:'2026.06.13'} for a current version", async () => {
+    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.13+abc", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.06.07");
+    assert.equal(result.version, "2026.06.13");
   });
 
   test("returns {ok:false} for an older version", async () => {

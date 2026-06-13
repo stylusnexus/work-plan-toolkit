@@ -275,11 +275,14 @@ export async function runWrite(
 // ---------------------------------------------------------------------------
 
 /**
- * The CalVer date in which `export`/`set`/confirm-token first shipped.
- * NOTE: finalized at the Phase-4 publish step (Task 11) to the actual deployed
- * version; for now it gates against the Phase-1 date.
+ * The CalVer date of the oldest CLI the extension can drive. Bumped to the
+ * release that added the Plans view's read surfaces (#164/#288): the export's
+ * top-level `repos[]` + per-track `folder`, and `plan-status --json`'s
+ * `manifest_last_touched`/`stalled`/`lie_gap`/`unchecked_items`/`stall_days`.
+ * An older CLI omits these, so the Plans view + registered-repo listing would
+ * silently come up empty — checkVersion surfaces a compat warning instead.
  */
-export const MIN_CLI_VERSION = "2026.06.07";
+export const MIN_CLI_VERSION = "2026.06.13";
 
 /**
  * Parses the version token from `work-plan --version` output.
