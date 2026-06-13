@@ -10,6 +10,7 @@ import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
+import { trackedIssueNumbers } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
@@ -402,22 +403,27 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
-    // workPlan.fetchOpenIssues — pull a trackless repo's open issues on demand
-    // (#303). export only emits untracked for repos that HAVE tracks, so a
-    // registered-but-trackless repo (e.g. agent-armor) never shows its issues;
-    // this fetches them via list-open-issues and renders them as that repo's
-    // Untracked bucket. All open issues are untracked here — a repo with no
-    // tracks references none of them. Accepts {repo} (affordance node) or a
-    // RepoNode (right-click on the repo).
+    // workPlan.fetchOpenIssues — pull a repo's open issues on demand (#303).
+    // export only emits untracked for repos that HAVE tracks, so a trackless
+    // repo (e.g. agent-armor) never shows its issues; this fetches them and
+    // renders them as the repo's Untracked bucket. We EXCLUDE issues already
+    // tracked by any of the repo's tracks (#303 fix) — the right-click works on
+    // tracked repos too, and without the exclude a tracked issue like #287
+    // would wrongly appear under Untracked. Accepts {repo} or a RepoNode.
     vscode.commands.registerCommand(
       "workPlan.fetchOpenIssues",
       async (arg?: { repo?: string }): Promise<void> => {
         const repo = arg?.repo;
         if (!repo || repo === "(no repo)") return;
+        // Exclude already-tracked issues so they don't surface as untracked.
+        // Use the RAW (unfiltered) export — a lens must not change what's tracked.
+        const exclude = provider.rawExport
+          ? trackedIssueNumbers(provider.rawExport, repo)
+          : [];
         try {
           const res = await withWriteProgress(
             `Work Plan: fetching open issues for ${repo}…`,
-            () => listRepoOpenIssues(runner, repo),
+            () => listRepoOpenIssues(runner, repo, exclude),
           );
           provider.setFetchedUntracked(repo, res.issues);
           vscode.window.showInformationMessage(

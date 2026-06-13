@@ -4,9 +4,10 @@ import {
   isClosed,
   isBlocked,
   completionRatio,
+  trackedIssueNumbers,
   SCHEMA_VERSION,
 } from "./model.ts";
-import type { Issue, Track } from "./model.ts";
+import type { Issue, Track, Export } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -101,4 +102,39 @@ describe("completionRatio", () => {
 
 test("SCHEMA_VERSION is 1", () => {
   assert.equal(SCHEMA_VERSION, 1);
+});
+
+// ---------------------------------------------------------------------------
+// trackedIssueNumbers (#303 fix)
+// ---------------------------------------------------------------------------
+
+describe("trackedIssueNumbers", () => {
+  const exp = (tracks: Track[]): Export => ({
+    schema: SCHEMA_VERSION, generated_at: "t", tracks,
+  });
+
+  test("unions issues + next_up + blockers for the repo's tracks", () => {
+    const t1 = makeTrack({ repo: "o/r", issues: [makeIssue({ number: 287 })], next_up: [213], blockers: [9] });
+    const t2 = makeTrack({ name: "b", repo: "o/r", issues: [makeIssue({ number: 5 })] });
+    assert.deepEqual(
+      trackedIssueNumbers(exp([t1, t2]), "o/r").sort((a, b) => a - b),
+      [5, 9, 213, 287],
+    );
+  });
+
+  test("ignores tracks in other repos", () => {
+    const here = makeTrack({ repo: "o/r", issues: [makeIssue({ number: 1 })] });
+    const other = makeTrack({ name: "x", repo: "o/other", issues: [makeIssue({ number: 99 })] });
+    assert.deepEqual(trackedIssueNumbers(exp([here, other]), "o/r"), [1]);
+  });
+
+  test("empty when the repo has no tracks", () => {
+    assert.deepEqual(trackedIssueNumbers(exp([makeTrack({ repo: "o/other" })]), "o/r"), []);
+  });
+
+  test("dedups a number that appears in multiple fields/tracks", () => {
+    const t1 = makeTrack({ repo: "o/r", issues: [makeIssue({ number: 7 })], next_up: [7] });
+    const t2 = makeTrack({ name: "b", repo: "o/r", blockers: [7] });
+    assert.deepEqual(trackedIssueNumbers(exp([t1, t2]), "o/r"), [7]);
+  });
 });
