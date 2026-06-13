@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.13+571c7a6 — 2026-06-13 (#298)
+
+fix(vscode): zero-track registered repos now show in the Tracks view (ext 0.6.2)
+
+## Summary
+
+A registered repo with **no tracks yet** (e.g. a just-added `agent-armor`) appeared in the **Plans** view but was missing from **Tracks**. Root cause: the Tracks view renders from the lens-filtered export, and `applyLens` rebuilt the `Export` forwarding only `tracks`/`untracked` — silently dropping the configured `repos` list (#288). So `buildTree`'s empty-repo seeding loop iterated `[]` and zero-track repos vanished under every lens, including "All". The Plans view reads the raw export, so it kept showing them. Same class of bug as the `#99` untracked-forwarding fix, one field over.
+
+## Changes
+
+- `applyLens` now forwards `repos` unchanged (alongside `untracked`).
+- Regression test block in `lenses.test.ts` (`#288`): forwards under `all`, forwards under a `repo` lens, undefined when absent.
+- VS Code extension bumped **0.6.1 → 0.6.2**; README `## Status` line updated.
+
+## Scope
+
+VS Code-only — the Python CLI is unchanged, so **npm publish is skipped** (same as the 0.5.1 precedent). Marketplace + Open VSX publish via the GitHub Release after merge.
+
+## Verification
+
+- `npm test` → 470 pass (incl. 3 new)
+- `npm run typecheck` → clean
+- `vsce package` → packages cleanly (1.26 MB)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.13+30f6244 — 2026-06-13 (#296)
 
 fix(vscode): Plans view papercuts (ext 0.6.1)
