@@ -900,3 +900,22 @@ describe("actionToArgs — closeIssue", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// pushTrack — promote a private track to the shared tier (#306)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — pushTrack", () => {
+  test("with repoKey → push-track --repo, track after --", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "pushTrack", track: "my-feature", repoKey: "demo" }),
+      ["push-track", "--repo=demo", "--", "my-feature"],
+    );
+  });
+  test("without repoKey → omits --repo", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "pushTrack", track: "my-feature" }),
+      ["push-track", "--", "my-feature"],
+    );
+  });
+});

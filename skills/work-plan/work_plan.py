@@ -64,6 +64,7 @@ SUBCOMMANDS = {
     "set-notes-root": "commands.set_notes_root",
     "notes-vcs": "commands.notes_vcs",
     "plan-branch": "commands.plan_branch",
+    "push-track": "commands.push_track",
 }
 
 DESCRIPTIONS = [
@@ -204,6 +205,10 @@ DESCRIPTIONS = [
      "Set up and share a repo's canonical SHARED-tier plan branch (#260). The shared `.work-plan/` tier is pinned to ONE per-repo `plan_branch`, read/written through a dedicated git worktree, so planning never diverges across code branches or pollutes PR / deploy diffs. `init <repo>` creates that branch + a `.work-plan/` skeleton (default an ORPHAN `work-plan/plan`, zero shared history with code like gh-pages; override with --branch) and records `plan_branch` in config — or CONNECTS to a teammate's already-published branch if one exists. init is LOCAL ONLY (no push). `status <repo>` reports whether the branch exists, is published to origin, and how many commits are unpushed (--json for the machine shape). `push <repo>` shares it: on a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>); --dry-run previews the commits that would push. Requires a repo registered via init-repo with a local clone path.",
      "ONE-TIME per repo when you want the shared plan to live on its own branch (off dev/main) so planning churn never lands in feature PRs or the deploy diff — yet the CLI + VS Code viewer always show the canonical plan from any checkout. `push` is the deliberate step that shares it with teammates.",
      "/work-plan plan-branch init work-plan-toolkit"),
+    ("push-track", "<track | track@repo> [--repo=<key>] [--no-push] [--confirm=<token>]",
+     "Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it (#306). Moves the track's `.md` into the repo's `.work-plan/` (on its `plan_branch`, via a worktree), removes the private copy so it isn't duplicated, commits to the plan branch, and pushes — unless `--no-push` (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a `plan_branch` (else hints `plan-branch init`). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`).",
+     "When a private track is ready to share with teammates — promote it to the shared plan branch in one step instead of hand-moving the file.",
+     "/work-plan push-track my-feature --repo=myproject"),
 ]
 
 
