@@ -162,3 +162,19 @@ describe("planDescription — baseline markers", () => {
     assert.ok(!d.includes("drifted"), d);
   });
 });
+
+describe("planDescription — off-tree paths (#286 slice 3)", () => {
+  const NOW = Date.parse("2026-06-12");
+  test("flags a count when off-tree paths exist", () => {
+    const d = planDescription(doc({ verdict: "partial", offtree_paths: ["../x.ts", "/etc/y"], manifest_last_touched: "2026-06-11" }), 14, NOW);
+    assert.ok(d.includes("⚠ 2 off-tree paths"), d);
+  });
+  test("singular wording for one", () => {
+    const d = planDescription(doc({ verdict: "partial", offtree_paths: ["../x.ts"], manifest_last_touched: "2026-06-11" }), 14, NOW);
+    assert.ok(d.includes("⚠ 1 off-tree path") && !d.includes("paths"), d);
+  });
+  test("no marker when none", () => {
+    const d = planDescription(doc({ verdict: "shipped", lie_gap: false, manifest_last_touched: "2026-06-11" }), 14, NOW);
+    assert.ok(!d.includes("off-tree"), d);
+  });
+});

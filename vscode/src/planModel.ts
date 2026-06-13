@@ -57,6 +57,10 @@ export function planDescription(d: PlanDoc, stallDays: number | null, nowMs: num
   } else if (d.verdict_baseline) {
     bits.push("📌 baseline");
   }
+  // Off-tree declared paths (#286) — a read-only "your manifest points outside
+  // this repo" flag; the count earns a tooltip listing them (see plansTree).
+  const offtree = d.offtree_paths?.length ?? 0;
+  if (offtree > 0) bits.push(`⚠ ${offtree} off-tree path${offtree === 1 ? "" : "s"}`);
   return bits.join(" · ");
 }
 

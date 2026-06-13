@@ -177,6 +177,7 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
         "acknowledged": acknowledged,
         "verdict_baseline": baseline,
         "verdict_drift": verdict_drift,
+        "offtree_paths": manifest.offtree_declared_paths(decls, repo_root),
         "unchecked_items": manifest.unchecked_checkbox_labels(text),
         "stall_days": stall_days,
     }
