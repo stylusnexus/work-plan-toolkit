@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -53,6 +53,10 @@
         {
           "id": "workPlan.tree",
           "name": "Tracks"
+        },
+        {
+          "id": "workPlan.plans",
+          "name": "Plans"
         }
       ]
     },
@@ -76,9 +80,43 @@
         "icon": "$(sort-precedence)"
       },
       {
-        "command": "workPlan.openTrack",
-        "title": "Open Track",
+        "command": "workPlan.plans.refresh",
+        "title": "Refresh Plans",
+        "category": "Work Plan",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "workPlan.plans.scanAll",
+        "title": "Scan All Plans",
+        "category": "Work Plan",
+        "icon": "$(search)"
+      },
+      {
+        "command": "workPlan.plans.acknowledge",
+        "title": "Acknowledge (stop flagging)",
         "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.unacknowledge",
+        "title": "Un-acknowledge",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.toggleAcknowledged",
+        "title": "Toggle Show Acknowledged",
+        "category": "Work Plan",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "workPlan.openTrack",
+        "title": "Show in Work Plan",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.openTrackFile",
+        "title": "Open Track File",
+        "category": "Work Plan",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "workPlan.openIssue",
@@ -138,6 +176,16 @@
       {
         "command": "workPlan.addRepo",
         "title": "Add Repo",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.removeRepo",
+        "title": "Remove Repo",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.clearRepoLocal",
+        "title": "Clear Local Path",
         "category": "Work Plan"
       },
       {
@@ -234,9 +282,44 @@
           "command": "workPlan.notesVcs",
           "when": "view == workPlan.tree",
           "group": "8_workPlanConfig@2"
+        },
+        {
+          "command": "workPlan.plans.scanAll",
+          "when": "view == workPlan.plans",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.plans.refresh",
+          "when": "view == workPlan.plans",
+          "group": "navigation"
+        },
+        {
+          "command": "workPlan.plans.toggleAcknowledged",
+          "when": "view == workPlan.plans",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
+        {
+          "command": "workPlan.newTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@1"
+        },
+        {
+          "command": "workPlan.clearRepoLocal",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "9_workPlanRepoDanger@1"
+        },
+        {
+          "command": "workPlan.removeRepo",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "9_workPlanRepoDanger@2"
+        },
+        {
+          "command": "workPlan.openTrackFile",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "0_workPlanNav@1"
+        },
         {
           "command": "workPlan.orient",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
@@ -296,9 +379,23 @@
           "command": "workPlan.batchSlotUntracked",
           "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
           "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.plans.acknowledge",
+          "when": "view == workPlan.plans && viewItem =~ /workPlanPlan-(stalled|dead)/",
+          "group": "1_ack"
+        },
+        {
+          "command": "workPlan.plans.unacknowledge",
+          "when": "view == workPlan.plans && viewItem == workPlanAckedPlan",
+          "group": "1_ack"
         }
       ],
       "commandPalette": [
+        {
+          "command": "workPlan.openTrackFile",
+          "when": "false"
+        },
         {
           "command": "workPlan.openIssue",
           "when": "false"
@@ -309,6 +406,14 @@
         },
         {
           "command": "workPlan.batchSlotUntracked",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.removeRepo",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.clearRepoLocal",
           "when": "false"
         }
       ]
@@ -353,6 +458,27 @@
             "Every 15 minutes"
           ],
           "description": "Auto-refresh interval in seconds (0 = off). Silently re-polls the CLI in the background — useful when teammates are pushing shared-track changes."
+        },
+        "workPlan.stallDays": {
+          "type": "string",
+          "enum": [
+            "match",
+            "14",
+            "30",
+            "45",
+            "60",
+            "90"
+          ],
+          "enumDescriptions": [
+            "Match the CLI (config.yml / 14)",
+            "14 days",
+            "30 days",
+            "45 days",
+            "60 days",
+            "90 days"
+          ],
+          "default": "match",
+          "description": "How cold a plan's build (its declared files) must be to read as 'stalled' in the Plans view."
         }
       }
     }

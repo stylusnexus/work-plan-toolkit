@@ -52,7 +52,10 @@ def group_issues_by_milestone(issues, milestone_alignment=None):
     return groups
 
 
-def _issue(i: dict) -> dict:
+def normalize_issue(i: dict) -> dict:
+    """Reshape a raw gh issue row into the viewer's `Issue` shape
+    ({number,title,state,assignee,milestone}). Shared by the export and the
+    `list-open-issues` command (#282) so both emit an identical issue surface."""
     state = (i.get("state") or "OPEN").lower()
     return {
         "number": i.get("number"),
@@ -64,18 +67,27 @@ def _issue(i: dict) -> dict:
 
 
 def build_export(tracks, issues_by_track, visibility, now: str,
-                 untracked_by_repo=None) -> dict:
+                 untracked_by_repo=None, config_repos=None) -> dict:
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
-        issues = [_issue(i) for i in issues_by_track.get(t.name, [])]
+        issues = [normalize_issue(i) for i in issues_by_track.get(t.name, [])]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")
         closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
         next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
+        track_path = getattr(t, "path", None)
         out["tracks"].append({
             "name": t.name,
             "repo": t.repo,
+            # Absolute path to the track's .md, so the viewer can open it in an
+            # editor (#211). null when a track has no backing file path (the
+            # viewer disables its open-file affordance rather than erroring).
+            "path": str(track_path) if track_path else None,
+            # Config repo key (the key under `repos:` in config.yml). The Plans
+            # view passes this as `plan-status --repo=<key>` (#164), which
+            # resolves a local checkout via folder key, not github slug.
+            "folder": getattr(t, "folder", None),
             "tier": getattr(t, "tier", "private") or "private",
             "status": t.meta.get("status"),
             "launch_priority": t.meta.get("launch_priority"),
@@ -88,8 +100,13 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "issues": issues,
         })
     out["untracked"] = [
-        {"repo": repo, "issues": [_issue(r) for r in rows]}
+        {"repo": repo, "issues": [normalize_issue(r) for r in rows]}
         for repo, rows in (untracked_by_repo or {}).items()
         if rows
     ]
+    # Every CONFIGURED repo, independent of track membership (#288): so the
+    # viewer can show a registered repo even when it has no tracks/plans yet —
+    # the starting point for adding fresh tracks. Each entry:
+    # {folder, repo(slug), local, has_local, visibility}.
+    out["repos"] = list(config_repos or [])
     return out

@@ -47,6 +47,28 @@ export interface RepoNode {
    * untracked issues or when the CLI did not emit the field (older versions).
    */
   untracked: Issue[];
+  /**
+   * Config repo key (the key under `repos:` in config.yml) for a configured
+   * repo (#288), or null for a track-only repo not present in `Export.repos`
+   * (and for the "(no repo)" bucket). Used to prefill New Track from a repo node.
+   */
+  folder: string | null;
+  /** true when the configured repo has a local checkout on disk (`has_local`);
+   *  false for track-only repos. */
+  hasLocal: boolean;
+}
+
+/**
+ * The empty-state child of a repo node that has zero tracks (#288). Rendered as
+ * a dimmed "No tracks yet — add one" affordance whose click starts a New Track
+ * prefilled for THIS repo.
+ */
+export interface EmptyRepoNode {
+  kind: "emptyRepo";
+  /** The parent repo's github slug, or "(no repo)". */
+  repo: string;
+  /** The parent repo's config folder key, or null. */
+  folder: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,14 +179,39 @@ export function trackHint(track: Track): string | null {
  * Builds the sidebar tree from an Export.
  *
  * Grouping rules:
- * - Tracks are grouped by `repo`, preserving first-seen repo order.
+ * - Every configured repo in `Export.repos` is seeded as a node FIRST (#288),
+ *   keyed by its github slug, so a registered repo appears even with zero tracks.
+ * - Tracks are then grouped by `repo`, preserving first-seen order; a track-only
+ *   repo (not in `Export.repos`) still gets a node, appended after the config repos.
  * - Tracks with a null or empty `repo` are bucketed under "(no repo)".
- * - A RepoNode is marked `isPublic:true` if ANY of its tracks has visibility "PUBLIC".
+ * - A RepoNode is marked `isPublic:true` if ANY of its tracks has visibility
+ *   "PUBLIC"; an empty config repo derives `isPublic` from its own visibility.
  * - `tier` is taken from the first track in the group (fallback "private").
+ * - `folder`/`hasLocal` come from the matching config repo (null/false otherwise).
  */
 export function buildTree(exp: Export): RepoNode[] {
-  // Use a Map to maintain insertion order (first-seen repo key).
+  // Use a Map to maintain insertion order (config repos first, then track-only).
   const repoMap = new Map<string, RepoNode>();
+
+  // Seed a node for every configured repo BEFORE grouping tracks, so an empty
+  // registered repo still shows up. Keyed by github slug; a config repo with a
+  // null slug can't be matched to tracks (which key by slug) so we skip it.
+  for (const cr of exp.repos ?? []) {
+    if (cr.repo == null || cr.repo === "" || repoMap.has(cr.repo)) {
+      continue;
+    }
+    repoMap.set(cr.repo, {
+      kind: "repo",
+      repo: cr.repo,
+      // An empty repo's badge comes from its own GitHub visibility.
+      isPublic: cr.visibility === "PUBLIC",
+      tier: "private",
+      tracks: [],
+      untracked: [],
+      folder: cr.folder,
+      hasLocal: cr.has_local,
+    });
+  }
 
   for (const track of exp.tracks) {
     const repoKey = track.repo == null || track.repo === "" ? "(no repo)" : track.repo;
@@ -177,10 +224,18 @@ export function buildTree(exp: Export): RepoNode[] {
         tier: track.tier ?? "private",
         tracks: [],
         untracked: [],
+        folder: null,
+        hasLocal: false,
       });
     }
 
     const repoNode = repoMap.get(repoKey)!;
+
+    // The tier comes from the first track to land in the group (a seeded empty
+    // repo defaults to "private"; the first real track refines it).
+    if (repoNode.tracks.length === 0) {
+      repoNode.tier = track.tier ?? "private";
+    }
 
     // Any PUBLIC track flips the repo flag.
     if (track.visibility === "PUBLIC") {

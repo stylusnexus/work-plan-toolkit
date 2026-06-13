@@ -19,7 +19,7 @@ from lib.scratch import cache_dir
 from lib.prompts import parse_flags, prompt_yes_no
 
 KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
-         "--llm", "--apply", "--archive", "--issues"}
+         "--llm", "--apply", "--archive", "--issues", "--stall-days"}
 _ORDER = ["shipped", "partial", "dead", "foreign", "manifest-less"]
 
 
@@ -35,8 +35,54 @@ def _resolve_repo_root(flags) -> Path:
     return Path.cwd()
 
 
-def _evaluate(doc, repo_root, today, dead_days) -> dict:
-    text = doc.path.read_text(encoding="utf-8", errors="replace")
+def _resolve_stall_days(flags) -> int:
+    """Precedence for the staleness threshold (#164):
+    --stall-days flag (int) -> config.yml `stall_days` (int) -> default 14.
+    A non-integer flag value falls through to the config/default tier.
+    """
+    raw = flags.get("--stall-days")
+    if raw not in (None, True):
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    cfg_val = config_mod.load_config().get("stall_days")
+    if isinstance(cfg_val, int):
+        return cfg_val
+    return verdict_mod.STALL_DAYS
+
+
+def _read(path) -> str:
+    """Read a doc's text. Indirected so tests can patch it without a real file."""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _declared_paths_on_disk(decls, repo_root) -> list:
+    """Repo-relative declared paths that point at a real FILE inside repo_root.
+
+    Both guards matter for the staleness clock: a junk declared path like `/`
+    resolves (via `repo_root / "/"`) to the filesystem root — a directory that
+    exists — and an out-of-tree `../x` path can exist too. Either one passed to
+    `git log -- <paths…>` poisons the WHOLE call (it returns nothing), which
+    would falsely mark an actively-built plan as stalled. So require an actual
+    file (`is_file`) that resolves under repo_root."""
+    root = Path(repo_root).resolve()
+    out = []
+    for d in decls:
+        p = Path(repo_root) / d.path
+        try:
+            if not p.is_file():
+                continue
+            resolved = p.resolve()
+        except OSError:
+            continue
+        if resolved == root or root in resolved.parents:
+            out.append(d.path)
+    return out
+
+
+def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
+    text = _read(doc.path)
     decls = manifest.parse_declared_paths(text)
     pdate = manifest.plan_date_from_filename(doc.path.name)
     score = manifest.score_manifest(decls, repo_root, pdate)
@@ -48,12 +94,36 @@ def _evaluate(doc, repo_root, today, dead_days) -> dict:
             "foreign", "🧳", "declared paths point outside this repo — misfiled?")
     else:
         v = verdict_mod.classify(score, done, total_chk, last_d, today, dead_days)
+
+    # Staleness clock (#164): a partial plan whose declared manifest files have
+    # gone cold = "started executing, then drifted off." Key off the manifest
+    # files' commit date, NOT the plan doc's git date — plan docs are gitignored,
+    # so the doc date is null and would make this a silent no-op.
+    manifest_dt = None
+    stalled = False
+    if v.label == "partial":
+        on_disk = _declared_paths_on_disk(decls, repo_root)
+        if on_disk:
+            manifest_dt = git_state.paths_last_commit_date(on_disk, repo_root)
+            if manifest_dt is None:
+                stalled = True  # present on disk but never committed
+            else:
+                stalled = (today - manifest_dt.date()).days >= stall_days
+        # else: no declared files on disk yet -> brand-new, not stalled.
+
+    lie_gap = (v.label == "shipped" and total_chk > 0
+               and done / total_chk < 0.25)
     return {
         "rel": doc.rel, "kind": doc.kind,
         "verdict": v.label, "glyph": v.glyph, "rationale": v.rationale,
         "files_present": score.satisfied, "files_declared": score.total,
         "checkboxes_done": done, "checkboxes_total": total_chk,
         "last_touched": last_d.isoformat() if last_d else None,
+        "manifest_last_touched": manifest_dt.date().isoformat() if manifest_dt else None,
+        "stalled": stalled,
+        "lie_gap": lie_gap,
+        "unchecked_items": manifest.unchecked_checkbox_labels(text),
+        "stall_days": stall_days,
     }
 
 
@@ -62,11 +132,7 @@ def _render(rows, repo_root) -> None:
     by = {}
     for r in rows:
         by.setdefault(r["verdict"], []).append(r)
-    lie_gap = sum(
-        1 for r in rows
-        if r["verdict"] == "shipped" and r["checkboxes_total"]
-        and r["checkboxes_done"] / r["checkboxes_total"] < 0.25
-    )
+    lie_gap = sum(1 for r in rows if r["lie_gap"])
     summary = " · ".join(f"{len(by[k])} {k}" for k in _ORDER if by.get(k))
     print(f"{len(rows)} docs · {summary}")
     print(f"lie-gap (shipped but <25% boxes checked): {lie_gap}\n")
@@ -271,7 +337,8 @@ def run(args: list) -> int:
     if type_filter and type_filter is not True:
         docs = [d for d in docs if d.kind == type_filter]
 
-    rows = [_evaluate(d, repo_root, today, dead_days) for d in docs]
+    stall_days = _resolve_stall_days(flags)
+    rows = [_evaluate(d, repo_root, today, dead_days, stall_days) for d in docs]
 
     if flags.get("--llm"):
         if flags.get("--apply"):

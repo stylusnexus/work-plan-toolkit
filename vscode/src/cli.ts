@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { Export } from "./model.ts";
+import type { Export, Issue, PlanStatus } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Core types — the injectable seam between cli.ts and extension.ts
@@ -36,6 +36,23 @@ export class CliError extends Error {
     this.stdout = opts.stdout;
     this.stderr = opts.stderr;
   }
+}
+
+/**
+ * True when `err` is a CliError signalling an "already exists" failure from the
+ * CLI — e.g. `init-repo` on an already-registered key.
+ *
+ * CliError.message is built from **stderr only** (see runWrite), but init-repo
+ * prints "already exists" to **stdout** (it uses `print(...)`). So matching on
+ * the message misses it; we scan stdout AND stderr to be channel-agnostic.
+ * Kept here in the tested pure layer rather than in the vscode glue so the
+ * detection can't silently rot (#290).
+ */
+export function isAlreadyExistsError(err: unknown): boolean {
+  return (
+    err instanceof CliError &&
+    /already exists/i.test((err.stdout ?? "") + (err.stderr ?? ""))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +154,90 @@ export async function exportJson(run: CliRunner): Promise<Export> {
   return parsed as Export;
 }
 
+/** A repo's open issues, as emitted by `work-plan list-open-issues` (#282). */
+export interface RepoOpenIssues {
+  repo: string;
+  issues: Issue[];
+}
+
+/**
+ * Runs `work-plan list-open-issues --repo <repo> [--exclude <csv>]` and returns
+ * the repo's open issues (#282). `exclude` drops issues already in the track so
+ * they don't reappear in the Slot pick-list. Throws CliError on non-zero exit or
+ * unparseable output.
+ */
+export async function listRepoOpenIssues(
+  run: CliRunner,
+  repo: string,
+  exclude: number[] = [],
+): Promise<RepoOpenIssues> {
+  const args = [`list-open-issues`, `--repo=${repo}`];
+  if (exclude.length > 0) {
+    args.push(`--exclude=${exclude.join(",")}`);
+  }
+  const result = await run(args);
+
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan list-open-issues failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    throw new CliError({
+      message: `could not parse list-open-issues JSON: ${result.stdout.slice(0, 200)}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+
+  return parsed as RepoOpenIssues;
+}
+
+/**
+ * Runs `work-plan plan-status --repo=<key> --json [--stall-days=<n>]` and returns
+ * the parsed plan-status report (#164). Throws CliError on non-zero exit or
+ * unparseable output.
+ */
+export async function planStatus(
+  run: CliRunner,
+  repoKey: string,
+  stallDays?: number,
+): Promise<PlanStatus> {
+  const args = ["plan-status", `--repo=${repoKey}`, "--json"];
+  if (stallDays !== undefined) args.push(`--stall-days=${stallDays}`);
+  const result = await run(args);
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan plan-status failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  try {
+    return JSON.parse(result.stdout) as PlanStatus;
+  } catch {
+    throw new CliError({
+      message: `could not parse plan-status JSON: ${result.stdout.slice(0, 200)}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+}
+
 /**
  * Runs an arbitrary write command (e.g. `set`, `confirm`).
  * Resolves with parsed JSON when the output is valid JSON, null otherwise
@@ -174,11 +275,14 @@ export async function runWrite(
 // ---------------------------------------------------------------------------
 
 /**
- * The CalVer date in which `export`/`set`/confirm-token first shipped.
- * NOTE: finalized at the Phase-4 publish step (Task 11) to the actual deployed
- * version; for now it gates against the Phase-1 date.
+ * The CalVer date of the oldest CLI the extension can drive. Bumped to the
+ * release that added the Plans view's read surfaces (#164/#288): the export's
+ * top-level `repos[]` + per-track `folder`, and `plan-status --json`'s
+ * `manifest_last_touched`/`stalled`/`lie_gap`/`unchecked_items`/`stall_days`.
+ * An older CLI omits these, so the Plans view + registered-repo listing would
+ * silently come up empty — checkVersion surfaces a compat warning instead.
  */
-export const MIN_CLI_VERSION = "2026.06.07";
+export const MIN_CLI_VERSION = "2026.06.13";
 
 /**
  * Parses the version token from `work-plan --version` output.

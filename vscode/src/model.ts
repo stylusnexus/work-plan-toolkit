@@ -25,6 +25,17 @@ export interface Rollup {
 export interface Track {
   name: string;
   repo: string;
+  /**
+   * Absolute path to the track's `.md` on disk, or null when the track has no
+   * backing file (#211). Assumes the CLI and extension share a filesystem view
+   * — true for a local install, but NOT for remote-SSH/WSL/devcontainer setups
+   * where the extension host runs elsewhere; consumers must stat before opening.
+   */
+  path: string | null;
+  /** Config repo key (the key under `repos:` in config.yml), or null. Used as
+   *  the `plan-status --repo=<key>` arg by the Plans view (#164) — the CLI
+   *  resolves a local checkout by folder key, not by github slug. */
+  folder: string | null;
   /** "private" today; forward-compat for a future shared tier. */
   tier: string;
   status: string;
@@ -42,6 +53,24 @@ export interface Track {
   issues: Issue[];
 }
 
+/**
+ * A configured repo from `config.yml`'s `repos:` block, emitted by the CLI for
+ * EVERY registered repo regardless of track membership (#288). Lets the viewer
+ * show a registered-but-empty repo so the user can start adding tracks to it.
+ */
+export interface ConfigRepo {
+  /** Config repo key (the key under `repos:` in config.yml), or null. */
+  folder: string | null;
+  /** GitHub slug "org/repo", or null when the config block has no `github`. */
+  repo: string | null;
+  /** Absolute path to the local checkout, or null when none is configured. */
+  local: string | null;
+  /** true when `local` exists on disk. */
+  has_local: boolean;
+  /** "PUBLIC" | "PRIVATE" | null (best-effort). */
+  visibility: "PUBLIC" | "PRIVATE" | null;
+}
+
 /** Root shape emitted by `work-plan export --json`. */
 export interface Export {
   schema: number;
@@ -49,6 +78,33 @@ export interface Export {
   tracks: Track[];
   /** Open issues referenced by no track, grouped by repo (CLI schema 1, additive). */
   untracked?: { repo: string; issues: Issue[] }[];
+  /** Every configured repo, regardless of track membership (#288, additive). */
+  repos?: ConfigRepo[];
+}
+
+/** A plan/spec doc with its plan-status verdict (#164). */
+export interface PlanDoc {
+  rel: string;
+  kind: "plan" | "spec" | "adhoc";
+  verdict: "shipped" | "partial" | "dead" | "foreign" | "manifest-less";
+  glyph: string;
+  rationale: string;
+  files_present: number;
+  files_declared: number;
+  checkboxes_done: number;
+  checkboxes_total: number;
+  last_touched: string | null;
+  manifest_last_touched: string | null;
+  stalled: boolean;
+  lie_gap: boolean;
+  unchecked_items: string[];
+  stall_days: number;
+}
+
+/** `plan-status --repo=<key> --json` result. */
+export interface PlanStatus {
+  repo: string;
+  docs: PlanDoc[];
 }
 
 // ---------------------------------------------------------------------------

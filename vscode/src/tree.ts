@@ -1,13 +1,16 @@
 import * as vscode from "vscode";
 import type { Export } from "./model.ts";
 import { buildTree, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge } from "./treeModel.ts";
-import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, StatusCategory, TrackSort } from "./treeModel.ts";
+import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
-export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode };
+export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode };
+
+/** Every node kind the Tracks tree can render. */
+type TreeNode = RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode | EmptyRepoNode;
 // Re-export Lens so extension.ts only needs to import from tree.ts.
 export type { Lens };
 // Re-export TrackSort so extension.ts only needs to import from tree.ts.
@@ -42,7 +45,7 @@ function categoryIcon(category: StatusCategory): IconSpec {
 // ---------------------------------------------------------------------------
 
 export class WorkPlanTreeProvider
-  implements vscode.TreeDataProvider<RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode>
+  implements vscode.TreeDataProvider<TreeNode>
 {
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -153,14 +156,17 @@ export class WorkPlanTreeProvider
     );
   }
 
-  getChildren(
-    element?: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode
-  ): (RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode)[] {
+  getChildren(element?: TreeNode): TreeNode[] {
     if (!element) {
       // Root: return the cached repo nodes (empty [] before first refresh).
       return this.roots;
     }
     if (element.kind === "repo") {
+      // A configured-but-empty repo (#288): show a single dimmed affordance that
+      // starts a New Track prefilled for this repo, instead of an empty branch.
+      if (element.tracks.length === 0) {
+        return [{ kind: "emptyRepo", repo: element.repo, folder: element.folder }];
+      }
       const untrackedGroup: UntrackedGroupNode[] =
         element.untracked.length > 0
           ? [{ kind: "untrackedGroup", repo: element.repo, issues: element.untracked }]
@@ -182,9 +188,12 @@ export class WorkPlanTreeProvider
    * untracked→repo edges are needed in practice; repos are roots.
    */
   getParent(
-    element: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode,
+    element: TreeNode,
   ): RepoNode | UntrackedGroupNode | undefined {
     if (element.kind === "repo") return undefined;
+    if (element.kind === "emptyRepo") {
+      return this.roots.find(r => r.repo === element.repo);
+    }
     if (element.kind === "track") {
       return this.roots.find(r => r.tracks.includes(element));
     }
@@ -215,9 +224,12 @@ export class WorkPlanTreeProvider
     return null;
   }
 
-  getTreeItem(node: RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode): vscode.TreeItem {
+  getTreeItem(node: TreeNode): vscode.TreeItem {
     if (node.kind === "repo") {
       return this._repoTreeItem(node);
+    }
+    if (node.kind === "emptyRepo") {
+      return this._emptyRepoTreeItem(node);
     }
     if (node.kind === "untrackedGroup") {
       return this._untrackedGroupTreeItem(node);
@@ -281,6 +293,45 @@ export class WorkPlanTreeProvider
     };
 
     return item;
+  }
+
+  private _emptyRepoTreeItem(node: EmptyRepoNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      "No tracks yet — add one",
+      vscode.TreeItemCollapsibleState.None,
+    );
+    // Dimmed/italic via the resource-label theme; ThemeIcon("add") signals the
+    // affordance. Clicking starts a New Track prefilled for THIS repo.
+    item.description = "";
+    item.iconPath = new vscode.ThemeIcon("add");
+    item.contextValue = "workPlanEmptyRepo";
+    item.tooltip = node.repo === "(no repo)"
+      ? "Add a track"
+      : `Add a track to ${node.repo}`;
+    item.command = {
+      command: "workPlan.newTrack",
+      title: "New Track",
+      // Hand newTrack a RepoNode-shaped arg so it can prefill the github slug.
+      arguments: [this._repoNodeFor(node)],
+    };
+    return item;
+  }
+
+  /** Reconstructs a minimal RepoNode from an empty-state child so the click
+   *  hands newTrack the same prefill arg as a context-menu invocation. */
+  private _repoNodeFor(node: EmptyRepoNode): RepoNode {
+    return (
+      this.roots.find(r => r.repo === node.repo) ?? {
+        kind: "repo",
+        repo: node.repo,
+        isPublic: false,
+        tier: "private",
+        tracks: [],
+        untracked: [],
+        folder: node.folder,
+        hasLocal: false,
+      }
+    );
   }
 
   private _untrackedGroupTreeItem(node: UntrackedGroupNode): vscode.TreeItem {

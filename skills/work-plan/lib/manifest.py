@@ -14,6 +14,7 @@ PATH_RE = re.compile(r"\b(Create|Modify|Test):\s*`([^`]+)`")
 _RANGE_RE = re.compile(r":\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$")
 _CHK_DONE = re.compile(r"^\s*- \[x\]", re.I | re.M)
 _CHK_TODO = re.compile(r"^\s*- \[ \]", re.M)
+_CHK_TODO_LABEL = re.compile(r"^\s*- \[ \]\s*(.+?)\s*$", re.M)
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 
 
@@ -46,6 +47,15 @@ def count_checkboxes(text: str) -> tuple:
     done = len(_CHK_DONE.findall(text))
     todo = len(_CHK_TODO.findall(text))
     return done, done + todo
+
+
+def unchecked_checkbox_labels(text: str, cap: int = 10) -> list:
+    """Labels of unticked `- [ ]` checkboxes, in document order, capped at `cap`.
+
+    Surfaces the still-open work items of a stalled plan (#164) so the report can
+    show what's left rather than just a count.
+    """
+    return [m.group(1) for m in _CHK_TODO_LABEL.finditer(text)][:cap]
 
 
 def plan_date_from_filename(filename: str) -> Optional[date]:

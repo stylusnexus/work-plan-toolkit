@@ -38,6 +38,7 @@ SUBCOMMANDS = {
     "list": "commands.list_cmd",
     "init": "commands.init",
     "init-repo": "commands.init_repo",
+    "remove-repo": "commands.remove_repo",
     "suggest-priorities": "commands.suggest_priorities",
     "group": "commands.group",
     "auto-triage": "commands.auto_triage",
@@ -51,6 +52,7 @@ SUBCOMMANDS = {
     "plan-status": "commands.plan_status",
     "--plan-status": "commands.plan_status",  # flag-style alias
     "export": "commands.export",
+    "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
     "new-track": "commands.new_track",
     "rename-track": "commands.rename_track",
@@ -101,10 +103,14 @@ DESCRIPTIONS = [
      "Add frontmatter to an existing track .md file.",
      "After moving/creating a new .md file in Project Notes/<repo>/ that has no frontmatter.",
      "/work-plan init '<notes_root>/<repo-key>/foo.md'"),
-    ("init-repo", "<key> --github=<org/repo> [--local=<path>]",
-     "Bootstrap a new repo: create <notes_root>/<key>/archive/{shipped,abandoned}/ and add the repo block to your config.",
-     "When you start tracking a new GitHub repo. Replaces the old 'copy the example folder' setup.",
+    ("init-repo", "<key> --github=<org/repo> [--local=<path>] [--update [--clear-local]]",
+     "Bootstrap a new repo: create <notes_root>/<key>/archive/{shipped,abandoned}/ and add the repo block to your config. With --update on an existing key, change its local/github; --update --clear-local drops the saved local path (keeps github + other fields). --clear-local and --local are mutually exclusive.",
+     "When you start tracking a new GitHub repo. Replaces the old 'copy the example folder' setup. Use --update --clear-local to forget a stale checkout path without removing the repo.",
      "/work-plan init-repo myproject --github=your-org/myproject"),
+    ("remove-repo", "<key>",
+     "Unregister a repo: delete its block from your config (config-only). The notes folder, any tracks, and the local clone are LEFT UNTOUCHED — if a notes folder or tracks reference it they're now orphaned and can be cleaned up by hand.",
+     "When you stop tracking a repo and want it out of the sidebar/brief without deleting your notes. Completes the add/update/remove trio with init-repo.",
+     "/work-plan remove-repo myproject"),
     ("suggest-priorities", "[--repo=<folder>] [--apply]",
      "AI-assisted batch backfill of priority/PN labels.",
      "ONE-TIME setup, or whenever a wave of new unlabeled issues piles up.",
@@ -141,6 +147,10 @@ DESCRIPTIONS = [
      "Emit the viewer-ready JSON read surface (schema 1): every frontmatter'd track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone. Read-only; derives live from gh. Consumed by the VS Code extension.",
      "When a tool (the VS Code viewer, or any script) needs structured track state instead of the human-facing brief/orient text.",
      "/work-plan export --json"),
+    ("list-open-issues", "--repo=<owner/name> [--exclude=<csv-issue-numbers>]",
+     "Emit a repo's OPEN issues as JSON ({repo, issues:[{number,title,state,assignee,milestone}]}) — the same issue shape as export. Read-only; derives live from gh. --repo takes a bare org/repo slug; --exclude drops the given issue numbers (the viewer passes a track's current issues so already-slotted ones don't reappear). Unlike export's `untracked`, this includes issues tracked by OTHER tracks, since those are valid slot targets.",
+     "When the VS Code viewer's Slot command needs the repo's open issues as a pick-list (the per-track export can't supply issues not yet in the track).",
+     "/work-plan list-open-issues --repo=stylusnexus/work-plan-toolkit --exclude=87,91"),
     ("set", "<track | track@repo> field=value [field=value …] [--repo=<key>] [--confirm=<token>]",
      "Guarded edit of a track's frontmatter fields (status, launch_priority, milestone_alignment, blockers, next_up). Validates field names + status values; blockers/next_up take comma-separated issue numbers. Setting `next_up` here writes ONLY the frontmatter field — for next_up plus a session-log entry (and a body refresh), use `handoff --set-next` instead. Writes into a PUBLIC repo only with a confirm token: without one it prints {needs_confirm, reason, token} and makes no change (the VS Code viewer surfaces that as a modal, then re-invokes with --confirm=<token>).",
      "Programmatic/GUI edits that have no dedicated verb — e.g. the VS Code extension changing a status or blockers list. On the terminal you'll usually use the named verbs instead.",
@@ -258,7 +268,7 @@ def main(argv: list[str]) -> int:
 # (Flag aliases like --brief/--plan-status normalise by stripping leading dashes.)
 _READONLY_SUBCOMMANDS = frozenset({
     "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
-    "plan-status", "export", "notes-vcs",
+    "plan-status", "export", "list-open-issues", "notes-vcs",
     # plan-branch manages its OWN commits on the plan branch (init seeds +
     # commits the skeleton itself); the auto-commit hooks must not also fire.
     "plan-branch",

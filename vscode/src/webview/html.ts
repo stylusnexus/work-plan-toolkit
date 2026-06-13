@@ -25,6 +25,15 @@ export interface WebviewHtmlOptions {
   /** Selected track name for the heading (will be HTML-escaped here). */
   trackName: string;
   /**
+   * Whether the selected track has a resolvable .md path in the export (#211).
+   * true  → the header's "Open file" button is enabled (posts openTrackFile).
+   * false → the button renders disabled with an explanatory tooltip, so the
+   *         affordance stays visible on a path-less / stale export rather than
+   *         vanishing. The webview never sees the path itself — resolution and
+   *         opening happen host-side in panel.ts / the command handler.
+   */
+  hasTrackFile: boolean;
+  /**
    * true  → mermaid bundle is ESM → <script type="module" nonce>
    * false → mermaid bundle is UMD → <script nonce> (global `mermaid`)
    *
@@ -64,8 +73,15 @@ export interface WebviewHtmlOptions {
  *  - trackName is escaped here at the call-site boundary.
  */
 export function buildHtml(o: WebviewHtmlOptions): string {
-  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused, isDark } = o;
+  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused, isDark, hasTrackFile } = o;
   const trackNameEsc = esc(o.trackName);
+
+  // Header "Open file" button. Text label (not a $(codicon) — the codicon font
+  // isn't loaded in this webview; the package.json command keeps the icon for
+  // the native tree menu). Disabled state stays visible per the UX review.
+  const openFileButton = hasTrackFile
+    ? `<button id="work-plan-open-file" class="open-file-btn" title="Open this track's markdown file in an editor">Open file</button>`
+    : `<button class="open-file-btn" disabled aria-disabled="true" title="Track file path not available — try refreshing the view">Open file</button>`;
   // Mermaid can't read CSS vars inside its own SVG, so pick its built-in theme
   // from the editor's light/dark kind instead of hardcoding "dark" (#207).
   const mermaidTheme = isDark ? "dark" : "default";
@@ -122,6 +138,14 @@ mermaid.run();
   if (btn) {
     btn.addEventListener("click", function () {
       post({ type: "setFocus", focus: ${nextFocus} });
+    });
+  }
+
+  // Open-file button (absent when disabled — no id, so no handler binds).
+  var openFileBtn = document.getElementById("work-plan-open-file");
+  if (openFileBtn) {
+    openFileBtn.addEventListener("click", function () {
+      post({ type: "openTrackFile" });
     });
   }
 
@@ -228,6 +252,19 @@ mermaid.run();
       padding: 12px 16px;
     }
     h1 { font-size: 1.1em; margin: 0 0 12px 0; }
+    .track-header { display: flex; align-items: center; gap: 10px; margin: 0 0 12px 0; }
+    .track-header h1 { margin: 0; }
+    .open-file-btn {
+      font-size: 0.8em;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--link);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .open-file-btn[disabled] { opacity: 0.5; cursor: default; color: var(--fg); }
     h2 { font-size: 1em; margin: 16px 0 8px 0; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
     .graph-header {
       display: flex;
@@ -434,7 +471,10 @@ mermaid.run();
   </style>
 </head>
 <body>
+  <div class="track-header">
   <h1>Track: ${trackNameEsc}</h1>
+  ${openFileButton}
+  </div>
 
   <div class="graph-header">
     <h2>Dependency graph</h2>

@@ -1,12 +1,16 @@
 import * as vscode from "vscode";
 import {
-  exportJson, makeSpawnRunner, checkVersion, CliError,
+  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, CliError,
+  isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo,
 } from "./cli.ts";
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
-import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
-import type { Track } from "./model.ts";
+import { PlansProvider } from "./plansTree.ts";
+import { ackKey } from "./planModel.ts";
+import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
+import type { Track, Issue } from "./model.ts";
+import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
 import { searchIssues } from "./webview/search.ts";
@@ -315,6 +319,71 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.openTrackFile — open the track's underlying .md in an editor tab.
+  // Receives a Track (from the tree context menu or the detail-panel button).
+  // Distinct from workPlan.openTrack ("Show in Work Plan"), which opens the
+  // detail webview, not the file (#211).
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.openTrackFile",
+      async (node?: TrackNode): Promise<void> => {
+        // Context-menu commands receive the tree NODE (TrackNode), not the bare
+        // Track — the path lives at node.track.path. (workPlan.openTrack differs:
+        // it's a left-click item.command that's handed node.track directly.)
+        const filePath = node?.track?.path;
+        if (!filePath) {
+          vscode.window.showInformationMessage(
+            "Work Plan: track file path not available — try refreshing the view.",
+          );
+          return;
+        }
+
+        const uri = vscode.Uri.file(filePath);
+
+        // The path is emitted by the LOCAL CLI; the extension host may run on a
+        // different filesystem (remote-SSH / WSL / devcontainer), where it
+        // won't resolve. Stat first so we fail with a clear message instead of
+        // a raw throw, and name the path so the user can tell what was tried.
+        try {
+          await vscode.workspace.fs.stat(uri);
+        } catch {
+          vscode.window.showErrorMessage(
+            `Work Plan: track file not found at ${filePath} — has it moved, ` +
+              `or is it on another machine (remote/WSL)?`,
+          );
+          return;
+        }
+
+        try {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          // Reveal an already-open tab in place rather than opening a duplicate;
+          // otherwise open beside the active editor in preview mode (italic tab
+          // — promotes to a real tab as soon as the user edits).
+          const open = vscode.window.visibleTextEditors.find(
+            (e) => e.document.uri.toString() === uri.toString(),
+          );
+          if (open) {
+            await vscode.window.showTextDocument(doc, open.viewColumn);
+          } else {
+            await vscode.window.showTextDocument(doc, {
+              viewColumn: vscode.window.activeTextEditor
+                ? vscode.ViewColumn.Beside
+                : vscode.ViewColumn.Active,
+              preview: true,
+            });
+          }
+        } catch (err: unknown) {
+          vscode.window.showErrorMessage(
+            `Work Plan: failed to open track file — ${String(err)}`,
+          );
+        }
+      },
+    ),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.openIssue — open a GitHub issue in the external browser.
   // Accepts { repo: string, number: number } (from tree node or webview message).
   // -------------------------------------------------------------------------
@@ -559,18 +628,51 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = await resolveTrackName(node);
         if (!track) return;
 
-        const raw = await vscode.window.showInputBox({
-          prompt: "Next-up issue numbers (comma-separated) — also appends a session-log entry",
-          validateInput: (v) => {
-            if (/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v)) return null;
-            return "Enter at least one issue number, comma-separated (e.g. 42,87). To set next-up without logging a session, use Edit Track Fields → next_up.";
-          },
-        });
-        if (raw === undefined) return; // cancelled
+        // Pick next-up from the track's OPEN issues in priority order. Order is
+        // captured by ITERATIVE single-selects: a multi-select QuickPick returns
+        // items in display order, not click order, so it can't express a
+        // deliberate priority sequence (#212). Closed issues are excluded —
+        // next-up is forward-looking.
+        const exp = provider.rawExport ?? provider.currentExport;
+        if (!exp || exp.tracks.length === 0) {
+          vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
+          return;
+        }
+        const trackObj = exp.tracks.find(t => t.name === track);
+        if (!trackObj) {
+          vscode.window.showErrorMessage(`Work Plan: Track "${track}" not found.`);
+          return;
+        }
+        const openItems = buildIssuePickItems(trackObj.issues, { includeClosed: false });
+        if (openItems.length === 0) {
+          vscode.window.showInformationMessage(`Work Plan: ${track} has no open issues to queue.`);
+          return;
+        }
 
-        if (raw.trim() === "") return;
-        const issues = raw.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
-        if (issues.length === 0) return;
+        const DONE_SENTINEL = -1;
+        const doneItem = { label: "$(check) Done", description: "finish selection", issueNumber: DONE_SENTINEL };
+        const ordered: number[] = [];
+        for (;;) {
+          const remaining = openItems.filter(it => !ordered.includes(it.issueNumber));
+          if (remaining.length === 0) break; // everything queued
+          const soFar = ordered.length
+            ? `Next-up so far: ${ordered.map(n => `#${n}`).join(", ")} — `
+            : "";
+          const pick = await vscode.window.showQuickPick(
+            [doneItem, ...remaining],
+            {
+              placeHolder: `${soFar}pick #${ordered.length + 1} (or Done)`,
+              matchOnDescription: true,
+              ignoreFocusOut: true,
+            },
+          );
+          if (!pick) return; // Escape → cancel the whole op (no write, no session log)
+          if (pick.issueNumber === DONE_SENTINEL) break;
+          ordered.push(pick.issueNumber);
+        }
+        // Done with nothing chosen → cancel, so we never silently wipe next-up.
+        if (ordered.length === 0) return;
+        const issues = ordered;
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: setting next-up on ${track}…`,
@@ -690,16 +792,56 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = await resolveTrackName(node);
         if (!track) return;
 
-        const raw = await vscode.window.showInputBox({
-          prompt: `Issue number to slot into ${track}`,
-          validateInput: (v) => {
-            if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
-            return "Enter a positive integer issue number (e.g. 42)";
-          },
-        });
-        if (raw === undefined) return; // cancelled
+        // Resolve the track's repo + current issues so we can offer the repo's
+        // OPEN issues as a pick-list, excluding ones already in the track (#282).
+        const exp = provider.rawExport ?? provider.currentExport;
+        const trackObj = exp?.tracks.find(t => t.name === track);
+        const repo = trackObj?.repo;
 
-        const issue = parseInt(raw, 10);
+        let issue: number | undefined;
+        if (repo) {
+          const alreadyIn = trackObj!.issues.map(i => i.number);
+          let candidates: Issue[] = [];
+          try {
+            const res = await vscode.window.withProgress(
+              { location: vscode.ProgressLocation.Window, title: `Work Plan: fetching open issues in ${repo}…` },
+              () => listRepoOpenIssues(runner, repo, alreadyIn),
+            );
+            candidates = res.issues;
+          } catch {
+            // Fetch failed (offline, gh hiccup) — fall through to manual entry
+            // rather than blocking the whole command on the pick-list.
+            candidates = [];
+          }
+
+          if (candidates.length > 0) {
+            const MANUAL = -1;
+            const manualItem = { label: "$(edit) Enter an issue number…", description: "not in the list", issueNumber: MANUAL };
+            const picked = await vscode.window.showQuickPick(
+              [manualItem, ...buildIssuePickItems(candidates)],
+              {
+                placeHolder: `Select an open issue to add to ${track}`,
+                matchOnDescription: true,
+                ignoreFocusOut: true,
+              },
+            );
+            if (!picked) return; // cancelled
+            if (picked.issueNumber !== MANUAL) issue = picked.issueNumber;
+          }
+        }
+
+        // Manual entry: chosen explicitly, no candidates to show, or no repo.
+        if (issue === undefined) {
+          const raw = await vscode.window.showInputBox({
+            prompt: `Issue number to slot into ${track}`,
+            validateInput: (v) => {
+              if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
+              return "Enter a positive integer issue number (e.g. 42)";
+            },
+          });
+          if (raw === undefined) return; // cancelled
+          issue = parseInt(raw, 10);
+        }
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: adding #${issue} to ${track}…`,
@@ -735,30 +877,37 @@ export function activate(context: vscode.ExtensionContext): void {
         const fromTrack = await resolveTrackName(node);
         if (!fromTrack) return;
 
-        const raw = await vscode.window.showInputBox({
-          prompt: `Issue number to move from ${fromTrack}`,
-          validateInput: (v) => {
-            if (/^\d+$/.test(v) && parseInt(v, 10) > 0) return null;
-            return "Enter a positive integer issue number (e.g. 42)";
-          },
-        });
-        if (raw === undefined) return; // cancelled
-
-        const issue = parseInt(raw, 10);
-
-        // Build the destination track list from the RAW export.
+        // Load the export FIRST so we can offer the source track's issues as a
+        // pick-list instead of asking the user to retype a number (#212).
         const exp = provider.rawExport ?? provider.currentExport;
         if (!exp || exp.tracks.length === 0) {
           vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
           return;
         }
 
-        // Find the source track object to determine its repo.
+        // Find the source track object — for its issues and its repo.
         const srcTrack = exp.tracks.find(t => t.name === fromTrack);
         if (!srcTrack) {
           vscode.window.showErrorMessage(`Work Plan: Track "${fromTrack}" not found.`);
           return;
         }
+
+        // Pick the issue from the known list. Closed issues are shown (muted) so
+        // a "closed it in the wrong track" correction is still possible.
+        if (srcTrack.issues.length === 0) {
+          vscode.window.showInformationMessage(`Work Plan: ${fromTrack} has no issues to move.`);
+          return;
+        }
+        const picked = await vscode.window.showQuickPick(
+          buildIssuePickItems(srcTrack.issues, { includeClosed: true }),
+          {
+            placeHolder: `Select an issue to move from ${fromTrack}`,
+            matchOnDescription: true,
+            ignoreFocusOut: true,
+          },
+        );
+        if (!picked) return; // cancelled
+        const issue = picked.issueNumber;
 
         // Destination candidates: other active tracks in the same repo.
         const candidates = exp.tracks.filter(
@@ -773,7 +922,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const toTrack = await vscode.window.showQuickPick(
           candidates.map(t => t.name),
-          { placeHolder: `Move #${issue} from ${fromTrack} to...` },
+          { placeHolder: `Move #${issue} to which track?`, ignoreFocusOut: true },
         );
         if (!toTrack) return; // cancelled
 
@@ -1043,47 +1192,59 @@ export function activate(context: vscode.ExtensionContext): void {
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("workPlan.newTrack", async () => {
+    vscode.commands.registerCommand("workPlan.newTrack", async (node?: RepoNode) => {
       try {
-        // --- Repo selection ---
-        const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
-        const existingRepos = Array.from(
-          new Set(
-            (provider.currentExport?.tracks ?? [])
-              .map(t => t.repo)
-              .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
-          ),
-        );
-
-        type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
-        const repoItems: RepoItem[] = [
-          ...existingRepos.map(r => ({ label: r })),
-          { label: MANUAL_ENTRY_LABEL, isManual: true },
-        ];
-
         let repo: string | undefined;
 
-        if (existingRepos.length === 0) {
-          // No repos loaded — go straight to manual entry.
-          repo = await vscode.window.showInputBox({
-            prompt: "Repo (org/repo)",
-            validateInput: (v) =>
-              /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
-          });
-        } else {
-          const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
-            placeHolder: "Select a repo or enter a new one",
-          });
-          if (!repoPick) return; // cancelled
+        // Invoked from a repo node (context menu / empty-state click): prefill the
+        // github slug and skip the repo prompt. A "(no repo)" node has no real slug,
+        // so fall through to prompting as if invoked bare.
+        const prefilledRepo =
+          node && node.kind === "repo" && node.repo && node.repo !== "(no repo)"
+            ? node.repo
+            : undefined;
 
-          if (repoPick.isManual) {
+        if (prefilledRepo) {
+          repo = prefilledRepo;
+        } else {
+          // --- Repo selection (palette / title-bar invocation) ---
+          const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
+          const existingRepos = Array.from(
+            new Set(
+              (provider.currentExport?.tracks ?? [])
+                .map(t => t.repo)
+                .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
+            ),
+          );
+
+          type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
+          const repoItems: RepoItem[] = [
+            ...existingRepos.map(r => ({ label: r })),
+            { label: MANUAL_ENTRY_LABEL, isManual: true },
+          ];
+
+          if (existingRepos.length === 0) {
+            // No repos loaded — go straight to manual entry.
             repo = await vscode.window.showInputBox({
               prompt: "Repo (org/repo)",
               validateInput: (v) =>
                 /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
             });
           } else {
-            repo = repoPick.label;
+            const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
+              placeHolder: "Select a repo or enter a new one",
+            });
+            if (!repoPick) return; // cancelled
+
+            if (repoPick.isManual) {
+              repo = await vscode.window.showInputBox({
+                prompt: "Repo (org/repo)",
+                validateInput: (v) =>
+                  /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
+              });
+            } else {
+              repo = repoPick.label;
+            }
           }
         }
         if (!repo) return; // cancelled
@@ -1164,23 +1325,72 @@ export function activate(context: vscode.ExtensionContext): void {
         if (github === undefined) return; // cancelled
 
         const localRaw = await vscode.window.showInputBox({
-          prompt: "Local checkout path (optional — press Enter or Escape to skip)",
+          prompt: "Local checkout path (optional — needed to scan this repo's plans; press Enter to skip)",
         });
         // undefined (Esc) or empty → omit local
         const local = localRaw && localRaw.trim() !== "" ? localRaw.trim() : undefined;
 
-        const outcome: WriteOutcome = await withWriteProgress(
-          `Work Plan: adding repo ${github}…`,
-          () => executeWrite(
-            runner,
-            { kind: "addRepo", key, github, ...(local ? { local } : {}) },
-            confirmPublicWrite,
-          ),
-        );
+        let outcome: WriteOutcome;
+        try {
+          outcome = await withWriteProgress(
+            `Work Plan: adding repo ${github}…`,
+            () => executeWrite(
+              runner,
+              { kind: "addRepo", key, github, ...(local ? { local } : {}) },
+              confirmPublicWrite,
+            ),
+          );
+        } catch (addErr: unknown) {
+          // The CLI hard-errors on an already-registered key (now pointing at
+          // --update). Offer to set/update its local path instead of just
+          // surfacing the error — the common 2nd-run intent is "add the path I
+          // skipped".
+          if (isAlreadyExistsError(addErr)) {
+            const choice = await vscode.window.showWarningMessage(
+              `Repo ${key} is already registered. Set/update its local checkout path?`,
+              "Set path",
+              "Cancel",
+            );
+            if (choice !== "Set path") return;
+
+            const updateLocalRaw = await vscode.window.showInputBox({
+              prompt: "Local checkout path (needed to scan this repo's plans)",
+              value: local ?? "",
+            });
+            if (updateLocalRaw === undefined) return; // cancelled
+            const updateLocal = updateLocalRaw.trim();
+            if (updateLocal === "") {
+              vscode.window.showInformationMessage("Work Plan: no path entered — nothing changed.");
+              return;
+            }
+
+            const updateOutcome: WriteOutcome = await withWriteProgress(
+              `Work Plan: updating repo ${key}…`,
+              () => executeWrite(
+                runner,
+                { kind: "addRepo", key, github, local: updateLocal, update: true },
+                confirmPublicWrite,
+              ),
+            );
+            if (updateOutcome.status === "written") {
+              await refreshAfterWrite();
+              vscode.window.showInformationMessage(
+                `Work Plan: set ${key}'s local path — its plans will now be scanned.`,
+              );
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+            return;
+          }
+          throw addErr;
+        }
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: added repo ${github} (${key})`);
+          vscode.window.showInformationMessage(
+            `Work Plan: registered ${github} as ${key} — it's now in the sidebar. ` +
+              "Right-click it → New Track to start; add a local path to scan its plans.",
+          );
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
         }
@@ -1188,6 +1398,122 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: add-repo failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.removeRepo — unregister a repo (config-only; repo-node context menu)
+  // Completes the add/update/remove trio. Removal is config-only: notes, tracks,
+  // and the local clone are untouched, so no public-leak guard is needed — but
+  // routing through executeWrite keeps the write path uniform (removeRepo never
+  // trips needs_confirm).
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.removeRepo", async (node?: RepoNode) => {
+      try {
+        const key = node?.folder;
+        if (!key) {
+          vscode.window.showInformationMessage(
+            "Work Plan: not a configured repo — nothing to remove.",
+          );
+          return;
+        }
+
+        const ok = await vscode.window.showWarningMessage(
+          `Remove “${node!.repo}” from Work Plan?`,
+          {
+            modal: true,
+            detail:
+              `Unregisters the repo (key “${key}”) — it disappears from this sidebar.\n\n` +
+              "This does NOT delete anything: your track notes, the local clone on " +
+              "disk, and everything on GitHub stay exactly as they are. You can " +
+              "re-add it any time with Add Repo.",
+          },
+          "Remove from Work Plan",
+        );
+        if (ok !== "Remove from Work Plan") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: removing ${node!.repo}…`,
+          () => executeWrite(runner, { kind: "removeRepo", key }, confirmPublicWrite),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: removed ${node!.repo} — notes, tracks, and clone left in place.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: remove-repo failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.clearRepoLocal — drop a configured repo's local path (keeps the
+  // repo). Repo-node context menu. Routes through init-repo --update --clear-local.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.clearRepoLocal", async (node?: RepoNode) => {
+      try {
+        const key = node?.folder;
+        if (!key) {
+          vscode.window.showInformationMessage(
+            "Work Plan: not a configured repo — nothing to clear.",
+          );
+          return;
+        }
+        if (!node!.hasLocal) {
+          vscode.window.showInformationMessage(
+            `Work Plan: ${node!.repo} has no local path set.`,
+          );
+          return;
+        }
+
+        const ok = await vscode.window.showWarningMessage(
+          `Clear the local checkout path for “${node!.repo}”?`,
+          {
+            modal: true,
+            detail:
+              `The repo stays registered (key “${key}”) — only the saved local ` +
+              "path is forgotten. Plan scanning for this repo turns off until you " +
+              "set a path again. The clone on disk is untouched.",
+          },
+          "Clear path",
+        );
+        if (ok !== "Clear path") return;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: clearing local path for ${node!.repo}…`,
+          () => executeWrite(
+            runner,
+            { kind: "addRepo", key, github: node!.repo, update: true, clearLocal: true },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: cleared local path for ${node!.repo}.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: clear-local failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
@@ -1543,6 +1869,130 @@ export function activate(context: vscode.ExtensionContext): void {
           ? `Work Plan: ${err.message}`
           : `Work Plan: notes-vcs failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Plans view (#164): a second tree rendering plan-status verdicts, scanned
+  // lazily per-repo on expand. Repos are the distinct config FOLDER KEYS from
+  // the export (the `plan-status --repo=<key>` arg resolves a local checkout by
+  // folder key, not github slug), labelled by their slug for display.
+  // -------------------------------------------------------------------------
+
+  // Read the stall-days threshold: "match" → null (trust the CLI's own
+  // `stalled`), otherwise the parsed integer day count.
+  const stallDaysSetting = (): number | null => {
+    const raw = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<string>("stallDays", "match");
+    return raw === "match" ? null : parseInt(raw, 10);
+  };
+
+  // Distinct {repoKey: folder, label: slug} from the export's CONFIGURED repos
+  // (#288), deduped by folder. Sourcing from `exp.repos` (not `exp.tracks`) means
+  // a registered repo with a local clone but NO track (e.g. agent-armor) still
+  // appears and scans in the Plans view. Repos without a folder key are skipped —
+  // plan-status resolves a local checkout by folder key, not github slug.
+  const reposForPlans = (): { repoKey: string; label: string }[] => {
+    const raw = provider.rawExport;
+    if (!raw) return [];
+    const seen = new Map<string, string>();
+    for (const r of raw.repos ?? []) {
+      if (r.folder && !seen.has(r.folder)) {
+        seen.set(r.folder, r.repo ?? r.folder);
+      }
+    }
+    return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));
+  };
+
+  // Ack state (#164): plans the user has chosen to stop flagging. Persisted in
+  // workspaceState (per-workspace, not global) keyed by ackKey(repoKey, rel). We
+  // persist ONLY the ack key — never stalled-ness, which is re-derived live, so a
+  // plan that's no longer stalled simply leaves the stalled bucket on its own.
+  const ACK_KEY = "workPlan.ackedPlans";
+  const ackedPlans = new Set<string>(context.workspaceState.get<string[]>(ACK_KEY, []));
+
+  // showAcked toggles whether acked docs still render (demoted/greyed, the
+  // default) or are filtered out entirely. In-memory — resets to "show" per session.
+  let showAcked = true;
+
+  const plansProvider = new PlansProvider(
+    runner,
+    reposForPlans,
+    stallDaysSetting,
+    (repoKey, rel) => ackedPlans.has(ackKey(repoKey, rel)),
+    () => showAcked,
+  );
+
+  const setAck = async (repoKey: string, rel: string, on: boolean): Promise<void> => {
+    const k = ackKey(repoKey, rel);
+    if (on) ackedPlans.add(k); else ackedPlans.delete(k);
+    await context.workspaceState.update(ACK_KEY, [...ackedPlans]);
+    plansProvider.rerender();
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.plans.acknowledge",
+      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
+        n?.kind === "doc" && n.repoKey && n.doc?.rel
+          ? setAck(n.repoKey, n.doc.rel, true)
+          : undefined,
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.unacknowledge",
+      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
+        n?.kind === "doc" && n.repoKey && n.doc?.rel
+          ? setAck(n.repoKey, n.doc.rel, false)
+          : undefined,
+    ),
+    vscode.commands.registerCommand("workPlan.plans.toggleAcknowledged", () => {
+      showAcked = !showAcked;
+      plansProvider.rerender();
+    }),
+  );
+
+  const plansView = vscode.window.createTreeView("workPlan.plans", {
+    treeDataProvider: plansProvider,
+  });
+  context.subscriptions.push(plansView);
+
+  // The Plans roots derive from provider.rawExport, which is null until the main
+  // provider's async refresh resolves — and the provider is constructed after
+  // that refresh is kicked off. Re-render the Plans tree whenever the export
+  // changes so the view fills in once data arrives (instead of staying blank
+  // until a manual Plans refresh). rerender() (not refresh()) keeps the per-repo
+  // scan cache: getChildren re-reads reposForPlans() on every render, so a new
+  // repo list is picked up while already-scanned repos (and a completed Scan All
+  // roll-up) survive a track sort/filter/auto-refresh.
+  context.subscriptions.push(
+    provider.onDidChangeTreeData(() => plansProvider.rerender()),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.refresh", () => {
+      plansProvider.refresh();
+    }),
+  );
+
+  // Scan-all — bounded-concurrent cross-repo scan that streams results into the
+  // stalled roll-up. View-scoped progress spins the Plans view title while it runs.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.scanAll", () =>
+      vscode.window.withProgress(
+        { location: { viewId: "workPlan.plans" }, title: "Work Plan: scanning plans…" },
+        () => plansProvider.scanAll(),
+      ),
+    ),
+  );
+
+  // Re-render the Plans view when the stall-days threshold changes (it shifts
+  // which partials read as stalled). The Tracks view ignores this setting.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.stallDays")) {
+        plansProvider.rerender();
       }
     }),
   );
