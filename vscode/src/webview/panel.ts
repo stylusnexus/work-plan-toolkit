@@ -89,6 +89,14 @@ interface OpenPlanMessage {
   type: "openPlan";
 }
 
+/** Close a tracked issue on GitHub (#305). Carries the issue number; the host
+ *  resolves the current track's repo + the issue's title and delegates to the
+ *  workPlan.closeIssue command (which shows the mandatory modal). */
+interface CloseIssueMessage {
+  type: "closeIssue";
+  number: number;
+}
+
 type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
@@ -96,7 +104,8 @@ type WebviewMessage =
   | MoveIssueMessage
   | FilterMilestoneMessage
   | OpenTrackFileMessage
-  | OpenPlanMessage;
+  | OpenPlanMessage
+  | CloseIssueMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -352,6 +361,22 @@ export class WorkPlanPanel {
               "workPlan.openPlanFile", { local, rel: plan.rel },
             );
           }
+        }
+        break;
+      }
+      case "closeIssue": {
+        // Resolve the current track's repo + the issue's title, then delegate to
+        // the command (which shows the mandatory GitHub-write modal) (#305).
+        const track = this._currentExport?.tracks.find(
+          t => t.name === this._currentTrackName,
+        );
+        const issue = track?.issues.find(i => i.number === raw.number);
+        if (track?.repo && issue) {
+          void vscode.commands.executeCommand("workPlan.closeIssue", {
+            repo: track.repo,
+            number: issue.number,
+            title: issue.title,
+          });
         }
         break;
       }
