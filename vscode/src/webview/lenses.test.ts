@@ -607,6 +607,41 @@ describe("applyLens — untracked forwarding (#99 regression)", () => {
   });
 });
 
+describe("applyLens — repos forwarding (#288 regression)", () => {
+  // Same shape as the untracked bug above: the tree renders from the filtered
+  // export, and buildTree seeds a node for every configured repo so a zero-track
+  // repo still appears in the Tracks view. If applyLens drops `repos`, those
+  // empty repos vanish under EVERY lens (including "all") while the Plans view —
+  // which reads the raw export — keeps showing them.
+  const withRepos: Export = {
+    ...exp,
+    repos: [
+      {
+        folder: "agent-armor",
+        repo: "stylusnexus/agent-armor",
+        local: "/tmp/agent-armor",
+        has_local: true,
+        visibility: "PUBLIC",
+      },
+    ],
+  };
+
+  it("forwards repos unchanged under the 'all' lens", () => {
+    const result = applyLens(withRepos, { kind: "all" });
+    assert.deepStrictEqual(result.repos, withRepos.repos);
+  });
+
+  it("forwards repos unchanged under a 'repo' lens", () => {
+    const result = applyLens(withRepos, { kind: "repo", repo: "your-org/myproject" });
+    assert.deepStrictEqual(result.repos, withRepos.repos);
+  });
+
+  it("leaves repos undefined when the source export has none", () => {
+    const result = applyLens(exp, { kind: "all" });
+    assert.strictEqual(result.repos, undefined);
+  });
+});
+
 describe("applyLens — vscode-free import check", () => {
   it("applyLens and availableLenses return values (basic smoke test for import)", () => {
     // This test implicitly verifies that lenses.ts has no vscode imports:
