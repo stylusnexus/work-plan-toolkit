@@ -4,6 +4,7 @@ import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDe
 import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
+import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
@@ -61,10 +62,22 @@ export class WorkPlanTreeProvider
   // node's `untracked` on every (re)build. Survives lens/sort re-renders and a
   // full refresh (a snapshot until the user re-fetches), cleared on nothing.
   private readonly _fetchedUntracked = new Map<string, Issue[]>();
+  // Last GitHub-auth probe result (#auth). null before the first probe. Drives
+  // the `workPlanGitHubAuthed` context key + lets activation show its one-time
+  // toast off the same probe the tree already ran (no second `gh` call).
+  private _lastAuth: AuthState | null = null;
   private readonly _refreshFlight: SingleFlight;
 
-  constructor(private readonly load: () => Promise<Export>) {
+  constructor(
+    private readonly load: () => Promise<Export>,
+    private readonly checkAuth: () => Promise<AuthState>,
+  ) {
     this._refreshFlight = new SingleFlight(() => this._doRefresh());
+  }
+
+  /** The most recent auth probe result (null before the first refresh). */
+  get lastAuth(): AuthState | null {
+    return this._lastAuth;
   }
 
   /**
@@ -162,6 +175,19 @@ export class WorkPlanTreeProvider
     await vscode.window.withProgress(
       { location: { viewId: "workPlan.tree" } },
       async () => {
+        // Probe GitHub auth FIRST (#auth). Without it, the export below returns
+        // tracks with zeroed issues and unknown visibility — a misleading
+        // "empty but working" tree. When unauthenticated we suppress that tree
+        // and let the gated viewsWelcome banner explain the real problem.
+        const auth = await this.checkAuth();
+        this._lastAuth = auth;
+        this._setAuthContext(auth);
+        if (!auth.authenticated) {
+          this.roots = [];
+          this._onDidChangeTreeData.fire();
+          return;
+        }
+
         this.cache = await this.load();
         this._filteredCache = applyLens(this.cache, this._activeLens);
         this.roots = this._applySortToRepos(
@@ -177,6 +203,18 @@ export class WorkPlanTreeProvider
         );
       },
     );
+  }
+
+  /** Sets the tri-state `workPlanGitHubAuthed` context key that gates the
+   *  Tracks viewsWelcome banners: `true` (signed in), `false` (gh present, not
+   *  signed in), or `"no-gh"` (gh not installed — a different fix). */
+  private _setAuthContext(auth: AuthState): void {
+    const value: boolean | string = auth.authenticated
+      ? true
+      : auth.ghPresent
+        ? false
+        : "no-gh";
+    void vscode.commands.executeCommand("setContext", "workPlanGitHubAuthed", value);
   }
 
   getChildren(element?: TreeNode): TreeNode[] {

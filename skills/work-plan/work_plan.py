@@ -53,6 +53,7 @@ SUBCOMMANDS = {
     "--plan-status": "commands.plan_status",  # flag-style alias
     "plan-confirm": "commands.plan_confirm",
     "export": "commands.export",
+    "auth-status": "commands.auth_status",
     "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
     "new-track": "commands.new_track",
@@ -148,6 +149,10 @@ DESCRIPTIONS = [
      "Emit the viewer-ready JSON read surface (schema 1): every frontmatter'd track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone. Read-only; derives live from gh. Consumed by the VS Code extension.",
      "When a tool (the VS Code viewer, or any script) needs structured track state instead of the human-facing brief/orient text.",
      "/work-plan export --json"),
+    ("auth-status", "[--json]",
+     "Report whether `gh` is installed and authenticated to GitHub. Read-only probe (`gh auth status`) — the toolkit's GitHub reads/writes all go through gh, and the fetch helpers return empty rather than erroring, so an unauthenticated session otherwise looks like an empty-but-working one. `--json` emits {gh_present, authenticated, user, error}; exit code: 0 authenticated, 1 gh present but not logged in, 2 gh not found. The VS Code viewer calls this at activation to fast-fail with a sign-in path instead of a misleadingly empty tree.",
+     "When you (or the viewer) need to know up front whether GitHub calls will work, instead of discovering it via empty results.",
+     "/work-plan auth-status --json"),
     ("list-open-issues", "--repo=<owner/name> [--exclude=<csv-issue-numbers>]",
      "Emit a repo's OPEN issues as JSON ({repo, issues:[{number,title,state,assignee,milestone}]}) — the same issue shape as export. Read-only; derives live from gh. --repo takes a bare org/repo slug; --exclude drops the given issue numbers (the viewer passes a track's current issues so already-slotted ones don't reappear). Unlike export's `untracked`, this includes issues tracked by OTHER tracks, since those are valid slot targets.",
      "When the VS Code viewer's Slot command needs the repo's open issues as a pick-list (the per-track export can't supply issues not yet in the track).",
@@ -273,7 +278,7 @@ def main(argv: list[str]) -> int:
 # (Flag aliases like --brief/--plan-status normalise by stripping leading dashes.)
 _READONLY_SUBCOMMANDS = frozenset({
     "brief", "orient", "where-was-i", "list", "coverage", "duplicates",
-    "plan-status", "export", "list-open-issues", "notes-vcs",
+    "plan-status", "export", "list-open-issues", "auth-status", "notes-vcs",
     # plan-branch manages its OWN commits on the plan branch (init seeds +
     # commits the skeleton itself); the auto-commit hooks must not also fire.
     "plan-branch",

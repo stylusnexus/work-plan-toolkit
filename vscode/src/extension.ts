@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import {
-  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, CliError,
+  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo,
 } from "./cli.ts";
-import type { NotesVcsStatus } from "./cli.ts";
+import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
@@ -36,7 +36,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // Wire up the tree provider.
   // -------------------------------------------------------------------------
 
-  const provider = new WorkPlanTreeProvider(() => exportJson(runner));
+  const provider = new WorkPlanTreeProvider(
+    () => exportJson(runner),
+    () => checkAuth(runner),
+  );
 
   const treeView = vscode.window.createTreeView("workPlan.tree", {
     treeDataProvider: provider,
@@ -430,6 +433,49 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+    // GitHub sign-in path (#auth). gh auth login is INTERACTIVE (device-code /
+    // browser), so it must run in a visible terminal — never a silent spawn.
+    // We can't observe when the flow finishes, so we point the user at Retry.
+    vscode.commands.registerCommand("workPlan.signInToGitHub", () => {
+      const term = vscode.window.createTerminal({ name: "Work Plan: GitHub Sign-in" });
+      term.show(true);
+      term.sendText("gh auth login", true);
+      vscode.window
+        .showInformationMessage(
+          "Work Plan: Complete the sign-in in the terminal, then click Retry to load your tracks.",
+          "Retry",
+        )
+        .then((choice) => {
+          if (choice === "Retry") {
+            void vscode.commands.executeCommand("workPlan.checkGitHubAuth");
+          }
+        }, () => { /* ignore */ });
+    }),
+    // Re-probe auth + refresh (#auth) — the post-sign-in retry, also the Retry
+    // links in the welcome banners. Refresh re-runs the probe, so on success the
+    // banner clears and real data loads; on still-unauth we nudge, not error.
+    vscode.commands.registerCommand("workPlan.checkGitHubAuth", async () => {
+      await provider.refresh().catch(() => { /* surfaced elsewhere */ });
+      const auth = provider.lastAuth;
+      if (auth?.authenticated) {
+        const who = auth.user ? ` as @${auth.user}` : "";
+        vscode.window.showInformationMessage(`Work Plan: Signed in${who} — loading your tracks.`);
+      } else if (auth && !auth.ghPresent) {
+        vscode.window.showWarningMessage(
+          "Work Plan: GitHub CLI (gh) not found — install it, then Retry.",
+        );
+      } else {
+        vscode.window.showInformationMessage(
+          "Work Plan: Still not signed in — finish the flow in the terminal, then Retry.",
+        );
+      }
+    }),
+    // Open the gh install docs (#auth) — the fix for the "gh not found" state.
+    vscode.commands.registerCommand("workPlan.openGhInstallDocs", () => {
+      vscode.env.openExternal(vscode.Uri.parse("https://cli.github.com")).then(
+        undefined, () => { /* ignore */ },
+      );
+    }),
   );
 
   // -------------------------------------------------------------------------
@@ -2215,8 +2261,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // on a no-op write. Best-effort; never blocks activation.
   notesVcsStatus(runner).then((st) => { notesState = st; }, () => { /* ignore */ });
 
-  // Initial data load.
-  provider.refresh().catch((err: unknown) => {
+  // Initial data load. On success, surface the one-time GitHub-auth nudge off
+  // the SAME refresh (which already probed auth + set the context key driving
+  // the Tracks welcome banner) — no second `gh` call.
+  provider.refresh().then(() => {
+    maybeShowAuthToast(provider.lastAuth);
+  }, (err: unknown) => {
     if (err instanceof CliError) {
       vscode.window.showErrorMessage(
         `Work Plan: CLI not found or failed to run (${err.message}). ` +
@@ -2256,6 +2306,42 @@ export function activate(context: vscode.ExtensionContext): void {
       console.error("Work Plan: version check failed:", err);
     }
   });
+
+}
+
+// One-time guard for the activation auth toast (#auth) — the persistent
+// viewsWelcome banner is the durable surface; the toast nudges only once.
+let authToastShown = false;
+
+/**
+ * The one-time GitHub-auth nudge (#auth): a single toast (mirrors the
+ * version-check toast) shown when the activation probe found we're not signed
+ * in, so the user notices even with the Tracks view unfocused. Authenticated →
+ * nothing. gh-missing and not-signed-in get distinct copy + actions. Shown at
+ * most once per window session; the viewsWelcome banner is the durable surface.
+ */
+function maybeShowAuthToast(auth: AuthState | null): void {
+  if (authToastShown || !auth || auth.authenticated) return;
+  authToastShown = true;
+  if (!auth.ghPresent) {
+    vscode.window
+      .showWarningMessage(
+        "Work Plan: GitHub CLI (gh) not found — issue data is unavailable.",
+        "Install gh",
+      )
+      .then((c) => {
+        if (c === "Install gh") void vscode.commands.executeCommand("workPlan.openGhInstallDocs");
+      }, () => { /* ignore */ });
+  } else {
+    vscode.window
+      .showWarningMessage(
+        "Work Plan: Not signed in to GitHub — issue data is unavailable. Sign in to load tracks.",
+        "Sign in",
+      )
+      .then((c) => {
+        if (c === "Sign in") void vscode.commands.executeCommand("workPlan.signInToGitHub");
+      }, () => { /* ignore */ });
+  }
 }
 
 export function deactivate(): void {
