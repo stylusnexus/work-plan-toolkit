@@ -731,6 +731,19 @@ describe("mergeFetchedUntracked", () => {
     assert.equal(out[1].untracked.length, 0);           // o/b untouched
   });
 
+  test("does NOT override a repo that HAS tracks — export stays authoritative (#303 follow-up)", () => {
+    const tracked: RepoNode = {
+      ...repoNode("o/a", [issue(5)]),       // export-provided untracked = [#5]
+      tracks: [{ kind: "track", name: "t", repo: "o/a", status: "active",
+                 category: "active", open: 1, closed: 0, hint: null,
+                 track: {} as unknown as Track }],
+    };
+    // A stale fetch snapshot that (wrongly) includes a now-tracked issue.
+    const out = mergeFetchedUntracked([tracked], new Map([["o/a", [issue(287), issue(5)]]]));
+    assert.deepEqual(out[0].untracked.map(i => i.number), [5]); // export wins, #287 not shown
+    assert.equal(out[0], tracked);          // passed through unchanged
+  });
+
   test("does not mutate the input nodes", () => {
     const repos = [repoNode("o/a")];
     mergeFetchedUntracked(repos, new Map([["o/a", [issue(1)]]]));
