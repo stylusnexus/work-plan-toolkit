@@ -6,6 +6,40 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.13+d35a663 — 2026-06-13 (#300)
+
+feat(vscode): track-only repos show as a greyed "not registered" row in Plans (ext 0.6.3)
+
+## Summary
+
+Closes the other half of the Tracks/Plans asymmetry (companion to 0.6.2). A repo with **tracks but no `repos:` config entry** can't be scanned by the Plans view — it resolves a local clone by config *folder key*, which a track-only repo lacks — so it was silently absent from Plans while appearing in Tracks.
+
+Plans now lists such repos as a **greyed, non-expandable "not registered" leaf** after the real repo nodes: `circle-slash` icon, "not registered" description, a tooltip explaining why, and a click that launches **Add Repo** prefilled with the slug (and a key derived from it).
+
+## How
+
+- `unregisteredTrackRepos(export)` — a pure, vscode-free helper: distinct, sorted GitHub slugs that tracks reference but `exp.repos` doesn't contain (null/empty excluded).
+- New `PlanNode` variant `{ kind: "unregistered"; slug }`; roots render registered repos first, then unregistered leaves.
+- Sourced from the **raw** export and kept **separate from the scan list**, so Scan All / the stalled roll-up never try to scan a repo with no registered clone.
+- `workPlan.addRepo` gains an optional `{ github, key }` seed, guarded with `typeof seed?.github === "string"` so a menu/palette context can't masquerade as a prefill.
+
+## Tests (plain English)
+
+New `unregisteredTrackRepos` suite: slug absent from repos → returned; slug present → excluded; duplicate track slugs → once; null/empty repo → excluded; missing `repos` field → all returned; all-registered → empty; result sorted.
+
+## Verification
+
+- `npm test` → 477 pass (+7 new)
+- `npm run typecheck` → clean
+- `vsce package` → clean (1.26 MB)
+- code-reviewer pass (scan-path isolation + seed guard confirmed; a README changelog dup it flagged is fixed)
+
+## Scope
+
+VS Code-only — Python CLI unchanged, so **npm publish is skipped**. Bumps extension to **0.6.3**; Marketplace + Open VSX publish via the GitHub Release after merge.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.13+571c7a6 — 2026-06-13 (#298)
 
 fix(vscode): zero-track registered repos now show in the Tracks view (ext 0.6.2)

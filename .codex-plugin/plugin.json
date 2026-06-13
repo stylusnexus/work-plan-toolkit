@@ -1,6 +1,6 @@
 {
   "name": "work-plan",
-  "version": "2026.06.13+571c7a6",
+  "version": "2026.06.13+d35a663",
   "description": "Track-aware daily planning over GitHub issues, plus plan-status doc/plan liveness. Pure-stdlib CLI-backed skill.",
   "author": {
     "name": "Stylus Nexus",
