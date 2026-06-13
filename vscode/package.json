@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -56,7 +56,8 @@
         },
         {
           "id": "workPlan.plans",
-          "name": "Plans"
+          "name": "Plans",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -89,7 +90,7 @@
         "command": "workPlan.plans.scanAll",
         "title": "Scan All Plans",
         "category": "Work Plan",
-        "icon": "$(search)"
+        "icon": "$(telescope)"
       },
       {
         "command": "workPlan.plans.acknowledge",
@@ -286,17 +287,17 @@
         {
           "command": "workPlan.plans.scanAll",
           "when": "view == workPlan.plans",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
           "command": "workPlan.plans.refresh",
           "when": "view == workPlan.plans",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "workPlan.plans.toggleAcknowledged",
           "when": "view == workPlan.plans",
-          "group": "navigation"
+          "group": "1_view@1"
         }
       ],
       "view/item/context": [
