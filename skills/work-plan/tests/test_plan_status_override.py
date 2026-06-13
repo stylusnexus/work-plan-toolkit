@@ -127,6 +127,19 @@ class OverrideTest(unittest.TestCase):
             self.assertIsNone(row["verdict_baseline"])
             self.assertFalse(row["verdict_drift"])
 
+    def test_offtree_paths_flagged(self):
+        # A plan declaring an out-of-tree path surfaces it read-only (#286 slice 3).
+        body = ("# P\n\n**Files:**\n- Create: `src/new.ts`\n"
+                "- Create: `../sibling/escape.ts`\n- [ ] Step 1\n")
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(d, body))
+            self.assertEqual(row["offtree_paths"], ["../sibling/escape.ts"])
+
+    def test_offtree_paths_empty_for_clean_manifest(self):
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(d, BODY))
+            self.assertEqual(row["offtree_paths"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,6 +112,8 @@ Two states are made **loud**; everything else stays quiet:
 
 Quiet states (active `partial`, clean shipped, `dead`) are listed without a flag.
 
+A plan whose **declared manifest points outside the repo** (an absolute, `~`, `..`-escape, or junk `/` path — usually a typo or misfiled plan) also gets a read-only **⚠ N off-tree path** marker, with the offending paths named in its tooltip. These silently drag the file score down, so surfacing them explains a verdict that looks worse than the work. Read-only — the viewer never edits a manifest.
+
 - **Lazy scan.** Each repo scans its plans on first expand, so opening the view is cheap. A title-bar **"Scan All Plans"** command opts into a cross-repo sweep that builds a **stalled roll-up** across every repo (bounded-concurrent, results stream in as repos finish).
 - **Click to open.** Clicking a plan opens its `.md` in an editor tab.
 - **Acknowledge / dismiss.** Right-click a stalled or dead plan → **Acknowledge (stop flagging)** to stop it surfacing as loud — it's demoted, not hidden, and the ack persists **per machine** (in `workspaceState`, off in git). A title-bar **Toggle Show Acknowledged** button brings the acknowledged ones back into view.

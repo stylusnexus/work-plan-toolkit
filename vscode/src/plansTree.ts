@@ -300,6 +300,14 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
         tip.appendMarkdown(`- ${u}\n`);
       }
     }
+    // Off-tree declared paths (#286) — name them so a typo/misfile is obvious;
+    // these resolve outside the repo and can never satisfy the manifest.
+    if (doc.offtree_paths && doc.offtree_paths.length > 0) {
+      tip.appendMarkdown(`\n\n**⚠ Off-tree declared paths** (resolve outside this repo):\n`);
+      for (const p of doc.offtree_paths) {
+        tip.appendMarkdown(`- \`${p}\`\n`);
+      }
+    }
     item.tooltip = tip;
 
     item.command = {

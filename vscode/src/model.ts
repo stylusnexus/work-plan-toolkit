@@ -145,6 +145,12 @@ export interface PlanDoc {
    */
   verdict_baseline?: "shipped" | "partial" | "dead" | null;
   verdict_drift?: boolean;
+  /**
+   * Declared manifest paths that resolve OUTSIDE the repo (absolute, ~, ..-escape,
+   * junk `/`) — surfaced read-only (#286). They silently drag the file score
+   * down and usually mean a typo/misfiled plan. Optional for older-CLI compat.
+   */
+  offtree_paths?: string[];
   unchecked_items: string[];
   stall_days: number;
 }
