@@ -291,6 +291,11 @@
       ],
       "view/item/context": [
         {
+          "command": "workPlan.newTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@1"
+        },
+        {
           "command": "workPlan.openTrackFile",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "0_workPlanNav@1"

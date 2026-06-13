@@ -390,11 +390,122 @@ describe("buildTree", () => {
     const tree = buildTree(exp);
     assert.deepEqual(tree[0].untracked[0], issue);
   });
+
+  // --- configured repos (#288): seeded even with zero tracks ---
+
+  test("a config repo with no tracks produces a repo node with empty tracks", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-12T00:00:00Z",
+      tracks: [],
+      repos: [
+        { folder: "agent-armor", repo: "stylusnexus/agent-armor", local: "/p/agent-armor", has_local: true, visibility: "PRIVATE" },
+      ],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree.length, 1);
+    assert.equal(tree[0].repo, "stylusnexus/agent-armor");
+    assert.deepEqual(tree[0].tracks, []);
+    assert.equal(tree[0].folder, "agent-armor");
+    assert.equal(tree[0].hasLocal, true);
+    assert.equal(tree[0].isPublic, false);
+    assert.equal(tree[0].tier, "private");
+  });
+
+  test("an empty PUBLIC config repo still flags isPublic for the ⚠ badge", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-12T00:00:00Z",
+      tracks: [],
+      repos: [
+        { folder: "wpt", repo: "stylusnexus/work-plan-toolkit", local: null, has_local: false, visibility: "PUBLIC" },
+      ],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree[0].isPublic, true);
+    assert.equal(tree[0].hasLocal, false);
+    assert.equal(repoDescription(tree[0]), "⚠ public");
+  });
+
+  test("config repos come first, then track-only repos, in that order", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-12T00:00:00Z",
+      tracks: [
+        makeTrack({ name: "t1", repo: "org/track-only" }),
+      ],
+      repos: [
+        { folder: "cfg", repo: "org/configured", local: null, has_local: false, visibility: "PRIVATE" },
+      ],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree.length, 2);
+    assert.equal(tree[0].repo, "org/configured"); // config-first
+    assert.equal(tree[1].repo, "org/track-only");
+  });
+
+  test("a config repo that ALSO has tracks merges (not duplicated); tracks attach", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-12T00:00:00Z",
+      tracks: [
+        makeTrack({ name: "t1", repo: "org/shared", tier: "private", visibility: "PUBLIC" }),
+      ],
+      repos: [
+        { folder: "shared", repo: "org/shared", local: "/p/shared", has_local: true, visibility: "PRIVATE" },
+      ],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree.length, 1);
+    assert.equal(tree[0].repo, "org/shared");
+    assert.equal(tree[0].tracks.length, 1);
+    assert.equal(tree[0].tracks[0].name, "t1");
+    assert.equal(tree[0].folder, "shared");
+    assert.equal(tree[0].hasLocal, true);
+    // The PUBLIC track flips the badge even though the config repo was PRIVATE.
+    assert.equal(tree[0].isPublic, true);
+  });
+
+  test("config repos preserve their emitted order, NOT alphabetical", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-12T00:00:00Z",
+      tracks: [],
+      repos: [
+        { folder: "z", repo: "org/z-repo", local: null, has_local: false, visibility: "PRIVATE" },
+        { folder: "a", repo: "org/a-repo", local: null, has_local: false, visibility: "PRIVATE" },
+      ],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree[0].repo, "org/z-repo");
+    assert.equal(tree[1].repo, "org/a-repo");
+  });
+
+  test("config repo with a null slug is skipped (can't key to tracks)", () => {
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-12T00:00:00Z",
+      tracks: [],
+      repos: [
+        { folder: "no-gh", repo: null, local: "/p/no-gh", has_local: true, visibility: null },
+      ],
+    };
+    const tree = buildTree(exp);
+    assert.equal(tree.length, 0);
+  });
+
+  test("track-only repos (no exp.repos) get folder:null, hasLocal:false", () => {
+    const tree = buildTree(MOCKUP_EXPORT);
+    for (const node of tree) {
+      assert.equal(node.folder, null);
+      assert.equal(node.hasLocal, false);
+    }
+  });
 });
 
 describe("repoDescription", () => {
   function repoNode(overrides: Partial<RepoNode> = {}): RepoNode {
-    return { kind: "repo", repo: "your-org/myproject", isPublic: false, tier: "private", tracks: [], untracked: [], ...overrides };
+    return { kind: "repo", repo: "your-org/myproject", isPublic: false, tier: "private", tracks: [], untracked: [], folder: null, hasLocal: false, ...overrides };
   }
 
   test("private repo → the tier text", () => {

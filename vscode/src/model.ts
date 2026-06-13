@@ -53,6 +53,24 @@ export interface Track {
   issues: Issue[];
 }
 
+/**
+ * A configured repo from `config.yml`'s `repos:` block, emitted by the CLI for
+ * EVERY registered repo regardless of track membership (#288). Lets the viewer
+ * show a registered-but-empty repo so the user can start adding tracks to it.
+ */
+export interface ConfigRepo {
+  /** Config repo key (the key under `repos:` in config.yml), or null. */
+  folder: string | null;
+  /** GitHub slug "org/repo", or null when the config block has no `github`. */
+  repo: string | null;
+  /** Absolute path to the local checkout, or null when none is configured. */
+  local: string | null;
+  /** true when `local` exists on disk. */
+  has_local: boolean;
+  /** "PUBLIC" | "PRIVATE" | null (best-effort). */
+  visibility: "PUBLIC" | "PRIVATE" | null;
+}
+
 /** Root shape emitted by `work-plan export --json`. */
 export interface Export {
   schema: number;
@@ -60,6 +78,8 @@ export interface Export {
   tracks: Track[];
   /** Open issues referenced by no track, grouped by repo (CLI schema 1, additive). */
   untracked?: { repo: string; issues: Issue[] }[];
+  /** Every configured repo, regardless of track membership (#288, additive). */
+  repos?: ConfigRepo[];
 }
 
 /** A plan/spec doc with its plan-status verdict (#164). */

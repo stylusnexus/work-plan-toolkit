@@ -7,7 +7,7 @@ import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
 import { ackKey } from "./planModel.ts";
-import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode } from "./tree.ts";
+import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
@@ -1191,47 +1191,59 @@ export function activate(context: vscode.ExtensionContext): void {
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("workPlan.newTrack", async () => {
+    vscode.commands.registerCommand("workPlan.newTrack", async (node?: RepoNode) => {
       try {
-        // --- Repo selection ---
-        const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
-        const existingRepos = Array.from(
-          new Set(
-            (provider.currentExport?.tracks ?? [])
-              .map(t => t.repo)
-              .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
-          ),
-        );
-
-        type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
-        const repoItems: RepoItem[] = [
-          ...existingRepos.map(r => ({ label: r })),
-          { label: MANUAL_ENTRY_LABEL, isManual: true },
-        ];
-
         let repo: string | undefined;
 
-        if (existingRepos.length === 0) {
-          // No repos loaded — go straight to manual entry.
-          repo = await vscode.window.showInputBox({
-            prompt: "Repo (org/repo)",
-            validateInput: (v) =>
-              /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
-          });
-        } else {
-          const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
-            placeHolder: "Select a repo or enter a new one",
-          });
-          if (!repoPick) return; // cancelled
+        // Invoked from a repo node (context menu / empty-state click): prefill the
+        // github slug and skip the repo prompt. A "(no repo)" node has no real slug,
+        // so fall through to prompting as if invoked bare.
+        const prefilledRepo =
+          node && node.kind === "repo" && node.repo && node.repo !== "(no repo)"
+            ? node.repo
+            : undefined;
 
-          if (repoPick.isManual) {
+        if (prefilledRepo) {
+          repo = prefilledRepo;
+        } else {
+          // --- Repo selection (palette / title-bar invocation) ---
+          const MANUAL_ENTRY_LABEL = "$(add) Enter a repo (org/repo)…";
+          const existingRepos = Array.from(
+            new Set(
+              (provider.currentExport?.tracks ?? [])
+                .map(t => t.repo)
+                .filter((r): r is string => typeof r === "string" && r.trim() !== ""),
+            ),
+          );
+
+          type RepoItem = vscode.QuickPickItem & { isManual?: boolean };
+          const repoItems: RepoItem[] = [
+            ...existingRepos.map(r => ({ label: r })),
+            { label: MANUAL_ENTRY_LABEL, isManual: true },
+          ];
+
+          if (existingRepos.length === 0) {
+            // No repos loaded — go straight to manual entry.
             repo = await vscode.window.showInputBox({
               prompt: "Repo (org/repo)",
               validateInput: (v) =>
                 /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
             });
           } else {
-            repo = repoPick.label;
+            const repoPick = await vscode.window.showQuickPick<RepoItem>(repoItems, {
+              placeHolder: "Select a repo or enter a new one",
+            });
+            if (!repoPick) return; // cancelled
+
+            if (repoPick.isManual) {
+              repo = await vscode.window.showInputBox({
+                prompt: "Repo (org/repo)",
+                validateInput: (v) =>
+                  /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
+              });
+            } else {
+              repo = repoPick.label;
+            }
           }
         }
         if (!repo) return; // cancelled
@@ -1711,15 +1723,18 @@ export function activate(context: vscode.ExtensionContext): void {
     return raw === "match" ? null : parseInt(raw, 10);
   };
 
-  // Distinct {repoKey: folder, label: slug} from the export, deduped by folder.
-  // Tracks without a folder key (null) are skipped — plan-status needs the key.
+  // Distinct {repoKey: folder, label: slug} from the export's CONFIGURED repos
+  // (#288), deduped by folder. Sourcing from `exp.repos` (not `exp.tracks`) means
+  // a registered repo with a local clone but NO track (e.g. agent-armor) still
+  // appears and scans in the Plans view. Repos without a folder key are skipped —
+  // plan-status resolves a local checkout by folder key, not github slug.
   const reposForPlans = (): { repoKey: string; label: string }[] => {
     const raw = provider.rawExport;
     if (!raw) return [];
     const seen = new Map<string, string>();
-    for (const t of raw.tracks) {
-      if (t.folder && !seen.has(t.folder)) {
-        seen.set(t.folder, t.repo);
+    for (const r of raw.repos ?? []) {
+      if (r.folder && !seen.has(r.folder)) {
+        seen.set(r.folder, r.repo ?? r.folder);
       }
     }
     return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));
