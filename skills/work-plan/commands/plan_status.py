@@ -33,26 +33,31 @@ _OVERRIDE_GLYPH = {"shipped": "✅", "partial": "🟡", "dead": "💀"}
 def _read_fm_signals(path) -> tuple:
     """Read the frontmatter signals plan-status honors (#286), in ONE parse:
 
-        (override, acknowledged)
+        (override, acknowledged, baseline)
 
     `override` is the `verdict_override` value (case-insensitive shipped|partial|
     dead, else None — a typo can't pin a bogus verdict). `acknowledged` is True
-    when the doc carries a truthy `acknowledged` (the durable, frontmatter-based
-    ack that the viewer's plan-ack writes). Both are frontmatter-only — never the
+    when the doc carries a truthy `acknowledged` (the durable ack plan-ack writes).
+    `baseline` is the `verdict_baseline` value (a verdict string, else None) that
+    plan-baseline stamps for drift detection. All frontmatter-only — never the
     body/checkboxes. A doc with no frontmatter (most plans) parses to empty meta,
-    so this is a clean (override=None, acknowledged=False) no-op there."""
+    a clean (None, False, None) no-op."""
     try:
         meta, _ = frontmatter.parse_file(Path(path))
     except Exception:
-        return (None, False)
+        return (None, False, None)
     if not isinstance(meta, dict):
-        return (None, False)
+        return (None, False, None)
     val = meta.get("verdict_override")
     override = (val.strip().lower()
                 if isinstance(val, str) and val.strip().lower() in _OVERRIDE_VERDICTS
                 else None)
     acknowledged = bool(meta.get("acknowledged"))
-    return (override, acknowledged)
+    bval = meta.get("verdict_baseline")
+    baseline = (bval.strip().lower()
+                if isinstance(bval, str) and bval.strip().lower() in _OVERRIDE_VERDICTS
+                else None)
+    return (override, acknowledged, baseline)
 
 
 def _resolve_repo_root(flags) -> Path:
@@ -130,7 +135,7 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     # Frontmatter signals (#286): a `verdict_override` pins the verdict over the
     # mechanical one (applied BEFORE the staleness clock + lie-gap so both key off
     # the confirmed verdict), and `acknowledged` is the durable, shared ack.
-    override, acknowledged = _read_fm_signals(doc.path)
+    override, acknowledged, baseline = _read_fm_signals(doc.path)
     if override:
         v = verdict_mod.Verdict(
             override, _OVERRIDE_GLYPH[override], f"human-confirmed · {v.rationale}")
@@ -155,6 +160,10 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     # the "shipped" claim despite unchecked boxes, so it's no longer a lie.
     lie_gap = (not override and v.label == "shipped" and total_chk > 0
                and done / total_chk < 0.25)
+    # Drift (#286): a stamped `verdict_baseline` that no longer matches the live
+    # verdict — e.g. a once-shipped plan whose declared files were deleted. A
+    # human override owns the verdict, so it suppresses drift (same as lie-gap).
+    verdict_drift = bool(baseline) and not override and baseline != v.label
     return {
         "rel": doc.rel, "kind": doc.kind,
         "verdict": v.label, "glyph": v.glyph, "rationale": v.rationale,
@@ -166,6 +175,8 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
         "lie_gap": lie_gap,
         "override": override,
         "acknowledged": acknowledged,
+        "verdict_baseline": baseline,
+        "verdict_drift": verdict_drift,
         "unchecked_items": manifest.unchecked_checkbox_labels(text),
         "stall_days": stall_days,
     }

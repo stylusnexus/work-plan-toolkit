@@ -29,6 +29,10 @@ def _frontmattered(override: str) -> str:
     return f"---\nverdict_override: {override}\n---\n{BODY}"
 
 
+def _frontmattered_kv(key: str, value: str) -> str:
+    return f"---\n{key}: {value}\n---\n{BODY}"
+
+
 class OverrideTest(unittest.TestCase):
     def _row(self, root):
         with mock.patch("commands.plan_status.git_state.path_last_commit_date",
@@ -90,6 +94,38 @@ class OverrideTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             row = self._row(self._repo(d, BODY))
             self.assertFalse(row["acknowledged"])
+
+    def test_baseline_matching_live_verdict_no_drift(self):
+        # File present → live "shipped"; baseline shipped → no drift.
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(d, _frontmattered_kv("verdict_baseline", "shipped")))
+            self.assertEqual(row["verdict_baseline"], "shipped")
+            self.assertFalse(row["verdict_drift"])
+
+    def test_baseline_diverged_flags_drift(self):
+        # File MISSING → live "partial"; baseline shipped → drift (regressed).
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "docs/superpowers/plans").mkdir(parents=True)
+            (root / "docs/superpowers/plans/p.md").write_text(
+                f"---\nverdict_baseline: shipped\n---\n{BODY}")  # no src/new.ts
+            row = self._row(root)
+            self.assertEqual(row["verdict"], "partial")
+            self.assertTrue(row["verdict_drift"])
+
+    def test_override_suppresses_drift(self):
+        # baseline partial, but a human override pins shipped → drift suppressed.
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(
+                d, "---\nverdict_baseline: partial\nverdict_override: shipped\n---\n" + BODY))
+            self.assertEqual(row["verdict"], "shipped")
+            self.assertFalse(row["verdict_drift"])
+
+    def test_no_baseline_no_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            row = self._row(self._repo(d, BODY))
+            self.assertIsNone(row["verdict_baseline"])
+            self.assertFalse(row["verdict_drift"])
 
 
 if __name__ == "__main__":
