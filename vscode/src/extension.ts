@@ -325,6 +325,38 @@ export function activate(context: vscode.ExtensionContext): void {
   // detail webview, not the file (#211).
   // -------------------------------------------------------------------------
 
+  // Stat a CLI-emitted path, then open it — revealing an already-open tab in
+  // place rather than duplicating it, else opening beside in preview mode. The
+  // path comes from the LOCAL CLI; on a remote-SSH/WSL/devcontainer host it may
+  // not resolve, so we stat first and fail with a named, actionable message.
+  // Shared by openTrackFile (#211) and openPlanFile (#285).
+  const revealFileInEditor = async (uri: vscode.Uri, notFoundMsg: string): Promise<void> => {
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      vscode.window.showErrorMessage(notFoundMsg);
+      return;
+    }
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const open = vscode.window.visibleTextEditors.find(
+        (e) => e.document.uri.toString() === uri.toString(),
+      );
+      if (open) {
+        await vscode.window.showTextDocument(doc, open.viewColumn);
+      } else {
+        await vscode.window.showTextDocument(doc, {
+          viewColumn: vscode.window.activeTextEditor
+            ? vscode.ViewColumn.Beside
+            : vscode.ViewColumn.Active,
+          preview: true,
+        });
+      }
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(`Work Plan: failed to open file — ${String(err)}`);
+    }
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "workPlan.openTrackFile",
@@ -339,46 +371,32 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           return;
         }
-
-        const uri = vscode.Uri.file(filePath);
-
-        // The path is emitted by the LOCAL CLI; the extension host may run on a
-        // different filesystem (remote-SSH / WSL / devcontainer), where it
-        // won't resolve. Stat first so we fail with a clear message instead of
-        // a raw throw, and name the path so the user can tell what was tried.
-        try {
-          await vscode.workspace.fs.stat(uri);
-        } catch {
-          vscode.window.showErrorMessage(
-            `Work Plan: track file not found at ${filePath} — has it moved, ` +
-              `or is it on another machine (remote/WSL)?`,
+        await revealFileInEditor(
+          vscode.Uri.file(filePath),
+          `Work Plan: track file not found at ${filePath} — has it moved, ` +
+            `or is it on another machine (remote/WSL)?`,
+        );
+      },
+    ),
+    // workPlan.openPlanFile — open a track's linked plan doc (#285). Receives
+    // { local, rel }: the repo's local checkout path + the repo-relative doc
+    // path. joinPath (not string concat) so a Windows `local` joins cleanly with
+    // the POSIX `rel`.
+    vscode.commands.registerCommand(
+      "workPlan.openPlanFile",
+      async (arg?: { local?: string; rel?: string }): Promise<void> => {
+        if (!arg?.local || !arg?.rel) {
+          vscode.window.showInformationMessage(
+            "Work Plan: plan path not available — try refreshing the view.",
           );
           return;
         }
-
-        try {
-          const doc = await vscode.workspace.openTextDocument(uri);
-          // Reveal an already-open tab in place rather than opening a duplicate;
-          // otherwise open beside the active editor in preview mode (italic tab
-          // — promotes to a real tab as soon as the user edits).
-          const open = vscode.window.visibleTextEditors.find(
-            (e) => e.document.uri.toString() === uri.toString(),
-          );
-          if (open) {
-            await vscode.window.showTextDocument(doc, open.viewColumn);
-          } else {
-            await vscode.window.showTextDocument(doc, {
-              viewColumn: vscode.window.activeTextEditor
-                ? vscode.ViewColumn.Beside
-                : vscode.ViewColumn.Active,
-              preview: true,
-            });
-          }
-        } catch (err: unknown) {
-          vscode.window.showErrorMessage(
-            `Work Plan: failed to open track file — ${String(err)}`,
-          );
-        }
+        const uri = vscode.Uri.joinPath(vscode.Uri.file(arg.local), arg.rel);
+        await revealFileInEditor(
+          uri,
+          `Work Plan: plan doc not found at ${uri.fsPath} — has it moved, ` +
+            `or is it on another machine (remote/WSL)?`,
+        );
       },
     ),
   );
