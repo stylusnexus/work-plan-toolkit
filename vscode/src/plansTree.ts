@@ -17,7 +17,7 @@ export type PlanNode =
   | { kind: "rollup" }                                  // synthetic cross-repo stalled roll-up (first root)
   | { kind: "repo"; repoKey: string; label: string }   // repoKey = folder key; label = slug for display
   | { kind: "doc"; repoKey: string; repoRoot: string; doc: PlanDoc }
-  | { kind: "message"; text: string; icon: string };
+  | { kind: "message"; text: string; icon: string; command?: string };
 
 // ---------------------------------------------------------------------------
 // Bucket ordering + verdict→icon mapping
@@ -102,8 +102,9 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     if (this.cache.size === 0) {
       return [{
         kind: "message",
-        text: "Run 'Scan All Plans' to find stalled plans",
-        icon: "search",
+        text: "Scan all repos for stalled plans…",
+        icon: "telescope",
+        command: "workPlan.plans.scanAll",
       }];
     }
     return [{ kind: "message", text: "No stalled plans", icon: "pass" }];
@@ -198,6 +199,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     if (node.kind === "message") {
       const item = new vscode.TreeItem(node.text, vscode.TreeItemCollapsibleState.None);
       item.iconPath = new vscode.ThemeIcon(node.icon);
+      if (node.command) {
+        // Make the empty-state itself actionable — clicking it runs the command
+        // (the title-bar icon alone proved undiscoverable; #164 follow-up).
+        item.command = { command: node.command, title: node.text };
+        item.tooltip = "Click to scan every local-clone repo for stalled plans";
+      }
       return item;
     }
 
