@@ -7,7 +7,7 @@ import {
 import type { NotesVcsStatus } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
-import { ackKey } from "./planModel.ts";
+import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
@@ -1308,10 +1308,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // -------------------------------------------------------------------------
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("workPlan.addRepo", async () => {
+    vscode.commands.registerCommand("workPlan.addRepo", async (seed?: { github?: string; key?: string }) => {
       try {
+        // The Plans "not registered" row passes {github: slug}; menu/palette pass
+        // nothing. Derive a default key from the slug's repo half (lowercased,
+        // non-key chars → '-') so the common case is one Enter away. Guard on the
+        // string type so an unexpected menu context can't masquerade as a seed.
+        const seedGithub = typeof seed?.github === "string" ? seed.github : undefined;
+        const seedKey = typeof seed?.key === "string"
+          ? seed.key
+          : seedGithub?.split("/")[1]?.toLowerCase().replace(/[^a-z0-9-]/g, "-") ?? "";
+
         const key = await vscode.window.showInputBox({
           prompt: "Short repo key (lowercase, e.g. my-project)",
+          value: seedKey,
           validateInput: (v) =>
             /^[a-z][a-z0-9-]*$/.test(v) ? null : "Key must be lowercase, start with a letter, e.g. my-project",
         });
@@ -1319,6 +1329,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const github = await vscode.window.showInputBox({
           prompt: "GitHub repo (org/repo)",
+          value: seedGithub ?? "",
           validateInput: (v) =>
             /^[\w.-]+\/[\w.-]+$/.test(v) ? null : "Enter an org/repo slug, e.g. your-org/myproject",
         });
@@ -1906,6 +1917,16 @@ export function activate(context: vscode.ExtensionContext): void {
     return Array.from(seen, ([repoKey, label]) => ({ repoKey, label }));
   };
 
+  // Slugs of repos that have tracks but no `repos:` config entry (#288 follow-up)
+  // — surfaced in the Plans view as greyed "not registered" rows. Reads the RAW
+  // export (not the lens-filtered one) so the row list doesn't shift with the
+  // active Tracks lens. Kept separate from reposForPlans so Scan All never tries
+  // to scan a repo with no registered local clone.
+  const unregisteredForPlans = (): string[] => {
+    const raw = provider.rawExport;
+    return raw ? unregisteredTrackRepos(raw) : [];
+  };
+
   // Ack state (#164): plans the user has chosen to stop flagging. Persisted in
   // workspaceState (per-workspace, not global) keyed by ackKey(repoKey, rel). We
   // persist ONLY the ack key — never stalled-ness, which is re-derived live, so a
@@ -1923,6 +1944,7 @@ export function activate(context: vscode.ExtensionContext): void {
     stallDaysSetting,
     (repoKey, rel) => ackedPlans.has(ackKey(repoKey, rel)),
     () => showAcked,
+    unregisteredForPlans,
   );
 
   const setAck = async (repoKey: string, rel: string, on: boolean): Promise<void> => {

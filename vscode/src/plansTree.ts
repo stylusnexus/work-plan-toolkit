@@ -6,17 +6,19 @@ import { planBucket, planDescription, isStalledForDisplay } from "./planModel.ts
 import type { PlanBucket } from "./planModel.ts";
 
 // ---------------------------------------------------------------------------
-// Node types — four variants. `repo` and `doc` are the real tree nodes;
+// Node types — five variants. `repo` and `doc` are the real tree nodes;
 // `message` is a leaf used for empty / error / no-clone states so a repo that
 // can't be scanned still renders an explanatory child instead of vanishing.
 // `rollup` is the synthetic first root: a cross-repo "stalled everywhere" view
-// populated by the Scan All command.
+// populated by the Scan All command. `unregistered` is a greyed leaf for a repo
+// that has tracks but no `repos:` entry — present-but-not-scannable.
 // ---------------------------------------------------------------------------
 
 export type PlanNode =
   | { kind: "rollup" }                                  // synthetic cross-repo stalled roll-up (first root)
   | { kind: "repo"; repoKey: string; label: string }   // repoKey = folder key; label = slug for display
   | { kind: "doc"; repoKey: string; repoRoot: string; doc: PlanDoc }
+  | { kind: "unregistered"; slug: string }             // track-only repo, no config entry → greyed "Add Repo to scan" row
   | { kind: "message"; text: string; icon: string; command?: string };
 
 // ---------------------------------------------------------------------------
@@ -62,16 +64,26 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     private readonly stallDays: () => number | null,
     private readonly isAcked: (repoKey: string, rel: string) => boolean,
     private readonly showAcked: () => boolean,
+    // Slugs of repos that have tracks but no `repos:` config entry — rendered as
+    // greyed "not registered" leaves AFTER the real repo nodes. Kept separate
+    // from `repos()` on purpose: these have no folder key, so Scan All and the
+    // roll-up (which both work off `repos()`/the cache) must never try them.
+    private readonly unregistered: () => string[] = () => [],
   ) {}
 
   async getChildren(element?: PlanNode): Promise<PlanNode[]> {
     if (!element) {
       // Roots — the synthetic stalled roll-up first, then one collapsed node
-      // per distinct repo (folder key).
+      // per distinct registered repo (folder key), then any track-only repos as
+      // greyed "not registered" leaves so the Tracks/Plans asymmetry is visible
+      // and actionable rather than looking like a dropped repo.
       const repoNodes = this.repos().map(
         (r): PlanNode => ({ kind: "repo", repoKey: r.repoKey, label: r.label }),
       );
-      return [{ kind: "rollup" }, ...repoNodes];
+      const unregisteredNodes = this.unregistered().map(
+        (slug): PlanNode => ({ kind: "unregistered", slug }),
+      );
+      return [{ kind: "rollup" }, ...repoNodes, ...unregisteredNodes];
     }
 
     if (element.kind === "rollup") {
@@ -193,6 +205,29 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Collapsed);
       item.contextValue = "workPlanPlansRepo";
       item.iconPath = new vscode.ThemeIcon("repo");
+      return item;
+    }
+
+    if (node.kind === "unregistered") {
+      // A repo that has tracks but no `repos:` entry — the Plans view can't scan
+      // it (no registered local clone). Render a greyed, non-expandable leaf that
+      // launches Add Repo prefilled with the slug, so the fix is one click away.
+      const item = new vscode.TreeItem(node.slug, vscode.TreeItemCollapsibleState.None);
+      item.contextValue = "workPlanPlansUnregistered";
+      item.iconPath = new vscode.ThemeIcon("circle-slash", new vscode.ThemeColor("disabledForeground"));
+      item.description = "not registered";
+      const tip = new vscode.MarkdownString(undefined, true);
+      tip.appendMarkdown(
+        `\`${node.slug}\` has tracks but **no registered local clone**, so the Plans ` +
+        `view can't scan its plans. Click to **Add Repo** — register a checkout path ` +
+        `and it becomes a scannable repo here.`,
+      );
+      item.tooltip = tip;
+      item.command = {
+        command: "workPlan.addRepo",
+        title: "Add Repo",
+        arguments: [{ github: node.slug }],
+      };
       return item;
     }
 
