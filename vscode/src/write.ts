@@ -21,7 +21,12 @@ export type WriteAction =
   | { kind: "removeRepo"; key: string }
   | { kind: "setNotesRoot"; path: string }
   | { kind: "move"; fromTrack: string; toTrack: string; issue: number }
-  | { kind: "handoff"; track: string };
+  | { kind: "handoff"; track: string }
+  // Plan verdict-override (#286) — frontmatter-only write to a plan/spec doc.
+  // repoKey is the config folder key (the `plan-status --repo=<key>` arg); rel is
+  // the repo-relative doc path. clear=true removes the override instead of setting.
+  | { kind: "planConfirm"; repoKey: string; rel: string; verdict: "shipped" | "partial" | "dead" }
+  | { kind: "planConfirmClear"; repoKey: string; rel: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -69,6 +74,8 @@ export type WriteOutcome =
  *   setNotesRoot    → ["set-notes-root", "--", path]
  *   move            → ["move", "--", issue, fromTrack, toTrack]
  *   handoff         → ["handoff", "--", track]   (derived/non-interactive mode)
+ *   planConfirm     → ["plan-confirm", "--repo=<key>", "--verdict=<v>", "--", rel]
+ *   planConfirmClear→ ["plan-confirm", "--repo=<key>", "--clear", "--", rel]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -152,6 +159,18 @@ export function actionToArgs(action: WriteAction): string[] {
       // their defaults under non-TTY stdin (#183), so this never blocks; --auto-next
       // and -i are deliberately omitted (they'd need a native picker — separate work).
       return ["handoff", "--", action.track];
+
+    case "planConfirm":
+      return [
+        "plan-confirm",
+        `--repo=${action.repoKey}`,
+        `--verdict=${action.verdict}`,
+        "--",
+        action.rel,
+      ];
+
+    case "planConfirmClear":
+      return ["plan-confirm", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
   }
 }
 

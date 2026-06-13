@@ -97,6 +97,13 @@ export interface PlanDoc {
   manifest_last_touched: string | null;
   stalled: boolean;
   lie_gap: boolean;
+  /**
+   * Human verdict-override from the doc's frontmatter (#286): "shipped" |
+   * "partial" | "dead" when a reviewer has affirmed the verdict, else null.
+   * When set, the CLI pins `verdict` to it and forces `lie_gap` false. Optional
+   * on the wire so an older CLI (no override field) deserializes to undefined.
+   */
+  override?: "shipped" | "partial" | "dead" | null;
   unchecked_items: string[];
   stall_days: number;
 }

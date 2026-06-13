@@ -62,6 +62,11 @@ describe("planDescription", () => {
     const d = planDescription(doc({ manifest_last_touched: "2026-06-11" }), 14, Date.parse("2026-06-12"));
     assert.equal(d, "2/6 phases · 3/7 files");
   });
+  test("override appends a confirmed marker (#286)", () => {
+    const d = planDescription(doc({ verdict: "shipped", lie_gap: false, override: "shipped",
+      manifest_last_touched: "2026-06-11" }), 14, Date.parse("2026-06-12"));
+    assert.equal(d, "2/6 phases · 3/7 files · ✋ confirmed");
+  });
 });
 
 describe("ackKey", () => {

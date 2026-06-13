@@ -1975,6 +1975,101 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // Confirm-verdict (#286): write a human `verdict_override` into the plan's
+  // FRONTMATTER. Two gates stand in front of the write: a mandatory modal that
+  // names the exact file and states it edits only frontmatter (the #286 UI
+  // safeguard), then — for a PUBLIC repo — executeWrite's existing confirm-token
+  // modal. The write is frontmatter-only; the CLI never touches the body.
+  const confirmFrontmatterWrite = async (rel: string, verb: string): Promise<boolean> => {
+    const choice = await vscode.window.showWarningMessage(
+      `${verb} ${rel}?\n\nThis writes ONLY to the document's YAML frontmatter — never its body, checkboxes, or declared-file manifest.`,
+      { modal: true },
+      "Write frontmatter",
+    );
+    return choice === "Write frontmatter";
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.plans.confirmVerdict",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        const pick = await vscode.window.showQuickPick(
+          [
+            { label: "$(pass-filled) Shipped", verdict: "shipped" as const, description: "Done — the banner is correct" },
+            { label: "$(circle-filled) Partial", verdict: "partial" as const, description: "Still in progress" },
+            { label: "$(circle-slash) Dead", verdict: "dead" as const, description: "Abandoned" },
+          ],
+          {
+            title: `Confirm verdict for ${filename}`,
+            placeHolder: "Pick the verdict to write into the doc's frontmatter",
+          },
+        );
+        if (!pick) return;
+        if (!(await confirmFrontmatterWrite(rel, `Write verdict_override: ${pick.verdict} into the frontmatter of`))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            `Work Plan: confirming ${pick.verdict}…`,
+            () => executeWrite(
+              runner,
+              { kind: "planConfirm", repoKey, rel, verdict: pick.verdict },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: ${filename} confirmed ${pick.verdict}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: confirm failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.clearConfirmation",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        if (!(await confirmFrontmatterWrite(rel, "Clear the verdict override from the frontmatter of"))) {
+          return;
+        }
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: clearing confirmation…",
+            () => executeWrite(
+              runner,
+              { kind: "planConfirmClear", repoKey, rel },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(`Work Plan: cleared confirmation on ${filename}.`);
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: clear failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+  );
+
   const plansView = vscode.window.createTreeView("workPlan.plans", {
     treeDataProvider: plansProvider,
   });

@@ -43,6 +43,9 @@ export function planDescription(d: PlanDoc, stallDays: number | null, nowMs: num
   if (isStalledForDisplay(d, stallDays, nowMs) && d.manifest_last_touched) {
     bits.push(`${coldDays(d.manifest_last_touched, nowMs)}d cold`);
   }
+  // A human-confirmed verdict (#286) — flag it so the row reads as affirmed, not
+  // merely mechanically scored (the icon already drops to the verdict's bucket).
+  if (d.override) bits.push("✋ confirmed");
   return bits.join(" · ");
 }
 
