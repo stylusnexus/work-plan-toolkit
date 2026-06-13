@@ -29,16 +29,20 @@ export type PlanNode =
 const BUCKET_RANK: Record<PlanBucket, number> = {
   stalled: 0,
   "lie-gap": 1,
-  active: 2,
-  shipped: 3,
-  dead: 4,
-  other: 5,
+  drift: 2,
+  active: 3,
+  shipped: 4,
+  dead: 5,
+  other: 6,
 };
 
 /** verdict-bucket → [codicon, ThemeColor id]. */
 const BUCKET_ICON: Record<PlanBucket, [string, string]> = {
   stalled: ["warning", "charts.red"],
   "lie-gap": ["error", "charts.red"],
+  // Drift is loud — a distinct alert glyph in red so a regressed plan reads
+  // apart from stalled (warning) and lie-gap (error).
+  drift: ["alert", "charts.red"],
   active: ["circle-filled", "charts.yellow"],
   shipped: ["pass-filled", "charts.gray"],
   dead: ["circle-slash", "charts.gray"],
@@ -307,14 +311,21 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // contextValue drives the right-click menu (#286). Precedence (a node has
     // ONE value): confirmed → "clear confirmation"; durable frontmatter-ack →
     // "clear saved acknowledgment"; local ack → "un-acknowledge"; otherwise the
-    // bucket value, which offers both "confirm verdict…" and the two acks.
-    item.contextValue = doc.override
+    // bucket value, which offers "confirm verdict…", the two acks, and the
+    // baseline actions. A " baselined" token is appended on bucket-state docs
+    // that carry a baseline so "Clear Baseline" can match via a regex when-clause
+    // (the existing bucket menus use prefix/contains matches, so the suffix is
+    // transparent to them).
+    const base = doc.override
       ? "workPlanPlanConfirmed"
       : docAcked
         ? "workPlanPlanDocAcked"
         : localAcked
           ? "workPlanAckedPlan"
           : `workPlanPlan-${bucket}`;
+    item.contextValue = base.startsWith("workPlanPlan-") && doc.verdict_baseline
+      ? `${base} baselined`
+      : base;
     return item;
   }
 

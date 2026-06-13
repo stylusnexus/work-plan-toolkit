@@ -30,7 +30,11 @@ export type WriteAction =
   // Durable frontmatter acknowledgment (#286) — writes `acknowledged: true`
   // (clear removes it). Frontmatter-only, same shape as planConfirm.
   | { kind: "planAck"; repoKey: string; rel: string }
-  | { kind: "planAckClear"; repoKey: string; rel: string };
+  | { kind: "planAckClear"; repoKey: string; rel: string }
+  // Drift baseline (#286) — stamps the current computed verdict into frontmatter
+  // (clear removes it). Frontmatter-only, same shape as planConfirm/planAck.
+  | { kind: "planBaseline"; repoKey: string; rel: string }
+  | { kind: "planBaselineClear"; repoKey: string; rel: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -82,6 +86,8 @@ export type WriteOutcome =
  *   planConfirmClear→ ["plan-confirm", "--repo=<key>", "--clear", "--", rel]
  *   planAck         → ["plan-ack", "--repo=<key>", "--", rel]
  *   planAckClear    → ["plan-ack", "--repo=<key>", "--clear", "--", rel]
+ *   planBaseline    → ["plan-baseline", "--repo=<key>", "--", rel]
+ *   planBaselineClear→ ["plan-baseline", "--repo=<key>", "--clear", "--", rel]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -183,6 +189,12 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "planAckClear":
       return ["plan-ack", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "planBaseline":
+      return ["plan-baseline", `--repo=${action.repoKey}`, "--", action.rel];
+
+    case "planBaselineClear":
+      return ["plan-baseline", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
   }
 }
 
