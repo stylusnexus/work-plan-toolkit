@@ -6,6 +6,37 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.13+627d944 — 2026-06-13 (#293)
+
+feat: Plans view, registered-repo management, list-pickers, Open Track File
+
+Deploy of the 2026.06.13 release. Extension **0.6.0**; CLI floor **2026.06.13**.
+
+## Highlights
+
+### Plans view (#164)
+A new read-only **"Plans"** tree in the VS Code extension surfacing plan/spec docs and their `plan-status` health, loud on the two states that matter to spec-driven work:
+- **stalled** — a `partial` plan whose *declared manifest files* have gone cold (no commit within the threshold) = "started executing, drifted off". Keyed off manifest-file git activity, not the (gitignored) plan doc's own date.
+- **lie-gap** — scored shipped but its own phase checkboxes aren't ticked.
+Lazy per-repo scanning, a cross-repo **"Scan All"** stalled roll-up (bounded-concurrent + streaming), click-to-open, **acknowledge/dismiss** (local, demote-not-hide), and a `workPlan.stallDays` threshold ("Match CLI" / 14/30/45/60/90). CLI side: `plan-status --json` gains `manifest_last_touched`/`stalled`/`lie_gap`/`unchecked_items`/`stall_days` + `--stall-days` flag and config.
+
+### Registered repos are first-class (#288, #290)
+`export --json` emits a top-level `repos[]` of every configured repo. A registered repo now appears in the sidebar **even with no tracks** (right-click → **New Track** to start) and in the Plans view if it has a local clone. Full repo management: **Add Repo** (honest feedback, re-add to set local), **Remove Repo**, **Clear Local Path** — destructive actions behind clear blocking modals that itemize what is/isn't deleted.
+
+### Quality-of-life
+- **Open Track File** (#211) — open a track's underlying `.md` from the tree or detail panel.
+- **List-pickers** (#212, #282) — Move, Set Next-Up, and Add Issue to Track now pick from the known issue list (filterable) instead of retyping numbers.
+
+### CLI data-integrity fixes (#255, #256)
+- `reconcile --all` now keys state by `(repo, path)` — no more cross-repo membership bleed on duplicate slugs.
+- `refresh-md` skips a track on an incomplete GitHub fetch instead of overwriting valid rows with `(not fetched)`.
+
+## Notes
+- `MIN_CLI_VERSION` → 2026.06.13 (the Plans view + repos[] listing need the new export/plan-status fields; older CLI shows a compat warning).
+- Deferred follow-ups: #285 (track↔plan nav), #286 (V2 plan writes), #287 (reactive staleness).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.11+cbd3f57 — 2026-06-11 (#278)
 
 fix(vscode): Daily Brief icon + re-entrancy guard (0.5.1)
