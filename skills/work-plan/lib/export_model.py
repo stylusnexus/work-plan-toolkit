@@ -67,7 +67,9 @@ def normalize_issue(i: dict) -> dict:
 
 
 def build_export(tracks, issues_by_track, visibility, now: str,
-                 untracked_by_repo=None, config_repos=None) -> dict:
+                 untracked_by_repo=None, config_repos=None,
+                 plan_by_track=None) -> dict:
+    plan_by_track = plan_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
         issues = [normalize_issue(i) for i in issues_by_track.get(t.name, [])]
@@ -98,6 +100,10 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "depends_on": list(t.meta.get("depends_on") or []),
             "rollup": {"open": opened, "closed": len(issues) - opened},
             "issues": issues,
+            # The track's declared plan/spec doc + its execution badge (#285), or
+            # null when the track declares no `plan:`. `{rel, resolved:false}` when
+            # the link can't be resolved (no local clone / file absent).
+            "plan": plan_by_track.get(t.name),
         })
     out["untracked"] = [
         {"repo": repo, "issues": [normalize_issue(r) for r in rows]}

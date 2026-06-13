@@ -162,6 +162,14 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     }
 
 
+# Public alias so other commands (e.g. `export`, which resolves a track's linked
+# plan badge for #285) reuse the SAME verdict/lie-gap/override evaluation instead
+# of reimplementing it and drifting. Kept at this module path so the existing
+# tests that patch `commands.plan_status.git_state.*` and call `_evaluate`
+# directly keep working unchanged.
+evaluate_doc = _evaluate
+
+
 def _render(rows, repo_root) -> None:
     print(f"# plan-status — {repo_root}\n")
     by = {}
