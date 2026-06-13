@@ -576,11 +576,11 @@ describe("renderDetail — table accessibility", () => {
     );
   });
 
-  it("labels the move column header for screen readers", () => {
+  it("labels the actions column header for screen readers", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('<span class="sr-only">Move</span>'),
-      `expected an sr-only 'Move' label on the move column header:\n${html}`,
+      html.includes('<span class="sr-only">Actions</span>'),
+      `expected an sr-only 'Actions' label on the actions column header:\n${html}`,
     );
   });
 

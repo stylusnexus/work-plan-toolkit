@@ -419,8 +419,8 @@ mermaid.run();
       margin-left: 4px;
     }
     .milestone-band.collapsed tr:not(.milestone-band-header) { display: none; }
-    .move-col { width: 28px; text-align: center; }
-    .move-btn {
+    .move-col { width: 56px; text-align: center; white-space: nowrap; }
+    .move-btn, .close-issue-btn {
       background: none;
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -433,10 +433,10 @@ mermaid.run();
     }
     /* Reveal on row-hover AND on keyboard focus — never opacity:0, or the
        button is invisible to keyboard/touch/AT users (#214). */
-    tr:hover .move-btn,
-    .move-btn:focus,
-    .move-btn:focus-visible { opacity: 1; }
-    .move-btn:hover { background: var(--card-bg); }
+    tr:hover .move-btn, tr:hover .close-issue-btn,
+    .move-btn:focus, .move-btn:focus-visible,
+    .close-issue-btn:focus, .close-issue-btn:focus-visible { opacity: 1; }
+    .move-btn:hover, .close-issue-btn:hover { background: var(--card-bg); }
     .sr-only {
       position: absolute;
       width: 1px;
