@@ -165,6 +165,13 @@ export function applyLens(exp: Export, lens: Lens): Export {
     // repo still has a matching (filtered) track — so dropping the field here
     // would make the Untracked bucket vanish under EVERY lens, including "all".
     ...(exp.untracked !== undefined && { untracked: exp.untracked }),
+    // Forward configured repos unchanged (#288). buildTree seeds a node for
+    // every registered repo so a zero-track repo (e.g. a just-added agent-armor)
+    // still shows in the Tracks view. Dropping the field here means buildTree's
+    // seeding loop iterates [] and empty repos vanish under EVERY lens — exactly
+    // the untracked bug above, one field over. The Plans view reads rawExport so
+    // it kept showing them; the split between the two views was this omission.
+    ...(exp.repos !== undefined && { repos: exp.repos }),
   };
 }
 
