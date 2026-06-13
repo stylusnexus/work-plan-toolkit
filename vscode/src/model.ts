@@ -180,3 +180,22 @@ export function completionRatio(track: Track): number {
   const total = track.rollup.open + track.rollup.closed;
   return total === 0 ? 0 : track.rollup.closed / total;
 }
+
+/**
+ * Issue numbers ALREADY tracked by some track in `repo` — the union, across that
+ * repo's tracks, of each track's issues + next_up + blockers. Passed as the
+ * `--exclude` set when fetching a repo's open issues (#303 fix) so the Untracked
+ * bucket never shows an issue that a track already owns (e.g. #287 in the
+ * work-plan-viewer track). Without this, "Fetch Open Issues" on a repo that has
+ * tracks pulled every open issue and rendered tracked ones as untracked.
+ */
+export function trackedIssueNumbers(exp: Export, repo: string): number[] {
+  const nums = new Set<number>();
+  for (const t of exp.tracks) {
+    if (t.repo !== repo) continue;
+    for (const i of t.issues) nums.add(i.number);
+    for (const n of t.next_up) nums.add(n);
+    for (const n of t.blockers) nums.add(n);
+  }
+  return [...nums];
+}

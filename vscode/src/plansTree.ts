@@ -37,15 +37,20 @@ const BUCKET_RANK: Record<PlanBucket, number> = {
 };
 
 /** verdict-bucket → [codicon, ThemeColor id]. */
+// List-semantic tokens (not charts.*) so glyphs meet non-text contrast on dark
+// themes (a11y pass). error-states use list.errorForeground, warn-states
+// list.warningForeground; the distinct SHAPE still carries the meaning (#208).
 const BUCKET_ICON: Record<PlanBucket, [string, string]> = {
-  stalled: ["warning", "charts.red"],
-  "lie-gap": ["error", "charts.red"],
-  // Drift is loud — a distinct alert glyph in red so a regressed plan reads
-  // apart from stalled (warning) and lie-gap (error).
-  drift: ["alert", "charts.red"],
-  active: ["circle-filled", "charts.yellow"],
-  shipped: ["pass-filled", "charts.gray"],
-  dead: ["circle-slash", "charts.gray"],
+  stalled: ["warning", "list.warningForeground"],
+  "lie-gap": ["error", "list.errorForeground"],
+  // Drift is loud — a distinct alert glyph so a regressed plan reads apart from
+  // stalled (warning) and lie-gap (error).
+  drift: ["alert", "list.warningForeground"],
+  // Unify "active" on charts.blue (matches the active TRACK icon) — charts.yellow
+  // was the lowest-contrast hue on dark.
+  active: ["circle-filled", "charts.blue"],
+  shipped: ["pass-filled", "charts.green"],
+  dead: ["circle-slash", "descriptionForeground"],
   other: ["question", "descriptionForeground"],
 };
 
@@ -206,7 +211,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
         vscode.TreeItemCollapsibleState.Collapsed,
       );
       item.contextValue = "workPlanPlansRollup";
-      item.iconPath = new vscode.ThemeIcon("warning", new vscode.ThemeColor("charts.red"));
+      item.iconPath = new vscode.ThemeIcon("warning", new vscode.ThemeColor("list.warningForeground"));
       const count = this._stalledDocs().length;
       item.description = String(count);
       return item;
@@ -273,7 +278,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const item = new vscode.TreeItem(filename, vscode.TreeItemCollapsibleState.None);
 
     // Icon — verdict-driven, with a muted override when the plan has been ack'd.
-    const [icon, color] = acked ? ["circle-outline", "charts.gray"] : BUCKET_ICON[bucket];
+    const [icon, color] = acked ? ["circle-outline", "descriptionForeground"] : BUCKET_ICON[bucket];
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
     const ackLabel = docAcked ? " · ✅ ack'd (saved)" : localAcked ? " · ack'd" : "";

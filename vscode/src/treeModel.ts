@@ -26,6 +26,8 @@ export interface TrackNode {
   category: StatusCategory;
   /** rollup.open */
   open: number;
+  /** rollup.closed — for the tree's closed/total count (#220). */
+  closed: number;
   /** "⛔ #4821" | "→ #87" | null */
   hint: string | null;
   /** The raw track — passed to commands/webview by the provider. */
@@ -264,6 +266,7 @@ export function buildTree(exp: Export): RepoNode[] {
       status: track.status,
       category: statusCategory(track),
       open: track.rollup.open,
+      closed: track.rollup.closed,
       hint: trackHint(track),
       track,
     });
@@ -281,11 +284,28 @@ export function buildTree(exp: Export): RepoNode[] {
 }
 
 /**
+ * Activity-bar badge counts (#215): blocked tracks + total open issues, across
+ * every track. Pure. The caller prefers `blocked` (the louder signal) and falls
+ * back to `open`. "Blocked" matches the tree's own notion (`statusCategory`).
+ */
+export function badgeCounts(tracks: Track[]): { blocked: number; open: number } {
+  let blocked = 0;
+  let open = 0;
+  for (const t of tracks) {
+    if (statusCategory(t) === "blocked") blocked++;
+    open += t.rollup.open;
+  }
+  return { blocked, open };
+}
+
+/**
  * Merges on-demand fetched open issues (#303) into matching repo nodes'
- * `untracked`. A trackless repo's export `untracked` is empty; this fills it
- * from the fetch cache so its Untracked bucket renders. Pure + non-mutating —
- * returns a new array, with new node objects only for the repos that had a
- * fetch. Repos absent from `fetched` pass through unchanged.
+ * `untracked`. A TRACKLESS repo's export `untracked` is empty, so this fills it
+ * from the fetch cache. A repo that HAS tracks is left untouched: the export
+ * already computes its `untracked` (open-minus-tracked) fresh on every refresh,
+ * so it stays authoritative and the (possibly stale) fetch snapshot must never
+ * override it — otherwise an already-tracked issue could resurface under
+ * Untracked between refreshes (#303 follow-up). Pure + non-mutating.
  */
 export function mergeFetchedUntracked(
   repos: RepoNode[],
@@ -293,7 +313,9 @@ export function mergeFetchedUntracked(
 ): RepoNode[] {
   if (fetched.size === 0) return repos;
   return repos.map(repo =>
-    fetched.has(repo.repo) ? { ...repo, untracked: fetched.get(repo.repo)! } : repo,
+    repo.tracks.length === 0 && fetched.has(repo.repo)
+      ? { ...repo, untracked: fetched.get(repo.repo)! }
+      : repo,
   );
 }
 
