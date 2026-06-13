@@ -115,6 +115,12 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "workPlan.closeIssue",
+        "title": "Close Issue on GitHub…",
+        "category": "Work Plan",
+        "icon": "$(issue-closed)"
+      },
+      {
         "command": "workPlan.signInToGitHub",
         "title": "Sign in to GitHub",
         "category": "Work Plan",
@@ -434,6 +440,11 @@
           "group": "1_workPlanWrite@1"
         },
         {
+          "command": "workPlan.closeIssue",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedIssue",
+          "group": "1_workPlanWrite@2"
+        },
+        {
           "command": "workPlan.batchSlotUntracked",
           "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
           "group": "1_workPlanWrite@1"
@@ -482,6 +493,10 @@
       "commandPalette": [
         {
           "command": "workPlan.fetchOpenIssues",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.closeIssue",
           "when": "false"
         },
         {

@@ -111,7 +111,7 @@ flowchart TB
 
 > **When should I run `refresh-md`?** Any time you close or merge issues and want the track body to reflect the new state. `handoff` rewrites the status table for one track on every run, but `brief` reads GitHub live without writing anything back — so a track you haven't `handoff`'d recently stays stale on disk. `refresh-md <track>` (or **Sync Issue States from GitHub** in VS Code) fixes that on-demand; `hygiene` sweeps all tracks weekly.
 
-> **GitHub access is read-only.** The toolkit never writes to GitHub. All issue data comes from read-only `gh` CLI calls (`gh issue list`, `gh issue view`). Every write (frontmatter, status table, session log) goes to your local markdown files only.
+> **GitHub access is read-only — with ONE explicit, gated exception.** All issue data comes from read-only `gh` CLI calls (`gh issue list`, `gh issue view`), and every routine write (frontmatter, status table, session log) goes to your local markdown files only. The **sole** GitHub-mutating command is `close-issue` (#305) — it closes an issue via `gh issue close` (optionally with a comment), for the common case where a PR merged to `dev` left its issue OPEN (GitHub auto-closes only from the default branch). It is opt-in and never silent: the VS Code viewer fires a mandatory "Close on GitHub? — cannot be undone" modal before every close. Nothing else touches GitHub state.
 
 ## Shared tracks
 

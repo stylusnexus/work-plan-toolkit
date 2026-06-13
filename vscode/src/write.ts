@@ -34,7 +34,11 @@ export type WriteAction =
   // Drift baseline (#286) — stamps the current computed verdict into frontmatter
   // (clear removes it). Frontmatter-only, same shape as planConfirm/planAck.
   | { kind: "planBaseline"; repoKey: string; rel: string }
-  | { kind: "planBaselineClear"; repoKey: string; rel: string };
+  | { kind: "planBaselineClear"; repoKey: string; rel: string }
+  // Close a GitHub issue (#305) — the ONLY GitHub-mutating action. `repo` is the
+  // org/repo slug; gated by a mandatory UI modal in the command handler (no
+  // needs_confirm token — closing doesn't leak private content to a public repo).
+  | { kind: "closeIssue"; repo: string; number: number; reason: "completed" | "not_planned"; comment?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -88,6 +92,7 @@ export type WriteOutcome =
  *   planAckClear    → ["plan-ack", "--repo=<key>", "--clear", "--", rel]
  *   planBaseline    → ["plan-baseline", "--repo=<key>", "--", rel]
  *   planBaselineClear→ ["plan-baseline", "--repo=<key>", "--clear", "--", rel]
+ *   closeIssue      → ["close-issue", "--repo=<slug>", "--reason=<r>", ..."--comment=<c>", "--", number]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -195,6 +200,16 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "planBaselineClear":
       return ["plan-baseline", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "closeIssue":
+      return [
+        "close-issue",
+        `--repo=${action.repo}`,
+        `--reason=${action.reason}`,
+        ...(action.comment ? [`--comment=${action.comment}`] : []),
+        "--",
+        String(action.number),
+      ];
   }
 }
 

@@ -176,6 +176,14 @@ mermaid.run();
       return;
     }
 
+    // Close-on-GitHub button → close the issue (#305)
+    var closeBtn = target.closest(".close-issue-btn");
+    if (closeBtn) {
+      var closeNum = parseInt(closeBtn.getAttribute("data-close"), 10);
+      if (closeNum) { post({ type: "closeIssue", number: closeNum }); }
+      return;
+    }
+
     // Milestone band collapse toggle (keyboard-operable <button>)
     var msToggle = target.closest(".milestone-toggle-btn");
     if (msToggle) {

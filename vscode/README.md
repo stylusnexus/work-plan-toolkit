@@ -16,6 +16,7 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 - **Edit fields** (status / priority / milestone / blockers / next-up / **cross-track dependencies**), **Set next-up**, **Slot** an issue, **Move Issue from Track** (source-first: pick a destination track in the same repo), **Close** a track (shipped / parked / abandoned), **Refresh** a track body, **Reconcile** (draft preview), **Run hygiene**, and **New track**.
 - **Public-repo confirm modal.** Before any write into a repo that's public (or whose visibility `gh` can't determine), the extension surfaces the CLI's heads-up as a **"Write anyway / Keep private"** dialog and re-invokes with a confirm token — the leak guard, moved from a terminal prompt to a GUI. Private repos write straight through with no friction.
+- **Close an issue on GitHub (#305) — the one GitHub write.** Right-click an **Untracked** issue → **Close Issue on GitHub…**, or use the **⊗** action on a tracked issue row in the detail panel. Pick a reason (Completed / Not planned), optionally add a closing comment, and confirm a mandatory **"Close on GitHub? — cannot be undone"** modal (fires on *every* close, public or private). For the common case where a PR merged to `dev` left its issue open. Everything else the extension does is read-only on GitHub.
 
 **Get started from empty** — a cold-start a new user can drive without the CLI:
 

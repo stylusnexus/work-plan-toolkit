@@ -523,6 +523,71 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
+    // workPlan.closeIssue (#305) — the only GitHub-mutating action. Accepts an
+    // untracked-issue NODE ({repo, issue:{number,title}}) or a detail-panel
+    // {repo, number, title}. Flow: reason pick → optional comment → mandatory
+    // "writes to GitHub, can't be undone" modal (EVERY close) → executeWrite.
+    vscode.commands.registerCommand(
+      "workPlan.closeIssue",
+      async (arg?: { repo?: string; number?: number; title?: string; issue?: Issue }) => {
+        const repo = arg?.repo;
+        const number = arg?.number ?? arg?.issue?.number;
+        const title = arg?.title ?? arg?.issue?.title ?? (number ? `#${number}` : "");
+        if (!repo || !number) {
+          vscode.window.showInformationMessage("Work Plan: no issue to close.");
+          return;
+        }
+
+        const pick = await vscode.window.showQuickPick(
+          [
+            { label: "$(pass-filled) Completed", reason: "completed" as const, description: "Work is done (default)" },
+            { label: "$(circle-slash) Not planned", reason: "not_planned" as const, description: "Won't do / out of scope" },
+          ],
+          { title: `Close #${number} on GitHub`, placeHolder: "Close reason" },
+        );
+        if (!pick) return;
+
+        const comment = await vscode.window.showInputBox({
+          title: `Closing comment for #${number} (optional)`,
+          placeHolder: "Closed via dev-branch merge (#PR) — leave blank for no comment",
+          ignoreFocusOut: true,
+        });
+        if (comment === undefined) return; // Escape cancels the whole operation
+
+        const ok = await vscode.window.showWarningMessage(
+          `Close issue #${number} "${title}" on GitHub?\n\nThis writes to GitHub — it cannot be undone from the extension.`,
+          { modal: true },
+          "Close on GitHub",
+        );
+        if (ok !== "Close on GitHub") return;
+
+        try {
+          const outcome = await withWriteProgress(
+            `Work Plan: closing #${number} on GitHub…`,
+            () => executeWrite(
+              runner,
+              { kind: "closeIssue", repo, number, reason: pick.reason, comment: comment || undefined },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            await refreshAfterWrite();
+            vscode.window.showInformationMessage(
+              comment
+                ? `Work Plan: closed #${number} on GitHub with comment.`
+                : `Work Plan: closed #${number} on GitHub.`,
+            );
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: close failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
   );
 
   // -------------------------------------------------------------------------

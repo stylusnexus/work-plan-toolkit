@@ -713,3 +713,19 @@ describe("renderPlanSection", () => {
     assert.ok(!html.includes("<script>"), html);
   });
 });
+
+describe("renderDetail — close-on-GitHub button (#305)", () => {
+  it("renders a close button for an OPEN issue in a repo'd track", () => {
+    const html = renderDetail(platformHealth);   // #487 is open
+    assert.ok(html.includes('class="close-issue-btn" data-close="487"'), html);
+  });
+  it("does not render a close button for a CLOSED issue", () => {
+    // #2196 RLS audit is closed → no close affordance
+    const html = renderDetail(platformHealth);
+    assert.ok(!html.includes('data-close="2196"'), html);
+  });
+  it("no close button when the track has no repo", () => {
+    const noRepo: Track = { ...platformHealth, repo: null as unknown as string };
+    assert.ok(!renderDetail(noRepo).includes("close-issue-btn"));
+  });
+});

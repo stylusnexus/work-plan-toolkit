@@ -881,3 +881,22 @@ describe("actionToArgs — planBaseline", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// closeIssue — the only GitHub-mutating action (#305)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — closeIssue", () => {
+  test("with reason + comment", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "closeIssue", repo: "o/r", number: 287, reason: "completed", comment: "done via dev" }),
+      ["close-issue", "--repo=o/r", "--reason=completed", "--comment=done via dev", "--", "287"],
+    );
+  });
+  test("omits --comment when absent", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "closeIssue", repo: "o/r", number: 5, reason: "not_planned" }),
+      ["close-issue", "--repo=o/r", "--reason=not_planned", "--", "5"],
+    );
+  });
+});

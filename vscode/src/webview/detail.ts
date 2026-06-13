@@ -249,8 +249,13 @@ function renderIssueRow(track: Track, issue: Issue): string {
   const numCell = track.repo
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
+  // Move + Close-on-GitHub actions (#305). Close shows only for OPEN issues in a
+  // repo'd track; a closed row shows no close affordance (already done).
+  const closeBtn = track.repo && issue.state === "open"
+    ? ` <button class="close-issue-btn" data-close="${issue.number}" title="Close #${issue.number} on GitHub" aria-label="Close issue #${issue.number} on GitHub">⊗</button>`
+    : "";
   const moveBtn = track.repo
-    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button></td>`
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}</td>`
     : `<td class="move-col"></td>`;
   return (
     `<tr>` +

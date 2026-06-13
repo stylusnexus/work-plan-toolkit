@@ -28,6 +28,32 @@ def _valid_repo(repo: str) -> bool:
     return bool(repo) and _REPO_RE.match(repo) is not None
 
 
+def close_issue(repo: str, number: int, reason=None, comment=None) -> tuple:
+    """Close a GitHub issue via `gh issue close` — the toolkit's ONLY
+    GitHub-mutating call (#305). Everything else here is read-only.
+
+    Returns (ok, message). `reason` ∈ {completed, not_planned} maps to
+    `--reason`; `comment` (if given) posts a closing comment. The issue number
+    is coerced to str for argv (never shell-interpolated), and `repo` is
+    validated as owner/name first, so neither can inject. Never raises — a gh
+    failure (already-closed, no write access, network, not-found) comes back as
+    (False, <gh stderr>)."""
+    if not _valid_repo(repo):
+        return (False, f"invalid repo '{repo}'")
+    args = ["gh", "issue", "close", str(int(number)), "--repo", repo]
+    if reason in ("completed", "not_planned"):
+        args += ["--reason", reason]
+    if comment:
+        args += ["--comment", str(comment)]
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=GH_TIMEOUT)
+    except Exception as e:
+        return (False, f"gh issue close failed: {e}")
+    if proc.returncode != 0:
+        return (False, (proc.stderr or proc.stdout or "gh issue close failed").strip())
+    return (True, (proc.stdout or f"closed #{number}").strip())
+
+
 def gh_auth_status() -> dict:
     """Probe `gh` authentication so callers can fast-fail instead of silently
     degrading (#auth). Returns:
