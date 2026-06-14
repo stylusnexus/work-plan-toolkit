@@ -24,10 +24,10 @@ const platformHealth: Track = {
   depends_on: ["idea-mode", "org-sharing"],
   rollup: { open: 12, closed: 8 },
   issues: [
-    { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null },
-    { number: 487,  title: "auth rate limit", state: "open",  assignee: "@alice", milestone: "M1" },
-    { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1" },
-    { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null },
+    { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null,  in_progress: false },
+    { number: 487,  title: "auth rate limit", state: "open",  assignee: "@alice", milestone: "M1",  in_progress: false },
+    { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1",  in_progress: false },
+    { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null,  in_progress: false },
   ],
 };
 
@@ -65,6 +65,7 @@ const xssTrack: Track = {
       state: "open",
       assignee: "<b>evil</b>",
       milestone: null,
+      in_progress: false,
     },
   ],
 };
@@ -290,6 +291,7 @@ describe("renderDetail — HTML escaping", () => {
           state: 'open" onmouseover="x' as unknown as "open",
           assignee: "@x",
           milestone: null,
+          in_progress: false,
         },
       ],
     };
@@ -363,8 +365,8 @@ describe("renderDetail — milestone bands", () => {
     const singleMsTrack: Track = {
       ...emptyTrack,
       issues: [
-        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1" },
-        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1" },
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1", in_progress: false },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1", in_progress: false },
       ],
       rollup: { open: 2, closed: 0 },
     };
@@ -379,8 +381,8 @@ describe("renderDetail — milestone bands", () => {
     const allNullTrack: Track = {
       ...emptyTrack,
       issues: [
-        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null },
-        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null },
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null, in_progress: false },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null, in_progress: false },
       ],
       rollup: { open: 2, closed: 0 },
     };
@@ -397,10 +399,10 @@ describe("renderDetail — milestone bands", () => {
       ...emptyTrack,
       milestone_alignment: "v1",
       issues: [
-        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2" },
-        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1" },
-        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1" },
-        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null },
+        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2",  in_progress: false },
+        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1",  in_progress: false },
+        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1",  in_progress: false },
+        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null,  in_progress: false },
       ],
       rollup: { open: 4, closed: 0 },
     };
@@ -423,9 +425,9 @@ describe("renderDetail — milestone bands", () => {
       ...emptyTrack,
       milestone_alignment: "v2.0.0",
       issues: [
-        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0" },
-        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0" },
-        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null },
+        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0", in_progress: false },
+        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0", in_progress: false },
+        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null,  in_progress: false },
       ],
       rollup: { open: 3, closed: 0 },
     };
@@ -458,6 +460,7 @@ describe("renderDetail — issue cap", () => {
         state: "open",
         assignee: "@dev",
         milestone: null,
+        in_progress: false,
       });
     }
     return {
@@ -516,6 +519,7 @@ describe("renderDetail — issue cap", () => {
         state: "open",
         assignee: "@dev",
         milestone: ms,
+        in_progress: false,
       });
     }
     const track: Track = {
@@ -653,7 +657,7 @@ describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
   it("the issue-cap 'Show all' toggle carries aria-expanded", () => {
     const issues: Issue[] = [];
     for (let i = 1; i <= 75; i++) {
-      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null });
+      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null, in_progress: false });
     }
     const big: Track = {
       ...emptyTrack, name: "big", repo: "org/repo", rollup: { open: 75, closed: 0 }, issues,
@@ -740,5 +744,39 @@ describe("renderDetail — progress bar (#220)", () => {
   });
   it("omits the bar for an empty track (no divide-by-zero)", () => {
     assert.ok(!renderDetail(emptyTrack).includes("progressbar"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-progress badge (#271)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — in-progress badge (#271)", () => {
+  it("renders an in-progress badge on a flagged issue", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes("in-progress"), html);
+    assert.ok(html.includes('data-issue="271"'), html);
+  });
+
+  it("omits the badge when not in progress", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 9, title: "quiet issue", state: "open", assignee: "@bob", milestone: null, in_progress: false },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // The pill must not appear anywhere in the issue row for issue #9
+    assert.ok(!html.includes("in-progress"), html);
   });
 });

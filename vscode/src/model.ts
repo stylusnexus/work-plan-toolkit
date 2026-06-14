@@ -10,6 +10,8 @@ export interface Issue {
   assignee: string;
   /** Short milestone label or null. */
   milestone: string | null;
+  /** True when the issue has an active hot branch or the work-plan:in-progress label. */
+  in_progress: boolean;
 }
 
 /** Aggregate open/closed counts for a track. */

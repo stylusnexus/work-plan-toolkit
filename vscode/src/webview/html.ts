@@ -358,8 +358,9 @@ mermaid.run();
       font-size: 0.85em;
       font-weight: 600;
     }
-    .pill.open   { background: var(--pill-open-bg);   color: var(--pill-open-fg); }
-    .pill.closed { background: var(--pill-closed-bg); color: var(--pill-closed-fg); }
+    .pill.open        { background: var(--pill-open-bg);   color: var(--pill-open-fg); }
+    .pill.closed      { background: var(--pill-closed-bg); color: var(--pill-closed-fg); }
+    .pill.in-progress { background: var(--vscode-charts-orange, #d18616); color: var(--vscode-editor-background); }
     .blockers { margin-top: 8px; }
     .chip {
       display: inline-block;

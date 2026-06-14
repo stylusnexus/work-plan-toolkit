@@ -51,6 +51,7 @@ const VALID_EXPORT: Export = {
           state: "open",
           assignee: "@eve",
           milestone: "v1",
+          in_progress: false,
         },
       ],
     },
@@ -116,8 +117,8 @@ function recordingRunner(result: CliResult): { run: CliRunner; calls: string[][]
 const VALID_OPEN_ISSUES = {
   repo: "your-org/myproject",
   issues: [
-    { number: 142, title: "Add SSO", state: "open", assignee: "—", milestone: null },
-    { number: 87, title: "Fix auth", state: "open", assignee: "@eve", milestone: "v0.6" },
+    { number: 142, title: "Add SSO", state: "open", assignee: "—", milestone: null, in_progress: false },
+    { number: 87, title: "Fix auth", state: "open", assignee: "@eve", milestone: "v0.6", in_progress: false },
   ],
 };
 

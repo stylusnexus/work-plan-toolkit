@@ -271,11 +271,14 @@ function renderIssueRow(track: Track, issue: Issue): string {
   const moveBtn = track.repo
     ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}</td>`
     : `<td class="move-col"></td>`;
+  const inProgressPill = issue.in_progress
+    ? ` <span class="pill in-progress" title="In progress (hot branch or work-plan:in-progress label)">in-progress</span>`
+    : "";
   return (
     `<tr>` +
     numCell +
     `<td>${esc(issue.title)}</td>` +
-    `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td>` +
+    `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span>${inProgressPill}</td>` +
     `<td class="who">${esc(issue.assignee)}</td>` +
     moveBtn +
     `</tr>`

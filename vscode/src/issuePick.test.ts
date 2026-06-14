@@ -14,6 +14,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     state: "open",
     assignee: "—",
     milestone: null,
+    in_progress: false,
     ...overrides,
   };
 }
