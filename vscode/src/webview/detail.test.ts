@@ -108,6 +108,19 @@ describe("renderDetail — issues table", () => {
     assert.ok(html.includes("487"), `Missing issue #487:\n${html}`);
   });
 
+  it("num-cell links carry a real GitHub href (works even if the webview JS doesn't run)", () => {
+    // Defense-in-depth: the openIssue postMessage handler still fires (and
+    // preventDefaults), but a real href means clicking opens GitHub even when
+    // the webview script is blocked/stale/errored — instead of href="#" silently
+    // scrolling to the top of the panel.
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      /<td class="num"><a href="https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+"/.test(html),
+      `num-cell anchor must have a real github issue href, not href="#":\n${html.slice(0, 600)}`,
+    );
+    assert.ok(!html.includes('class="num"><a href="#"'), "num-cell must not use href=\"#\"");
+  });
+
   it("contains the title 'auth rate limit' for #487", () => {
     const html = renderDetail(platformHealth);
     assert.ok(html.includes("auth rate limit"), `Missing title:\n${html}`);

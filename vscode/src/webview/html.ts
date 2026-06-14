@@ -91,6 +91,7 @@ export function buildHtml(o: WebviewHtmlOptions): string {
     `default-src 'none'`,
     `img-src ${cspSource} data:`,
     `style-src ${cspSource} 'unsafe-inline'`,
+    `font-src ${cspSource} data:`,
     `script-src 'nonce-${nonce}' ${cspSource} 'wasm-unsafe-eval'`,
   ].join("; ");
 
