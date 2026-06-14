@@ -568,5 +568,46 @@ class GqlIssueOnlyDepsTest(unittest.TestCase):
         self.assertNotIn("blockedBy", pr_frag)
 
 
+class NormalizeDepsTest(unittest.TestCase):
+    def _node(self, blocked=None, blocking=None, summary=None):
+        return {"number": 1, "title": "x", "state": "OPEN",
+                "blockedBy": {"nodes": blocked or []},
+                "blocking": {"nodes": blocking or []},
+                "issueDependenciesSummary": summary or {"blockedByOpen": 0, "blockingOpen": 0}}
+
+    def _edge(self, n, state="OPEN", repo="o/r", title="t"):
+        return {"number": n, "state": state, "title": title,
+                "repository": {"nameWithOwner": repo}}
+
+    def test_open_only_and_shape(self):
+        from lib.github_state import _normalize_gql_node
+        out = _normalize_gql_node(self._node(
+            blocked=[self._edge(10), self._edge(11, state="CLOSED")],
+            summary={"blockedByOpen": 1, "blockingOpen": 0}))
+        self.assertEqual(out["blocked_by"], [{"number": 10, "repo": "o/r", "title": "t"}])
+        self.assertEqual(out["blocking"], [])
+        self.assertFalse(out["deps_truncated"])
+
+    def test_cross_repo_preserved(self):
+        from lib.github_state import _normalize_gql_node
+        out = _normalize_gql_node(self._node(
+            blocked=[self._edge(42, repo="other/repo")],
+            summary={"blockedByOpen": 1, "blockingOpen": 0}))
+        self.assertEqual(out["blocked_by"][0]["repo"], "other/repo")
+
+    def test_truncation_flag_when_summary_exceeds_materialized(self):
+        from lib.github_state import _normalize_gql_node
+        out = _normalize_gql_node(self._node(
+            blocked=[self._edge(10)], summary={"blockedByOpen": 99, "blockingOpen": 0}))
+        self.assertTrue(out["deps_truncated"])
+
+    def test_missing_connections_default_empty(self):
+        from lib.github_state import _normalize_gql_node
+        out = _normalize_gql_node({"number": 1, "title": "x", "state": "OPEN"})
+        self.assertEqual(out["blocked_by"], [])
+        self.assertEqual(out["blocking"], [])
+        self.assertFalse(out["deps_truncated"])
+
+
 if __name__ == "__main__":
     unittest.main()

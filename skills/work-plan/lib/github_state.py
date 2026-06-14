@@ -202,6 +202,21 @@ def _normalize_gql_node(node) -> Optional[dict]:
     assignees = [{"login": a.get("login")} for a in
                  ((node.get("assignees") or {}).get("nodes") or []) if a.get("login")]
     ms = node.get("milestone")
+
+    def _deps(key):
+        return [{"number": n.get("number"),
+                 "repo": (n.get("repository") or {}).get("nameWithOwner"),
+                 "title": n.get("title", "")}
+                for n in ((node.get(key) or {}).get("nodes") or [])
+                if (n.get("state") or "").upper() == "OPEN"]
+    blocked_by = _deps("blockedBy")
+    blocking = _deps("blocking")
+    summary = node.get("issueDependenciesSummary") or {}
+    deps_truncated = (
+        (summary.get("blockedByOpen") or 0) > len(blocked_by)
+        or (summary.get("blockingOpen") or 0) > len(blocking)
+    )
+
     return {
         "number": node.get("number"),
         "title": node.get("title", ""),
@@ -213,6 +228,9 @@ def _normalize_gql_node(node) -> Optional[dict]:
         "url": node.get("url", ""),
         "updatedAt": node.get("updatedAt"),
         "assignees": assignees,
+        "blocked_by": blocked_by,
+        "blocking": blocking,
+        "deps_truncated": deps_truncated,
     }
 
 
