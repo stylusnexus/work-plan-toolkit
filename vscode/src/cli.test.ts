@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import type { CliResult, CliRunner } from "./cli.ts";
 import {
   CliError,
@@ -299,9 +300,27 @@ describe("meetsMinVersion", () => {
     assert.equal(meetsMinVersion("2025.12.31", "2026.06.07"), false);
   });
 
-  test("a CLI older than the in-progress-deps release fails the min-version gate", () => {
-    assert.equal(meetsMinVersion("2026.06.14", "2026.06.15"), false);
-    assert.equal(meetsMinVersion("2026.06.15", "2026.06.15"), true);
+  test("a CLI older than the in-progress/blocked-by release fails the min-version gate", () => {
+    assert.equal(meetsMinVersion("2026.06.13", "2026.06.14"), false);
+    assert.equal(meetsMinVersion("2026.06.14", "2026.06.14"), true);
+  });
+
+  test("MIN_CLI_VERSION is never ahead of the repo's own CLI VERSION", () => {
+    // Root-cause guard for the 0.9.0 regression: MIN_CLI_VERSION was set one day
+    // ahead of the deploy (2026.06.15 vs a 2026.06.14 CLI), so every updated user
+    // saw a false "CLI incompatible" warning. The extension and the CLI it ships
+    // beside reach main in the same deploy, so the gate must never exceed the
+    // repo's stamped VERSION.
+    const versionFile = fs
+      .readFileSync(new URL("../../VERSION", import.meta.url), "utf8")
+      .trim();
+    const repoVersion = parseVersion(versionFile);
+    assert.notEqual(repoVersion, null, `VERSION file unparseable: ${versionFile}`);
+    assert.equal(
+      meetsMinVersion(repoVersion as string, MIN_CLI_VERSION),
+      true,
+      `MIN_CLI_VERSION (${MIN_CLI_VERSION}) is ahead of repo VERSION (${repoVersion})`,
+    );
   });
 });
 
@@ -336,11 +355,11 @@ describe("parseVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkVersion", () => {
-  test("returns {ok:true, version:'2026.06.15'} for a current version", async () => {
-    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.15+abc", stderr: "" });
+  test("returns {ok:true, version:'2026.06.14'} for a current version", async () => {
+    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.14+abc", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.06.15");
+    assert.equal(result.version, "2026.06.14");
   });
 
   test("returns {ok:false} for an older version", async () => {
