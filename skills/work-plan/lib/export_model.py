@@ -52,10 +52,11 @@ def group_issues_by_milestone(issues, milestone_alignment=None):
     return groups
 
 
-def normalize_issue(i: dict) -> dict:
+def normalize_issue(i: dict, in_progress: bool = False) -> dict:
     """Reshape a raw gh issue row into the viewer's `Issue` shape
-    ({number,title,state,assignee,milestone}). Shared by the export and the
-    `list-open-issues` command (#282) so both emit an identical issue surface."""
+    ({number,title,state,assignee,milestone,in_progress}). Shared by the export
+    and the `list-open-issues` command (#282) so both emit an identical issue
+    surface."""
     state = (i.get("state") or "OPEN").lower()
     return {
         "number": i.get("number"),
@@ -63,16 +64,21 @@ def normalize_issue(i: dict) -> dict:
         "state": "closed" if state in ("closed", "merged") else "open",
         "assignee": (format_assignees(i) if i.get("assignees") else "—"),
         "milestone": short_milestone(i.get("milestone")) or None,
+        "in_progress": bool(in_progress),
     }
 
 
 def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None, config_repos=None,
-                 plan_by_track=None) -> dict:
+                 plan_by_track=None, hot_by_track=None) -> dict:
     plan_by_track = plan_by_track or {}
+    hot_by_track = hot_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
-        issues = [normalize_issue(i) for i in issues_by_track.get(t.name, [])]
+        from lib.in_progress import issue_in_progress
+        hot = hot_by_track.get((t.repo, t.name), set())
+        raw = issues_by_track.get(t.name, [])
+        issues = [normalize_issue(i, in_progress=issue_in_progress(i, hot)) for i in raw]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")

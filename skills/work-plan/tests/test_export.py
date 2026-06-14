@@ -34,7 +34,7 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["folder"], "myrepo")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
-        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None})
+        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False})
         json.dumps(out)  # must be serializable
 
     def test_path_is_null_when_track_has_no_path(self):
@@ -357,3 +357,44 @@ class BuildExportReposListTest(unittest.TestCase):
     def test_repos_defaults_to_empty_list(self):
         out = build_export([], {}, {}, now="2026-06-12T00:00")
         self.assertEqual(out["repos"], [])
+
+
+class InProgressExportTest(unittest.TestCase):
+    def _track(self, name, repo):
+        from types import SimpleNamespace
+        return SimpleNamespace(name=name, repo=repo, path=None, folder=None,
+                               tier="private",
+                               meta={"github": {"issues": []}, "next_up": []})
+
+    def test_in_progress_flag_set_from_hot_by_track(self):
+        t = self._track("alpha", "o/r")
+        issues_by_track = {"alpha": [
+            {"number": 1, "title": "a", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+            {"number": 2, "title": "b", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+        ]}
+        out = build_export([t], issues_by_track, {"o/r": "PRIVATE"},
+                           "2026-06-14T00:00:00",
+                           hot_by_track={("o/r", "alpha"): {1}})
+        issues = out["tracks"][0]["issues"]
+        self.assertTrue(next(i for i in issues if i["number"] == 1)["in_progress"])
+        self.assertFalse(next(i for i in issues if i["number"] == 2)["in_progress"])
+
+    def test_same_name_tracks_in_different_repos_do_not_bleed(self):
+        t1, t2 = self._track("dup", "o/r1"), self._track("dup", "o/r2")
+        issue = [{"number": 5, "title": "x", "state": "open", "assignees": [],
+                  "milestone": None, "labels": []}]
+        out1 = build_export([t1], {"dup": issue}, {"o/r1": "PRIVATE"},
+                            "2026-06-14T00:00:00", hot_by_track={("o/r1", "dup"): {5}})
+        out2 = build_export([t2], {"dup": issue}, {"o/r2": "PRIVATE"},
+                            "2026-06-14T00:00:00", hot_by_track={("o/r1", "dup"): {5}})
+        self.assertTrue(out1["tracks"][0]["issues"][0]["in_progress"])
+        self.assertFalse(out2["tracks"][0]["issues"][0]["in_progress"])
+
+    def test_no_hot_map_defaults_all_false(self):
+        t = self._track("alpha", "o/r")
+        ibt = {"alpha": [{"number": 1, "title": "a", "state": "open",
+                          "assignees": [], "milestone": None, "labels": []}]}
+        out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00")
+        self.assertFalse(out["tracks"][0]["issues"][0]["in_progress"])
