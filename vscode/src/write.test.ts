@@ -883,7 +883,7 @@ describe("actionToArgs — planBaseline", () => {
 });
 
 // ---------------------------------------------------------------------------
-// closeIssue — the only GitHub-mutating action (#305)
+// closeIssue — one of two GitHub-mutating actions (#305; the other is issueInProgress)
 // ---------------------------------------------------------------------------
 
 describe("actionToArgs — closeIssue", () => {
@@ -898,6 +898,23 @@ describe("actionToArgs — closeIssue", () => {
       actionToArgs({ kind: "closeIssue", repo: "o/r", number: 5, reason: "not_planned" }),
       ["close-issue", "--repo=o/r", "--reason=not_planned", "--", "5"],
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// issueInProgress — per-issue in-progress toggle via label (#271)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — issueInProgress", () => {
+  test("issueInProgress add → in-progress with --repo, number after --", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "issueInProgress", repo: "o/r", number: 271, clear: false }),
+      ["in-progress", "--repo=o/r", "--", "271"]);
+  });
+  test("issueInProgress clear → adds --clear", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "issueInProgress", repo: "o/r", number: 271, clear: true }),
+      ["in-progress", "--clear", "--repo=o/r", "--", "271"]);
   });
 });
 

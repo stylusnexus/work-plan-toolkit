@@ -17,7 +17,7 @@ def _track(name, repo, issues, blockers=None, next_up=None, status="active", dep
 class BuildExportTest(unittest.TestCase):
     def test_schema_and_shape(self):
         tracks = [_track("ph", "o/r", [1, 2], blockers=[9], next_up=[1])]
-        issues_by_track = {"ph": [
+        issues_by_track = {("o/r", "ph"): [
             {"number": 1, "title": "a", "state": "OPEN", "assignees": [{"login": "eve"}]},
             {"number": 2, "title": "b", "state": "CLOSED", "assignees": []}]}
         vis = {"o/r": "PRIVATE"}
@@ -34,7 +34,7 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["folder"], "myrepo")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
-        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None})
+        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": []})
         json.dumps(out)  # must be serializable
 
     def test_path_is_null_when_track_has_no_path(self):
@@ -42,7 +42,7 @@ class BuildExportTest(unittest.TestCase):
         viewer disables its open-file affordance instead of erroring (#211)."""
         t0 = SimpleNamespace(name="np", repo="o/r", tier="private",
             meta={"status": "active", "github": {"repo": "o/r", "issues": []}})
-        out = build_export([t0], {"np": []}, {"o/r": "PRIVATE"}, now="2026-06-12T00:00")
+        out = build_export([t0], {("o/r", "np"): []}, {"o/r": "PRIVATE"}, now="2026-06-12T00:00")
         self.assertIsNone(out["tracks"][0]["path"])
         json.dumps(out)  # null is serializable
 
@@ -56,7 +56,7 @@ class BuildExportNextUpFilterTest(unittest.TestCase):
             for n, state in issue_states.items()
         ]
         tracks = [_track("t1", "o/r", list(issue_states.keys()), next_up=next_up_nums)]
-        out = build_export(tracks, {"t1": raw_issues}, {"o/r": "PRIVATE"}, now="t")
+        out = build_export(tracks, {("o/r", "t1"): raw_issues}, {"o/r": "PRIVATE"}, now="t")
         return out["tracks"][0]["next_up"]
 
     def test_closed_next_up_filtered(self):
@@ -79,7 +79,7 @@ class BuildExportNextUpFilterTest(unittest.TestCase):
         it's preserved rather than silently dropped — we only remove confirmed-closed."""
         tracks = [_track("t1", "o/r", [95], next_up=[95, 200])]
         raw_issues = [{"number": 95, "title": "t", "state": "CLOSED", "assignees": []}]
-        out = build_export(tracks, {"t1": raw_issues}, {"o/r": "PRIVATE"}, now="t")
+        out = build_export(tracks, {("o/r", "t1"): raw_issues}, {"o/r": "PRIVATE"}, now="t")
         result = out["tracks"][0]["next_up"]
         # 95 is confirmed closed → filtered; 200 not in payload → kept
         self.assertEqual(result, [200])
@@ -295,7 +295,7 @@ class BuildExportPlanTest(unittest.TestCase):
 
     def test_plan_null_when_no_badge(self):
         tracks = [_track("alpha", "o/r", [1])]
-        out = build_export(tracks, {"alpha": []}, {"o/r": "PRIVATE"}, now="t")
+        out = build_export(tracks, {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t")
         self.assertIsNone(out["tracks"][0]["plan"])
 
     def test_plan_badge_passed_through(self):
@@ -304,13 +304,13 @@ class BuildExportPlanTest(unittest.TestCase):
                  "glyph": "✅", "files_present": 9, "files_declared": 9,
                  "checkboxes_done": 0, "checkboxes_total": 24, "lie_gap": False,
                  "stalled": False, "override": "shipped"}
-        out = build_export(tracks, {"alpha": []}, {"o/r": "PRIVATE"}, now="t",
+        out = build_export(tracks, {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t",
                            plan_by_track={"alpha": badge})
         self.assertEqual(out["tracks"][0]["plan"], badge)
 
     def test_unresolved_badge_passed_through(self):
         tracks = [_track("alpha", "o/r", [1])]
-        out = build_export(tracks, {"alpha": []}, {"o/r": "PRIVATE"}, now="t",
+        out = build_export(tracks, {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t",
                            plan_by_track={"alpha": {"rel": "docs/plans/p.md", "resolved": False}})
         self.assertEqual(out["tracks"][0]["plan"], {"rel": "docs/plans/p.md", "resolved": False})
 
@@ -320,7 +320,7 @@ class BuildExportDependsOnTest(unittest.TestCase):
 
     def test_depends_on_exported(self):
         tracks = [_track("alpha", "o/r", [1], depends_on=["beta", "gamma"])]
-        issues_by_track = {"alpha": [
+        issues_by_track = {("o/r", "alpha"): [
             {"number": 1, "title": "a", "state": "OPEN", "assignees": []},
         ]}
         out = build_export(tracks, issues_by_track, {"o/r": "PRIVATE"}, now="t")
@@ -328,7 +328,7 @@ class BuildExportDependsOnTest(unittest.TestCase):
 
     def test_depends_on_empty_by_default(self):
         tracks = [_track("alpha", "o/r", [1])]
-        issues_by_track = {"alpha": [
+        issues_by_track = {("o/r", "alpha"): [
             {"number": 1, "title": "a", "state": "OPEN", "assignees": []},
         ]}
         out = build_export(tracks, issues_by_track, {"o/r": "PRIVATE"}, now="t")
@@ -341,7 +341,7 @@ class BuildExportReposListTest(unittest.TestCase):
 
     def test_emits_config_repos_including_trackless(self):
         tracks = [_track("ph", "o/r", [1])]
-        issues_by_track = {"ph": [{"number": 1, "title": "a", "state": "OPEN", "assignees": []}]}
+        issues_by_track = {("o/r", "ph"): [{"number": 1, "title": "a", "state": "OPEN", "assignees": []}]}
         config_repos = [
             {"folder": "r", "repo": "o/r", "local": "/x/r", "has_local": True, "visibility": "PRIVATE"},
             {"folder": "fresh", "repo": "o/fresh", "local": None, "has_local": False, "visibility": "PUBLIC"},
@@ -357,3 +357,131 @@ class BuildExportReposListTest(unittest.TestCase):
     def test_repos_defaults_to_empty_list(self):
         out = build_export([], {}, {}, now="2026-06-12T00:00")
         self.assertEqual(out["repos"], [])
+
+
+class InProgressExportTest(unittest.TestCase):
+    def _track(self, name, repo):
+        from types import SimpleNamespace
+        return SimpleNamespace(name=name, repo=repo, path=None, folder=None,
+                               tier="private",
+                               meta={"github": {"issues": []}, "next_up": []})
+
+    def test_in_progress_flag_set_from_hot_by_track(self):
+        t = self._track("alpha", "o/r")
+        issues_by_track = {("o/r", "alpha"): [
+            {"number": 1, "title": "a", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+            {"number": 2, "title": "b", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+        ]}
+        out = build_export([t], issues_by_track, {"o/r": "PRIVATE"},
+                           "2026-06-14T00:00:00",
+                           hot_by_track={("o/r", "alpha"): {1}})
+        issues = out["tracks"][0]["issues"]
+        self.assertTrue(next(i for i in issues if i["number"] == 1)["in_progress"])
+        self.assertFalse(next(i for i in issues if i["number"] == 2)["in_progress"])
+
+    def test_same_name_tracks_in_different_repos_do_not_bleed(self):
+        """Two same-named tracks in different repos must not share issue rows.
+
+        With (repo,name) keying, a single build_export call with both tracks
+        must give each track its own distinct issue list and correct
+        in_progress flags — no overwrite, no bleed.
+        """
+        t1 = self._track("dup", "o/r1")
+        t2 = self._track("dup", "o/r2")
+        # Deliberately different issue numbers AND titles so any bleed is obvious.
+        issues_r1 = [
+            {"number": 10, "title": "r1-issue", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+        ]
+        issues_r2 = [
+            {"number": 20, "title": "r2-issue", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+        ]
+        issues_by_track = {
+            ("o/r1", "dup"): issues_r1,
+            ("o/r2", "dup"): issues_r2,
+        }
+        hot_by_track = {
+            ("o/r1", "dup"): {10},   # issue 10 is in-progress in r1
+            # r2 has NO hot issues
+        }
+        out = build_export(
+            [t1, t2], issues_by_track, {"o/r1": "PRIVATE", "o/r2": "PRIVATE"},
+            "2026-06-14T00:00:00", hot_by_track=hot_by_track,
+        )
+        by_repo = {tr["repo"]: tr for tr in out["tracks"]}
+        r1_issues = by_repo["o/r1"]["issues"]
+        r2_issues = by_repo["o/r2"]["issues"]
+
+        # Each track got its own issue rows — no bleed
+        self.assertEqual(len(r1_issues), 1)
+        self.assertEqual(r1_issues[0]["number"], 10)
+        self.assertEqual(len(r2_issues), 1)
+        self.assertEqual(r2_issues[0]["number"], 20)
+
+        # in_progress flags are per-repo: r1/#10 hot, r2/#20 not
+        self.assertTrue(r1_issues[0]["in_progress"])
+        self.assertFalse(r2_issues[0]["in_progress"])
+
+    def test_no_hot_map_defaults_all_false(self):
+        t = self._track("alpha", "o/r")
+        ibt = {("o/r", "alpha"): [{"number": 1, "title": "a", "state": "open",
+                                    "assignees": [], "milestone": None, "labels": []}]}
+        out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00")
+        self.assertFalse(out["tracks"][0]["issues"][0]["in_progress"])
+
+    def test_label_presence_emitted_as_in_progress_label(self):
+        """Issue carrying the label gets in_progress_label=True regardless of hot."""
+        from lib.in_progress import IN_PROGRESS_LABEL
+        t = self._track("alpha", "o/r")
+        ibt = {("o/r", "alpha"): [
+            {"number": 1, "title": "a", "state": "open", "assignees": [],
+             "milestone": None, "labels": [{"name": IN_PROGRESS_LABEL}]},
+        ]}
+        out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00")
+        issue = out["tracks"][0]["issues"][0]
+        self.assertTrue(issue["in_progress"])        # union: label alone is enough
+        self.assertTrue(issue["in_progress_label"])  # label-only signal
+
+    def test_hot_branch_only_sets_union_not_label(self):
+        """Issue in hot_by_track (no label) → in_progress True but in_progress_label False."""
+        t = self._track("alpha", "o/r")
+        ibt = {("o/r", "alpha"): [
+            {"number": 5, "title": "b", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+        ]}
+        out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00",
+                           hot_by_track={("o/r", "alpha"): {5}})
+        issue = out["tracks"][0]["issues"][0]
+        self.assertTrue(issue["in_progress"])         # union: hot branch fires
+        self.assertFalse(issue["in_progress_label"])  # no label present
+
+
+class BlockedByExportTest(unittest.TestCase):
+    def _track(self, name, repo):
+        from types import SimpleNamespace
+        return SimpleNamespace(name=name, repo=repo, path=None, folder=None,
+                               tier="private", meta={"github": {"issues": []}, "next_up": []})
+
+    def test_emits_blocked_by_and_blocking(self):
+        t = self._track("alpha", "o/r")
+        issue = {"number": 1, "title": "a", "state": "open", "assignees": [],
+                 "milestone": None, "labels": [],
+                 "blocked_by": [{"number": 9, "repo": "o/r", "title": "dep"}], "blocking": []}
+        out = build_export([t], {("o/r", "alpha"): [issue]}, {"o/r": "PRIVATE"},
+                           "2026-06-14T00:00:00")
+        got = out["tracks"][0]["issues"][0]
+        self.assertEqual(got["blocked_by"], [{"number": 9, "repo": "o/r", "title": "dep"}])
+        self.assertEqual(got["blocking"], [])
+
+    def test_defaults_empty_when_absent(self):
+        t = self._track("alpha", "o/r")
+        issue = {"number": 1, "title": "a", "state": "open", "assignees": [],
+                 "milestone": None, "labels": []}
+        out = build_export([t], {("o/r", "alpha"): [issue]}, {"o/r": "PRIVATE"},
+                           "2026-06-14T00:00:00")
+        got = out["tracks"][0]["issues"][0]
+        self.assertEqual(got["blocked_by"], [])
+        self.assertEqual(got["blocking"], [])

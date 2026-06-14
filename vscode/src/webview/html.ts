@@ -184,6 +184,15 @@ mermaid.run();
       return;
     }
 
+    // In-progress toggle button → mark or clear the in-progress label (#271 B4)
+    var ipBtn = target.closest("[data-inprogress]");
+    if (ipBtn) {
+      var ipNum = parseInt(ipBtn.getAttribute("data-inprogress"), 10);
+      var ipClear = ipBtn.getAttribute("data-clear") === "1";
+      if (ipNum) { post({ type: "toggleInProgress", number: ipNum, clear: ipClear }); }
+      return;
+    }
+
     // Milestone band collapse toggle (keyboard-operable <button>)
     var msToggle = target.closest(".milestone-toggle-btn");
     if (msToggle) {
@@ -202,6 +211,20 @@ mermaid.run();
       if (capBand) {
         var capCollapsed = capBand.classList.toggle("collapsed");
         capToggle.setAttribute("aria-expanded", capCollapsed ? "false" : "true");
+      }
+      return;
+    }
+
+    // Dep disclosure toggle (#257 B3) — pure DOM, no postMessage.
+    // Finds the dep-toggle-btn by data-depissue, then the sibling dep-detail-row.
+    var depToggle = target.closest(".dep-toggle-btn");
+    if (depToggle) {
+      var depIssue = depToggle.getAttribute("data-depissue");
+      var depRow = document.querySelector(".dep-detail-row[data-depissue=\"" + depIssue + "\"]");
+      if (depRow) {
+        var depHidden = depRow.hasAttribute("hidden");
+        if (depHidden) { depRow.removeAttribute("hidden"); } else { depRow.setAttribute("hidden", ""); }
+        depToggle.setAttribute("aria-expanded", depHidden ? "true" : "false");
       }
       return;
     }
@@ -255,6 +278,8 @@ mermaid.run();
       --step-bg: color-mix(in srgb, var(--step-fg) 18%, transparent);
       --depends-fg: var(--vscode-charts-yellow, #d6a012);
       --depends-bg: color-mix(in srgb, var(--depends-fg) 18%, transparent);
+      --dep-blocking-fg: var(--vscode-charts-purple, #b267e6);
+      --dep-blocking-bg: color-mix(in srgb, var(--dep-blocking-fg) 18%, transparent);
       --link: var(--vscode-textLink-foreground, #4fc1ff);
     }
     * { box-sizing: border-box; }
@@ -358,8 +383,9 @@ mermaid.run();
       font-size: 0.85em;
       font-weight: 600;
     }
-    .pill.open   { background: var(--pill-open-bg);   color: var(--pill-open-fg); }
-    .pill.closed { background: var(--pill-closed-bg); color: var(--pill-closed-fg); }
+    .pill.open        { background: var(--pill-open-bg);   color: var(--pill-open-fg); }
+    .pill.closed      { background: var(--pill-closed-bg); color: var(--pill-closed-fg); }
+    .pill.in-progress { background: var(--vscode-charts-orange, #d18616); color: var(--vscode-editor-background); }
     .blockers { margin-top: 8px; }
     .chip {
       display: inline-block;
@@ -443,7 +469,7 @@ mermaid.run();
     }
     .milestone-band.collapsed tr:not(.milestone-band-header) { display: none; }
     .move-col { width: 56px; text-align: center; white-space: nowrap; }
-    .move-btn, .close-issue-btn {
+    .move-btn, .close-issue-btn, .inprogress-btn {
       background: none;
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -458,10 +484,11 @@ mermaid.run();
     }
     /* Reveal on row-hover AND on keyboard focus — never opacity:0, or the
        button is invisible to keyboard/touch/AT users (#214). */
-    tr:hover .move-btn, tr:hover .close-issue-btn,
+    tr:hover .move-btn, tr:hover .close-issue-btn, tr:hover .inprogress-btn,
     .move-btn:focus, .move-btn:focus-visible,
-    .close-issue-btn:focus, .close-issue-btn:focus-visible { opacity: 1; }
-    .move-btn:hover, .close-issue-btn:hover { background: var(--card-bg); }
+    .close-issue-btn:focus, .close-issue-btn:focus-visible,
+    .inprogress-btn:focus, .inprogress-btn:focus-visible { opacity: 1; }
+    .move-btn:hover, .close-issue-btn:hover, .inprogress-btn:hover { background: var(--card-bg); }
     .sr-only {
       position: absolute;
       width: 1px;
@@ -496,16 +523,48 @@ mermaid.run();
       margin-right: 2px;
     }
     .issue-cap-band:not(.collapsed) .issue-cap-marker { transform: rotate(90deg); }
+    /* Dep disclosure button (#257 B3): inline in the title cell, chrome-free like
+       the other inline action buttons; keyboard-operable as a real <button>. */
+    .dep-toggle-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--link);
+      cursor: pointer;
+      font-size: 0.85em;
+      padding: 0 4px;
+      opacity: 0.9;
+      margin-left: 4px;
+      transition: opacity 0.1s;
+    }
+    .dep-toggle-btn:hover, .dep-toggle-btn:focus, .dep-toggle-btn:focus-visible { opacity: 1; background: var(--card-bg); }
+    /* Dep detail sub-row — hidden by default; revealed when dep-toggle-btn is clicked. */
+    .dep-detail-row td { padding: 4px 6px 6px 24px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    /* Dep chips: blocked-by reuses chip (red) tokens; blocking uses purple dep tokens. */
+    .dep-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin: 2px;
+      font-size: 0.9em;
+      background: var(--chip-bg);
+      color: var(--chip-fg);
+    }
+    .dep-chip--blocking {
+      background: var(--dep-blocking-bg);
+      color: var(--dep-blocking-fg);
+    }
+    .dep-chip a { color: inherit; }
     /* Windows High Contrast / forced-colors: the charts-token tints are ignored
        by the forced palette and read as faint washes, so drop them and let the
        system colours + a CanvasText border carry the chip boundary (#207). The
        text label already carries the meaning. */
     @media (forced-colors: active) {
-      .pill, .chip, .step, .depends-chip {
+      .pill, .chip, .step, .depends-chip, .dep-chip {
         background: transparent;
         border: 1px solid CanvasText;
       }
-      .move-btn, .close-issue-btn { opacity: 1; }
+      .move-btn, .close-issue-btn, .inprogress-btn { opacity: 1; }
     }
 
   </style>

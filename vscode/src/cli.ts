@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { Export, Issue, PlanStatus } from "./model.ts";
+import type { Export, Issue, IssueDep, PlanStatus } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Core types — the injectable seam between cli.ts and extension.ts
@@ -120,6 +120,22 @@ export function makeSpawnRunner(cliPath: string): CliRunner {
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalizes a raw parsed issue from the export JSON, defaulting the
+ * `blocked_by` and `blocking` dependency arrays to `[]` when absent (older
+ * CLI payloads that predate #257). All other fields are passed through as-is.
+ */
+export function normalizeExportIssue(raw: Omit<Issue, "blocked_by" | "blocking"> & {
+  blocked_by?: IssueDep[];
+  blocking?: IssueDep[];
+}): Issue {
+  return {
+    ...raw,
+    blocked_by: raw.blocked_by ?? [],
+    blocking: raw.blocking ?? [],
+  };
+}
+
+/**
  * Runs `work-plan export --json` and returns the parsed Export object.
  * Throws CliError on non-zero exit or unparseable output.
  */
@@ -150,8 +166,16 @@ export async function exportJson(run: CliRunner): Promise<Export> {
     });
   }
 
-  // Return typed; schema mismatch is a soft concern handled by the caller.
-  return parsed as Export;
+  // Normalize the parsed Export: default blocked_by/blocking to [] on every
+  // issue so consumers never see undefined (handles older CLI payloads, #257).
+  const exp = parsed as Export;
+  for (const track of exp.tracks) {
+    track.issues = track.issues.map(normalizeExportIssue);
+  }
+  for (const bucket of exp.untracked ?? []) {
+    bucket.issues = bucket.issues.map(normalizeExportIssue);
+  }
+  return exp;
 }
 
 /** A repo's open issues, as emitted by `work-plan list-open-issues` (#282). */
@@ -276,13 +300,13 @@ export async function runWrite(
 
 /**
  * The CalVer date of the oldest CLI the extension can drive. Bumped to the
- * release that added the Plans view's read surfaces (#164/#288): the export's
- * top-level `repos[]` + per-track `folder`, and `plan-status --json`'s
- * `manifest_last_touched`/`stalled`/`lie_gap`/`unchecked_items`/`stall_days`.
- * An older CLI omits these, so the Plans view + registered-repo listing would
- * silently come up empty — checkVersion surfaces a compat warning instead.
+ * release that added the `in-progress` subcommand and the per-issue
+ * `in_progress` export field (#271): the detail-webview toggle and the
+ * issue-level in-progress badge both depend on these. An older CLI omits
+ * the field and lacks the subcommand, so checkVersion surfaces a compat
+ * warning instead of letting the toggle silently fail.
  */
-export const MIN_CLI_VERSION = "2026.06.13";
+export const MIN_CLI_VERSION = "2026.06.15";
 
 /**
  * Parses the version token from `work-plan --version` output.

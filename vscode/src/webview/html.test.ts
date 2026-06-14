@@ -475,3 +475,91 @@ describe("buildHtml — milestone band filter wiring (#218)", () => {
     assert.ok(html.includes('aria-expanded'), "toggle handler should sync aria-expanded");
   });
 });
+
+describe("buildHtml — in-progress toggle wiring (#271 B4)", () => {
+  it("client script contains type: \"toggleInProgress\"", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes('type: "toggleInProgress"'), `expected toggleInProgress postMessage in script:\n${html.slice(0, 2000)}`);
+  });
+
+  it("client script reads data-inprogress attribute", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes("data-inprogress"), `expected data-inprogress handler in script:\n${html.slice(0, 2000)}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dep toggle DOM wiring (#257 B3)
+// ---------------------------------------------------------------------------
+
+describe("buildHtml — dep-detail-row toggle DOM wiring (#257 B3)", () => {
+  it("client script handles [data-depissue] click targets", () => {
+    const html = buildHtml(BASE);
+    assert.ok(
+      html.includes("data-depissue"),
+      `expected data-depissue handler in client script:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("dep toggle is pure DOM (no postMessage) — no new message type emitted", () => {
+    const html = buildHtml(BASE);
+    // The toggle must NOT post any new message type for dep expand/collapse.
+    // It toggles hidden + aria-expanded client-side only.
+    assert.ok(
+      !html.includes('"openDep"') && !html.includes('"toggleDep"'),
+      `dep toggle must not postMessage a new type:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("dep toggle handler flips aria-expanded on the button", () => {
+    const html = buildHtml(BASE);
+    // The handler must set aria-expanded — mirror the cap-toggle pattern
+    assert.ok(
+      html.includes("aria-expanded"),
+      `dep toggle handler must sync aria-expanded:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("dep toggle handler toggles the hidden attribute on the dep-detail-row", () => {
+    const html = buildHtml(BASE);
+    // The handler locates the dep-detail-row and toggles its `hidden` attribute
+    assert.ok(
+      html.includes("dep-detail-row") || html.includes("[data-depissue]"),
+      `dep toggle handler must reference the dep-detail-row:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("dep toggle CSS defines .dep-toggle-btn", () => {
+    const html = buildHtml(BASE);
+    assert.ok(
+      html.includes(".dep-toggle-btn"),
+      `expected .dep-toggle-btn CSS rule:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("dep chip CSS defines .dep-chip", () => {
+    const html = buildHtml(BASE);
+    assert.ok(
+      html.includes(".dep-chip"),
+      `expected .dep-chip CSS rule:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it(".dep-chip is included in the forced-colors reset selector", () => {
+    const html = buildHtml(BASE);
+    // The forced-colors block containing the chip/pill reset must include .dep-chip.
+    // There can be multiple forced-colors blocks (e.g. one for progress bar); find
+    // the one that already contains .chip or .pill to locate the chip-reset block.
+    const allForcedBlocks = [...html.matchAll(/@media \(forced-colors: active\)[^{]*\{[^}]*\}/g)];
+    assert.ok(allForcedBlocks.length > 0, "expected at least one forced-colors block");
+    const chipResetBlock = allForcedBlocks.find(m => m[0].includes(".chip") || m[0].includes(".pill"));
+    assert.ok(
+      chipResetBlock !== undefined,
+      `no forced-colors block containing .chip/.pill found`,
+    );
+    assert.ok(
+      chipResetBlock![0].includes(".dep-chip"),
+      `forced-colors chip-reset block must include .dep-chip:\n${chipResetBlock![0]}`,
+    );
+  });
+});

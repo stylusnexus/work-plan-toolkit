@@ -4,7 +4,7 @@
  * No vscode imports. All user-supplied text is HTML-escaped.
  */
 
-import type { Track, Issue, TrackPlan } from "../model.ts";
+import type { Track, Issue, TrackPlan, IssueDep } from "../model.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -258,28 +258,108 @@ function planBadgeLabel(plan: TrackPlan): string {
   return bits.join(" · ");
 }
 
-/** Renders a single <tr> for an issue, with a Move button. */
+/** Renders a single <tr> for an issue, with a Move button, and an optional
+ *  sibling dep-detail-row for blocked_by/blocking edges (#257 B3). */
 function renderIssueRow(track: Track, issue: Issue): string {
   const numCell = track.repo
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
-  // Move + Close-on-GitHub actions (#305). Close shows only for OPEN issues in a
-  // repo'd track; a closed row shows no close affordance (already done).
+  // Move + Close-on-GitHub + in-progress toggle actions (#305, #271). Close and
+  // toggle show only for tracked issues in a repo'd track. Close additionally
+  // requires the issue to be open (nothing to close on a closed issue).
   const closeBtn = track.repo && issue.state === "open"
     ? ` <button class="close-issue-btn" data-close="${issue.number}" title="Close #${issue.number} on GitHub" aria-label="Close issue #${issue.number} on GitHub">✕</button>`
     : "";
+  // Toggle is shown for any tracked issue in a repo'd track (open or closed),
+  // since a closed issue can still carry the in-progress label. data-clear drives
+  // which direction the CLI call takes: "1" removes the label, "0" adds it.
+  // NOTE: the toggle controls the LABEL, so it uses in_progress_label (label
+  // presence only) — NOT in_progress (the union of hot-branch OR label). An
+  // issue hot-branch-only (no label) correctly shows "Mark", not "Clear".
+  const inProgBtn = track.repo
+    ? ` <button class="inprogress-btn" data-inprogress="${issue.number}" data-clear="${issue.in_progress_label ? "1" : "0"}" title="${issue.in_progress_label ? "Clear" : "Mark"} in-progress" aria-label="${issue.in_progress_label ? "Clear" : "Mark"} issue #${issue.number} in-progress">▶</button>`
+    : "";
   const moveBtn = track.repo
-    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}</td>`
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}${inProgBtn}</td>`
     : `<td class="move-col"></td>`;
+  const inProgressPill = issue.in_progress
+    ? ` <span class="pill in-progress" title="In progress (hot branch or work-plan:in-progress label)">in-progress</span>`
+    : "";
+
+  // Dep disclosure button (#257 B3): deduped blocked_by + all blocking.
+  // Same-repo blocked_by numbers already in track.blockers are skipped — the
+  // manual ⛔ chip already owns them. Cross-repo deps with the same number keep.
+  const dedupedBlockedBy = (issue.blocked_by ?? []).filter(dep =>
+    !(dep.repo === track.repo && track.blockers.includes(dep.number)),
+  );
+  const blockingDeps = issue.blocking ?? [];
+  const hasDepEdges = dedupedBlockedBy.length > 0 || blockingDeps.length > 0;
+
+  const depToggleBtn = hasDepEdges
+    ? ` <button class="dep-toggle-btn" data-depissue="${issue.number}" aria-expanded="false"` +
+      ` aria-label="Show issue dependencies for #${issue.number}">⛓</button>`
+    : "";
+
+  const depDetailRow = hasDepEdges
+    ? renderDepDetailRow(track, issue.number, dedupedBlockedBy, blockingDeps)
+    : "";
+
   return (
     `<tr>` +
     numCell +
-    `<td>${esc(issue.title)}</td>` +
-    `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td>` +
+    `<td>${esc(issue.title)}${depToggleBtn}</td>` +
+    `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span>${inProgressPill}</td>` +
     `<td class="who">${esc(issue.assignee)}</td>` +
     moveBtn +
+    `</tr>` +
+    depDetailRow
+  );
+}
+
+/** Renders the hidden dep-detail sub-row carrying the dep chips (#257 B3). */
+function renderDepDetailRow(
+  track: Track,
+  issueNumber: number,
+  blockedBy: IssueDep[],
+  blocking: IssueDep[],
+): string {
+  const chips: string[] = [];
+
+  if (blockedBy.length > 0) {
+    const links = blockedBy.map(dep => renderDepLink(track, dep)).join(" ");
+    chips.push(
+      `<span class="dep-chip dep-chip--blockedby">` +
+      `<span aria-hidden="true">⊘</span>` +
+      `<span class="sr-only">blocked by </span>` +
+      links +
+      `</span>`,
+    );
+  }
+
+  if (blocking.length > 0) {
+    const links = blocking.map(dep => renderDepLink(track, dep)).join(" ");
+    chips.push(
+      `<span class="dep-chip dep-chip--blocking">` +
+      `<span aria-hidden="true">⇒</span>` +
+      `<span class="sr-only">blocking </span>` +
+      links +
+      `</span>`,
+    );
+  }
+
+  return (
+    `<tr class="dep-detail-row" data-depissue="${issueNumber}" hidden>` +
+    `<td colspan="5">${chips.join(" ")}</td>` +
     `</tr>`
   );
+}
+
+/** Renders a single dep link: same-repo → "#N title"; cross-repo → "owner/repo#N". */
+function renderDepLink(track: Track, dep: IssueDep): string {
+  const label = dep.repo === track.repo
+    ? `#${dep.number}${dep.title ? " " + esc(dep.title) : ""}`
+    : `${esc(dep.repo)}#${dep.number}`;
+  return `<a href="#" data-repo="${esc(dep.repo)}" data-issue="${dep.number}">${label}</a>`;
 }
 
 /**

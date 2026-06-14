@@ -1,4 +1,5 @@
 """Local git queries + time helpers."""
+import re
 import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -129,6 +130,37 @@ def branch_in_progress(branch_name: str, repo_path: Path) -> bool:
     if cur == branch_name and has_uncommitted(repo_path):
         return True
     return _has_recent_commits(branch_name, repo_path, hours=24)
+
+
+# Maps a conventional branch name to its issue number. Anchored at start and
+# requires a trailing '-' so `feat/2710-x` captures 2710, never the `271`
+# substring. Only feat/ and fix/ — `work-plan/plan` (#260) carries no issue
+# number, and there is no `plan/<n>-` convention.
+_BRANCH_ISSUE_RE = re.compile(r"^(?:feat|fix)/(\d+)-")
+
+
+def hot_issue_numbers(repo_path: Path) -> set:
+    """Issue numbers with a 'hot' branch in `repo_path`.
+
+    Enumerates local branches with `git branch --format=%(refname:short)` (the
+    --format is load-bearing: plain `git branch` prefixes lines with `  `/`* `/`+ `,
+    which would defeat the anchored regex), maps each `feat/<n>-`/`fix/<n>-` name
+    to <n>, and keeps those whose branch is `branch_in_progress`.
+
+    Failure contract: if the enumeration call fails -> empty set. A per-branch heat
+    check that fails collapses to cold (that branch is simply not added). Never raises.
+    """
+    if not repo_path or not Path(repo_path).exists():
+        return set()
+    proc = _git(repo_path, "branch", "--format=%(refname:short)", "--list")
+    if proc is None or proc.returncode != 0:
+        return set()
+    out = set()
+    for line in proc.stdout.splitlines():
+        m = _BRANCH_ISSUE_RE.match(line.strip())
+        if m and branch_in_progress(line.strip(), repo_path):
+            out.add(int(m.group(1)))
+    return out
 
 
 def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:

@@ -1,6 +1,9 @@
 /** Schema version for the work-plan export JSON surface. */
 export const SCHEMA_VERSION = 1;
 
+/** A dependency edge from `blocked_by` / `blocking` arrays on an Issue (#257). */
+export interface IssueDep { number: number; repo: string; title: string; }
+
 /** A single GitHub issue as returned by `work-plan export --json`. */
 export interface Issue {
   number: number;
@@ -10,6 +13,17 @@ export interface Issue {
   assignee: string;
   /** Short milestone label or null. */
   milestone: string | null;
+  /** True when the issue has an active hot branch OR the work-plan:in-progress
+   *  label (the UNION signal). Drives the in-progress BADGE. */
+  in_progress: boolean;
+  /** True iff the work-plan:in-progress label is actually present on the issue
+   *  (label-only signal, independent of hot-branch state). Drives the toggle
+   *  button so Mark/Clear accurately reflects label presence, not the union. */
+  in_progress_label: boolean;
+  /** Open issues this issue is blocked by (GitHub-native dependency edges, #257). */
+  blocked_by: IssueDep[];
+  /** Open issues this issue is blocking (GitHub-native dependency edges, #257). */
+  blocking: IssueDep[];
 }
 
 /** Aggregate open/closed counts for a track. */

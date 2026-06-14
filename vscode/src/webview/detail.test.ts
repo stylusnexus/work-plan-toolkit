@@ -24,10 +24,10 @@ const platformHealth: Track = {
   depends_on: ["idea-mode", "org-sharing"],
   rollup: { open: 12, closed: 8 },
   issues: [
-    { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null },
-    { number: 487,  title: "auth rate limit", state: "open",  assignee: "@alice", milestone: "M1" },
-    { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1" },
-    { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null },
+    { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null,  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+    { number: 487,  title: "auth rate limit", state: "open",  assignee: "@alice", milestone: "M1",  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+    { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1",  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+    { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null,  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
   ],
 };
 
@@ -65,6 +65,10 @@ const xssTrack: Track = {
       state: "open",
       assignee: "<b>evil</b>",
       milestone: null,
+      in_progress: false,
+      in_progress_label: false,
+      blocked_by: [],
+      blocking: [],
     },
   ],
 };
@@ -290,6 +294,10 @@ describe("renderDetail — HTML escaping", () => {
           state: 'open" onmouseover="x' as unknown as "open",
           assignee: "@x",
           milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [],
+          blocking: [],
         },
       ],
     };
@@ -363,8 +371,8 @@ describe("renderDetail — milestone bands", () => {
     const singleMsTrack: Track = {
       ...emptyTrack,
       issues: [
-        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1" },
-        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1" },
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1", in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1", in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
       ],
       rollup: { open: 2, closed: 0 },
     };
@@ -379,8 +387,8 @@ describe("renderDetail — milestone bands", () => {
     const allNullTrack: Track = {
       ...emptyTrack,
       issues: [
-        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null },
-        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null },
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
       ],
       rollup: { open: 2, closed: 0 },
     };
@@ -397,10 +405,10 @@ describe("renderDetail — milestone bands", () => {
       ...emptyTrack,
       milestone_alignment: "v1",
       issues: [
-        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2" },
-        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1" },
-        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1" },
-        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null },
+        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2",  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1",  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1",  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null,  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
       ],
       rollup: { open: 4, closed: 0 },
     };
@@ -423,9 +431,9 @@ describe("renderDetail — milestone bands", () => {
       ...emptyTrack,
       milestone_alignment: "v2.0.0",
       issues: [
-        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0" },
-        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0" },
-        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null },
+        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0", in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0", in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null,  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
       ],
       rollup: { open: 3, closed: 0 },
     };
@@ -458,6 +466,10 @@ describe("renderDetail — issue cap", () => {
         state: "open",
         assignee: "@dev",
         milestone: null,
+        in_progress: false,
+        in_progress_label: false,
+        blocked_by: [],
+        blocking: [],
       });
     }
     return {
@@ -516,6 +528,10 @@ describe("renderDetail — issue cap", () => {
         state: "open",
         assignee: "@dev",
         milestone: ms,
+        in_progress: false,
+        in_progress_label: false,
+        blocked_by: [],
+        blocking: [],
       });
     }
     const track: Track = {
@@ -653,7 +669,7 @@ describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
   it("the issue-cap 'Show all' toggle carries aria-expanded", () => {
     const issues: Issue[] = [];
     for (let i = 1; i <= 75; i++) {
-      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null });
+      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] });
     }
     const big: Track = {
       ...emptyTrack, name: "big", repo: "org/repo", rollup: { open: 75, closed: 0 }, issues,
@@ -740,5 +756,356 @@ describe("renderDetail — progress bar (#220)", () => {
   });
   it("omits the bar for an empty track (no divide-by-zero)", () => {
     assert.ok(!renderDetail(emptyTrack).includes("progressbar"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-progress badge (#271)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — in-progress badge (#271)", () => {
+  it("renders an in-progress badge on a flagged issue", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true, in_progress_label: false, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes("in-progress"), html);
+    assert.ok(html.includes('data-issue="271"'), html);
+  });
+
+  it("omits the badge when not in progress", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 9, title: "quiet issue", state: "open", assignee: "@bob", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // The in-progress STATE PILL must not appear (the toggle button is present,
+    // but its title/aria-label say "Mark in-progress", not the badge class).
+    assert.ok(!html.includes('class="pill in-progress"'), `in-progress pill must be absent:\n${html}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-progress toggle button (#271 B4)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — in-progress toggle button (#271 B4)", () => {
+  it("renders a toggle button with data-inprogress for an open issue in a repo'd track", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('data-inprogress="271"'), `expected data-inprogress="271" in:\n${html}`);
+  });
+
+  it("toggle button sets data-clear=0 when issue is not in-progress", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('data-clear="0"'), `expected data-clear="0" in:\n${html}`);
+  });
+
+  it("toggle button sets data-clear=1 when issue has the in-progress label", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true, in_progress_label: true, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('data-clear="1"'), `expected data-clear="1" in:\n${html}`);
+  });
+
+  it("does not render a toggle button when the track has no repo", () => {
+    const noRepo: Track = { ...emptyTrack, repo: null as unknown as string, issues: [
+      { number: 5, title: "no-repo issue", state: "open", assignee: "@x", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
+    ], rollup: { open: 1, closed: 0 } };
+    const html = renderDetail(noRepo);
+    assert.ok(!html.includes("data-inprogress"), `expected no toggle button for no-repo track:\n${html}`);
+  });
+
+  it("the toggle button and the in-progress badge coexist for an in-progress issue", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true, in_progress_label: true, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // Badge is present
+    assert.ok(html.includes('class="pill in-progress"'), `expected in-progress badge:\n${html}`);
+    // Toggle button is also present
+    assert.ok(html.includes('data-inprogress="271"'), `expected toggle button:\n${html}`);
+  });
+
+  it("hot-branch-only issue: badge lit (in_progress=true) but toggle shows Mark (in_progress_label=false)", () => {
+    // The bug: before this fix the toggle drove off in_progress (the union), so a
+    // hot-branch-only issue showed "Clear" — clicking it removed an absent label
+    // while the badge stayed lit.  After the fix, toggle drives off in_progress_label.
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 42, title: "branch-only", state: "open", assignee: "@dev", milestone: null,
+          in_progress: true, in_progress_label: false, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // Badge fires from the union signal (in_progress=true)
+    assert.ok(html.includes('class="pill in-progress"'), `badge must be lit for hot-branch-only:\n${html}`);
+    // Toggle uses label signal (in_progress_label=false) → data-clear="0" → "Mark"
+    assert.ok(html.includes('data-clear="0"'), `toggle must say Mark (data-clear="0") for label-absent issue:\n${html}`);
+    assert.ok(html.includes('title="Mark in-progress"'), `toggle title must be "Mark in-progress":\n${html}`);
+  });
+
+  it("label-only issue: badge lit (in_progress=true) and toggle shows Clear (in_progress_label=true)", () => {
+    // Label present but no hot branch: both union and label signals agree.
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 43, title: "label-only", state: "open", assignee: "@dev", milestone: null,
+          in_progress: true, in_progress_label: true, blocked_by: [], blocking: [] },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('class="pill in-progress"'), `badge must be lit for label-only issue:\n${html}`);
+    assert.ok(html.includes('data-clear="1"'), `toggle must say Clear (data-clear="1") for label-present issue:\n${html}`);
+    assert.ok(html.includes('title="Clear in-progress"'), `toggle title must be "Clear in-progress":\n${html}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dep disclosure button + chips (#257 B3)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — dep disclosure button (#257)", () => {
+  it("an issue with blocked_by renders dep-toggle-btn carrying data-depissue and a dep-detail-row", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        {
+          number: 100,
+          title: "blocked issue",
+          state: "open",
+          assignee: "@alice",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [{ number: 200, repo: "your-org/myproject", title: "upstream thing" }],
+          blocking: [],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // Disclosure button in title cell
+    assert.ok(
+      html.includes('class="dep-toggle-btn" data-depissue="100"'),
+      `expected dep-toggle-btn with data-depissue="100":\n${html}`,
+    );
+    // Sub-row present
+    assert.ok(
+      html.includes('class="dep-detail-row" data-depissue="100"'),
+      `expected dep-detail-row with data-depissue="100":\n${html}`,
+    );
+    // Chip content: blocked by
+    assert.ok(html.includes("blocked by"), `expected "blocked by" label:\n${html}`);
+    // Dep link for #200
+    assert.ok(
+      html.includes('data-issue="200"'),
+      `expected dep link with data-issue="200":\n${html}`,
+    );
+  });
+
+  it("same-repo blocked_by dep in track.blockers is deduped (not rendered as dep chip)", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      blockers: [300],
+      issues: [
+        {
+          number: 101,
+          title: "issue with blocked-by that is already a manual blocker",
+          state: "open",
+          assignee: "@bob",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          // #300 is same-repo AND in track.blockers → deduped
+          blocked_by: [{ number: 300, repo: "your-org/myproject", title: "manual blocker" }],
+          blocking: [],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // The dep-toggle-btn should NOT appear (no remaining deps after dedupe, no blocking)
+    assert.ok(
+      !html.includes('data-depissue="101"'),
+      `dep-toggle-btn must not appear when all blocked_by are deduped:\n${html}`,
+    );
+    // The manual ⛔ blocker chip still renders (blockers section)
+    assert.ok(html.includes("⛔"), `manual blocker chip must still render:\n${html}`);
+  });
+
+  it("cross-repo blocked_by dep with same number as a manual blocker is NOT deduped (kept)", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      blockers: [300],
+      issues: [
+        {
+          number: 102,
+          title: "cross-repo blocked-by",
+          state: "open",
+          assignee: "@carol",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          // #300 is in track.blockers but it's from a DIFFERENT repo → keep it
+          blocked_by: [{ number: 300, repo: "other-org/otherrepo", title: "cross-repo dep" }],
+          blocking: [],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // dep-toggle-btn should render (cross-repo dep kept)
+    assert.ok(
+      html.includes('data-depissue="102"'),
+      `dep-toggle-btn must appear when cross-repo dep is present:\n${html}`,
+    );
+    // The dep link for cross-repo #300 should render with owner/repo#N label form
+    assert.ok(
+      html.includes("other-org/otherrepo#300"),
+      `expected cross-repo link label "other-org/otherrepo#300":\n${html}`,
+    );
+    assert.ok(
+      html.includes('data-repo="other-org/otherrepo"'),
+      `expected data-repo="other-org/otherrepo" on the dep link:\n${html}`,
+    );
+  });
+
+  it("cross-repo dep renders owner/repo#N link label", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        {
+          number: 103,
+          title: "cross-repo issue",
+          state: "open",
+          assignee: "@dave",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [{ number: 42, repo: "external-org/externalrepo", title: "ext dep" }],
+          blocking: [],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(
+      html.includes("external-org/externalrepo#42"),
+      `cross-repo dep must render as "owner/repo#N":\n${html}`,
+    );
+  });
+
+  it("an issue with no blocked_by and no blocking renders NO dep-toggle-btn and NO dep-detail-row", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        {
+          number: 104,
+          title: "plain issue",
+          state: "open",
+          assignee: "@eve",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [],
+          blocking: [],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(
+      !html.includes("dep-toggle-btn"),
+      `no dep-toggle-btn expected for plain issue:\n${html}`,
+    );
+    assert.ok(
+      !html.includes("dep-detail-row"),
+      `no dep-detail-row expected for plain issue:\n${html}`,
+    );
+  });
+
+  it("a blocking edge renders the ⇒ blocking chip with dep link", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        {
+          number: 105,
+          title: "blocking issue",
+          state: "open",
+          assignee: "@frank",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [],
+          blocking: [{ number: 500, repo: "your-org/myproject", title: "downstream issue" }],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // Disclosure button
+    assert.ok(
+      html.includes('data-depissue="105"'),
+      `expected dep-toggle-btn for issue with blocking edge:\n${html}`,
+    );
+    // The dep-detail-row exists
+    assert.ok(
+      html.includes('class="dep-detail-row" data-depissue="105"'),
+      `expected dep-detail-row for blocking issue:\n${html}`,
+    );
+    // blocking chip content
+    assert.ok(html.includes("blocking"), `expected "blocking" label:\n${html}`);
+    // Dep link for #500
+    assert.ok(
+      html.includes('data-issue="500"'),
+      `expected blocking dep link with data-issue="500":\n${html}`,
+    );
   });
 });

@@ -4,7 +4,7 @@
  * No vscode imports. No Date / Math.random — output is fully deterministic.
  */
 
-import type { Export, Track } from "../model.ts";
+import type { Export, Track, Issue } from "../model.ts";
 import { statusCategory } from "../treeModel.ts";
 
 // ---------------------------------------------------------------------------
@@ -206,10 +206,15 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
 
   // Build title index from all tracks (titles may live on any track).
   const titleIndex = new Map<number, string>();
+  // Build issue object index (first-match wins, same traversal order as titleIndex).
+  const issueIndex = new Map<number, Issue>();
   for (const tr of exp.tracks) {
     for (const issue of tr.issues) {
       if (!titleIndex.has(issue.number)) {
         titleIndex.set(issue.number, issue.title);
+      }
+      if (!issueIndex.has(issue.number)) {
+        issueIndex.set(issue.number, issue);
       }
     }
   }
@@ -319,6 +324,18 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
     if ((tr.depends_on || []).includes(t.name)) {
       const depId = tids.get(tr.name)!;
       lines.push(`  ${depId} ==>|depends on| ${tid}`);
+    }
+  }
+
+  // #257: issue→issue blocked-by edges, same-repo only.
+  // Both the blocked issue and its blocker must already be nodes in includedIssues.
+  for (const [num] of includedIssues) {
+    const issue = issueIndex.get(num);
+    if (issue === undefined) continue;
+    for (const dep of issue.blocked_by ?? []) {
+      if (dep.repo !== t.repo) continue;              // cross-repo excluded
+      if (!includedIssues.has(dep.number)) continue;  // blocker must be a node too
+      lines.push(`  i_${dep.number} --x|blocked by| i_${num}`);
     }
   }
 

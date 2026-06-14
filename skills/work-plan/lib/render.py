@@ -36,6 +36,11 @@ def render_track_row(t: dict) -> str:
     if t["next_up"]:
         for idx, item in enumerate(t["next_up"]):
             bits = [item["priority"], item["state"]]
+            if item.get("in_progress"):
+                bits.append("▶ in-progress")
+            blocked = item.get("blocked_by_display") or []
+            if blocked:
+                bits.append("⊘ blocked by " + ", ".join(blocked))
             if item.get("milestone"):
                 bits.append(item["milestone"])
             label = f"#{item['number']} {item['title']} ({', '.join(bits)})"

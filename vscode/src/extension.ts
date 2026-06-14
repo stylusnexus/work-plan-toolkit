@@ -545,7 +545,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
-    // workPlan.closeIssue (#305) — the only GitHub-mutating action. Accepts an
+    // workPlan.closeIssue (#305) — one of two GitHub-mutating actions (the other is issueInProgress). Accepts an
     // untracked-issue NODE ({repo, issue:{number,title}}) or a detail-panel
     // {repo, number, title}. Flow: reason pick → optional comment → mandatory
     // "writes to GitHub, can't be undone" modal (EVERY close) → executeWrite.
@@ -606,6 +606,48 @@ export function activate(context: vscode.ExtensionContext): void {
           const msg = err instanceof CliError
             ? `Work Plan: ${err.message}`
             : `Work Plan: close failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    // workPlan.toggleInProgress (#271 B4) — mark or clear the work-plan:in-progress
+    // label on an issue via the detail-webview toggle button. Accepts {repo, number,
+    // clear}. Routes through executeWrite so the public-repo confirm-token flow is
+    // reused (no extra modal — unlike closeIssue, this is reversible and low-risk).
+    vscode.commands.registerCommand(
+      "workPlan.toggleInProgress",
+      async (arg?: { repo?: string; number?: number; clear?: boolean }) => {
+        const repo = arg?.repo;
+        const number = arg?.number;
+        const clear = arg?.clear ?? false;
+        if (!repo || !number) {
+          vscode.window.showInformationMessage("Work Plan: no issue to update.");
+          return;
+        }
+
+        try {
+          const outcome = await withWriteProgress(
+            `Work Plan: ${clear ? "clearing" : "marking"} #${number} in-progress…`,
+            () => executeWrite(
+              runner,
+              { kind: "issueInProgress", repo, number, clear },
+              confirmPublicWrite,
+            ),
+          );
+          if (outcome.status === "written") {
+            await refreshAfterWrite();
+            vscode.window.showInformationMessage(
+              clear
+                ? `Work Plan: cleared in-progress on #${number}.`
+                : `Work Plan: marked #${number} in-progress.`,
+            );
+          } else {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: toggle in-progress failed — ${String(err)}`;
           vscode.window.showErrorMessage(msg);
         }
       },
