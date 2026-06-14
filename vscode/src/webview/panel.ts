@@ -15,6 +15,7 @@ import type { Export } from "../model.ts";
 import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
 import { buildHtml, esc } from "./html.ts";
+import { isWebviewMessage } from "./messages.ts";
 
 // ---------------------------------------------------------------------------
 // Injected move handler
@@ -46,66 +47,6 @@ export type MoveHandler = (
  * UMD build: exposes global `mermaid` via a classic <script> tag.
  */
 const MERMAID_FILE = "mermaid.min.js";
-
-// ---------------------------------------------------------------------------
-// Message types (webview → extension)
-// ---------------------------------------------------------------------------
-
-interface SelectTrackMessage {
-  type: "selectTrack";
-  name: string;
-}
-
-interface OpenIssueMessage {
-  type: "openIssue";
-  repo: string;
-  number: number;
-}
-
-interface SetFocusMessage {
-  type: "setFocus";
-  focus: boolean;
-}
-
-interface MoveIssueMessage {
-  type: "moveIssue";
-  number: number;
-}
-
-interface FilterMilestoneMessage {
-  type: "filterMilestone";
-  milestone: string;
-}
-
-/** Open the current track's .md (#211). No payload — the host resolves the
- *  path from the current track, so the webview never carries it. */
-interface OpenTrackFileMessage {
-  type: "openTrackFile";
-}
-
-/** Open the current track's linked plan doc (#285). No payload — the host
- *  resolves the path from the current track's `plan` badge + repo local path. */
-interface OpenPlanMessage {
-  type: "openPlan";
-}
-
-/** Close a tracked issue on GitHub (#305). Carries the issue number; the host
- *  resolves the current track's repo + the issue's title and delegates to the
- *  workPlan.closeIssue command (which shows the mandatory modal). */
-interface CloseIssueMessage {
-  type: "closeIssue";
-  number: number;
-}
-
-type WebviewMessage =
-  | SelectTrackMessage
-  | OpenIssueMessage
-  | SetFocusMessage
-  | MoveIssueMessage
-  | FilterMilestoneMessage
-  | OpenTrackFileMessage
-  | OpenPlanMessage
-  | CloseIssueMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -380,6 +321,19 @@ export class WorkPlanPanel {
         }
         break;
       }
+      case "toggleInProgress": {
+        // Resolve the current track's repo, then delegate to the command (#271 B4).
+        // The command calls executeWrite so the public-repo confirm-token flow is reused.
+        const track = this._currentExport?.tracks.find(
+          t => t.name === this._currentTrackName,
+        );
+        if (track?.repo) {
+          void vscode.commands.executeCommand("workPlan.toggleInProgress", {
+            repo: track.repo, number: raw.number, clear: raw.clear,
+          });
+        }
+        break;
+      }
     }
   }
 
@@ -465,38 +419,3 @@ function isDarkTheme(): boolean {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Type guard for incoming webview messages
-// ---------------------------------------------------------------------------
-
-function isWebviewMessage(raw: unknown): raw is WebviewMessage {
-  if (typeof raw !== "object" || raw === null) {
-    return false;
-  }
-  const msg = raw as Record<string, unknown>;
-  if (typeof msg["type"] !== "string") {
-    return false;
-  }
-  switch (msg["type"]) {
-    case "selectTrack":
-      return typeof msg["name"] === "string";
-    case "openIssue":
-      return typeof msg["repo"] === "string"
-        && /^[\w.-]+\/[\w.-]+$/.test(msg["repo"] as string)
-        && typeof msg["number"] === "number"
-        && Number.isInteger(msg["number"])
-        && (msg["number"] as number) > 0;
-    case "setFocus":
-      return typeof msg["focus"] === "boolean";
-    case "moveIssue":
-      return typeof msg["number"] === "number"
-        && Number.isInteger(msg["number"])
-        && (msg["number"] as number) > 0;
-    case "filterMilestone":
-      return typeof msg["milestone"] === "string" && (msg["milestone"] as string).length > 0;
-    case "openTrackFile":
-      return true; // no payload to validate
-    default:
-      return false;
-  }
-}

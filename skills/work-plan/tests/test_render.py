@@ -106,5 +106,32 @@ class RenderTrackRowTest(unittest.TestCase):
         self.assertNotIn("(P3, open, ", row)
 
 
+class RenderInProgressTest(unittest.TestCase):
+    def _block(self, next_up):
+        return {
+            "name": "alpha", "operational_status": "active", "launch_priority": "P2",
+            "milestone_alignment": "—", "last_touched_label": "1d ago",
+            "last_handoff_label": "1d ago", "next_up": next_up,
+            "next_up_stale_closed_count": 0, "track_slug": "alpha",
+            "active_branches": [], "new_issues": [], "blockers": [],
+            "drift_items": [], "closure_ready": False, "closure_signals_summary": None,
+        }
+
+    def test_in_progress_item_marked(self):
+        row = render_track_row(self._block([
+            {"number": 271, "title": "x", "priority": "P1", "state": "open",
+             "milestone": None, "in_progress": True},
+        ]))
+        self.assertIn("in-progress", row)
+        self.assertIn("#271", row)
+
+    def test_non_in_progress_item_not_marked(self):
+        row = render_track_row(self._block([
+            {"number": 9, "title": "y", "priority": "P2", "state": "open",
+             "milestone": None, "in_progress": False},
+        ]))
+        self.assertNotIn("in-progress", row)
+
+
 if __name__ == "__main__":
     unittest.main()

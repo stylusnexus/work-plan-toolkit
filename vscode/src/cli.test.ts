@@ -51,6 +51,7 @@ const VALID_EXPORT: Export = {
           state: "open",
           assignee: "@eve",
           milestone: "v1",
+          in_progress: false,
         },
       ],
     },
@@ -116,8 +117,8 @@ function recordingRunner(result: CliResult): { run: CliRunner; calls: string[][]
 const VALID_OPEN_ISSUES = {
   repo: "your-org/myproject",
   issues: [
-    { number: 142, title: "Add SSO", state: "open", assignee: "—", milestone: null },
-    { number: 87, title: "Fix auth", state: "open", assignee: "@eve", milestone: "v0.6" },
+    { number: 142, title: "Add SSO", state: "open", assignee: "—", milestone: null, in_progress: false },
+    { number: 87, title: "Fix auth", state: "open", assignee: "@eve", milestone: "v0.6", in_progress: false },
   ],
 };
 
@@ -296,6 +297,11 @@ describe("meetsMinVersion", () => {
   test("older actual year → false", () => {
     assert.equal(meetsMinVersion("2025.12.31", "2026.06.07"), false);
   });
+
+  test("a CLI older than the in-progress release fails the min-version gate", () => {
+    assert.equal(meetsMinVersion("2026.06.13", "2026.06.14"), false);
+    assert.equal(meetsMinVersion("2026.06.14", "2026.06.14"), true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -329,11 +335,11 @@ describe("parseVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkVersion", () => {
-  test("returns {ok:true, version:'2026.06.13'} for a current version", async () => {
-    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.13+abc", stderr: "" });
+  test("returns {ok:true, version:'2026.06.14'} for a current version", async () => {
+    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.14+abc", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.06.13");
+    assert.equal(result.version, "2026.06.14");
   });
 
   test("returns {ok:false} for an older version", async () => {

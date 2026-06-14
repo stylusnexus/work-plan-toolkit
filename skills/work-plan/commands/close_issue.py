@@ -1,7 +1,7 @@
 """close-issue — close a GitHub issue via `gh`, optionally with a comment (#305).
 
-⚠️ This is the toolkit's FIRST and ONLY GitHub-mutating command. Everything else
-is read-only on GitHub. PRs merged to `dev` don't auto-close issues (GitHub only
+⚠️ A GitHub-mutating command (the others: `in-progress`, and `plan-status --issues`).
+Most of the toolkit is read-only on GitHub. PRs merged to `dev` don't auto-close issues (GitHub only
 auto-closes from the default branch, `main`), so done-but-OPEN issues pile up;
 this closes one explicitly.
 

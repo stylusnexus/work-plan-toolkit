@@ -25,6 +25,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     state: "open",
     assignee: "@eve",
     milestone: null,
+    in_progress: false,
     ...overrides,
   };
 }
@@ -715,7 +716,7 @@ describe("mergeFetchedUntracked", () => {
     tracks: [], untracked, folder: repo, hasLocal: true,
   });
   const issue = (n: number): Issue => ({
-    number: n, title: `#${n}`, state: "open", assignee: "—", milestone: null,
+    number: n, title: `#${n}`, state: "open", assignee: "—", milestone: null, in_progress: false,
   });
 
   test("empty fetch map returns the same array reference", () => {

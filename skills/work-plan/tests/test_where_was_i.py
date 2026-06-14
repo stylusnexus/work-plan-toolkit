@@ -513,5 +513,24 @@ class OrientRepoFlagTest(unittest.TestCase):
         self.assertIn("ambiguous", out.lower())
 
 
+class OrientInProgressTest(unittest.TestCase):
+    def test_next_pick_marked_in_progress(self):
+        from types import SimpleNamespace
+        track = SimpleNamespace(
+            name="alpha", repo="o/r", local_path=Path("/repo"), path=Path("/n/alpha.md"),
+            body="", meta={"track": "alpha", "launch_priority": "P1",
+                           "milestone_alignment": "—",
+                           "github": {"issues": [271]}, "next_up": [271]})
+        issue = {"number": 271, "title": "x", "state": "open", "labels": [], "milestone": None}
+        with mock.patch("commands.where_was_i.fetch_issues", return_value=[issue]), \
+             mock.patch("commands.where_was_i.hot_issue_numbers", return_value={271}), \
+             mock.patch("commands.where_was_i.current_branch", return_value=None), \
+             mock.patch("commands.where_was_i.find_new_issues_for_tracks", return_value={}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                where_was_i._orient_track(track)
+        self.assertIn("in-progress", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

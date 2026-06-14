@@ -263,19 +263,32 @@ function renderIssueRow(track: Track, issue: Issue): string {
   const numCell = track.repo
     ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
-  // Move + Close-on-GitHub actions (#305). Close shows only for OPEN issues in a
-  // repo'd track; a closed row shows no close affordance (already done).
+  // Move + Close-on-GitHub + in-progress toggle actions (#305, #271). Close and
+  // toggle show only for tracked issues in a repo'd track. Close additionally
+  // requires the issue to be open (nothing to close on a closed issue).
   const closeBtn = track.repo && issue.state === "open"
     ? ` <button class="close-issue-btn" data-close="${issue.number}" title="Close #${issue.number} on GitHub" aria-label="Close issue #${issue.number} on GitHub">✕</button>`
     : "";
+  // Toggle is shown for any tracked issue in a repo'd track (open or closed),
+  // since a closed issue can still carry the in-progress label. data-clear drives
+  // which direction the CLI call takes: "1" removes the label, "0" adds it.
+  // NOTE: the toggle controls the LABEL, so it uses in_progress_label (label
+  // presence only) — NOT in_progress (the union of hot-branch OR label). An
+  // issue hot-branch-only (no label) correctly shows "Mark", not "Clear".
+  const inProgBtn = track.repo
+    ? ` <button class="inprogress-btn" data-inprogress="${issue.number}" data-clear="${issue.in_progress_label ? "1" : "0"}" title="${issue.in_progress_label ? "Clear" : "Mark"} in-progress" aria-label="${issue.in_progress_label ? "Clear" : "Mark"} issue #${issue.number} in-progress">▶</button>`
+    : "";
   const moveBtn = track.repo
-    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}</td>`
+    ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}${inProgBtn}</td>`
     : `<td class="move-col"></td>`;
+  const inProgressPill = issue.in_progress
+    ? ` <span class="pill in-progress" title="In progress (hot branch or work-plan:in-progress label)">in-progress</span>`
+    : "";
   return (
     `<tr>` +
     numCell +
     `<td>${esc(issue.title)}</td>` +
-    `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td>` +
+    `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span>${inProgressPill}</td>` +
     `<td class="who">${esc(issue.assignee)}</td>` +
     moveBtn +
     `</tr>`

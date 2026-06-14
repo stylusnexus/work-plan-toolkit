@@ -5,6 +5,8 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, Optional
 
+from lib.in_progress import IN_PROGRESS_LABEL
+
 PRIORITY_LABELS = ("priority/P0", "priority/P1", "priority/P2", "priority/P3")
 DEFAULT_PRIORITY = "P3"
 
@@ -29,8 +31,9 @@ def _valid_repo(repo: str) -> bool:
 
 
 def close_issue(repo: str, number: int, reason=None, comment=None) -> tuple:
-    """Close a GitHub issue via `gh issue close` — the toolkit's ONLY
-    GitHub-mutating call (#305). Everything else here is read-only.
+    """Close a GitHub issue via `gh issue close` — one of the toolkit's
+    GitHub-mutating calls (also `set_issue_in_progress`, `create_issue`).
+    Everything else here is read-only.
 
     Returns (ok, message). `reason` ∈ {completed, not_planned} maps to
     `--reason`; `comment` (if given) posts a closing comment. The issue number
@@ -52,6 +55,36 @@ def close_issue(repo: str, number: int, reason=None, comment=None) -> tuple:
     if proc.returncode != 0:
         return (False, (proc.stderr or proc.stdout or "gh issue close failed").strip())
     return (True, (proc.stdout or f"closed #{number}").strip())
+
+
+def set_issue_in_progress(repo: str, number: int, clear: bool = False) -> tuple:
+    """Add or remove the work-plan:in-progress label on a GitHub issue (#271).
+
+    The toolkit's second GitHub-mutating call (close_issue is the first). On add,
+    the label is created first (`--force` is idempotent: updates color/description
+    if it already exists) so `--add-label` can't fail on a missing label. Both gh
+    calls are --repo-qualified — issue numbers are repo-scoped. Returns (ok, message);
+    never raises. number->str for argv, repo validated owner/name, so neither injects.
+    """
+    if not _valid_repo(repo):
+        return (False, f"invalid repo '{repo}'")
+    try:
+        if not clear:
+            create = ["gh", "label", "create", IN_PROGRESS_LABEL, "--repo", repo,
+                      "--color", "FBCA04",
+                      "--description", "Actively being worked (work-plan)", "--force"]
+            proc = subprocess.run(create, capture_output=True, text=True, timeout=GH_TIMEOUT)
+            if proc.returncode != 0:
+                return (False, (proc.stderr or proc.stdout or "gh label create failed").strip())
+        flag = "--remove-label" if clear else "--add-label"
+        edit = ["gh", "issue", "edit", str(int(number)), "--repo", repo, flag, IN_PROGRESS_LABEL]
+        proc = subprocess.run(edit, capture_output=True, text=True, timeout=GH_TIMEOUT)
+    except Exception as e:
+        return (False, f"gh in-progress write failed: {e}")
+    if proc.returncode != 0:
+        return (False, (proc.stderr or proc.stdout or "gh issue edit failed").strip())
+    verb = "cleared" if clear else "marked"
+    return (True, (proc.stdout or f"{verb} #{number} in-progress").strip())
 
 
 def gh_auth_status() -> dict:
@@ -187,7 +220,7 @@ def _normalize_gql_node(node) -> Optional[dict]:
 # Kept as a module-level constant so _gql_query can parameterize at the call site.
 _GQL_FIELDS_FULL = (
     "number title state"
-    " labels(first: 20) { nodes { name } }"
+    " labels(first: 50) { nodes { name } }"
     " milestone { title }"
     " closedAt body url updatedAt"
     " assignees(first: 10) { nodes { login } }"
@@ -195,6 +228,7 @@ _GQL_FIELDS_FULL = (
 
 _GQL_FIELDS_LEAN = (
     "number title state"
+    " labels(first: 50) { nodes { name } }"
     " assignees(first: 10) { nodes { login } }"
     " milestone { title }"
 )

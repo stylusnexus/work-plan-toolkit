@@ -35,10 +35,17 @@ export type WriteAction =
   // (clear removes it). Frontmatter-only, same shape as planConfirm/planAck.
   | { kind: "planBaseline"; repoKey: string; rel: string }
   | { kind: "planBaselineClear"; repoKey: string; rel: string }
-  // Close a GitHub issue (#305) — the ONLY GitHub-mutating action. `repo` is the
-  // org/repo slug; gated by a mandatory UI modal in the command handler (no
-  // needs_confirm token — closing doesn't leak private content to a public repo).
+  // Close a GitHub issue (#305) — one of two GitHub-mutating actions (the other is
+  // issueInProgress). `repo` is the org/repo slug; gated by a mandatory UI modal in
+  // the command handler (no needs_confirm token — closing doesn't leak private content
+  // to a public repo).
   | { kind: "closeIssue"; repo: string; number: number; reason: "completed" | "not_planned"; comment?: string }
+  // Mark or clear the work-plan:in-progress label on an issue (#271) — the second
+  // GitHub-mutating action (the first is closeIssue). `repo` is the org/repo slug;
+  // clear=true removes the label instead of adding it.
+  // Goes through the public-repo confirm-token flow (executeWrite) — no extra
+  // modal needed since it only mutates the label, not the issue's state.
+  | { kind: "issueInProgress"; repo: string; number: number; clear: boolean }
   // Promote a private track to the shared tier + push (#306). repoKey is the
   // config folder key (disambiguates the track). Public-repo gated by the CLI's
   // needs_confirm, which executeWrite drives.
@@ -97,6 +104,7 @@ export type WriteOutcome =
  *   planBaseline    → ["plan-baseline", "--repo=<key>", "--", rel]
  *   planBaselineClear→ ["plan-baseline", "--repo=<key>", "--clear", "--", rel]
  *   closeIssue      → ["close-issue", "--repo=<slug>", "--reason=<r>", ..."--comment=<c>", "--", number]
+ *   issueInProgress → ["in-progress", ..."--clear", "--repo=<slug>", "--", number]
  *   pushTrack       → ["push-track", ..."--repo=<key>", "--", track]
  */
 export function actionToArgs(action: WriteAction): string[] {
@@ -212,6 +220,15 @@ export function actionToArgs(action: WriteAction): string[] {
         `--repo=${action.repo}`,
         `--reason=${action.reason}`,
         ...(action.comment ? [`--comment=${action.comment}`] : []),
+        "--",
+        String(action.number),
+      ];
+
+    case "issueInProgress":
+      return [
+        "in-progress",
+        ...(action.clear ? ["--clear"] : []),
+        `--repo=${action.repo}`,
         "--",
         String(action.number),
       ];

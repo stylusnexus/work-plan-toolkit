@@ -10,6 +10,13 @@ export interface Issue {
   assignee: string;
   /** Short milestone label or null. */
   milestone: string | null;
+  /** True when the issue has an active hot branch OR the work-plan:in-progress
+   *  label (the UNION signal). Drives the in-progress BADGE. */
+  in_progress: boolean;
+  /** True iff the work-plan:in-progress label is actually present on the issue
+   *  (label-only signal, independent of hot-branch state). Drives the toggle
+   *  button so Mark/Clear accurately reflects label presence, not the union. */
+  in_progress_label: boolean;
 }
 
 /** Aggregate open/closed counts for a track. */

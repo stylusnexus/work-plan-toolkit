@@ -12,7 +12,9 @@ from lib.prompts import parse_flags
 from lib.git_state import (
     parse_iso_timestamp, gap_seconds_to_label,
     branch_in_progress, commits_ahead, uncommitted_file_count, current_branch,
+    hot_issue_numbers,
 )
+from lib.in_progress import issue_in_progress
 from lib.closure import compute_signals, is_closure_ready
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.next_up import suggest_next_up
@@ -127,6 +129,7 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
 
     next_up_items = []
     next_up_closed_count = 0
+    hot_nums = hot_issue_numbers(local) if local else set()
     for num in next_up_nums:
         i = issues_by_num.get(num)
         if not i:
@@ -140,6 +143,7 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
             "priority": extract_priority(i.get("labels", [])),
             "state": state.lower() or "open",
             "milestone": short_milestone(i.get("milestone")),
+            "in_progress": issue_in_progress(i, hot_nums),
         })
 
     branch_names = meta.get("github", {}).get("branches") or []
