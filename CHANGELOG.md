@@ -6,6 +6,21 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.14+ce7d3fc — 2026-06-14 (#321)
+
+fix(vscode): hotfix MIN_CLI_VERSION gate — 0.9.1 (false CLI-incompatible warning)
+
+Emergency hotfix deploy. v0.9.0 (deployed earlier today) gated `MIN_CLI_VERSION = "2026.06.15"` while the CLI shipped as `2026.06.14`, so every user who updated the extension saw a false **"CLI version may be incompatible"** warning that "Update" could not resolve.
+
+## #257 follow-up
+- `MIN_CLI_VERSION` → `2026.06.14` (the deploy that actually added the gated export fields).
+- Guard test: the gate can never be set ahead of the repo's own CLI `VERSION`.
+- VS Code extension **0.9.0 → 0.9.1**. CLI unchanged → **VS Code-only republish; npm skipped** (CLI `2026.6.14` already published and identical).
+
+## Test plan
+- [x] dev CI green on the fix merge
+- [x] VS Code typecheck + 603 tests + production build clean
+
 ## 2026.06.14+ef58902 — 2026-06-14 (#319)
 
 feat: GitHub-native blocked-by/blocking edges (read-only) + issue-level in-progress (#257, #271)
