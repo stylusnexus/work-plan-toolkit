@@ -45,15 +45,18 @@ class ListOpenIssuesTest(unittest.TestCase):
         rc, out = _run(["--repo=o/r"], rows)
         self.assertEqual(rc, 0)
         self.assertEqual(out["repo"], "o/r")
-        # Same Issue shape as the export (number/title/state/assignee/milestone).
+        # Same Issue shape as the export (number/title/state/assignee/milestone,
+        # plus the always-present in_progress flag — #271 keeps the two surfaces
+        # identical, so list-open-issues carries it too, default False here since
+        # this command has no track/branch context).
         self.assertEqual(
             out["issues"][0],
             {"number": 91, "title": "Rate-limit login", "state": "open",
-             "assignee": "@eve", "milestone": "v0.6"},
+             "assignee": "@eve", "milestone": "v0.6", "in_progress": False},
         )
         self.assertEqual(out["issues"][1],
                          {"number": 87, "title": "Fix auth", "state": "open",
-                          "assignee": "—", "milestone": None})
+                          "assignee": "—", "milestone": None, "in_progress": False})
 
     def test_exclude_filters_given_numbers(self):
         rows = [_row(1), _row(2), _row(3)]
