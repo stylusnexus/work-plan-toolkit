@@ -138,12 +138,20 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
         if state in ("CLOSED", "MERGED"):
             next_up_closed_count += 1
             continue
+        manual_blockers = set(meta.get("blockers") or [])
+        blocked_disp = []
+        for e in (i.get("blocked_by") or []):
+            same_repo = e.get("repo") == repo
+            if same_repo and e.get("number") in manual_blockers:
+                continue
+            blocked_disp.append(f"#{e['number']}" if same_repo else f"{e['repo']}#{e['number']}")
         next_up_items.append({
             "number": num, "title": i.get("title", ""),
             "priority": extract_priority(i.get("labels", [])),
             "state": state.lower() or "open",
             "milestone": short_milestone(i.get("milestone")),
             "in_progress": issue_in_progress(i, hot_nums),
+            "blocked_by_display": blocked_disp,
         })
 
     branch_names = meta.get("github", {}).get("branches") or []

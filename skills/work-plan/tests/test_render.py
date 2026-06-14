@@ -133,5 +133,26 @@ class RenderInProgressTest(unittest.TestCase):
         self.assertNotIn("in-progress", row)
 
 
+class RenderBlockedByTest(unittest.TestCase):
+    def _block(self, item):
+        return {"name": "alpha", "operational_status": "active", "launch_priority": "P2",
+                "milestone_alignment": "—", "last_touched_label": "1d", "last_handoff_label": "1d",
+                "next_up": [item], "next_up_stale_closed_count": 0, "track_slug": "alpha",
+                "active_branches": [], "new_issues": [], "blockers": [],
+                "drift_items": [], "closure_ready": False, "closure_signals_summary": None}
+
+    def _item(self, blocked):
+        return {"number": 5, "title": "x", "priority": "P1", "state": "open",
+                "milestone": None, "in_progress": False, "blocked_by_display": blocked}
+
+    def test_blocked_by_annotation_rendered(self):
+        row = render_track_row(self._block(self._item(["#9"])))
+        self.assertIn("blocked by #9", row)
+
+    def test_no_annotation_when_empty(self):
+        row = render_track_row(self._block(self._item([])))
+        self.assertNotIn("blocked by", row)
+
+
 if __name__ == "__main__":
     unittest.main()
