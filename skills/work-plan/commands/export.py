@@ -76,18 +76,19 @@ def run(args: list[str]) -> int:
     issue_map = fetch_export_issues(repo_to_numbers)
 
     # Reassemble per-track lists, preserving each track's declared issue order.
-    issues_by_track: dict[str, list] = {}
+    # Keyed by (repo, name) so same-named tracks in different repos don't collide.
+    issues_by_track: dict[tuple, list] = {}
     visibility: dict[str, object] = {}
     for t in tracks:
         nums = (t.meta.get("github", {}).get("issues")) or []
         if t.repo and nums:
-            issues_by_track[t.name] = [
+            issues_by_track[(t.repo, t.name)] = [
                 issue_map[(t.repo, n)]
                 for n in nums
                 if (t.repo, n) in issue_map
             ]
         else:
-            issues_by_track[t.name] = []
+            issues_by_track[(t.repo, t.name)] = []
         if t.repo and t.repo not in visibility:
             visibility[t.repo] = repo_visibility(t.repo)
 

@@ -77,7 +77,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
     for t in tracks:
         from lib.in_progress import issue_in_progress
         hot = hot_by_track.get((t.repo, t.name), set())
-        raw = issues_by_track.get(t.name, [])
+        raw = issues_by_track.get((t.repo, t.name), [])
         issues = [normalize_issue(i, in_progress=issue_in_progress(i, hot)) for i in raw]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
