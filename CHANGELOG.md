@@ -6,6 +6,34 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.14+ef58902 — 2026-06-14 (#319)
+
+feat: GitHub-native blocked-by/blocking edges (read-only) + issue-level in-progress (#257, #271)
+
+Production deploy bundling two features that have landed on `dev` since the `2026.06.13` release (main/Marketplace were at CLI `2026.06.13` / VS Code `0.7.1`).
+
+## #257 — surface GitHub-native blocked-by / blocking (read-only)
+Reads GitHub's native issue `blockedBy`/`blocking` edges **live** (never cached) and surfaces them read-only — no ordering or status change.
+- **CLI:** Issue-only GraphQL fragment (`blockedBy`/`blocking` with connection `totalCount` for truncation), OPEN-filtered into `{number, repo, title}` edges, threaded onto issues; `brief`/`orient` annotate next-up / next-pick / behind-it rows with `⊘ blocked by #N` (cross-repo → `owner/repo#N`), repo-scoped dedupe against manual blockers.
+- **VS Code (0.9.0):** `IssueDep` type + `[]`-normalize at the export boundary + `MIN_CLI_VERSION` → `2026.06.15`; same-repo `--x` blocked-by edge in the focused dependency graph; `⛓` disclosure on detail-panel issue rows expanding to `⊘ blocked-by` / `⇒ blocking` chips.
+- Read-only: the GitHub-mutation inventory is unchanged. Live authenticated GraphQL gate passed (Issue arm resolves, PR arm doesn't reject, end-to-end parse verified, dependency torn down).
+
+## #271 — issue-level in-progress (the 0.8.0 work, not yet on main)
+- **CLI:** `in-progress <n> [--clear]` adds/removes the `work-plan:in-progress` label (public-repo gated); `brief`/`orient` also derive in-progress from a hot `feat/<n>-`/`fix/<n>-` branch.
+- **VS Code:** per-issue in-progress badge + Mark/Clear toggle in the detail panel; plus the 0.7.1→0.8.0 follow-up fixes (Close-on-GitHub button render, open-plan webview guard).
+
+## Versions / publishes (post-merge)
+- VS Code extension `0.7.1` → **0.9.0** (`vscode/package.json` + `vscode/README` Status already bumped on dev).
+- CLI npm: first `2026.6.14` publish (no same-day collision with `2026.6.13`).
+- `VERSION` / plugin manifests stamped automatically by `version-bump.yml` on merge.
+
+## Test plan
+- [x] dev CI green on the merge commit (Tests + VS Code Extension matrices)
+- [x] Python `1014 OK`; VS Code typecheck clean + `602 pass` + esbuild production build clean
+- [x] Phase A authenticated GraphQL gate recorded in #318
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.13+22f59a8 — 2026-06-13 (#316)
 
 fix+feat: dark-mode a11y contrast, progress bar (#220) + activity badge (#215), Untracked/close-button fixes
