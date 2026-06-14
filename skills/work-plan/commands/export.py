@@ -4,6 +4,7 @@ from datetime import datetime, date
 from lib.config import load_config, ConfigError, resolve_local_path_for_folder
 from lib.tracks import discover_tracks
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
+from lib.git_state import hot_issue_numbers
 from lib.export_model import build_export
 from lib.prompts import parse_flags
 from lib import doc_discovery
@@ -127,12 +128,24 @@ def run(args: list[str]) -> int:
         if badge is not None:
             plan_by_track[t.name] = badge
 
+    # Per-track branch heat, keyed (repo, name) — track names collide across repos.
+    hot_by_track: dict = {}
+    for t in tracks:
+        if not t.repo:
+            continue
+        local = resolve_local_path_for_folder(t.folder, cfg) if t.folder else None
+        if local and local.exists():
+            nums = hot_issue_numbers(local)
+            if nums:
+                hot_by_track[(t.repo, t.name)] = nums
+
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print(json.dumps(
         build_export(tracks, issues_by_track, visibility, now,
                      untracked_by_repo=untracked_by_repo,
                      config_repos=config_repos,
-                     plan_by_track=plan_by_track),
+                     plan_by_track=plan_by_track,
+                     hot_by_track=hot_by_track),
         indent=2,
     ))
     return 0

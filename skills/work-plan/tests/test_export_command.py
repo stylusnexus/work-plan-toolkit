@@ -386,5 +386,32 @@ class ExportPlanBadgeTest(unittest.TestCase):
         self.assertEqual(badge, {"rel": "docs/plans/p.md", "resolved": False})
 
 
+class ExportHotByTrackTest(unittest.TestCase):
+    def test_export_marks_in_progress_from_hot_branch(self):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        track = SimpleNamespace(name="alpha", repo="o/r", folder="alpha",
+                                path=None, tier="private", has_frontmatter=True,
+                                meta={"github": {"issues": [1]}, "next_up": []})
+        issue = {"number": 1, "title": "a", "state": "open", "assignees": [],
+                 "milestone": None, "labels": []}
+        with patch("commands.export.load_config", return_value={"repos": {}}), \
+             patch("commands.export.discover_tracks", return_value=[track]), \
+             patch("commands.export.fetch_export_issues",
+                   return_value={("o/r", 1): issue}), \
+             patch("commands.export.fetch_open_issues", return_value=[]), \
+             patch("commands.export.repo_visibility", return_value="PRIVATE"), \
+             patch("commands.export.resolve_local_path_for_folder",
+                   return_value=Path("/repo")), \
+             patch("commands.export.hot_issue_numbers", return_value={1}), \
+             patch.object(Path, "exists", return_value=True):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = export_cmd.run(["--json"])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out.getvalue())
+        self.assertTrue(payload["tracks"][0]["issues"][0]["in_progress"])
+
+
 if __name__ == "__main__":
     unittest.main()
