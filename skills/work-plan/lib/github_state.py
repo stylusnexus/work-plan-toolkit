@@ -5,6 +5,8 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, Optional
 
+from lib.in_progress import IN_PROGRESS_LABEL
+
 PRIORITY_LABELS = ("priority/P0", "priority/P1", "priority/P2", "priority/P3")
 DEFAULT_PRIORITY = "P3"
 
@@ -52,6 +54,36 @@ def close_issue(repo: str, number: int, reason=None, comment=None) -> tuple:
     if proc.returncode != 0:
         return (False, (proc.stderr or proc.stdout or "gh issue close failed").strip())
     return (True, (proc.stdout or f"closed #{number}").strip())
+
+
+def set_issue_in_progress(repo: str, number: int, clear: bool = False) -> tuple:
+    """Add or remove the work-plan:in-progress label on a GitHub issue (#271).
+
+    The toolkit's second GitHub-mutating call (close_issue is the first). On add,
+    the label is created first (`--force` is idempotent: updates color/description
+    if it already exists) so `--add-label` can't fail on a missing label. Both gh
+    calls are --repo-qualified — issue numbers are repo-scoped. Returns (ok, message);
+    never raises. number->str for argv, repo validated owner/name, so neither injects.
+    """
+    if not _valid_repo(repo):
+        return (False, f"invalid repo '{repo}'")
+    try:
+        if not clear:
+            create = ["gh", "label", "create", IN_PROGRESS_LABEL, "--repo", repo,
+                      "--color", "FBCA04",
+                      "--description", "Actively being worked (work-plan)", "--force"]
+            proc = subprocess.run(create, capture_output=True, text=True, timeout=GH_TIMEOUT)
+            if proc.returncode != 0:
+                return (False, (proc.stderr or proc.stdout or "gh label create failed").strip())
+        flag = "--remove-label" if clear else "--add-label"
+        edit = ["gh", "issue", "edit", str(int(number)), "--repo", repo, flag, IN_PROGRESS_LABEL]
+        proc = subprocess.run(edit, capture_output=True, text=True, timeout=GH_TIMEOUT)
+    except Exception as e:
+        return (False, f"gh in-progress write failed: {e}")
+    if proc.returncode != 0:
+        return (False, (proc.stderr or proc.stdout or "gh issue edit failed").strip())
+    verb = "cleared" if clear else "marked"
+    return (True, (proc.stdout or f"{verb} #{number} in-progress").strip())
 
 
 def gh_auth_status() -> dict:
