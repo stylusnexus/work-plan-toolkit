@@ -55,7 +55,7 @@ function rowHtml(h: SearchHit): string {
     : `<button class="reveal-btn" data-repo="${esc(h.repo)}" data-track="${esc(h.track)}"
         title="Reveal owning track in the Tracks view" aria-label="Reveal track ${esc(h.track)} in the Tracks view">⤢</button>`;
   return `<tr>
-    <td class="num"><a href="#" class="issue-link" data-repo="${esc(h.repo)}" data-number="${h.number}"
+    <td class="num"><a href="https://github.com/${esc(h.repo)}/issues/${h.number}" class="issue-link" data-repo="${esc(h.repo)}" data-number="${h.number}"
         aria-label="Open issue ${h.number} on GitHub">#${h.number}</a></td>
     <td class="title">${esc(h.title)}</td>
     <td class="state ${stateClass}"><span aria-hidden="true">${stateGlyph}</span> ${h.state}</td>

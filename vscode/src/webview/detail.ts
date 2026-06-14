@@ -262,7 +262,7 @@ function planBadgeLabel(plan: TrackPlan): string {
  *  sibling dep-detail-row for blocked_by/blocking edges (#257 B3). */
 function renderIssueRow(track: Track, issue: Issue): string {
   const numCell = track.repo
-    ? `<td class="num"><a href="#" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
+    ? `<td class="num"><a href="https://github.com/${esc(track.repo)}/issues/${issue.number}" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
   // Move + Close-on-GitHub + in-progress toggle actions (#305, #271). Close and
   // toggle show only for tracked issues in a repo'd track. Close additionally
@@ -359,7 +359,7 @@ function renderDepLink(track: Track, dep: IssueDep): string {
   const label = dep.repo === track.repo
     ? `#${dep.number}${dep.title ? " " + esc(dep.title) : ""}`
     : `${esc(dep.repo)}#${dep.number}`;
-  return `<a href="#" data-repo="${esc(dep.repo)}" data-issue="${dep.number}">${label}</a>`;
+  return `<a href="https://github.com/${esc(dep.repo)}/issues/${dep.number}" data-repo="${esc(dep.repo)}" data-issue="${dep.number}">${label}</a>`;
 }
 
 /**
