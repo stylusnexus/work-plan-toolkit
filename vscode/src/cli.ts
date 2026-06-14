@@ -299,14 +299,21 @@ export async function runWrite(
 // ---------------------------------------------------------------------------
 
 /**
- * The CalVer date of the oldest CLI the extension can drive. Bumped to the
- * release that added the `in-progress` subcommand and the per-issue
- * `in_progress` export field (#271): the detail-webview toggle and the
- * issue-level in-progress badge both depend on these. An older CLI omits
- * the field and lacks the subcommand, so checkVersion surfaces a compat
- * warning instead of letting the toggle silently fail.
+ * The CalVer date of the oldest CLI the extension can drive. This is the
+ * 2026.06.14 release, which added the per-issue `in_progress` export field +
+ * `in-progress` subcommand (#271) AND the `blocked_by`/`blocking` export edges
+ * (#257) — the in-progress badge/toggle and the dependency graph/chips depend
+ * on these. An older CLI omits the fields, so checkVersion surfaces a compat
+ * warning instead of letting those surfaces silently fail.
+ *
+ * INVARIANT: never set this ahead of the repo's own `VERSION` file — the
+ * extension and the CLI it ships alongside reach `main` in the same deploy, so
+ * the gate must equal (not exceed) that deploy's CalVer. A test in cli.test.ts
+ * enforces `meetsMinVersion(<VERSION>, MIN_CLI_VERSION)`. (0.9.0 shipped this
+ * one day ahead — "2026.06.15" vs a 2026.06.14 deploy — so every updated user
+ * got a false "CLI incompatible" warning; 0.9.1 corrects it.)
  */
-export const MIN_CLI_VERSION = "2026.06.15";
+export const MIN_CLI_VERSION = "2026.06.14";
 
 /**
  * Parses the version token from `work-plan --version` output.
