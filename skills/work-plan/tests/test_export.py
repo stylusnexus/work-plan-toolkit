@@ -34,7 +34,7 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["folder"], "myrepo")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
-        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False})
+        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": []})
         json.dumps(out)  # must be serializable
 
     def test_path_is_null_when_track_has_no_path(self):
@@ -457,3 +457,31 @@ class InProgressExportTest(unittest.TestCase):
         issue = out["tracks"][0]["issues"][0]
         self.assertTrue(issue["in_progress"])         # union: hot branch fires
         self.assertFalse(issue["in_progress_label"])  # no label present
+
+
+class BlockedByExportTest(unittest.TestCase):
+    def _track(self, name, repo):
+        from types import SimpleNamespace
+        return SimpleNamespace(name=name, repo=repo, path=None, folder=None,
+                               tier="private", meta={"github": {"issues": []}, "next_up": []})
+
+    def test_emits_blocked_by_and_blocking(self):
+        t = self._track("alpha", "o/r")
+        issue = {"number": 1, "title": "a", "state": "open", "assignees": [],
+                 "milestone": None, "labels": [],
+                 "blocked_by": [{"number": 9, "repo": "o/r", "title": "dep"}], "blocking": []}
+        out = build_export([t], {("o/r", "alpha"): [issue]}, {"o/r": "PRIVATE"},
+                           "2026-06-14T00:00:00")
+        got = out["tracks"][0]["issues"][0]
+        self.assertEqual(got["blocked_by"], [{"number": 9, "repo": "o/r", "title": "dep"}])
+        self.assertEqual(got["blocking"], [])
+
+    def test_defaults_empty_when_absent(self):
+        t = self._track("alpha", "o/r")
+        issue = {"number": 1, "title": "a", "state": "open", "assignees": [],
+                 "milestone": None, "labels": []}
+        out = build_export([t], {("o/r", "alpha"): [issue]}, {"o/r": "PRIVATE"},
+                           "2026-06-14T00:00:00")
+        got = out["tracks"][0]["issues"][0]
+        self.assertEqual(got["blocked_by"], [])
+        self.assertEqual(got["blocking"], [])

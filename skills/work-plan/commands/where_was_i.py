@@ -125,6 +125,7 @@ def _orient_track(track) -> int:
     states_by_num: dict[int, str] = {}
     milestones_by_num: dict[int, str] = {}
     inprog_by_num: dict = {}
+    blocked_by_num: dict = {}
     if track.repo and next_up:
         wanted = next_up[:4]
         fetched = fetch_issues(track.repo, wanted)
@@ -133,8 +134,17 @@ def _orient_track(track) -> int:
             states_by_num[i["number"]] = (i.get("state") or "").upper()
             milestones_by_num[i["number"]] = short_milestone(i.get("milestone"))
         hot = hot_issue_numbers(track.local_path) if track.local_path else set()
+        manual_blockers = set(track.meta.get("blockers") or [])
         for i in fetched:
             inprog_by_num[i["number"]] = issue_in_progress(i, hot)
+            disp = []
+            for e in (i.get("blocked_by") or []):
+                same = e.get("repo") == track.repo
+                if same and e.get("number") in manual_blockers:
+                    continue
+                disp.append(f"#{e['number']}" if same else f"{e['repo']}#{e['number']}")
+            if disp:
+                blocked_by_num[i["number"]] = disp
 
     print(_top_rule(slug))
     print(f"Priority: {priority}  ·  Milestone: {milestone}  ·  Repo: {repo}")
@@ -157,7 +167,8 @@ def _orient_track(track) -> int:
         pick_suffix = _state_suffix(states_by_num.get(pick_num))
         pick_ms = _milestone_prefix(milestones_by_num.get(pick_num))
         print(f"Next pick: #{pick_num}  {pick_ms}{pick_title}{pick_suffix}"
-              f"{_inprog_suffix(inprog_by_num.get(pick_num, False))}".rstrip())
+              f"{_inprog_suffix(inprog_by_num.get(pick_num, False))}"
+              f"{_blocked_suffix(blocked_by_num.get(pick_num))}".rstrip())
         if _is_closed(states_by_num.get(pick_num)):
             print(f"  ⚠  next_up:[0] has shipped — run `/work-plan handoff {slug}` to rotate")
         rest = next_up[1:4]
@@ -169,7 +180,8 @@ def _orient_track(track) -> int:
                 suffix = _state_suffix(states_by_num.get(num))
                 ms = _milestone_prefix(milestones_by_num.get(num))
                 print(f"  #{num}  {ms}{title}{suffix}"
-                      f"{_inprog_suffix(inprog_by_num.get(num, False))}".rstrip())
+                      f"{_inprog_suffix(inprog_by_num.get(num, False))}"
+                      f"{_blocked_suffix(blocked_by_num.get(num))}".rstrip())
     else:
         print("Next pick: (none set — run `/work-plan handoff` to set one)")
 
@@ -245,6 +257,10 @@ def _state_suffix(state: Optional[str]) -> str:
 
 def _inprog_suffix(flag: bool) -> str:
     return "  ▶ in-progress" if flag else ""
+
+
+def _blocked_suffix(disp: Optional[list]) -> str:
+    return ("  ⊘ blocked by " + ", ".join(disp)) if disp else ""
 
 
 def _milestone_prefix(ms: Optional[str]) -> str:

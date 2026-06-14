@@ -16,6 +16,7 @@ import {
   notesVcsStatus,
   notesVcsRun,
   notesVcsUndo,
+  normalizeExportIssue,
 } from "./cli.ts";
 import type { Export } from "./model.ts";
 
@@ -298,9 +299,9 @@ describe("meetsMinVersion", () => {
     assert.equal(meetsMinVersion("2025.12.31", "2026.06.07"), false);
   });
 
-  test("a CLI older than the in-progress release fails the min-version gate", () => {
-    assert.equal(meetsMinVersion("2026.06.13", "2026.06.14"), false);
-    assert.equal(meetsMinVersion("2026.06.14", "2026.06.14"), true);
+  test("a CLI older than the in-progress-deps release fails the min-version gate", () => {
+    assert.equal(meetsMinVersion("2026.06.14", "2026.06.15"), false);
+    assert.equal(meetsMinVersion("2026.06.15", "2026.06.15"), true);
   });
 });
 
@@ -335,11 +336,11 @@ describe("parseVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkVersion", () => {
-  test("returns {ok:true, version:'2026.06.14'} for a current version", async () => {
-    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.14+abc", stderr: "" });
+  test("returns {ok:true, version:'2026.06.15'} for a current version", async () => {
+    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.15+abc", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.06.14");
+    assert.equal(result.version, "2026.06.15");
   });
 
   test("returns {ok:false} for an older version", async () => {
@@ -513,6 +514,30 @@ describe("isAlreadyExistsError", () => {
       stderr: "",
     });
     assert.equal(isAlreadyExistsError(err), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeExportIssue (#257)
+// ---------------------------------------------------------------------------
+
+describe("normalizeExportIssue", () => {
+  test("normalizes missing blocked_by/blocking to [] (older CLI payload)", () => {
+    const issue = normalizeExportIssue({ number: 1, title: "x", state: "open",
+      assignee: "—", milestone: null, in_progress: false, in_progress_label: false });
+    assert.deepStrictEqual(issue.blocked_by, []);
+    assert.deepStrictEqual(issue.blocking, []);
+  });
+
+  test("preserves provided blocked_by/blocking arrays", () => {
+    const dep = { number: 5, repo: "org/repo", title: "dep" };
+    const issue = normalizeExportIssue({
+      number: 1, title: "x", state: "open",
+      assignee: "—", milestone: null, in_progress: false, in_progress_label: false,
+      blocked_by: [dep], blocking: [],
+    });
+    assert.deepStrictEqual(issue.blocked_by, [dep]);
+    assert.deepStrictEqual(issue.blocking, []);
   });
 });
 

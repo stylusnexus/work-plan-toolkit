@@ -194,7 +194,8 @@ def _normalize_gql_node(node) -> Optional[dict]:
     expect (labels as [{name}], assignees as [{login}], milestone as {title}|None).
     None for a null node.
     On success returns a dict with keys: number, title, state, labels, milestone,
-    closedAt, body, url, updatedAt, assignees."""
+    closedAt, body, url, updatedAt, assignees, blocked_by, blocking,
+    deps_truncated."""
     if not node:
         return None
     labels = [{"name": l.get("name")} for l in
@@ -202,6 +203,20 @@ def _normalize_gql_node(node) -> Optional[dict]:
     assignees = [{"login": a.get("login")} for a in
                  ((node.get("assignees") or {}).get("nodes") or []) if a.get("login")]
     ms = node.get("milestone")
+
+    def _deps(key):
+        conn = node.get(key) or {}
+        nodes = conn.get("nodes") or []
+        open_edges = [{"number": n.get("number"),
+                       "repo": (n.get("repository") or {}).get("nameWithOwner"),
+                       "title": n.get("title", "")}
+                      for n in nodes if (n.get("state") or "").upper() == "OPEN"]
+        truncated = (conn.get("totalCount") or 0) > len(nodes)
+        return open_edges, truncated
+    blocked_by, _bb_trunc = _deps("blockedBy")
+    blocking, _bl_trunc = _deps("blocking")
+    deps_truncated = _bb_trunc or _bl_trunc
+
     return {
         "number": node.get("number"),
         "title": node.get("title", ""),
@@ -213,6 +228,9 @@ def _normalize_gql_node(node) -> Optional[dict]:
         "url": node.get("url", ""),
         "updatedAt": node.get("updatedAt"),
         "assignees": assignees,
+        "blocked_by": blocked_by,
+        "blocking": blocking,
+        "deps_truncated": deps_truncated,
     }
 
 
@@ -233,15 +251,28 @@ _GQL_FIELDS_LEAN = (
     " milestone { title }"
 )
 
+# Issue dependency edges (#257). Issue-ONLY: PullRequest has no blockedBy/blocking,
+# and _gql_query shares the base field set across both fragments — so these are
+# appended only to the `... on Issue` fragment. No server-side state filter exists
+# (the connection takes only orderBy + cursor args), so OPEN-filtering is done in
+# _normalize_gql_node; totalCount detects first:50 truncation (confirmed live field).
+_GQL_ISSUE_DEPS = (
+    " blockedBy(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
+    " blocking(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
+)
+
 
 def _gql_query(owner: str, name: str, numbers: list,
                fields: str = _GQL_FIELDS_LEAN) -> str:
     """Build a batched GraphQL query for issueOrPullRequest nodes.
     `fields` selects the GQL field set; _GQL_FIELDS_LEAN for export, _GQL_FIELDS_FULL
-    for fetch_issues (which needs labels, closedAt, body, url, updatedAt)."""
+    for fetch_issues (which needs labels, closedAt, body, url, updatedAt).
+    _GQL_ISSUE_DEPS is appended to the Issue fragment only — PullRequest does not
+    expose blockedBy/blocking fields."""
     aliases = "\n".join(
         f'  i{n}: issueOrPullRequest(number: {int(n)}) {{ '
-        f'... on Issue {{ {fields} }} ... on PullRequest {{ {fields} }} }}'
+        f'... on Issue {{ {fields}{_GQL_ISSUE_DEPS} }} '
+        f'... on PullRequest {{ {fields} }} }}'
         for n in numbers
     )
     return f'query {{ repository(owner: "{owner}", name: "{name}") {{\n{aliases}\n}} }}'

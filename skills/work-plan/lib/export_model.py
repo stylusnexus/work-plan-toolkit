@@ -53,9 +53,11 @@ def group_issues_by_milestone(issues, milestone_alignment=None):
 
 
 def normalize_issue(i: dict, in_progress: bool = False,
-                    in_progress_label: bool = False) -> dict:
+                    in_progress_label: bool = False,
+                    blocked_by=None, blocking=None) -> dict:
     """Reshape a raw gh issue row into the viewer's `Issue` shape
-    ({number,title,state,assignee,milestone,in_progress,in_progress_label}).
+    ({number,title,state,assignee,milestone,in_progress,in_progress_label,
+    blocked_by,blocking}).
     Shared by the export and the `list-open-issues` command (#282) so both
     emit an identical issue surface.
 
@@ -63,6 +65,8 @@ def normalize_issue(i: dict, in_progress: bool = False,
     badge.  `in_progress_label` reflects LABEL presence only — used by the
     toggle button so it accurately shows Mark/Clear for the label, not the
     union.
+    `blocked_by` / `blocking` are lists of cross-issue dependency refs
+    (#257); default to [] when absent.
     """
     state = (i.get("state") or "OPEN").lower()
     return {
@@ -73,6 +77,8 @@ def normalize_issue(i: dict, in_progress: bool = False,
         "milestone": short_milestone(i.get("milestone")) or None,
         "in_progress": bool(in_progress),
         "in_progress_label": bool(in_progress_label),
+        "blocked_by": list(blocked_by or []),
+        "blocking": list(blocking or []),
     }
 
 
@@ -93,6 +99,8 @@ def build_export(tracks, issues_by_track, visibility, now: str,
                 in_progress_label=IN_PROGRESS_LABEL in {
                     l.get("name") for l in (i.get("labels") or [])
                 },
+                blocked_by=i.get("blocked_by"),
+                blocking=i.get("blocking"),
             )
             for i in raw
         ]
