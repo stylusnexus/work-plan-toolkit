@@ -552,6 +552,46 @@ class OrientBlockedByTest(unittest.TestCase):
                 where_was_i._orient_track(track)
         self.assertIn("blocked by #9", out.getvalue())
 
+    def _orient_with_blocked_by(self, blocked_by, blockers):
+        from types import SimpleNamespace
+        track = SimpleNamespace(name="alpha", repo="o/r", local_path=None,
+                                path=Path("/n/alpha.md"), body="",
+                                meta={"track": "alpha", "launch_priority": "P1",
+                                      "milestone_alignment": "—",
+                                      "github": {"issues": [5]}, "next_up": [5],
+                                      "blockers": blockers})
+        issue = {"number": 5, "title": "x", "state": "open", "labels": [],
+                 "blocked_by": blocked_by, "blocking": []}
+        with mock.patch("commands.where_was_i.fetch_issues", return_value=[issue]), \
+             mock.patch("commands.where_was_i.hot_issue_numbers", return_value=set()), \
+             mock.patch("commands.where_was_i.current_branch", return_value=None), \
+             mock.patch("commands.where_was_i.find_new_issues_for_tracks", return_value={}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                from commands import where_was_i
+                where_was_i._orient_track(track)
+        return out.getvalue()
+
+    def test_cross_repo_blocked_by_shows_qualified_ref(self):
+        # A cross-repo edge renders owner/repo#N, not a bare #N.
+        out = self._orient_with_blocked_by(
+            [{"number": 9, "repo": "other/repo", "title": "dep"}], [])
+        self.assertIn("blocked by other/repo#9", out)
+
+    def test_same_repo_edge_in_manual_blockers_is_suppressed(self):
+        # A same-repo edge whose number is a manual blocker is owned by the
+        # "Blocker:" line, so it is not re-annotated.
+        out = self._orient_with_blocked_by(
+            [{"number": 9, "repo": "o/r", "title": "dep"}], [9])
+        self.assertNotIn("blocked by", out)
+
+    def test_cross_repo_edge_not_suppressed_by_same_number_blocker(self):
+        # A manual blocker #9 means o/r#9; a cross-repo other/repo#9 is a
+        # different issue and must still be annotated.
+        out = self._orient_with_blocked_by(
+            [{"number": 9, "repo": "other/repo", "title": "dep"}], [9])
+        self.assertIn("blocked by other/repo#9", out)
+
 
 if __name__ == "__main__":
     unittest.main()

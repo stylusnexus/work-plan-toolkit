@@ -194,7 +194,8 @@ def _normalize_gql_node(node) -> Optional[dict]:
     expect (labels as [{name}], assignees as [{login}], milestone as {title}|None).
     None for a null node.
     On success returns a dict with keys: number, title, state, labels, milestone,
-    closedAt, body, url, updatedAt, assignees."""
+    closedAt, body, url, updatedAt, assignees, blocked_by, blocking,
+    deps_truncated."""
     if not node:
         return None
     labels = [{"name": l.get("name")} for l in
