@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.14+6579bf7 — 2026-06-14 (#323)
+
+fix(git_state): batch hot-branch detection — fixes multi-minute VS Code reload hang (#271)
+
+Emergency perf hotfix. The 2026.06.14 deploy's #271 hot-branch detection made `hot_issue_numbers` O(branches) in git subprocesses, called once per track. On the CritForge clone (261 feat/fix branches × ~25 tracks sharing it) `export --json` took ~16 minutes — hanging every VS Code reload (the viewer runs export on activation).
+
+Fix: one `git for-each-ref` (tip commit times) + in-memory recency filter, plus a per-clone process memo. **39.7s → 0.33s** per call; **full export 2–3 min → 12s**. Same results.
+
+CLI change → **npm republish** (`2026.6.14` already taken today → `version_suffix=-1`). VS Code extension unchanged → no Marketplace republish.
+
+## Test plan
+- [x] dev CI green on the fix merge; full suite 1016 OK
+- [x] Verified live against the 261-branch CritForge clone
+
 ## 2026.06.14+ce7d3fc — 2026-06-14 (#321)
 
 fix(vscode): hotfix MIN_CLI_VERSION gate — 0.9.1 (false CLI-incompatible warning)
