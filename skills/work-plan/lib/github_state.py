@@ -187,7 +187,7 @@ def _normalize_gql_node(node) -> Optional[dict]:
 # Kept as a module-level constant so _gql_query can parameterize at the call site.
 _GQL_FIELDS_FULL = (
     "number title state"
-    " labels(first: 20) { nodes { name } }"
+    " labels(first: 50) { nodes { name } }"
     " milestone { title }"
     " closedAt body url updatedAt"
     " assignees(first: 10) { nodes { login } }"
@@ -195,6 +195,7 @@ _GQL_FIELDS_FULL = (
 
 _GQL_FIELDS_LEAN = (
     "number title state"
+    " labels(first: 50) { nodes { name } }"
     " assignees(first: 10) { nodes { login } }"
     " milestone { title }"
 )

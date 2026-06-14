@@ -13,6 +13,7 @@ from lib.github_state import (
     fetch_repo_issues_graphql, fetch_export_issues, _normalize_gql_node,
     extract_priority, fetch_recent_issues, short_milestone,
     repo_visibility, _VIS_CACHE, fetch_open_issues,
+    _GQL_FIELDS_LEAN, _GQL_FIELDS_FULL,
 )
 
 
@@ -540,6 +541,16 @@ class FetchOpenIssuesTest(unittest.TestCase):
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(self._OPEN_ROWS))
         result = fetch_open_issues("o/r")
         self.assertIsInstance(result, list)
+
+
+class GqlFieldSetsTest(unittest.TestCase):
+    def test_lean_set_requests_labels(self):
+        # The export path uses the lean set; without labels the in-progress
+        # label signal is silently always false in the viewer (#271).
+        self.assertIn("labels(first: 50)", _GQL_FIELDS_LEAN)
+
+    def test_full_set_label_bound_is_50(self):
+        self.assertIn("labels(first: 50)", _GQL_FIELDS_FULL)
 
 
 if __name__ == "__main__":
