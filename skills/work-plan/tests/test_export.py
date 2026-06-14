@@ -34,7 +34,7 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["folder"], "myrepo")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
-        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False})
+        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False})
         json.dumps(out)  # must be serializable
 
     def test_path_is_null_when_track_has_no_path(self):
@@ -431,3 +431,29 @@ class InProgressExportTest(unittest.TestCase):
                                     "assignees": [], "milestone": None, "labels": []}]}
         out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00")
         self.assertFalse(out["tracks"][0]["issues"][0]["in_progress"])
+
+    def test_label_presence_emitted_as_in_progress_label(self):
+        """Issue carrying the label gets in_progress_label=True regardless of hot."""
+        from lib.in_progress import IN_PROGRESS_LABEL
+        t = self._track("alpha", "o/r")
+        ibt = {("o/r", "alpha"): [
+            {"number": 1, "title": "a", "state": "open", "assignees": [],
+             "milestone": None, "labels": [{"name": IN_PROGRESS_LABEL}]},
+        ]}
+        out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00")
+        issue = out["tracks"][0]["issues"][0]
+        self.assertTrue(issue["in_progress"])        # union: label alone is enough
+        self.assertTrue(issue["in_progress_label"])  # label-only signal
+
+    def test_hot_branch_only_sets_union_not_label(self):
+        """Issue in hot_by_track (no label) → in_progress True but in_progress_label False."""
+        t = self._track("alpha", "o/r")
+        ibt = {("o/r", "alpha"): [
+            {"number": 5, "title": "b", "state": "open", "assignees": [],
+             "milestone": None, "labels": []},
+        ]}
+        out = build_export([t], ibt, {"o/r": "PRIVATE"}, "2026-06-14T00:00:00",
+                           hot_by_track={("o/r", "alpha"): {5}})
+        issue = out["tracks"][0]["issues"][0]
+        self.assertTrue(issue["in_progress"])         # union: hot branch fires
+        self.assertFalse(issue["in_progress_label"])  # no label present

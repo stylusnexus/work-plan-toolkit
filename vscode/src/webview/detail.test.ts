@@ -24,10 +24,10 @@ const platformHealth: Track = {
   depends_on: ["idea-mode", "org-sharing"],
   rollup: { open: 12, closed: 8 },
   issues: [
-    { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null,  in_progress: false },
-    { number: 487,  title: "auth rate limit", state: "open",  assignee: "@alice", milestone: "M1",  in_progress: false },
-    { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1",  in_progress: false },
-    { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null,  in_progress: false },
+    { number: 4821, title: "OAuth scopes",   state: "open",   assignee: "@carol", milestone: null,  in_progress: false, in_progress_label: false },
+    { number: 487,  title: "auth rate limit", state: "open",  assignee: "@alice", milestone: "M1",  in_progress: false, in_progress_label: false },
+    { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1",  in_progress: false, in_progress_label: false },
+    { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null,  in_progress: false, in_progress_label: false },
   ],
 };
 
@@ -66,6 +66,7 @@ const xssTrack: Track = {
       assignee: "<b>evil</b>",
       milestone: null,
       in_progress: false,
+      in_progress_label: false,
     },
   ],
 };
@@ -292,6 +293,7 @@ describe("renderDetail — HTML escaping", () => {
           assignee: "@x",
           milestone: null,
           in_progress: false,
+          in_progress_label: false,
         },
       ],
     };
@@ -365,8 +367,8 @@ describe("renderDetail — milestone bands", () => {
     const singleMsTrack: Track = {
       ...emptyTrack,
       issues: [
-        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1", in_progress: false },
-        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1", in_progress: false },
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: "v1", in_progress: false, in_progress_label: false },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: "v1", in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 2, closed: 0 },
     };
@@ -381,8 +383,8 @@ describe("renderDetail — milestone bands", () => {
     const allNullTrack: Track = {
       ...emptyTrack,
       issues: [
-        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null, in_progress: false },
-        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null, in_progress: false },
+        { number: 1, title: "one", state: "open", assignee: "@x", milestone: null, in_progress: false, in_progress_label: false },
+        { number: 2, title: "two", state: "open", assignee: "@y", milestone: null, in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 2, closed: 0 },
     };
@@ -399,10 +401,10 @@ describe("renderDetail — milestone bands", () => {
       ...emptyTrack,
       milestone_alignment: "v1",
       issues: [
-        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2",  in_progress: false },
-        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1",  in_progress: false },
-        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1",  in_progress: false },
-        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null,  in_progress: false },
+        { number: 30, title: "c", state: "open", assignee: "@x", milestone: "v2",  in_progress: false, in_progress_label: false },
+        { number: 10, title: "a", state: "open", assignee: "@x", milestone: "v1",  in_progress: false, in_progress_label: false },
+        { number: 20, title: "b", state: "open", assignee: "@x", milestone: "v1",  in_progress: false, in_progress_label: false },
+        { number: 40, title: "d", state: "open", assignee: "@x", milestone: null,  in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 4, closed: 0 },
     };
@@ -425,9 +427,9 @@ describe("renderDetail — milestone bands", () => {
       ...emptyTrack,
       milestone_alignment: "v2.0.0",
       issues: [
-        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0", in_progress: false },
-        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0", in_progress: false },
-        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null,  in_progress: false },
+        { number: 10, title: "near", state: "open", assignee: "@x", milestone: "v0.4.0", in_progress: false, in_progress_label: false },
+        { number: 20, title: "far", state: "open", assignee: "@x", milestone: "v2.0.0", in_progress: false, in_progress_label: false },
+        { number: 30, title: "someday", state: "open", assignee: "@x", milestone: null,  in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 3, closed: 0 },
     };
@@ -461,6 +463,7 @@ describe("renderDetail — issue cap", () => {
         assignee: "@dev",
         milestone: null,
         in_progress: false,
+        in_progress_label: false,
       });
     }
     return {
@@ -520,6 +523,7 @@ describe("renderDetail — issue cap", () => {
         assignee: "@dev",
         milestone: ms,
         in_progress: false,
+        in_progress_label: false,
       });
     }
     const track: Track = {
@@ -657,7 +661,7 @@ describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
   it("the issue-cap 'Show all' toggle carries aria-expanded", () => {
     const issues: Issue[] = [];
     for (let i = 1; i <= 75; i++) {
-      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null, in_progress: false });
+      issues.push({ number: i, title: `Issue ${i}`, state: "open", assignee: "@dev", milestone: null, in_progress: false, in_progress_label: false });
     }
     const big: Track = {
       ...emptyTrack, name: "big", repo: "org/repo", rollup: { open: 75, closed: 0 }, issues,
@@ -757,7 +761,7 @@ describe("renderDetail — in-progress badge (#271)", () => {
       ...emptyTrack,
       repo: "your-org/myproject",
       issues: [
-        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true },
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true, in_progress_label: false },
       ],
       rollup: { open: 1, closed: 0 },
     };
@@ -771,7 +775,7 @@ describe("renderDetail — in-progress badge (#271)", () => {
       ...emptyTrack,
       repo: "your-org/myproject",
       issues: [
-        { number: 9, title: "quiet issue", state: "open", assignee: "@bob", milestone: null, in_progress: false },
+        { number: 9, title: "quiet issue", state: "open", assignee: "@bob", milestone: null, in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 1, closed: 0 },
     };
@@ -792,7 +796,7 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
       ...emptyTrack,
       repo: "your-org/myproject",
       issues: [
-        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false },
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 1, closed: 0 },
     };
@@ -805,7 +809,7 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
       ...emptyTrack,
       repo: "your-org/myproject",
       issues: [
-        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false },
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false, in_progress_label: false },
       ],
       rollup: { open: 1, closed: 0 },
     };
@@ -813,12 +817,12 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
     assert.ok(html.includes('data-clear="0"'), `expected data-clear="0" in:\n${html}`);
   });
 
-  it("toggle button sets data-clear=1 when issue is in-progress", () => {
+  it("toggle button sets data-clear=1 when issue has the in-progress label", () => {
     const track: Track = {
       ...emptyTrack,
       repo: "your-org/myproject",
       issues: [
-        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true },
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true, in_progress_label: true },
       ],
       rollup: { open: 1, closed: 0 },
     };
@@ -828,7 +832,7 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
 
   it("does not render a toggle button when the track has no repo", () => {
     const noRepo: Track = { ...emptyTrack, repo: null as unknown as string, issues: [
-      { number: 5, title: "no-repo issue", state: "open", assignee: "@x", milestone: null, in_progress: false },
+      { number: 5, title: "no-repo issue", state: "open", assignee: "@x", milestone: null, in_progress: false, in_progress_label: false },
     ], rollup: { open: 1, closed: 0 } };
     const html = renderDetail(noRepo);
     assert.ok(!html.includes("data-inprogress"), `expected no toggle button for no-repo track:\n${html}`);
@@ -839,7 +843,7 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
       ...emptyTrack,
       repo: "your-org/myproject",
       issues: [
-        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true },
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true, in_progress_label: true },
       ],
       rollup: { open: 1, closed: 0 },
     };
@@ -848,5 +852,43 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
     assert.ok(html.includes('class="pill in-progress"'), `expected in-progress badge:\n${html}`);
     // Toggle button is also present
     assert.ok(html.includes('data-inprogress="271"'), `expected toggle button:\n${html}`);
+  });
+
+  it("hot-branch-only issue: badge lit (in_progress=true) but toggle shows Mark (in_progress_label=false)", () => {
+    // The bug: before this fix the toggle drove off in_progress (the union), so a
+    // hot-branch-only issue showed "Clear" — clicking it removed an absent label
+    // while the badge stayed lit.  After the fix, toggle drives off in_progress_label.
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 42, title: "branch-only", state: "open", assignee: "@dev", milestone: null,
+          in_progress: true, in_progress_label: false },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // Badge fires from the union signal (in_progress=true)
+    assert.ok(html.includes('class="pill in-progress"'), `badge must be lit for hot-branch-only:\n${html}`);
+    // Toggle uses label signal (in_progress_label=false) → data-clear="0" → "Mark"
+    assert.ok(html.includes('data-clear="0"'), `toggle must say Mark (data-clear="0") for label-absent issue:\n${html}`);
+    assert.ok(html.includes('title="Mark in-progress"'), `toggle title must be "Mark in-progress":\n${html}`);
+  });
+
+  it("label-only issue: badge lit (in_progress=true) and toggle shows Clear (in_progress_label=true)", () => {
+    // Label present but no hot branch: both union and label signals agree.
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 43, title: "label-only", state: "open", assignee: "@dev", milestone: null,
+          in_progress: true, in_progress_label: true },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('class="pill in-progress"'), `badge must be lit for label-only issue:\n${html}`);
+    assert.ok(html.includes('data-clear="1"'), `toggle must say Clear (data-clear="1") for label-present issue:\n${html}`);
+    assert.ok(html.includes('title="Clear in-progress"'), `toggle title must be "Clear in-progress":\n${html}`);
   });
 });

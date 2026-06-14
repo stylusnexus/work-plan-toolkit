@@ -52,11 +52,18 @@ def group_issues_by_milestone(issues, milestone_alignment=None):
     return groups
 
 
-def normalize_issue(i: dict, in_progress: bool = False) -> dict:
+def normalize_issue(i: dict, in_progress: bool = False,
+                    in_progress_label: bool = False) -> dict:
     """Reshape a raw gh issue row into the viewer's `Issue` shape
-    ({number,title,state,assignee,milestone,in_progress}). Shared by the export
-    and the `list-open-issues` command (#282) so both emit an identical issue
-    surface."""
+    ({number,title,state,assignee,milestone,in_progress,in_progress_label}).
+    Shared by the export and the `list-open-issues` command (#282) so both
+    emit an identical issue surface.
+
+    `in_progress` is the UNION signal (hot branch OR label) — used by the
+    badge.  `in_progress_label` reflects LABEL presence only — used by the
+    toggle button so it accurately shows Mark/Clear for the label, not the
+    union.
+    """
     state = (i.get("state") or "OPEN").lower()
     return {
         "number": i.get("number"),
@@ -65,6 +72,7 @@ def normalize_issue(i: dict, in_progress: bool = False) -> dict:
         "assignee": (format_assignees(i) if i.get("assignees") else "—"),
         "milestone": short_milestone(i.get("milestone")) or None,
         "in_progress": bool(in_progress),
+        "in_progress_label": bool(in_progress_label),
     }
 
 
@@ -75,10 +83,19 @@ def build_export(tracks, issues_by_track, visibility, now: str,
     hot_by_track = hot_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
-        from lib.in_progress import issue_in_progress
+        from lib.in_progress import issue_in_progress, IN_PROGRESS_LABEL
         hot = hot_by_track.get((t.repo, t.name), set())
         raw = issues_by_track.get((t.repo, t.name), [])
-        issues = [normalize_issue(i, in_progress=issue_in_progress(i, hot)) for i in raw]
+        issues = [
+            normalize_issue(
+                i,
+                in_progress=issue_in_progress(i, hot),
+                in_progress_label=IN_PROGRESS_LABEL in {
+                    l.get("name") for l in (i.get("labels") or [])
+                },
+            )
+            for i in raw
+        ]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")

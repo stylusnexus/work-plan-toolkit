@@ -52,11 +52,13 @@ class ListOpenIssuesTest(unittest.TestCase):
         self.assertEqual(
             out["issues"][0],
             {"number": 91, "title": "Rate-limit login", "state": "open",
-             "assignee": "@eve", "milestone": "v0.6", "in_progress": False},
+             "assignee": "@eve", "milestone": "v0.6", "in_progress": False,
+             "in_progress_label": False},
         )
         self.assertEqual(out["issues"][1],
                          {"number": 87, "title": "Fix auth", "state": "open",
-                          "assignee": "—", "milestone": None, "in_progress": False})
+                          "assignee": "—", "milestone": None, "in_progress": False,
+                          "in_progress_label": False})
 
     def test_exclude_filters_given_numbers(self):
         rows = [_row(1), _row(2), _row(3)]

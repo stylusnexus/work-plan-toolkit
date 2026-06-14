@@ -272,8 +272,11 @@ function renderIssueRow(track: Track, issue: Issue): string {
   // Toggle is shown for any tracked issue in a repo'd track (open or closed),
   // since a closed issue can still carry the in-progress label. data-clear drives
   // which direction the CLI call takes: "1" removes the label, "0" adds it.
+  // NOTE: the toggle controls the LABEL, so it uses in_progress_label (label
+  // presence only) — NOT in_progress (the union of hot-branch OR label). An
+  // issue hot-branch-only (no label) correctly shows "Mark", not "Clear".
   const inProgBtn = track.repo
-    ? ` <button class="inprogress-btn" data-inprogress="${issue.number}" data-clear="${issue.in_progress ? "1" : "0"}" title="${issue.in_progress ? "Clear" : "Mark"} in-progress" aria-label="${issue.in_progress ? "Clear" : "Mark"} issue #${issue.number} in-progress">▶</button>`
+    ? ` <button class="inprogress-btn" data-inprogress="${issue.number}" data-clear="${issue.in_progress_label ? "1" : "0"}" title="${issue.in_progress_label ? "Clear" : "Mark"} in-progress" aria-label="${issue.in_progress_label ? "Clear" : "Mark"} issue #${issue.number} in-progress">▶</button>`
     : "";
   const moveBtn = track.repo
     ? `<td class="move-col"><button class="move-btn" data-move="${issue.number}" title="Move to another track" aria-label="Move issue #${issue.number} to another track">↗</button>${closeBtn}${inProgBtn}</td>`
