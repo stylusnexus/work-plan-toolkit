@@ -184,6 +184,15 @@ mermaid.run();
       return;
     }
 
+    // In-progress toggle button → mark or clear the in-progress label (#271 B4)
+    var ipBtn = target.closest("[data-inprogress]");
+    if (ipBtn) {
+      var ipNum = parseInt(ipBtn.getAttribute("data-inprogress"), 10);
+      var ipClear = ipBtn.getAttribute("data-clear") === "1";
+      if (ipNum) { post({ type: "toggleInProgress", number: ipNum, clear: ipClear }); }
+      return;
+    }
+
     // Milestone band collapse toggle (keyboard-operable <button>)
     var msToggle = target.closest(".milestone-toggle-btn");
     if (msToggle) {
@@ -444,7 +453,7 @@ mermaid.run();
     }
     .milestone-band.collapsed tr:not(.milestone-band-header) { display: none; }
     .move-col { width: 56px; text-align: center; white-space: nowrap; }
-    .move-btn, .close-issue-btn {
+    .move-btn, .close-issue-btn, .inprogress-btn {
       background: none;
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -459,10 +468,11 @@ mermaid.run();
     }
     /* Reveal on row-hover AND on keyboard focus — never opacity:0, or the
        button is invisible to keyboard/touch/AT users (#214). */
-    tr:hover .move-btn, tr:hover .close-issue-btn,
+    tr:hover .move-btn, tr:hover .close-issue-btn, tr:hover .inprogress-btn,
     .move-btn:focus, .move-btn:focus-visible,
-    .close-issue-btn:focus, .close-issue-btn:focus-visible { opacity: 1; }
-    .move-btn:hover, .close-issue-btn:hover { background: var(--card-bg); }
+    .close-issue-btn:focus, .close-issue-btn:focus-visible,
+    .inprogress-btn:focus, .inprogress-btn:focus-visible { opacity: 1; }
+    .move-btn:hover, .close-issue-btn:hover, .inprogress-btn:hover { background: var(--card-bg); }
     .sr-only {
       position: absolute;
       width: 1px;
@@ -506,7 +516,7 @@ mermaid.run();
         background: transparent;
         border: 1px solid CanvasText;
       }
-      .move-btn, .close-issue-btn { opacity: 1; }
+      .move-btn, .close-issue-btn, .inprogress-btn { opacity: 1; }
     }
 
   </style>

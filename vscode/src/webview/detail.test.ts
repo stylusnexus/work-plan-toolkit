@@ -776,7 +776,77 @@ describe("renderDetail — in-progress badge (#271)", () => {
       rollup: { open: 1, closed: 0 },
     };
     const html = renderDetail(track);
-    // The pill must not appear anywhere in the issue row for issue #9
-    assert.ok(!html.includes("in-progress"), html);
+    // The in-progress STATE PILL must not appear (the toggle button is present,
+    // but its title/aria-label say "Mark in-progress", not the badge class).
+    assert.ok(!html.includes('class="pill in-progress"'), `in-progress pill must be absent:\n${html}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-progress toggle button (#271 B4)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — in-progress toggle button (#271 B4)", () => {
+  it("renders a toggle button with data-inprogress for an open issue in a repo'd track", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('data-inprogress="271"'), `expected data-inprogress="271" in:\n${html}`);
+  });
+
+  it("toggle button sets data-clear=0 when issue is not in-progress", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: false },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('data-clear="0"'), `expected data-clear="0" in:\n${html}`);
+  });
+
+  it("toggle button sets data-clear=1 when issue is in-progress", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(html.includes('data-clear="1"'), `expected data-clear="1" in:\n${html}`);
+  });
+
+  it("does not render a toggle button when the track has no repo", () => {
+    const noRepo: Track = { ...emptyTrack, repo: null as unknown as string, issues: [
+      { number: 5, title: "no-repo issue", state: "open", assignee: "@x", milestone: null, in_progress: false },
+    ], rollup: { open: 1, closed: 0 } };
+    const html = renderDetail(noRepo);
+    assert.ok(!html.includes("data-inprogress"), `expected no toggle button for no-repo track:\n${html}`);
+  });
+
+  it("the toggle button and the in-progress badge coexist for an in-progress issue", () => {
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      issues: [
+        { number: 271, title: "hot issue", state: "open", assignee: "@alice", milestone: null, in_progress: true },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    // Badge is present
+    assert.ok(html.includes('class="pill in-progress"'), `expected in-progress badge:\n${html}`);
+    // Toggle button is also present
+    assert.ok(html.includes('data-inprogress="271"'), `expected toggle button:\n${html}`);
   });
 });

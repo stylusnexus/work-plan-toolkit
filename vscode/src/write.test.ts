@@ -902,6 +902,23 @@ describe("actionToArgs — closeIssue", () => {
 });
 
 // ---------------------------------------------------------------------------
+// issueInProgress — per-issue in-progress toggle via label (#271)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — issueInProgress", () => {
+  test("issueInProgress add → in-progress with --repo, number after --", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "issueInProgress", repo: "o/r", number: 271, clear: false }),
+      ["in-progress", "--repo=o/r", "--", "271"]);
+  });
+  test("issueInProgress clear → adds --clear", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "issueInProgress", repo: "o/r", number: 271, clear: true }),
+      ["in-progress", "--clear", "--repo=o/r", "--", "271"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // pushTrack — promote a private track to the shared tier (#306)
 // ---------------------------------------------------------------------------
 

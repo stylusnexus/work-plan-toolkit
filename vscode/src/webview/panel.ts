@@ -97,6 +97,15 @@ interface CloseIssueMessage {
   number: number;
 }
 
+/** Mark or clear the work-plan:in-progress label on an issue (#271 B4). The
+ *  host resolves the current track's repo and delegates to workPlan.toggleInProgress,
+ *  which calls executeWrite so the public-repo confirm-token flow is reused. */
+interface ToggleInProgressMessage {
+  type: "toggleInProgress";
+  number: number;
+  clear: boolean;
+}
+
 type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
@@ -105,7 +114,8 @@ type WebviewMessage =
   | FilterMilestoneMessage
   | OpenTrackFileMessage
   | OpenPlanMessage
-  | CloseIssueMessage;
+  | CloseIssueMessage
+  | ToggleInProgressMessage;
 
 // ---------------------------------------------------------------------------
 // WorkPlanPanel
@@ -380,6 +390,19 @@ export class WorkPlanPanel {
         }
         break;
       }
+      case "toggleInProgress": {
+        // Resolve the current track's repo, then delegate to the command (#271 B4).
+        // The command calls executeWrite so the public-repo confirm-token flow is reused.
+        const track = this._currentExport?.tracks.find(
+          t => t.name === this._currentTrackName,
+        );
+        if (track?.repo) {
+          void vscode.commands.executeCommand("workPlan.toggleInProgress", {
+            repo: track.repo, number: raw.number, clear: raw.clear,
+          });
+        }
+        break;
+      }
     }
   }
 
@@ -496,6 +519,17 @@ function isWebviewMessage(raw: unknown): raw is WebviewMessage {
       return typeof msg["milestone"] === "string" && (msg["milestone"] as string).length > 0;
     case "openTrackFile":
       return true; // no payload to validate
+    case "openPlan":
+      return true; // no payload to validate
+    case "closeIssue":
+      return typeof msg["number"] === "number"
+        && Number.isInteger(msg["number"])
+        && (msg["number"] as number) > 0;
+    case "toggleInProgress":
+      return typeof msg["number"] === "number"
+        && Number.isInteger(msg["number"])
+        && (msg["number"] as number) > 0
+        && typeof msg["clear"] === "boolean";
     default:
       return false;
   }

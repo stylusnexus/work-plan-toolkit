@@ -475,3 +475,15 @@ describe("buildHtml — milestone band filter wiring (#218)", () => {
     assert.ok(html.includes('aria-expanded'), "toggle handler should sync aria-expanded");
   });
 });
+
+describe("buildHtml — in-progress toggle wiring (#271 B4)", () => {
+  it("client script contains type: \"toggleInProgress\"", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes('type: "toggleInProgress"'), `expected toggleInProgress postMessage in script:\n${html.slice(0, 2000)}`);
+  });
+
+  it("client script reads data-inprogress attribute", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes("data-inprogress"), `expected data-inprogress handler in script:\n${html.slice(0, 2000)}`);
+  });
+});
