@@ -1,5 +1,5 @@
-"""close-issue (#305): the toolkit's only GitHub-mutating command. Offline —
-the gh subprocess is mocked."""
+"""close-issue (#305): a GitHub-mutating command (also in-progress, plan-status
+--issues). Offline — the gh subprocess is mocked."""
 import io
 import json
 import sys

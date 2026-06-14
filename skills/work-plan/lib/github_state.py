@@ -31,8 +31,9 @@ def _valid_repo(repo: str) -> bool:
 
 
 def close_issue(repo: str, number: int, reason=None, comment=None) -> tuple:
-    """Close a GitHub issue via `gh issue close` — the toolkit's ONLY
-    GitHub-mutating call (#305). Everything else here is read-only.
+    """Close a GitHub issue via `gh issue close` — one of the toolkit's
+    GitHub-mutating calls (also `set_issue_in_progress`, `create_issue`).
+    Everything else here is read-only.
 
     Returns (ok, message). `reason` ∈ {completed, not_planned} maps to
     `--reason`; `comment` (if given) posts a closing comment. The issue number

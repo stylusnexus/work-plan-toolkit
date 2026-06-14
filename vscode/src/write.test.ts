@@ -883,7 +883,7 @@ describe("actionToArgs — planBaseline", () => {
 });
 
 // ---------------------------------------------------------------------------
-// closeIssue — the only GitHub-mutating action (#305)
+// closeIssue — one of two GitHub-mutating actions (#305; the other is issueInProgress)
 // ---------------------------------------------------------------------------
 
 describe("actionToArgs — closeIssue", () => {

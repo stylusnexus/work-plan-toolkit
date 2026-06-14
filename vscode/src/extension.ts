@@ -545,7 +545,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       },
     ),
-    // workPlan.closeIssue (#305) — the only GitHub-mutating action. Accepts an
+    // workPlan.closeIssue (#305) — one of two GitHub-mutating actions (the other is issueInProgress). Accepts an
     // untracked-issue NODE ({repo, issue:{number,title}}) or a detail-panel
     // {repo, number, title}. Flow: reason pick → optional comment → mandatory
     // "writes to GitHub, can't be undone" modal (EVERY close) → executeWrite.

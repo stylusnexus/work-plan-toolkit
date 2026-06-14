@@ -191,7 +191,7 @@ DESCRIPTIONS = [
      "When you want a tripwire on a plan you believe is done: stamp its baseline, and get alerted if it later regresses.",
      "/work-plan plan-baseline --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
     ("close-issue", "--repo=<key|slug> [--reason=completed|not_planned] [--comment=<text>] -- <number>",
-     "⚠️ The toolkit's ONLY GitHub-mutating command — closes a GitHub issue via `gh issue close` (everything else is read-only on GitHub). PRs merged to `dev` don't auto-close issues (GitHub auto-closes only from the default branch), so done-but-OPEN issues pile up; this closes one. `--reason` maps to GitHub's completed/not-planned; `--comment` posts a closing note. `--repo` takes a config key or an org/repo slug. The VS Code viewer gates this behind a mandatory 'Close on GitHub?' modal on every close.",
+     "⚠️ A GitHub-mutating command (others: `in-progress`, `plan-status --issues`) — closes a GitHub issue via `gh issue close` (most of the toolkit is read-only on GitHub). PRs merged to `dev` don't auto-close issues (GitHub auto-closes only from the default branch), so done-but-OPEN issues pile up; this closes one. `--reason` maps to GitHub's completed/not-planned; `--comment` posts a closing note. `--repo` takes a config key or an org/repo slug. The VS Code viewer gates this behind a mandatory 'Close on GitHub?' modal on every close.",
      "When an issue is actually done but stayed open because its PR merged to dev, not main — close it without leaving the editor.",
      "/work-plan close-issue --repo=stylusnexus/work-plan-toolkit --reason=completed --comment='Closed via dev merge' -- 287"),
     ("in-progress", "<n> [--clear] [--repo=<key|slug>] [--confirm=<token>]",
