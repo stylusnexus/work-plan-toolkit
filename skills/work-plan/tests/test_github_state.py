@@ -14,6 +14,7 @@ from lib.github_state import (
     extract_priority, fetch_recent_issues, short_milestone,
     repo_visibility, _VIS_CACHE, fetch_open_issues,
     _GQL_FIELDS_LEAN, _GQL_FIELDS_FULL,
+    _gql_query, _GQL_ISSUE_DEPS,
 )
 
 
@@ -551,6 +552,20 @@ class GqlFieldSetsTest(unittest.TestCase):
 
     def test_full_set_label_bound_is_50(self):
         self.assertIn("labels(first: 50)", _GQL_FIELDS_FULL)
+
+
+class GqlIssueOnlyDepsTest(unittest.TestCase):
+    def test_deps_constant_has_both_connections(self):
+        self.assertIn("blockedBy(first: 50)", _GQL_ISSUE_DEPS)
+        self.assertIn("blocking(first: 50)", _GQL_ISSUE_DEPS)
+        self.assertIn("issueDependenciesSummary", _GQL_ISSUE_DEPS)
+
+    def test_query_puts_deps_under_issue_not_pullrequest(self):
+        q = _gql_query("o", "r", [5])
+        issue_frag = q.split("... on PullRequest")[0]
+        pr_frag = q.split("... on PullRequest")[1]
+        self.assertIn("blockedBy", issue_frag)
+        self.assertNotIn("blockedBy", pr_frag)
 
 
 if __name__ == "__main__":

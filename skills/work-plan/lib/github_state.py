@@ -233,15 +233,29 @@ _GQL_FIELDS_LEAN = (
     " milestone { title }"
 )
 
+# Issue dependency edges (#257). Issue-ONLY: PullRequest has no blockedBy/blocking,
+# and _gql_query shares the base field set across both fragments — so these are
+# appended only to the `... on Issue` fragment. No server-side state filter exists
+# (the connection takes only orderBy + cursor args), so OPEN-filtering is done in
+# _normalize_gql_node; issueDependenciesSummary lets us detect first:50 truncation.
+_GQL_ISSUE_DEPS = (
+    " blockedBy(first: 50) { nodes { number state title repository { nameWithOwner } } }"
+    " blocking(first: 50) { nodes { number state title repository { nameWithOwner } } }"
+    " issueDependenciesSummary { blockedByOpen blockingOpen }"
+)
+
 
 def _gql_query(owner: str, name: str, numbers: list,
                fields: str = _GQL_FIELDS_LEAN) -> str:
     """Build a batched GraphQL query for issueOrPullRequest nodes.
     `fields` selects the GQL field set; _GQL_FIELDS_LEAN for export, _GQL_FIELDS_FULL
-    for fetch_issues (which needs labels, closedAt, body, url, updatedAt)."""
+    for fetch_issues (which needs labels, closedAt, body, url, updatedAt).
+    _GQL_ISSUE_DEPS is appended to the Issue fragment only — PullRequest does not
+    expose blockedBy/blocking fields."""
     aliases = "\n".join(
         f'  i{n}: issueOrPullRequest(number: {int(n)}) {{ '
-        f'... on Issue {{ {fields} }} ... on PullRequest {{ {fields} }} }}'
+        f'... on Issue {{ {fields}{_GQL_ISSUE_DEPS} }} '
+        f'... on PullRequest {{ {fields} }} }}'
         for n in numbers
     )
     return f'query {{ repository(owner: "{owner}", name: "{name}") {{\n{aliases}\n}} }}'
