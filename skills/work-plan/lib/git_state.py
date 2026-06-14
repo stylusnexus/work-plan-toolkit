@@ -139,28 +139,67 @@ def branch_in_progress(branch_name: str, repo_path: Path) -> bool:
 _BRANCH_ISSUE_RE = re.compile(r"^(?:feat|fix)/(\d+)-")
 
 
+# Per-process memo for hot_issue_numbers, keyed by resolved repo path. A single
+# export/brief/orient run calls hot_issue_numbers once per track, but many tracks
+# share one clone (e.g. ~25 CritForge tracks → one checkout). Live git state can't
+# change mid-run, so caching by resolved path turns an O(tracks) rescan into
+# O(distinct clones). The CLI is one-shot, so the cache dies with the process;
+# tests reset it via _reset_hot_cache(). (#257 follow-up: pre-memo this was
+# ~40s × 25 tracks ≈ 16min for CritForge on every VS Code reload.)
+_HOT_CACHE: dict = {}
+
+
+def _reset_hot_cache() -> None:
+    """Clear the hot_issue_numbers memo (test hook; not used in production)."""
+    _HOT_CACHE.clear()
+
+
 def hot_issue_numbers(repo_path: Path) -> set:
-    """Issue numbers with a 'hot' branch in `repo_path`.
+    """Issue numbers with a 'hot' (in-progress) feat/<n>-/fix/<n>- branch in `repo_path`.
 
-    Enumerates local branches with `git branch --format=%(refname:short)` (the
-    --format is load-bearing: plain `git branch` prefixes lines with `  `/`* `/`+ `,
-    which would defeat the anchored regex), maps each `feat/<n>-`/`fix/<n>-` name
-    to <n>, and keeps those whose branch is `branch_in_progress`.
+    A branch is hot when its tip was committed in the last 24h, OR it is the
+    checked-out branch with uncommitted changes. Enumerates every branch and its
+    tip commit time in ONE `git for-each-ref` call (the recency signal), then does
+    a single current-branch/uncommitted check — so the cost is O(1) git calls, not
+    O(branches). (Previously each of the N branches incurred ~4 git subprocesses
+    via branch_in_progress; on a clone with hundreds of feat/fix branches that was
+    tens of seconds per call.) Result is memoized per resolved path for the process.
 
-    Failure contract: if the enumeration call fails -> empty set. A per-branch heat
-    check that fails collapses to cold (that branch is simply not added). Never raises.
+    Failure contract: any git enumeration failure -> empty set (not cached, so a
+    later call in the same run can still succeed). Never raises.
     """
     if not repo_path or not Path(repo_path).exists():
         return set()
-    proc = _git(repo_path, "branch", "--format=%(refname:short)", "--list")
+    key = str(Path(repo_path).resolve())
+    cached = _HOT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    proc = _git(repo_path, "for-each-ref", "refs/heads",
+                "--format=%(refname:short)%09%(committerdate:unix)")
     if proc is None or proc.returncode != 0:
         return set()
-    out = set()
+    cutoff = (datetime.now() - timedelta(hours=24)).timestamp()
+    hot = set()
+    candidates: dict = {}  # feat/fix branch name -> issue number
     for line in proc.stdout.splitlines():
-        m = _BRANCH_ISSUE_RE.match(line.strip())
-        if m and branch_in_progress(line.strip(), repo_path):
-            out.add(int(m.group(1)))
-    return out
+        name, _tab, ts = line.strip().partition("\t")
+        m = _BRANCH_ISSUE_RE.match(name)
+        if not m:
+            continue
+        num = int(m.group(1))
+        candidates[name] = num
+        try:
+            if float(ts) >= cutoff:
+                hot.add(num)
+        except ValueError:
+            pass  # missing/odd committerdate -> not hot by recency
+    # Uncommitted-changes-on-the-checked-out-branch case: 2 git calls total,
+    # independent of branch count (mirrors branch_in_progress's first clause).
+    cur = current_branch(repo_path)
+    if cur in candidates and has_uncommitted(repo_path):
+        hot.add(candidates[cur])
+    _HOT_CACHE[key] = hot
+    return hot
 
 
 def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:
