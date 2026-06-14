@@ -204,18 +204,17 @@ def _normalize_gql_node(node) -> Optional[dict]:
     ms = node.get("milestone")
 
     def _deps(key):
-        return [{"number": n.get("number"),
-                 "repo": (n.get("repository") or {}).get("nameWithOwner"),
-                 "title": n.get("title", "")}
-                for n in ((node.get(key) or {}).get("nodes") or [])
-                if (n.get("state") or "").upper() == "OPEN"]
-    blocked_by = _deps("blockedBy")
-    blocking = _deps("blocking")
-    summary = node.get("issueDependenciesSummary") or {}
-    deps_truncated = (
-        (summary.get("blockedByOpen") or 0) > len(blocked_by)
-        or (summary.get("blockingOpen") or 0) > len(blocking)
-    )
+        conn = node.get(key) or {}
+        nodes = conn.get("nodes") or []
+        open_edges = [{"number": n.get("number"),
+                       "repo": (n.get("repository") or {}).get("nameWithOwner"),
+                       "title": n.get("title", "")}
+                      for n in nodes if (n.get("state") or "").upper() == "OPEN"]
+        truncated = (conn.get("totalCount") or 0) > len(nodes)
+        return open_edges, truncated
+    blocked_by, _bb_trunc = _deps("blockedBy")
+    blocking, _bl_trunc = _deps("blocking")
+    deps_truncated = _bb_trunc or _bl_trunc
 
     return {
         "number": node.get("number"),
@@ -255,11 +254,10 @@ _GQL_FIELDS_LEAN = (
 # and _gql_query shares the base field set across both fragments — so these are
 # appended only to the `... on Issue` fragment. No server-side state filter exists
 # (the connection takes only orderBy + cursor args), so OPEN-filtering is done in
-# _normalize_gql_node; issueDependenciesSummary lets us detect first:50 truncation.
+# _normalize_gql_node; totalCount detects first:50 truncation (confirmed live field).
 _GQL_ISSUE_DEPS = (
-    " blockedBy(first: 50) { nodes { number state title repository { nameWithOwner } } }"
-    " blocking(first: 50) { nodes { number state title repository { nameWithOwner } } }"
-    " issueDependenciesSummary { blockedByOpen blockingOpen }"
+    " blockedBy(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
+    " blocking(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
 )
 
 

@@ -558,7 +558,7 @@ class GqlIssueOnlyDepsTest(unittest.TestCase):
     def test_deps_constant_has_both_connections(self):
         self.assertIn("blockedBy(first: 50)", _GQL_ISSUE_DEPS)
         self.assertIn("blocking(first: 50)", _GQL_ISSUE_DEPS)
-        self.assertIn("issueDependenciesSummary", _GQL_ISSUE_DEPS)
+        self.assertIn("totalCount", _GQL_ISSUE_DEPS)
 
     def test_query_puts_deps_under_issue_not_pullrequest(self):
         q = _gql_query("o", "r", [5])
@@ -569,11 +569,12 @@ class GqlIssueOnlyDepsTest(unittest.TestCase):
 
 
 class NormalizeDepsTest(unittest.TestCase):
-    def _node(self, blocked=None, blocking=None, summary=None):
+    def _node(self, blocked=None, blocking=None, bb_total=None, bl_total=None):
+        blocked = blocked or []
+        blocking = blocking or []
         return {"number": 1, "title": "x", "state": "OPEN",
-                "blockedBy": {"nodes": blocked or []},
-                "blocking": {"nodes": blocking or []},
-                "issueDependenciesSummary": summary or {"blockedByOpen": 0, "blockingOpen": 0}}
+                "blockedBy": {"totalCount": bb_total if bb_total is not None else len(blocked), "nodes": blocked},
+                "blocking": {"totalCount": bl_total if bl_total is not None else len(blocking), "nodes": blocking}}
 
     def _edge(self, n, state="OPEN", repo="o/r", title="t"):
         return {"number": n, "state": state, "title": title,
@@ -582,8 +583,7 @@ class NormalizeDepsTest(unittest.TestCase):
     def test_open_only_and_shape(self):
         from lib.github_state import _normalize_gql_node
         out = _normalize_gql_node(self._node(
-            blocked=[self._edge(10), self._edge(11, state="CLOSED")],
-            summary={"blockedByOpen": 1, "blockingOpen": 0}))
+            blocked=[self._edge(10), self._edge(11, state="CLOSED")]))
         self.assertEqual(out["blocked_by"], [{"number": 10, "repo": "o/r", "title": "t"}])
         self.assertEqual(out["blocking"], [])
         self.assertFalse(out["deps_truncated"])
@@ -591,14 +591,13 @@ class NormalizeDepsTest(unittest.TestCase):
     def test_cross_repo_preserved(self):
         from lib.github_state import _normalize_gql_node
         out = _normalize_gql_node(self._node(
-            blocked=[self._edge(42, repo="other/repo")],
-            summary={"blockedByOpen": 1, "blockingOpen": 0}))
+            blocked=[self._edge(42, repo="other/repo")]))
         self.assertEqual(out["blocked_by"][0]["repo"], "other/repo")
 
-    def test_truncation_flag_when_summary_exceeds_materialized(self):
+    def test_truncation_flag_when_totalcount_exceeds_nodes(self):
         from lib.github_state import _normalize_gql_node
         out = _normalize_gql_node(self._node(
-            blocked=[self._edge(10)], summary={"blockedByOpen": 99, "blockingOpen": 0}))
+            blocked=[self._edge(10)], bb_total=99))
         self.assertTrue(out["deps_truncated"])
 
     def test_missing_connections_default_empty(self):
