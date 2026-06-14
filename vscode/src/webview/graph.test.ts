@@ -1028,3 +1028,117 @@ describe("toMermaid — blocked nodes carry a non-colour marker (#244)", () => {
     assert.ok(out.includes('⛔ '), `expected a ⛔ marker on a blocked node:\n${out}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Blocked-by graph edges (#257)
+// ---------------------------------------------------------------------------
+//
+// Two fixtures share the same track/repo structure:
+//   - sameRepoExp: issue #5 blocked_by issue #9 in the same repo ("o/r")
+//   - crossRepoExp: issue #5 blocked_by issue #9 in a different repo ("other/repo")
+//
+// Both issues (#5, #9) are in the track's next_up so they're guaranteed nodes
+// in the focused graph (includedIssues is populated from blockers + next_up).
+
+const blockedByBaseTrack = {
+  name: "alpha",
+  repo: "o/r",
+  tier: "private" as const,
+  status: "active",
+  launch_priority: null,
+  milestone_alignment: null,
+  visibility: null as null,
+  blockers: [] as number[],
+  rollup: { open: 2, closed: 0 },
+};
+
+const sameRepoExp: Export = {
+  schema: 1,
+  generated_at: "2026-06-14T00:00:00Z",
+  tracks: [
+    {
+      ...blockedByBaseTrack,
+      // Both #5 and #9 in next_up → both become issue nodes in focused graph.
+      next_up: [5, 9],
+      issues: [
+        {
+          number: 5,
+          title: "do the thing",
+          state: "open",
+          assignee: "@x",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          // Issue #5 is blocked by #9 in the same repo.
+          blocked_by: [{ number: 9, repo: "o/r", title: "prerequisite" }],
+          blocking: [],
+        },
+        {
+          number: 9,
+          title: "prerequisite",
+          state: "open",
+          assignee: "@x",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [],
+          blocking: [{ number: 5, repo: "o/r", title: "do the thing" }],
+        },
+      ],
+    },
+  ],
+};
+
+const crossRepoExp: Export = {
+  schema: 1,
+  generated_at: "2026-06-14T00:00:00Z",
+  tracks: [
+    {
+      ...blockedByBaseTrack,
+      next_up: [5, 9],
+      issues: [
+        {
+          number: 5,
+          title: "do the thing",
+          state: "open",
+          assignee: "@x",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          // Issue #5 is blocked by #9 in a DIFFERENT repo → no edge.
+          blocked_by: [{ number: 9, repo: "other/repo", title: "prerequisite" }],
+          blocking: [],
+        },
+        {
+          number: 9,
+          title: "prerequisite",
+          state: "open",
+          assignee: "@x",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [],
+          blocking: [],
+        },
+      ],
+    },
+  ],
+};
+
+describe("toMermaid — blocked-by graph edges (#257)", () => {
+  it("emits a --x blocked-by edge between two same-repo focused nodes", () => {
+    const mmd = toMermaid(sameRepoExp, "alpha", { focus: true });
+    assert.ok(mmd.includes("i_9 --x|blocked by| i_5"), mmd);
+  });
+
+  it("does NOT emit a cross-repo blocked-by edge", () => {
+    const mmd = toMermaid(crossRepoExp, "alpha", { focus: true });
+    assert.ok(!mmd.includes("--x"), mmd);
+  });
+
+  it("full graph emits no blocked-by edge", () => {
+    // No selectedTrack → full graph → _toMermaidFull, which has no --x logic.
+    const mmd = toMermaid(sameRepoExp);
+    assert.ok(!mmd.includes("--x"), mmd);
+  });
+});
