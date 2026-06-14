@@ -276,13 +276,13 @@ export async function runWrite(
 
 /**
  * The CalVer date of the oldest CLI the extension can drive. Bumped to the
- * release that added the Plans view's read surfaces (#164/#288): the export's
- * top-level `repos[]` + per-track `folder`, and `plan-status --json`'s
- * `manifest_last_touched`/`stalled`/`lie_gap`/`unchecked_items`/`stall_days`.
- * An older CLI omits these, so the Plans view + registered-repo listing would
- * silently come up empty — checkVersion surfaces a compat warning instead.
+ * release that added the `in-progress` subcommand and the per-issue
+ * `in_progress` export field (#271): the detail-webview toggle and the
+ * issue-level in-progress badge both depend on these. An older CLI omits
+ * the field and lacks the subcommand, so checkVersion surfaces a compat
+ * warning instead of letting the toggle silently fail.
  */
-export const MIN_CLI_VERSION = "2026.06.13";
+export const MIN_CLI_VERSION = "2026.06.14";
 
 /**
  * Parses the version token from `work-plan --version` output.
