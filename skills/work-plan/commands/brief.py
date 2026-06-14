@@ -121,15 +121,20 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     # for display purposes — useful for tracks where you don't want to
     # hand-curate but still want a sensible "what's next" surfaced.
     track_milestone = meta.get("milestone_alignment") or None
+    hot_nums = hot_issue_numbers(local) if local else set()
     if meta.get("next_up_auto") and issues:
         blocker_nums = meta.get("blockers") or []
-        next_up_nums = suggest_next_up(issues, blocker_nums, track_milestone=track_milestone)
+        in_progress_set = {i["number"] for i in issues if issue_in_progress(i, hot_nums)}
+        next_up_nums = suggest_next_up(
+            issues, blocker_nums,
+            track_milestone=track_milestone,
+            in_progress_nums=in_progress_set,
+        )
     else:
         next_up_nums = stored_next_up
 
     next_up_items = []
     next_up_closed_count = 0
-    hot_nums = hot_issue_numbers(local) if local else set()
     for num in next_up_nums:
         i = issues_by_num.get(num)
         if not i:

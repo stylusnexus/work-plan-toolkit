@@ -19,9 +19,10 @@ from lib.session_log import append_session_log, SESSION_LOG_HEADER
 from lib.git_state import (
     has_uncommitted, current_branch, parse_iso_timestamp,
     gap_seconds_to_label, uncommitted_file_count, commits_ahead,
-    is_safe_ref, GIT_TIMEOUT,
+    is_safe_ref, GIT_TIMEOUT, hot_issue_numbers,
 )
 from lib.github_state import fetch_issues, state_to_status_label, extract_priority, short_milestone
+from lib.in_progress import issue_in_progress
 from lib.status_table import update_row_status, sync_missing_rows, find_canonical_status_tables, ISSUE_NUM_RE
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.next_up import suggest_next_up
@@ -152,7 +153,13 @@ def _apply_auto_next(track, cfg: dict) -> int:
     issues = fetch_issues(track.repo, issue_nums)
     blocker_nums = track.meta.get("blockers") or []
     track_milestone = track.meta.get("milestone_alignment") or None
-    raw_suggestion = suggest_next_up(issues, blocker_nums, track_milestone=track_milestone)
+    hot_nums = hot_issue_numbers(track.local_path) if track.local_path else set()
+    in_progress_set = {i["number"] for i in issues if issue_in_progress(i, hot_nums)}
+    raw_suggestion = suggest_next_up(
+        issues, blocker_nums,
+        track_milestone=track_milestone,
+        in_progress_nums=in_progress_set,
+    )
     if not raw_suggestion:
         print(f"No open, non-blocker issues for {track.name}; next_up unchanged.")
         return 0
