@@ -131,6 +131,36 @@ class InProgressCommandTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         mw.assert_not_called()
 
+    # --- _resolve_repo --repo validation tests ---
+
+    def test_repo_flag_matching_tracked_repo_allowed(self):
+        """--repo=o/r2 when 271 is tracked in o/r2 → allowed (legit disambiguation)."""
+        rc, out, err, mw = self._drive(
+            ["271", "--repo=o/r2"],
+            [_track("a", "o/r1", []), _track("b", "o/r2", [271])])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once_with("o/r2", 271, clear=False)
+
+    def test_repo_flag_pointing_to_untracked_repo_rejected(self):
+        """--repo=o/r2 when 271 is tracked only in o/r1 → rejected (typo guard)."""
+        rc, out, err, mw = self._drive(
+            ["271", "--repo=o/r2"],
+            [_track("a", "o/r1", [271]), _track("b", "o/r2", [])])
+        self.assertEqual(rc, 1)
+        mw.assert_not_called()
+        combined = (out + err).lower()
+        self.assertTrue(
+            "refusing" in combined or "not" in combined,
+            f"expected 'refusing' or 'not' in stderr/stdout, got: {out!r} {err!r}")
+
+    def test_repo_flag_for_issue_tracked_nowhere_allowed(self):
+        """--repo=o/r9 when 271 is not in any track → allowed (explicit target)."""
+        rc, out, err, mw = self._drive(
+            ["271", "--repo=o/r9"],
+            [_track("a", "o/r1", [99])])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once_with("o/r9", 271, clear=False)
+
 
 if __name__ == "__main__":
     unittest.main()

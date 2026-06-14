@@ -20,18 +20,8 @@ from lib.prompts import parse_flags
 KNOWN = {"--clear", "--repo", "--confirm"}
 
 
-def _resolve_repo(number, repo_flag, cfg):
-    """Resolve a unique github slug for `number`.
-
-    With --repo: a slug (owner/name) is used directly; a config key is resolved.
-    Without --repo: search tracked frontmatter for the distinct repos listing
-    `number`. Returns (slug, None) on success, or (None, error_message).
-    """
-    if isinstance(repo_flag, str) and repo_flag:
-        slug = repo_flag if "/" in repo_flag else resolve_github_for_folder(repo_flag, cfg)
-        if not slug:
-            return (None, f"could not resolve a github slug for --repo={repo_flag!r}.")
-        return (slug, None)
+def _tracked_repos_for(number, cfg):
+    """Return the distinct repo slugs that list `number` in their frontmatter."""
     repos = []
     for t in discover_tracks(cfg):
         if not t.has_frontmatter or not t.repo:
@@ -39,6 +29,33 @@ def _resolve_repo(number, repo_flag, cfg):
         if number in ((t.meta.get("github", {}) or {}).get("issues") or []):
             if t.repo not in repos:
                 repos.append(t.repo)
+    return repos
+
+
+def _resolve_repo(number, repo_flag, cfg):
+    """Resolve a unique github slug for `number`.
+
+    With --repo: a slug (owner/name) is used directly; a config key is resolved.
+      The resolved slug is then validated: if the issue IS tracked somewhere and
+      the slug is NOT among those tracked repos, the call is rejected to guard
+      against typos labelling the wrong repo. If the issue is tracked nowhere,
+      --repo is the only targeting option and is accepted as explicit intent.
+    Without --repo: search tracked frontmatter for the distinct repos listing
+      `number`. Returns (slug, None) on success, or (None, error_message).
+    """
+    if isinstance(repo_flag, str) and repo_flag:
+        slug = repo_flag if "/" in repo_flag else resolve_github_for_folder(repo_flag, cfg)
+        if not slug:
+            return (None, f"could not resolve a github slug for --repo={repo_flag!r}.")
+        tracked = _tracked_repos_for(number, cfg)
+        if tracked and slug not in tracked:
+            return (None,
+                    f"issue #{number} is tracked in {tracked}, not {slug!r} — "
+                    f"refusing to label the wrong repo "
+                    f"(drop --repo to use the tracked one, or slot it into a track "
+                    f"in {slug} first).")
+        return (slug, None)
+    repos = _tracked_repos_for(number, cfg)
     if not repos:
         return (None, f"issue #{number} is not in any tracked repo — pass --repo=<key|slug>.")
     if len(repos) > 1:
