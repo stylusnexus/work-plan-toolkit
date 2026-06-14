@@ -1,9 +1,22 @@
 """Compute a suggested `next_up` issue list for a track.
 
-Sort policy: open issues only, exclude blockers, ranked by priority label
-(P0 < P1 < P2 < P3 with missing label defaulting to P3), then by most-
-recently-updated within the same priority bucket. Closed issues are
-filtered out — `next_up` should never propose work that's already done.
+Default sort policy (all filters/keys applied in this order):
+
+Eligibility (filter, in order):
+  1. Drop non-OPEN issues.
+  2. Drop issues whose number is in blocker_nums (manual track blockers).
+  3. Drop issues that have a non-empty `blocked_by` list — the dependency
+     gate — UNLESS the issue is in-progress (an in-progress issue is never
+     gated out; you're already working it).
+
+Sort key (lexicographic, ascending = comes first) over survivors:
+  1. in-progress: 0 if in-progress else 1  (in-progress floats to top)
+  2. milestone_rank: aligned=0, other=1, none=2
+  3. -fan_out: negative count of open `blocking` edges (higher fan-out
+     ranks above lower; negated so ascending sort puts it first)
+  4. priority_rank: P0=0 .. P3=3, missing=3
+  5. -updated_unix: negative timestamp (newer first within same bucket)
+  6. issue number: ascending (deterministic final tiebreak)
 
 Used by:
 - `commands/handoff.py` — `--auto-next` flag prompts the user to apply
@@ -19,7 +32,7 @@ they go here.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable
+from typing import Iterable, Optional
 
 from lib.github_state import extract_priority, short_milestone
 
@@ -50,36 +63,60 @@ def _updated_unix(issue: dict) -> float:
         return 0.0
 
 
+def _fan_out(issue: dict) -> int:
+    """Return the number of open blocking edges this issue unblocks.
+
+    A higher value means merging this issue unblocks more downstream work.
+    Uses `.get(...) or []` so a missing key is treated as zero fan-out.
+    """
+    return len(issue.get("blocking") or [])
+
+
 def suggest_next_up(
     issues: list[dict],
-    blocker_nums: Iterable[int] | None = None,
+    blocker_nums: Optional[Iterable[int]] = None,
     n: int = DEFAULT_TOP_N,
-    track_milestone: str | None = None,
+    track_milestone: Optional[str] = None,
+    in_progress_nums: Optional[Iterable[int]] = None,
 ) -> list[int]:
     """Return up to `n` issue numbers ranked for "what to work on next."
 
     Args:
         issues: issue dicts as returned by `gh issue list --json
-            number,state,labels,milestone,updatedAt,...`.
+            number,state,labels,milestone,updatedAt,blocked_by,blocking,...`.
         blocker_nums: iterable of issue numbers to exclude (a track's
-            manually-flagged blockers).
+            manually-flagged blockers). These are ALWAYS excluded, even if
+            the issue is in-progress.
         n: maximum items to return. Default is DEFAULT_TOP_N.
         track_milestone: optional `milestone_alignment:` value from the
             track's frontmatter (e.g. `"v0.4.0"`). When provided, issues
             on this milestone rank above items on any other milestone,
-            which in turn rank above items with no milestone — keeps
-            post-launch deferrals from polluting a launch-window list.
+            which in turn rank above items with no milestone.
+        in_progress_nums: optional set of issue numbers currently in-progress
+            (label or hot branch). In-progress issues float to the top of the
+            ranked list and are also exempt from the `blocked_by` gate — you
+            are already working them, so they must stay visible. When None
+            (or empty), no in-progress boost is applied.
 
     Returns:
         List of issue numbers, highest-ranked first. Empty if nothing
         qualifies (e.g., everything closed or blocked).
     """
     blockers = set(blocker_nums or [])
-    candidates = [
-        i for i in issues
-        if str(i.get("state", "")).upper() == "OPEN"
-        and i.get("number") not in blockers
-    ]
+    in_progress = set(in_progress_nums or [])
+
+    candidates = []
+    for i in issues:
+        if str(i.get("state", "")).upper() != "OPEN":
+            continue
+        num = i.get("number")
+        # Manual blocker_nums always excluded — in-progress does NOT override.
+        if num in blockers:
+            continue
+        # Dependency gate: skip if blocked_by is non-empty, UNLESS in-progress.
+        if (i.get("blocked_by") or []) and num not in in_progress:
+            continue
+        candidates.append(i)
 
     def milestone_rank(issue: dict) -> int:
         ms = short_milestone(issue.get("milestone"))
@@ -89,10 +126,18 @@ def suggest_next_up(
             return MILESTONE_ALIGNED
         return MILESTONE_OTHER
 
-    def sort_key(issue: dict) -> tuple[int, int, float]:
+    def sort_key(issue: dict) -> tuple[int, int, int, int, float, int]:
+        num = issue.get("number")
         pri = extract_priority(issue.get("labels", []))
-        # Negate timestamp so newer comes first within a priority bucket.
-        return (milestone_rank(issue), PRIORITY_RANK.get(pri, 3), -_updated_unix(issue))
+        in_prog_rank = 0 if num in in_progress else 1
+        return (
+            in_prog_rank,
+            milestone_rank(issue),
+            -_fan_out(issue),
+            PRIORITY_RANK.get(pri, 3),
+            -_updated_unix(issue),
+            num,
+        )
 
     candidates.sort(key=sort_key)
     return [i["number"] for i in candidates[:n]]
