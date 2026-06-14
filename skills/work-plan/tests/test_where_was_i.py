@@ -532,5 +532,26 @@ class OrientInProgressTest(unittest.TestCase):
         self.assertIn("in-progress", out.getvalue())
 
 
+class OrientBlockedByTest(unittest.TestCase):
+    def test_next_pick_shows_blocked_by(self):
+        from types import SimpleNamespace
+        track = SimpleNamespace(name="alpha", repo="o/r", local_path=None,
+                                path=Path("/n/alpha.md"), body="",
+                                meta={"track": "alpha", "launch_priority": "P1",
+                                      "milestone_alignment": "—",
+                                      "github": {"issues": [5]}, "next_up": [5], "blockers": []})
+        issue = {"number": 5, "title": "x", "state": "open", "labels": [],
+                 "blocked_by": [{"number": 9, "repo": "o/r", "title": "dep"}], "blocking": []}
+        with mock.patch("commands.where_was_i.fetch_issues", return_value=[issue]), \
+             mock.patch("commands.where_was_i.hot_issue_numbers", return_value=set()), \
+             mock.patch("commands.where_was_i.current_branch", return_value=None), \
+             mock.patch("commands.where_was_i.find_new_issues_for_tracks", return_value={}):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                from commands import where_was_i
+                where_was_i._orient_track(track)
+        self.assertIn("blocked by #9", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
