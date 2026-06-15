@@ -77,6 +77,16 @@ export interface SetNextUpMessage {
   type: "setNextUp";
 }
 
+/** Export the rendered dependency graph (#216). The webview serializes the live
+ *  Mermaid SVG (format "svg") or rasterizes it to a PNG data URL (format "png")
+ *  and the host writes it via a Save dialog. `data` is the SVG XML string, or a
+ *  `data:image/png;base64,…` URL for PNG. */
+export interface ExportGraphMessage {
+  type: "exportGraph";
+  format: "svg" | "png";
+  data: string;
+}
+
 export type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
@@ -87,7 +97,8 @@ export type WebviewMessage =
   | OpenPlanMessage
   | CloseIssueMessage
   | ToggleInProgressMessage
-  | SetNextUpMessage;
+  | SetNextUpMessage
+  | ExportGraphMessage;
 
 // ---------------------------------------------------------------------------
 // Type guard for incoming webview messages
@@ -141,6 +152,9 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && typeof msg["clear"] === "boolean";
     case "setNextUp":
       return true; // no payload to validate
+    case "exportGraph":
+      return (msg["format"] === "svg" || msg["format"] === "png")
+        && typeof msg["data"] === "string" && (msg["data"] as string).length > 0;
     default:
       return false;
   }
