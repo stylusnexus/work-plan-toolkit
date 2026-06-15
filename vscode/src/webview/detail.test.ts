@@ -1002,6 +1002,75 @@ describe("renderDetail — next_up_preset indicator (#326)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Next-up auto indicator (#338)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — next_up_auto indicator (#338)", () => {
+  const autoTrack: Track = {
+    ...emptyTrack,
+    next_up_preset: "flow",
+    next_up_auto: true,
+  };
+
+  const manualTrack: Track = {
+    ...emptyTrack,
+    next_up_preset: "priority-driven",
+    next_up_auto: false,
+  };
+
+  it("renders '· auto' suffix when next_up_auto=true and showNextUpPreset=true", () => {
+    const html = renderDetail(autoTrack, { showNextUpPreset: true });
+    assert.ok(
+      html.includes("· auto"),
+      `expected '· auto' suffix in preset row:\n${html}`,
+    );
+    assert.ok(
+      html.includes("flow"),
+      `expected preset name 'flow':\n${html}`,
+    );
+  });
+
+  it("does NOT render '· auto' suffix when next_up_auto=false", () => {
+    const html = renderDetail(manualTrack, { showNextUpPreset: true });
+    assert.ok(
+      !html.includes("· auto"),
+      `'· auto' suffix must not appear when next_up_auto=false:\n${html}`,
+    );
+    assert.ok(
+      html.includes("priority-driven"),
+      `expected preset name 'priority-driven':\n${html}`,
+    );
+  });
+
+  it("does NOT render '· auto' suffix when next_up_auto is absent (older CLI)", () => {
+    const noAutoTrack: Track = { ...emptyTrack, next_up_preset: "flow" };
+    const html = renderDetail(noAutoTrack, { showNextUpPreset: true });
+    assert.ok(
+      !html.includes("· auto"),
+      `'· auto' suffix must not appear when next_up_auto is absent:\n${html}`,
+    );
+  });
+
+  it("does NOT render the preset row at all when showNextUpPreset=false (auto has no effect)", () => {
+    const html = renderDetail(autoTrack, { showNextUpPreset: false });
+    assert.ok(
+      !html.includes("Next-up order:"),
+      `preset row must be hidden when showNextUpPreset=false:\n${html}`,
+    );
+  });
+
+  it("'· auto' suffix is plain text — no HTML entities needed", () => {
+    const html = renderDetail(autoTrack, { showNextUpPreset: true });
+    // The suffix uses a literal · (middle dot) — not an entity. Verify the
+    // rendered text contains it directly so it displays correctly.
+    assert.ok(
+      html.includes("· auto"),
+      `expected literal '· auto' in rendered HTML:\n${html}`,
+    );
+  });
+});
+
 describe("renderDetail — dep disclosure button (#257)", () => {
   it("an issue with blocked_by renders dep-toggle-btn carrying data-depissue and a dep-detail-row", () => {
     const track: Track = {

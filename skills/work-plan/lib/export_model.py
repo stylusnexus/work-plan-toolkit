@@ -124,10 +124,8 @@ def build_export(tracks, issues_by_track, visibility, now: str,
                 in_progress_nums=in_progress_set,
                 order=next_up_order,
             )
-            next_up_is_auto = True
         else:
             next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
-            next_up_is_auto = False
         out["tracks"].append({
             "name": t.name,
             "repo": t.repo,
@@ -155,9 +153,11 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "plan": plan_by_track.get(t.name),
             # Effective next_up ranking preset for this track (#326 Phase 2).
             "next_up_preset": next_up_preset_name,
-            # True when `next_up` above was auto-derived from the ranking preset
-            # (next_up_auto: true), not read from the curated list (#326).
-            "next_up_auto": next_up_is_auto,
+            # True when the track has `next_up_auto: true` set in its frontmatter,
+            # meaning the next-up list is auto-derived from the ranking preset (#326).
+            # Reflects the SETTING, not whether derivation actually ran (so the
+            # viewer toggle shows On even when a track has zero open issues).
+            "next_up_auto": bool(t.meta.get("next_up_auto")),
         })
     out["untracked"] = [
         {"repo": repo, "issues": [normalize_issue(r) for r in rows]}

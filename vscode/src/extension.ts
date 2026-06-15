@@ -932,15 +932,47 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = await resolveTrackName(node);
         if (!track) return;
 
-        // Resolve the full track object so we can surface the current preset.
+        // Resolve the full track object so we can surface the current preset and auto state.
         const exp = provider.rawExport ?? provider.currentExport;
         const trackObj = exp?.tracks.find(t => t.name === track);
         const currentPreset = trackObj?.next_up_preset;
+        const currentAuto = trackObj?.next_up_auto ?? false;
         const repoKey = trackObj?.folder ?? undefined;
 
-        type PresetItem = vscode.QuickPickItem & { preset?: string; clear?: boolean; custom?: boolean };
+        type PresetItem = vscode.QuickPickItem & {
+          preset?: string;
+          clear?: boolean;
+          custom?: boolean;
+          auto?: "on" | "off";
+        };
+
+        // Auto toggle items at the top (#338), then a separator, then presets.
+        const autoOnItem: PresetItem = {
+          label: "$(sync) Auto next-up: ON",
+          description: "rank automatically with the preset",
+          auto: "on",
+        };
+        const autoOffItem: PresetItem = {
+          label: "$(circle-slash) Auto next-up: OFF",
+          description: "keep a hand-curated next-up list",
+          auto: "off",
+        };
+        // Mark the current auto state with a ✓.
+        if (currentAuto) {
+          autoOnItem.description = `✓ current · ${autoOnItem.description ?? ""}`.trim();
+        } else {
+          autoOffItem.description = `✓ current · ${autoOffItem.description ?? ""}`.trim();
+        }
+
+        const separator: PresetItem = {
+          label: "",
+          kind: vscode.QuickPickItemKind.Separator,
+        };
 
         const presets: PresetItem[] = [
+          autoOnItem,
+          autoOffItem,
+          separator,
           {
             label: "$(symbol-event) Flow (default)",
             description: "preset: flow",
@@ -1002,16 +1034,21 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: setting next-up preset on ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "setNextUpPreset", track, repoKey, preset: pick.preset, clear: pick.clear },
+            { kind: "setNextUpPreset", track, repoKey, preset: pick.preset, clear: pick.clear, auto: pick.auto },
             confirmPublicWrite,
           ),
         );
 
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          const label = pick.clear
-            ? "cleared (using default)"
-            : `set to ${pick.preset}`;
+          let label: string;
+          if (pick.auto) {
+            label = `auto set to ${pick.auto}`;
+          } else if (pick.clear) {
+            label = "cleared (using default)";
+          } else {
+            label = `set to ${pick.preset}`;
+          }
           vscode.window.showInformationMessage(`Work Plan: next-up preset ${label} on ${track}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept private — no change written.");

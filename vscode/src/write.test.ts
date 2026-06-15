@@ -505,6 +505,68 @@ describe("actionToArgs", () => {
       "dash-led track must not appear before the separator",
     );
   });
+
+  // setNextUpPreset auto toggle (#338)
+  test("setNextUpPreset with auto='on' → includes '--auto=on' before '--'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      auto: "on",
+    };
+    const args = actionToArgs(action);
+    assert.deepEqual(args, ["set-next-up", "--auto=on", "--", "platform-health"]);
+  });
+
+  test("setNextUpPreset with auto='off' → includes '--auto=off' before '--'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      auto: "off",
+    };
+    const args = actionToArgs(action);
+    assert.deepEqual(args, ["set-next-up", "--auto=off", "--", "platform-health"]);
+  });
+
+  test("setNextUpPreset with auto='on' only (no preset/clear) → auto-only invocation", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "my-track",
+      auto: "on",
+    };
+    assert.deepEqual(actionToArgs(action), ["set-next-up", "--auto=on", "--", "my-track"]);
+  });
+
+  test("setNextUpPreset with repoKey and auto='on' → --repo before --auto", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      repoKey: "myrepo",
+      auto: "on",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--repo=myrepo",
+      "--auto=on",
+      "--",
+      "platform-health",
+    ]);
+  });
+
+  test("setNextUpPreset with preset and auto combined → preset flag + auto flag", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      preset: "flow",
+      auto: "on",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--preset=flow",
+      "--auto=on",
+      "--",
+      "platform-health",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

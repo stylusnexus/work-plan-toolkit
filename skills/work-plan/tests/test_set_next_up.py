@@ -197,5 +197,100 @@ class SetNextUpTest(unittest.TestCase):
         self.assertIn("--order is ignored", err.getvalue())
 
 
+class SetNextUpAutoFlagTest(unittest.TestCase):
+    """Tests for --auto=on|off flag on set-next-up."""
+
+    def _drive_with_stderr(self, args, vis="PRIVATE", cfg=None, track=None):
+        """Like _drive but also captures stderr."""
+        base_cfg = {"notes_root": "/tmp"}
+        if cfg is not None:
+            base_cfg.update(cfg)
+        t = track if track is not None else _t()
+        with patch("commands.set_next_up.load_config", return_value=base_cfg), \
+             patch("commands.set_next_up.discover_tracks", return_value=[t]), \
+             patch("lib.write_guard.repo_visibility", return_value=vis), \
+             patch("commands.set_next_up.write_file") as mw:
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = set_next_up.run(args)
+        return rc, mw, out.getvalue(), err.getvalue()
+
+    def test_auto_on_writes_next_up_auto_true(self):
+        """--auto=on sets next_up_auto: True in track meta."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=on"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        meta = mw.call_args[0][1]
+        self.assertTrue(meta.get("next_up_auto"))
+
+    def test_auto_off_removes_next_up_auto(self):
+        """--auto=off removes next_up_auto from track meta."""
+        t = _t(meta={"status": "active", "next_up_auto": True})
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=off"], track=t)
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        meta = mw.call_args[0][1]
+        self.assertNotIn("next_up_auto", meta)
+
+    def test_auto_off_on_track_without_key_still_succeeds(self):
+        """--auto=off on a track with no next_up_auto key still writes ok (no KeyError)."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=off"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        meta = mw.call_args[0][1]
+        self.assertNotIn("next_up_auto", meta)
+
+    def test_auto_bogus_returns_rc2_no_write(self):
+        """--auto=bogus → rc=2 and no write."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=bogus"])
+        self.assertEqual(rc, 2)
+        mw.assert_not_called()
+
+    def test_auto_standalone_private_writes(self):
+        """--auto=on alone (no --preset/--order/--clear) is accepted on private repo."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=on"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+
+    def test_auto_standalone_public_needs_confirm(self):
+        """--auto=on alone on a PUBLIC repo → needs_confirm, no write."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=on"], vis="PUBLIC")
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        self.assertIn("needs_confirm", out)
+
+    def test_auto_standalone_public_with_valid_confirm_writes(self):
+        """--auto=on alone on PUBLIC repo with valid --confirm token proceeds to write."""
+        tok = make_token("o/r", "ph")
+        rc, mw, out, err = self._drive_with_stderr(
+            ["ph", "--auto=on", f"--confirm={tok}"], vis="PUBLIC"
+        )
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        meta = mw.call_args[0][1]
+        self.assertTrue(meta.get("next_up_auto"))
+
+    def test_auto_on_combined_with_preset_writes_both(self):
+        """--auto=on --preset=backlog sets BOTH next_up_auto AND next_up_order in one write."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=on", "--preset=backlog"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        meta = mw.call_args[0][1]
+        self.assertTrue(meta.get("next_up_auto"))
+        self.assertEqual(meta.get("next_up_order"), {"preset": "backlog"})
+
+    def test_auto_on_prints_success_message(self):
+        """--auto=on prints a clear success line."""
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=on"])
+        self.assertIn("next_up_auto", out)
+        self.assertIn("true", out.lower())
+
+    def test_auto_off_prints_success_message(self):
+        """--auto=off prints a clear success line."""
+        t = _t(meta={"status": "active", "next_up_auto": True})
+        rc, mw, out, err = self._drive_with_stderr(["ph", "--auto=off"], track=t)
+        self.assertIn("next_up_auto", out)
+
+
 if __name__ == "__main__":
     unittest.main()

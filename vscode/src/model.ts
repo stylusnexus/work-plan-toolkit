@@ -90,6 +90,12 @@ export interface Track {
    * degrades gracefully (no indicator) when absent.
    */
   next_up_preset?: string;
+  /**
+   * When true, the track's next-up list is ranked automatically by the active
+   * preset (#338). When false or absent, the list is hand-curated. Optional
+   * on the wire — older CLIs omit it; the viewer degrades gracefully.
+   */
+  next_up_auto?: boolean;
   /** Track slugs that this track explicitly depends on (#102). */
   depends_on: string[];
   rollup: Rollup;
