@@ -923,6 +923,109 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.setNextUpPreset — set per-track next-up ordering preset (#326)
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.setNextUpPreset", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        // Resolve the full track object so we can surface the current preset.
+        const exp = provider.rawExport ?? provider.currentExport;
+        const trackObj = exp?.tracks.find(t => t.name === track);
+        const currentPreset = trackObj?.next_up_preset;
+        const repoKey = trackObj?.folder ?? undefined;
+
+        type PresetItem = vscode.QuickPickItem & { preset?: string; clear?: boolean; custom?: boolean };
+
+        const presets: PresetItem[] = [
+          {
+            label: "$(symbol-event) Flow (default)",
+            description: "preset: flow",
+            preset: "flow",
+          },
+          {
+            label: "$(list-ordered) Priority-driven",
+            description: "preset: priority-driven",
+            preset: "priority-driven",
+          },
+          {
+            label: "$(inbox) Backlog / maintenance",
+            description: "preset: backlog",
+            preset: "backlog",
+          },
+          {
+            label: "$(tools) Custom… (advanced — edit the track file)",
+            description: "set next_up_order in frontmatter manually",
+            custom: true,
+          },
+          {
+            label: "$(discard) Clear (use default)",
+            description: "remove any set preset (falls back to flow)",
+            clear: true,
+          },
+        ];
+
+        // Mark the active preset with a ✓ description prefix.
+        if (currentPreset) {
+          for (const item of presets) {
+            if (item.preset === currentPreset) {
+              item.description = `✓ current · ${item.description ?? ""}`.trim();
+            }
+          }
+        }
+
+        const pick = await vscode.window.showQuickPick<PresetItem>(presets, {
+          placeHolder: currentPreset
+            ? `Current: ${currentPreset} — pick a new preset`
+            : "Pick a next-up ordering preset",
+        });
+        if (!pick) return;
+
+        // Custom is not a CLI write — instruct the user to edit the file.
+        if (pick.custom) {
+          const msg =
+            `To use a custom order, edit the track's frontmatter and set:\n` +
+            `  next_up_order:\n    preset: custom\n    order: [<issue-numbers>]`;
+          const action = trackObj?.path
+            ? await vscode.window.showInformationMessage(msg, "Open Track File")
+            : await vscode.window.showInformationMessage(msg);
+          if (action === "Open Track File") {
+            void vscode.commands.executeCommand("workPlan.openTrackFile", { track: trackObj });
+          }
+          return;
+        }
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting next-up preset on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "setNextUpPreset", track, repoKey, preset: pick.preset, clear: pick.clear },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          const label = pick.clear
+            ? "cleared (using default)"
+            : `set to ${pick.preset}`;
+          vscode.window.showInformationMessage(`Work Plan: next-up preset ${label} on ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: set-next-up-preset failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.refreshMd — refresh a track's body markdown (context menu + palette)
   // -------------------------------------------------------------------------
 

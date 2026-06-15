@@ -110,6 +110,27 @@ Two **independent**, version-source-distinct publishes, both gated on the deploy
 
 Both publish workflows need repo/org Actions secrets: `NPM_TOKEN`; `VSCE_PAT` + `OVSX_TOKEN`. The Marketplace publisher (`stylusnexus`) must already exist.
 
+### Tag every deploy + repin the agent-plugins catalog
+
+The [`stylusnexus/agent-plugins`](https://github.com/stylusnexus/agent-plugins) marketplace installs work-plan by pinning a **git tag** (`ref`), so a deploy isn't fully shipped until a tag exists for it AND the catalog points at it. Skip this and Codex/Claude marketplace users stay frozen on an old (possibly broken) build even though npm/Marketplace are current.
+
+**1. Every deploy must leave a tag** named `v<VERSION-with-dash>` (e.g. `v2026.06.14-6579bf7`):
+- A **VS Code deploy** already creates one via `gh release create v<VERSION-with-dash> --target main` (that Release is also what fires `vscode-publish.yml`).
+- A **CLI-only / npm-only deploy creates NO tag** (the `npm-publish.yml` workflow doesn't tag). Create a **lightweight tag** so you don't re-trigger the extension publish (`vscode-publish.yml` fires on `release: published`, but a bare tag push does not):
+  ```bash
+  gh api repos/stylusnexus/work-plan-toolkit/git/refs \
+    -f ref="refs/tags/v$(cat VERSION | tr '+' '-')" \
+    -f sha="$(gh api repos/stylusnexus/work-plan-toolkit/commits/main --jq .sha)"
+  ```
+  Do NOT use `gh release create` for a CLI-only deploy — a Release would needlessly republish the (unchanged) VS Code extension.
+
+**2. Repin the catalog** to the new tag, in **both** marketplace indexes (they drift independently — grep the prior tag to find every occurrence):
+- `.agents/plugins/marketplace.json` — Codex index, `source: url` form (Codex can't parse Claude's `{source: github}`).
+- `.claude-plugin/marketplace.json` — Claude index, `source: github` form.
+- The README *row* carries no version pin → leave it unless the advertised skill surface changed (a new `/work-plan:*` command), per "Keep docs in lockstep."
+- **Pin to a CLEAN tag, not merely the newest.** If an earlier same-day tag shipped a build a later deploy fixed, point at the fixed tag. (2026-06-14: three `2026.06.14` tags existed; only `-6579bf7` lacked the hot-branch perf regression — pinning "newest existing" would have shipped the 16-min-reload build.)
+- agent-plugins has **no `dev` branch** — branch → PR → merge to `main`. Then **verify against the published index on GitHub, not your local clone** (a local relative-source test resolves even when the published `source:url`/`ref` is wrong).
+
 ### Same-day re-deploys (version collisions)
 
 Two deploys on the **same UTC day** collide on version, because each registry derives its version differently — handle both before re-publishing:

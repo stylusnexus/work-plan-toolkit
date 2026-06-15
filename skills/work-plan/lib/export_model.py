@@ -1,5 +1,6 @@
 """Build the versioned viewer export structure from tracks + fetched issues."""
 from lib.github_state import format_assignees, short_milestone
+from lib.next_up import resolve_next_up_order
 
 SCHEMA = 1
 
@@ -84,7 +85,8 @@ def normalize_issue(i: dict, in_progress: bool = False,
 
 def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None, config_repos=None,
-                 plan_by_track=None, hot_by_track=None) -> dict:
+                 plan_by_track=None, hot_by_track=None,
+                 next_up_default=None) -> dict:
     plan_by_track = plan_by_track or {}
     hot_by_track = hot_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
@@ -110,6 +112,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
         closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
         next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
         track_path = getattr(t, "path", None)
+        next_up_preset_name, _ = resolve_next_up_order(t.meta, next_up_default)
         out["tracks"].append({
             "name": t.name,
             "repo": t.repo,
@@ -135,6 +138,8 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             # null when the track declares no `plan:`. `{rel, resolved:false}` when
             # the link can't be resolved (no local clone / file absent).
             "plan": plan_by_track.get(t.name),
+            # Effective next_up ranking preset for this track (#326 Phase 2).
+            "next_up_preset": next_up_preset_name,
         })
     out["untracked"] = [
         {"repo": repo, "issues": [normalize_issue(r) for r in rows]}

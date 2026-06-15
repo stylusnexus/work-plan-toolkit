@@ -140,13 +140,15 @@ def run(args: list[str]) -> int:
             if nums:
                 hot_by_track[(t.repo, t.name)] = nums
 
+    next_up_default = cfg.get("next_up_default")
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print(json.dumps(
         build_export(tracks, issues_by_track, visibility, now,
                      untracked_by_repo=untracked_by_repo,
                      config_repos=config_repos,
                      plan_by_track=plan_by_track,
-                     hot_by_track=hot_by_track),
+                     hot_by_track=hot_by_track,
+                     next_up_default=next_up_default),
         indent=2,
     ))
     return 0

@@ -35,6 +35,9 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
         self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": []})
+        # Phase 2: next_up_preset must be present in every track
+        self.assertIn("next_up_preset", t)
+        self.assertEqual(t["next_up_preset"], "flow")  # default when no next_up_order in meta
         json.dumps(out)  # must be serializable
 
     def test_path_is_null_when_track_has_no_path(self):
@@ -457,6 +460,56 @@ class InProgressExportTest(unittest.TestCase):
         issue = out["tracks"][0]["issues"][0]
         self.assertTrue(issue["in_progress"])         # union: hot branch fires
         self.assertFalse(issue["in_progress_label"])  # no label present
+
+
+class BuildExportNextUpPresetTest(unittest.TestCase):
+    """Tests that build_export emits next_up_preset on each track (#326 Phase 2)."""
+
+    def _build(self, track_meta_override=None, next_up_default=None):
+        from types import SimpleNamespace
+        meta = {
+            "status": "active",
+            "launch_priority": "P2",
+            "milestone_alignment": "v1",
+            "blockers": [],
+            "next_up": [],
+            "depends_on": [],
+            "github": {"repo": "o/r", "issues": []},
+        }
+        if track_meta_override:
+            meta.update(track_meta_override)
+        t = SimpleNamespace(name="alpha", repo="o/r", tier="private",
+                            path=Path("/tmp/notes/alpha.md"), folder="myrepo",
+                            meta=meta)
+        out = build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"},
+                           now="2026-06-14T00:00", next_up_default=next_up_default)
+        return out["tracks"][0]
+
+    def test_next_up_preset_field_present(self):
+        """Export emits next_up_preset for each track."""
+        track = self._build()
+        self.assertIn("next_up_preset", track)
+
+    def test_next_up_preset_defaults_to_flow(self):
+        """Track with no next_up_order → next_up_preset == 'flow'."""
+        track = self._build()
+        self.assertEqual(track["next_up_preset"], "flow")
+
+    def test_next_up_preset_reflects_track_setting(self):
+        """Track with next_up_order: {preset: priority-driven} → next_up_preset == 'priority-driven'."""
+        track = self._build({"next_up_order": {"preset": "priority-driven"}})
+        self.assertEqual(track["next_up_preset"], "priority-driven")
+
+    def test_next_up_preset_uses_global_default(self):
+        """Track with no next_up_order + global next_up_default='backlog' → next_up_preset == 'backlog'."""
+        track = self._build(next_up_default="backlog")
+        self.assertEqual(track["next_up_preset"], "backlog")
+
+    def test_track_setting_overrides_global_default(self):
+        """Track-level next_up_order overrides the global next_up_default."""
+        track = self._build({"next_up_order": {"preset": "backlog"}},
+                            next_up_default="priority-driven")
+        self.assertEqual(track["next_up_preset"], "backlog")
 
 
 class BlockedByExportTest(unittest.TestCase):
