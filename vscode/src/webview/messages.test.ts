@@ -75,6 +75,10 @@ describe("isWebviewMessage — valid messages", () => {
       true,
     );
   });
+
+  it("accepts a valid setNextUp message (no payload)", () => {
+    assert.equal(isWebviewMessage({ type: "setNextUp" }), true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -103,6 +107,14 @@ describe("isWebviewMessage — regression: previously-dropped message types", ()
       isWebviewMessage({ type: "toggleInProgress", number: 2, clear: false }),
       true,
       "toggleInProgress was added with the fix and must stay in the guard",
+    );
+  });
+
+  it("setNextUp passes the guard (no payload — both union and guard case required)", () => {
+    assert.equal(
+      isWebviewMessage({ type: "setNextUp" }),
+      true,
+      "setNextUp must be in BOTH the WebviewMessage union AND the isWebviewMessage guard",
     );
   });
 });

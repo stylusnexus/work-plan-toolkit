@@ -150,6 +150,14 @@ mermaid.run();
     });
   }
 
+  // Set Next-Up button in the detail panel next-up section.
+  var setNextBtn = document.getElementById("work-plan-set-next");
+  if (setNextBtn) {
+    setNextBtn.addEventListener("click", function () {
+      post({ type: "setNextUp" });
+    });
+  }
+
   // Track selector buttons
   document.addEventListener("click", function (e) {
     var target = e.target;
