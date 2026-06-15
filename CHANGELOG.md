@@ -6,6 +6,23 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.15+a627bc9 — 2026-06-15 (#337)
+
+fix(export): auto-derive next-up so the viewer surfaces the ranking (#326)
+
+CLI-only deploy: closes the #326 viewer gap.
+
+`build_export` now computes the auto next-up via `suggest_next_up` when a track has `next_up_auto: true` (mirroring `brief`/`orient`), so the VS Code viewer — which reads `next_up` straight from `export --json` — finally surfaces the ranked picks instead of just the preset name. Emits a `next_up_auto` flag per track.
+
+## Publishes
+- CLI changed → **npm** republish (same-day → `2026.6.15-1`).
+- **VS Code NOT republished** (no extension change — the viewer already renders `next_up`).
+- Tag + repin the agent-plugins catalog.
+
+## Test plan
+- [x] Full Python suite 1064 OK; brief-parity + raw-issues verified in review.
+- [x] Live: the track exports `next_up: [1099, 4185, 4228], next_up_auto: true`.
+
 ## 2026.06.15+cf5a38f — 2026-06-15 (#335)
 
 feat(vscode): Set Next-Up button in detail panel (0.10.1) + README refresh
