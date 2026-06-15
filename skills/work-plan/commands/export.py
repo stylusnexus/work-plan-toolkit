@@ -2,7 +2,7 @@
 import json
 from datetime import datetime, date
 from lib.config import load_config, ConfigError, resolve_local_path_for_folder
-from lib.tracks import discover_tracks
+from lib.tracks import discover_tracks, find_tier_duplicates, issue_refs
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
 from lib.git_state import hot_issue_numbers
 from lib.export_model import build_export
@@ -148,6 +148,22 @@ def run(args: list[str]) -> int:
             if nums:
                 hot_by_track[(t.repo, t.name)] = nums
 
+    # Shared/private tier duplicates (#361): the viewer is otherwise blind to
+    # them — discover_tracks drops the private copy with a stderr-only WARN. We
+    # surface them as a read-only health signal; `safe` mirrors dedupe-tiers'
+    # no-data-loss invariant (private issue refs ⊆ shared), so the viewer can
+    # tell auto-removable orphans from diverged ones needing manual review.
+    tier_duplicates = []
+    for shared_t, private_t in find_tier_duplicates(cfg):
+        tier_duplicates.append({
+            "repo": shared_t.repo,
+            "folder": shared_t.folder,
+            "name": shared_t.name,
+            "shared_path": str(shared_t.path),
+            "private_path": str(private_t.path),
+            "safe": issue_refs(private_t) <= issue_refs(shared_t),
+        })
+
     next_up_default = cfg.get("next_up_default")
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print(json.dumps(
@@ -156,7 +172,8 @@ def run(args: list[str]) -> int:
                      config_repos=config_repos,
                      plan_by_track=plan_by_track,
                      hot_by_track=hot_by_track,
-                     next_up_default=next_up_default),
+                     next_up_default=next_up_default,
+                     tier_duplicates=tier_duplicates),
         indent=2,
     ))
     return 0

@@ -151,6 +151,49 @@ class ExportRunJsonTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out["tracks"][0]["issues"], [])
 
+    # --- tier_duplicates (#361) -------------------------------------------
+
+    def _dup_track(self, *, issues, body="", path):
+        return SimpleNamespace(
+            repo=_SHARED_REPO, folder="myrepo", name="dup", path=Path(path),
+            meta={"github": {"repo": _SHARED_REPO, "issues": issues}}, body=body,
+        )
+
+    def test_tier_duplicates_empty_when_none(self):
+        """With no notes_root in cfg (mock returns {}), the field is an empty
+        list — present but quiet, so the viewer can rely on its shape."""
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["tier_duplicates"], [])
+
+    def test_tier_duplicate_subset_is_safe(self):
+        shared = self._dup_track(issues=[1, 2, 3], path="/repo/.work-plan/dup.md")
+        private = self._dup_track(issues=[1, 3], path="/notes/myrepo/dup.md")
+        with patch("commands.export.find_tier_duplicates",
+                   return_value=[(shared, private)]):
+            rc, out, _ = self._run_with_mocks([_track("a", _SHARED_REPO, [1])], _EXPORT_MAP)
+        self.assertEqual(rc, 0)
+        td = out["tier_duplicates"]
+        self.assertEqual(len(td), 1)
+        self.assertEqual(td[0]["name"], "dup")
+        self.assertEqual(td[0]["repo"], _SHARED_REPO)
+        self.assertEqual(td[0]["folder"], "myrepo")
+        self.assertTrue(td[0]["safe"])
+        self.assertEqual(td[0]["shared_path"], str(Path("/repo/.work-plan/dup.md")))
+        self.assertEqual(td[0]["private_path"], str(Path("/notes/myrepo/dup.md")))
+
+    def test_tier_duplicate_diverged_is_unsafe(self):
+        # private references #99, which the shared twin lacks → not safe to remove
+        shared = self._dup_track(issues=[1, 2], path="/repo/.work-plan/dup.md")
+        private = self._dup_track(issues=[1], body="leftover #99",
+                                  path="/notes/myrepo/dup.md")
+        with patch("commands.export.find_tier_duplicates",
+                   return_value=[(shared, private)]):
+            rc, out, _ = self._run_with_mocks([_track("a", _SHARED_REPO, [1])], _EXPORT_MAP)
+        self.assertEqual(rc, 0)
+        self.assertFalse(out["tier_duplicates"][0]["safe"])
+
     def test_visibility_included_in_output(self):
         tracks = [_track("alpha", _SHARED_REPO, [1])]
         rc, out, _ = self._run_with_mocks(tracks, _EXPORT_MAP, vis={_SHARED_REPO: "PUBLIC"})
