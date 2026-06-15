@@ -2,6 +2,87 @@ import type { Export, PlanDoc } from "./model.ts";
 
 export type PlanBucket = "stalled" | "lie-gap" | "drift" | "active" | "shipped" | "dead" | "other";
 
+/** Display metadata for a verdict bucket: the codicon SHAPE, its themed colour,
+ *  a plain-English label, and a one-line meaning. Single source of truth shared
+ *  by the Plans tree (icon + tooltip) and the legend (#348). */
+export interface BucketMeta {
+  /** VS Code codicon id (the SHAPE — carries meaning without colour, #208). */
+  icon: string;
+  /** ThemeColor id. List-semantic tokens (not charts.*) where contrast matters. */
+  color: string;
+  /** Plain-English verdict name surfaced in the tooltip + legend (#348). */
+  label: string;
+  /** One-line meaning for the legend. */
+  blurb: string;
+}
+
+/**
+ * verdict-bucket → display metadata. List-semantic colour tokens (not charts.*)
+ * so glyphs meet non-text contrast on dark themes (#208 a11y pass); the distinct
+ * SHAPE still carries the meaning, never colour alone — `bucketShapesAreDistinct`
+ * guards that invariant in the tests.
+ *
+ * Plain labels (#348): the raw verdicts (partial/shipped/dead + flags) fan into
+ * seven buckets whose icons were undiscoverable; each now carries a plain name so
+ * the tooltip and the legend read at a glance.
+ */
+export const BUCKET_META: Record<PlanBucket, BucketMeta> = {
+  // Stalled: a `clock` reads as "gone cold over time" more directly than a generic
+  // warning triangle, and frees the triangle from the loud trio (#348).
+  stalled: { icon: "clock", color: "list.warningForeground",
+    label: "Stalled", blurb: "In progress but gone cold — no commits within your stall window." },
+  // Lie-gap keeps the red `error` shape (a strong \"this is wrong\" signal); the
+  // plain label is what disambiguates it from a generic failure (#348).
+  "lie-gap": { icon: "error", color: "list.errorForeground",
+    label: "Unverified", blurb: "Reads as shipped, but its phases are still unchecked — the claim isn't backed by progress." },
+  // Drift: `issue-reopened` (diverged/changed) is distinct from stalled's old
+  // warning glyph, which `alert` was easily confused with (#348).
+  drift: { icon: "issue-reopened", color: "list.warningForeground",
+    label: "Drifted", blurb: "Live verdict diverged from its confirmed baseline." },
+  // Active unified on charts.blue (matches the active TRACK icon) — charts.yellow
+  // was the lowest-contrast hue on dark.
+  active: { icon: "circle-filled", color: "charts.blue",
+    label: "In progress", blurb: "Partial and recently touched — actively in progress." },
+  shipped: { icon: "pass-filled", color: "charts.green",
+    label: "Shipped", blurb: "Done — phases checked and declared files present." },
+  dead: { icon: "circle-slash", color: "descriptionForeground",
+    label: "Abandoned", blurb: "Marked dead — intentionally dropped." },
+  other: { icon: "question", color: "descriptionForeground",
+    label: "Unknown", blurb: "No clear verdict (foreign or manifest-less doc)." },
+};
+
+/** Sort rank for a bucket — loud verdicts (stalled, lie-gap) float to the top.
+ *  Doubles as the legend's display order so the legend reads top-down like the
+ *  tree. */
+export const BUCKET_RANK: Record<PlanBucket, number> = {
+  stalled: 0,
+  "lie-gap": 1,
+  drift: 2,
+  active: 3,
+  shipped: 4,
+  dead: 5,
+  other: 6,
+};
+
+/** A row in the verdict legend (#348): a bucket's metadata, or the synthetic
+ *  "Acknowledged" modifier that isn't a bucket but dims any row. */
+export interface LegendRow extends BucketMeta {
+  /** True for the non-bucket "Acknowledged" modifier row. */
+  modifier?: boolean;
+}
+
+/** Legend rows in rank order, with the ack'd-row modifier appended last. The
+ *  ack'd state mirrors the muted override in plansTree (`circle-outline`). */
+export const LEGEND: LegendRow[] = [
+  ...(Object.keys(BUCKET_RANK) as PlanBucket[])
+    .sort((a, b) => BUCKET_RANK[a] - BUCKET_RANK[b])
+    .map((b) => ({ ...BUCKET_META[b] })),
+  {
+    icon: "circle-outline", color: "descriptionForeground", modifier: true,
+    label: "Acknowledged", blurb: "Dimmed — you acknowledged or confirmed this row, so it's muted.",
+  },
+];
+
 const DAY = 86_400_000;
 
 /**

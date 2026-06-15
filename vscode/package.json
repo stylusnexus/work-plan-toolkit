@@ -87,6 +87,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "workPlan.plans.showLegend",
+        "title": "Show Plan Icon Legend",
+        "category": "Work Plan",
+        "icon": "$(info)"
+      },
+      {
         "command": "workPlan.plans.scanAll",
         "title": "Scan All Plans",
         "category": "Work Plan",
@@ -362,6 +368,11 @@
           "command": "workPlan.plans.refresh",
           "when": "view == workPlan.plans",
           "group": "navigation@2"
+        },
+        {
+          "command": "workPlan.plans.showLegend",
+          "when": "view == workPlan.plans",
+          "group": "navigation@3"
         },
         {
           "command": "workPlan.plans.toggleAcknowledged",
