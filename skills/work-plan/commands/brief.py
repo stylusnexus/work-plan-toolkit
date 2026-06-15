@@ -17,7 +17,7 @@ from lib.git_state import (
 from lib.in_progress import issue_in_progress
 from lib.closure import compute_signals, is_closure_ready
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
-from lib.next_up import suggest_next_up
+from lib.next_up import suggest_next_up, resolve_next_up_order
 from lib.drift import detect_drift
 from lib.render import time_aware_framing, render_track_row, render_archived_reopen
 
@@ -125,10 +125,12 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     if meta.get("next_up_auto") and issues:
         blocker_nums = meta.get("blockers") or []
         in_progress_set = {i["number"] for i in issues if issue_in_progress(i, hot_nums)}
+        _, order = resolve_next_up_order(meta, cfg.get("next_up_default"))
         next_up_nums = suggest_next_up(
             issues, blocker_nums,
             track_milestone=track_milestone,
             in_progress_nums=in_progress_set,
+            order=order,
         )
     else:
         next_up_nums = stored_next_up

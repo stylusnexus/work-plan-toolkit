@@ -11,12 +11,18 @@ Eligibility (filter, in order):
 
 Sort key (lexicographic, ascending = comes first) over survivors:
   1. in-progress: 0 if in-progress else 1  (in-progress floats to top)
-  2. milestone_rank: aligned=0, other=1, none=2
-  3. -fan_out: negative count of open `blocking` edges (higher fan-out
-     ranks above lower; negated so ascending sort puts it first)
-  4. priority_rank: P0=0 .. P3=3, missing=3
-  5. -updated_unix: negative timestamp (newer first within same bucket)
-  6. issue number: ascending (deterministic final tiebreak)
+  2..N. the preset-configurable MIDDLE dimensions (see below)
+  last. issue number: ascending (deterministic final tiebreak)
+
+The in-progress prefix and the number tiebreak are ALWAYS-ON. The middle
+dimensions are configurable per track via the `order` param — a list of
+criterion names drawn from CRITERIA (`milestone`, `dependency`, `priority`,
+`recency`, and `aging` — oldest-first, for surfacing stalled work). Named
+bundles live in PRESETS (default `flow`, plus `priority-driven` and
+`backlog`); `resolve_next_up_order` maps a track's frontmatter / global config
+to an effective order. `order=None` falls back to PRESETS["flow"], which
+reproduces the historical fixed policy (milestone → -fan_out → priority →
+-recency).
 
 Used by:
 - `commands/handoff.py` — `--auto-next` flag prompts the user to apply
@@ -45,6 +51,17 @@ MILESTONE_ALIGNED = 0
 MILESTONE_OTHER = 1
 MILESTONE_NONE = 2
 
+# Available sort criteria and their named preset bundles.
+CRITERIA = ("milestone", "dependency", "priority", "recency", "aging")
+
+PRESETS = {
+    "flow":            ["milestone", "dependency", "priority", "recency"],
+    "priority-driven": ["priority", "dependency", "recency"],
+    "backlog":         ["aging", "priority"],
+}
+
+DEFAULT_PRESET = "flow"
+
 
 def _updated_unix(issue: dict) -> float:
     """Parse the gh-formatted updatedAt field to a unix timestamp.
@@ -72,12 +89,39 @@ def _fan_out(issue: dict) -> int:
     return len(issue.get("blocking") or [])
 
 
+def _criterion_scalar(criterion: str, issue: dict,
+                       track_milestone: Optional[str]) -> float:
+    """Return a single ascending sort scalar for one criterion.
+
+    Lower value = ranks first (since we sort ascending).
+    Unknown criterion names return 0.0 (neutral; caller should skip them).
+    """
+    if criterion == "milestone":
+        ms = short_milestone(issue.get("milestone"))
+        if not ms:
+            return float(MILESTONE_NONE)
+        if track_milestone and ms == track_milestone:
+            return float(MILESTONE_ALIGNED)
+        return float(MILESTONE_OTHER)
+    if criterion == "dependency":
+        return float(-_fan_out(issue))
+    if criterion == "priority":
+        pri = extract_priority(issue.get("labels", []))
+        return float(PRIORITY_RANK.get(pri, 3))
+    if criterion == "recency":
+        return float(-_updated_unix(issue))
+    if criterion == "aging":
+        return float(_updated_unix(issue))  # ascending = oldest first
+    return 0.0  # unknown criterion — neutral
+
+
 def suggest_next_up(
     issues: list[dict],
     blocker_nums: Optional[Iterable[int]] = None,
     n: int = DEFAULT_TOP_N,
     track_milestone: Optional[str] = None,
     in_progress_nums: Optional[Iterable[int]] = None,
+    order: Optional[list[str]] = None,
 ) -> list[int]:
     """Return up to `n` issue numbers ranked for "what to work on next."
 
@@ -97,6 +141,11 @@ def suggest_next_up(
             ranked list and are also exempt from the `blocked_by` gate — you
             are already working them, so they must stay visible. When None
             (or empty), no in-progress boost is applied.
+        order: optional list of criterion names (from CRITERIA) controlling
+            the sort dimensions after the in-progress prefix and before the
+            number tiebreak. None defaults to PRESETS[DEFAULT_PRESET] (="flow"),
+            producing identical results to Phase 1 behaviour. Unknown criterion
+            names in `order` are silently skipped (defensive).
 
     Returns:
         List of issue numbers, highest-ranked first. Empty if nothing
@@ -104,6 +153,8 @@ def suggest_next_up(
     """
     blockers = set(blocker_nums or [])
     in_progress = set(in_progress_nums or [])
+    # Resolve order: None → default preset; unknown names in list → skipped.
+    effective_order = order if order is not None else PRESETS[DEFAULT_PRESET]
 
     candidates = []
     for i in issues:
@@ -118,26 +169,53 @@ def suggest_next_up(
             continue
         candidates.append(i)
 
-    def milestone_rank(issue: dict) -> int:
-        ms = short_milestone(issue.get("milestone"))
-        if not ms:
-            return MILESTONE_NONE
-        if track_milestone and ms == track_milestone:
-            return MILESTONE_ALIGNED
-        return MILESTONE_OTHER
-
-    def sort_key(issue: dict) -> tuple[int, int, int, int, float, int]:
+    def sort_key(issue: dict) -> tuple:
         num = issue.get("number")
-        pri = extract_priority(issue.get("labels", []))
         in_prog_rank = 0 if num in in_progress else 1
-        return (
-            in_prog_rank,
-            milestone_rank(issue),
-            -_fan_out(issue),
-            PRIORITY_RANK.get(pri, 3),
-            -_updated_unix(issue),
-            num,
+        criterion_scalars = tuple(
+            _criterion_scalar(c, issue, track_milestone)
+            for c in effective_order
+            if c in CRITERIA  # skip unknown criteria
         )
+        return (in_prog_rank,) + criterion_scalars + (num,)
 
     candidates.sort(key=sort_key)
     return [i["number"] for i in candidates[:n]]
+
+
+def resolve_next_up_order(track_meta: dict,
+                          default_preset: Optional[str] = None) -> tuple:
+    """Return (effective_preset_name, order_list) for a track.
+
+    Resolution priority:
+    1. track frontmatter next_up_order.preset (or next_up_order.order if
+       preset=='custom')
+    2. global default_preset param
+    3. DEFAULT_PRESET ("flow")
+
+    Unknown preset names fall back to DEFAULT_PRESET.
+    'custom' preset uses track_meta['next_up_order']['order'] (validated
+    against CRITERIA; invalid/empty list → DEFAULT_PRESET's order).
+
+    IMPORTANT: reads from 'next_up_order' key (a mapping), NOT 'next_up'
+    (the issue-list).
+    """
+    nuo = track_meta.get("next_up_order")
+    if isinstance(nuo, dict):
+        preset = nuo.get("preset")
+        if preset == "custom":
+            raw_order = nuo.get("order") or []
+            # Validate: all entries must be in CRITERIA
+            valid = [c for c in raw_order if c in CRITERIA]
+            if valid:
+                return ("custom", valid)
+            # Invalid or empty custom order → fall through to default
+        elif preset in PRESETS:
+            return (preset, PRESETS[preset])
+        # Unknown preset name falls through to global default
+
+    # Global default
+    if default_preset and default_preset in PRESETS:
+        return (default_preset, PRESETS[default_preset])
+
+    return (DEFAULT_PRESET, PRESETS[DEFAULT_PRESET])

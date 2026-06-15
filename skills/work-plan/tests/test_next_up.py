@@ -14,7 +14,7 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
-from lib.next_up import suggest_next_up
+from lib.next_up import suggest_next_up, resolve_next_up_order, PRESETS, DEFAULT_PRESET
 
 
 def _issue(num, *, state="OPEN", priority=None, updated="2026-01-01T00:00:00Z",
@@ -308,6 +308,114 @@ class InProgressAndDependencyTest(unittest.TestCase):
         # in-progress does NOT override manual blocker_nums exclusion
         self.assertNotIn(1, result)
         self.assertIn(2, result)
+
+
+class PresetAndResolverTest(unittest.TestCase):
+    """Phase 2: preset ordering + resolver tests."""
+
+    # ------------------------------------------------------------------
+    # preset ordering
+    # ------------------------------------------------------------------
+
+    def test_flow_preset_equivalent_to_phase1_default(self):
+        """order=None and order=PRESETS['flow'] must produce identical results."""
+        issues = [
+            _issue(1, priority="P0", milestone="v1.0"),
+            _issue(2, priority="P2", updated="2026-04-30T00:00:00Z"),
+            _issue(3, priority="P1", milestone="v1.0", blocking=[_dep(5), _dep(6)]),
+        ]
+        result_none = suggest_next_up(issues, [], track_milestone="v1.0")
+        result_flow = suggest_next_up(issues, [], track_milestone="v1.0",
+                                      order=PRESETS["flow"])
+        self.assertEqual(result_none, result_flow,
+                         "order=None must be equivalent to order=PRESETS['flow']")
+
+    def test_priority_driven_ranks_p0_above_off_milestone(self):
+        """priority-driven: a P0 with no milestone beats a P3 on the track milestone."""
+        issues = [
+            _issue(1, priority="P0", milestone=None),
+            _issue(2, priority="P3", milestone="v0.4.0 — MVP"),
+        ]
+        result = suggest_next_up(issues, [], track_milestone="v0.4.0",
+                                 order=PRESETS["priority-driven"])
+        # With priority-driven, priority > milestone so P0 beats P3-on-milestone
+        self.assertEqual(result[0], 1,
+                         "P0 with no milestone must beat P3 on track milestone under priority-driven")
+
+    def test_backlog_puts_oldest_first(self):
+        """backlog preset: oldest issue (smallest timestamp) ranks above newer."""
+        issues = [
+            _issue(10, priority="P2", updated="2026-06-01T00:00:00Z"),  # newer
+            _issue(20, priority="P2", updated="2024-01-01T00:00:00Z"),  # older
+        ]
+        result = suggest_next_up(issues, [], order=PRESETS["backlog"])
+        self.assertEqual(result[0], 20,
+                         "backlog preset must surface oldest (most stalled) issue first")
+
+    def test_unknown_criterion_in_order_skipped(self):
+        """An order list with an unknown criterion must not crash; known ones still apply."""
+        issues = [
+            _issue(1, priority="P0"),
+            _issue(2, priority="P1"),
+        ]
+        # Should not raise; the unknown 'bogus' criterion is skipped
+        result = suggest_next_up(issues, [], order=["bogus", "priority", "recency"])
+        self.assertEqual(result[0], 1, "priority criterion must still sort correctly")
+        self.assertNotIn("bogus", result)  # just making sure it didn't error on str
+
+    # ------------------------------------------------------------------
+    # resolver
+    # ------------------------------------------------------------------
+
+    def test_resolve_next_up_order_uses_track_frontmatter(self):
+        """Track with next_up_order: {preset: priority-driven} → resolver returns that preset."""
+        meta = {"next_up_order": {"preset": "priority-driven"}}
+        name, order = resolve_next_up_order(meta)
+        self.assertEqual(name, "priority-driven")
+        self.assertEqual(order, PRESETS["priority-driven"])
+
+    def test_resolve_next_up_order_falls_back_to_global_default(self):
+        """No track frontmatter → uses global default param."""
+        meta = {}
+        name, order = resolve_next_up_order(meta, default_preset="backlog")
+        self.assertEqual(name, "backlog")
+        self.assertEqual(order, PRESETS["backlog"])
+
+    def test_resolve_next_up_order_falls_back_to_default_preset(self):
+        """Neither track frontmatter nor global default → returns ('flow', PRESETS['flow'])."""
+        meta = {}
+        name, order = resolve_next_up_order(meta)
+        self.assertEqual(name, DEFAULT_PRESET)
+        self.assertEqual(order, PRESETS[DEFAULT_PRESET])
+
+    def test_resolve_next_up_order_custom_uses_order_list(self):
+        """next_up_order: {preset: custom, order: [priority, recency]} → custom order used."""
+        meta = {"next_up_order": {"preset": "custom", "order": ["priority", "recency"]}}
+        name, order = resolve_next_up_order(meta)
+        self.assertEqual(name, "custom")
+        self.assertEqual(order, ["priority", "recency"])
+
+    def test_resolve_next_up_order_unknown_preset_falls_back_to_flow(self):
+        """Track has next_up_order: {preset: nonexistent} → returns ('flow', PRESETS['flow'])."""
+        meta = {"next_up_order": {"preset": "nonexistent"}}
+        name, order = resolve_next_up_order(meta)
+        self.assertEqual(name, DEFAULT_PRESET)
+        self.assertEqual(order, PRESETS[DEFAULT_PRESET])
+
+    def test_resolve_next_up_order_invalid_custom_order_falls_back(self):
+        """next_up_order: {preset: custom, order: [bogus]} → falls back to flow."""
+        meta = {"next_up_order": {"preset": "custom", "order": ["bogus"]}}
+        name, order = resolve_next_up_order(meta)
+        self.assertEqual(name, DEFAULT_PRESET)
+        self.assertEqual(order, PRESETS[DEFAULT_PRESET])
+
+    def test_resolve_reads_next_up_order_not_next_up(self):
+        """Resolver reads 'next_up_order' key (a mapping), NOT 'next_up' (the issue-list)."""
+        # next_up is the issue list — should not affect the resolver
+        meta = {"next_up": [101, 102], "next_up_order": {"preset": "backlog"}}
+        name, order = resolve_next_up_order(meta)
+        self.assertEqual(name, "backlog")
+        self.assertEqual(order, PRESETS["backlog"])
 
 
 if __name__ == "__main__":
