@@ -86,6 +86,31 @@ class BuildExportNextUpAutoTest(unittest.TestCase):
         self.assertEqual(tr["next_up"], [7])            # the curated list, unchanged
         self.assertFalse(tr["next_up_auto"])
 
+    def test_auto_on_with_zero_open_issues_still_exports_flag_true(self):
+        """next_up_auto: true + zero fetched issues → next_up_auto=True in export (the
+        SETTING, not whether auto-derivation actually ran).  Viewer toggle must show
+        On even when there are no issues to rank.
+
+        When no issues are fetched, the auto-derivation branch does not run (there's
+        nothing to rank); the export still emits next_up_auto=True so the viewer
+        knows the flag is on.  The next_up list itself falls through to the curated
+        list (which may be non-empty — that's acceptable and a separate concern)."""
+        # Use a track with no stored next_up to isolate the flag assertion cleanly.
+        meta = {"status": "active", "launch_priority": "P2", "milestone_alignment": "v1",
+                "blockers": [], "next_up": [], "depends_on": [],
+                "next_up_auto": True,
+                "github": {"repo": "o/r", "issues": []}}
+        from types import SimpleNamespace
+        from pathlib import Path
+        t = SimpleNamespace(name="t", repo="o/r", tier="private",
+                            path=Path("/tmp/notes/t.md"), folder="myrepo", meta=meta)
+        out = build_export([t],
+                           {("o/r", "t"): []},           # zero issues fetched
+                           {"o/r": "PRIVATE"}, now="t")
+        tr = out["tracks"][0]
+        self.assertTrue(tr["next_up_auto"])              # flag reflects setting, not derivation
+        self.assertEqual(tr["next_up"], [])              # no issues → empty list
+
 
 class BuildExportNextUpFilterTest(unittest.TestCase):
     """next_up entries whose issue is closed in the fetched payload are filtered out."""

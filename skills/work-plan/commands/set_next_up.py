@@ -1,10 +1,20 @@
 """set-next-up subcommand — guarded edit of a track's next_up ranking preset.
 
 Usage:
-  work_plan.py set-next-up <track> [--repo=<key>] (--preset=<name> | --order=a,b,c | --clear) [--confirm=<token>]
+  work_plan.py set-next-up <track> [--repo=<key>]
+      (--preset=<name> | --order=a,b,c | --clear | --auto=on|off)
+      [--confirm=<token>]
 
-Writes `next_up_order` into the track's frontmatter. Does NOT touch the
-`next_up` issue-list key.
+Writes `next_up_order` and/or `next_up_auto` into the track's frontmatter.
+Does NOT touch the `next_up` issue-list key.
+
+  --preset=<name>   Set one of the named ranking presets (flow, priority-driven,
+                    backlog) or 'custom' (which requires --order).
+  --order=a,b,c     Set a custom comma-separated criterion list.
+  --clear           Remove the next_up_order key (reverts to global/default).
+  --auto=on|off     Toggle the next_up_auto flag. When on, brief/orient/export
+                    auto-derive the next-up list via the ranking preset (#326).
+                    Can be used standalone or combined with --preset/--order/--clear.
 
 Public-repo gated: without --confirm it prints {needs_confirm, reason, token}
 and makes no change. The VS Code extension surfaces that as a modal then
@@ -22,12 +32,12 @@ from lib.next_up import CRITERIA, PRESETS
 
 def run(args: list[str]) -> int:
     flags, positional = parse_flags(
-        args, {"--confirm", "--repo", "--clear", "--preset", "--order"}
+        args, {"--confirm", "--repo", "--clear", "--preset", "--order", "--auto"}
     )
     if not positional:
         print(
             "usage: work_plan.py set-next-up <track> "
-            "(--preset=<name> | --order=a,b,c | --clear) "
+            "(--preset=<name> | --order=a,b,c | --clear | --auto=on|off) "
             "[--repo=<key>] [--confirm=<token>]"
         )
         return 2
@@ -41,11 +51,27 @@ def run(args: list[str]) -> int:
     clear = bool(flags.get("--clear"))
     preset_flag = flags.get("--preset") if flags.get("--preset") is not True else None
     order_flag = flags.get("--order") if flags.get("--order") is not True else None
+    auto_raw = flags.get("--auto") if flags.get("--auto") is not True else None
 
-    # Must have at least one of --preset, --order, or --clear
-    if not clear and preset_flag is None and order_flag is None:
+    # Parse and validate --auto value
+    auto_value = None  # None means not specified
+    if auto_raw is not None:
+        auto_lower = auto_raw.lower() if isinstance(auto_raw, str) else ""
+        if auto_lower == "on":
+            auto_value = True
+        elif auto_lower == "off":
+            auto_value = False
+        else:
+            print(
+                f"ERROR: --auto must be 'on' or 'off', got {auto_raw!r}",
+                file=sys.stderr,
+            )
+            return 2
+
+    # Must have at least one of --preset, --order, --clear, or --auto
+    if not clear and preset_flag is None and order_flag is None and auto_value is None:
         print(
-            "ERROR: specify --preset=<name>, --order=a,b,c, or --clear",
+            "ERROR: specify --preset=<name>, --order=a,b,c, --clear, or --auto=on|off",
             file=sys.stderr,
         )
         return 2
@@ -123,8 +149,19 @@ def run(args: list[str]) -> int:
 
     if clear:
         track.meta.pop("next_up_order", None)
+        if auto_value is not None:
+            _apply_auto(track, auto_value)
         write_file(track.path, track.meta, track.body)
         print(f"✓ cleared next_up_order on {track.name}")
+        if auto_value is not None:
+            _print_auto_result(track, auto_value)
+        return 0
+
+    # If --auto is the only flag (no preset/order/clear), write just the auto flag.
+    if preset_flag is None and order_list is None and auto_value is not None:
+        _apply_auto(track, auto_value)
+        write_file(track.path, track.meta, track.body)
+        _print_auto_result(track, auto_value)
         return 0
 
     # Build the next_up_order mapping
@@ -145,10 +182,29 @@ def run(args: list[str]) -> int:
             )
 
     track.meta["next_up_order"] = nuo
+    if auto_value is not None:
+        _apply_auto(track, auto_value)
     write_file(track.path, track.meta, track.body)
 
     if preset_flag and preset_flag != "custom":
         print(f"✓ set next_up_order preset={preset_flag!r} on {track.name}")
     elif order_list is not None:
         print(f"✓ set next_up_order custom order={order_list!r} on {track.name}")
+    if auto_value is not None:
+        _print_auto_result(track, auto_value)
     return 0
+
+
+def _apply_auto(track: "SimpleNamespace", auto_value: bool) -> None:
+    """Mutate track.meta to set or remove next_up_auto."""
+    if auto_value:
+        track.meta["next_up_auto"] = True
+    else:
+        track.meta.pop("next_up_auto", None)
+
+
+def _print_auto_result(track: "SimpleNamespace", auto_value: bool) -> None:
+    if auto_value:
+        print(f"✓ set next_up_auto=true on {track.name}")
+    else:
+        print(f"✓ cleared next_up_auto on {track.name}")
