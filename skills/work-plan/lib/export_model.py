@@ -1,6 +1,6 @@
 """Build the versioned viewer export structure from tracks + fetched issues."""
 from lib.github_state import format_assignees, short_milestone
-from lib.next_up import resolve_next_up_order
+from lib.next_up import resolve_next_up_order, suggest_next_up
 
 SCHEMA = 1
 
@@ -110,9 +110,24 @@ def build_export(tracks, issues_by_track, visibility, now: str,
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")
         closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
-        next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
         track_path = getattr(t, "path", None)
-        next_up_preset_name, _ = resolve_next_up_order(t.meta, next_up_default)
+        next_up_preset_name, next_up_order = resolve_next_up_order(t.meta, next_up_default)
+        # When `next_up_auto: true`, derive the next-up list live from the track's
+        # open issues using the resolved ranking preset — same as brief/orient —
+        # instead of reading the curated `next_up` frontmatter list. This is what
+        # surfaces the ranking in the viewer (which only reads this export). #326.
+        if t.meta.get("next_up_auto") and raw:
+            in_progress_set = {i["number"] for i in raw if issue_in_progress(i, hot)}
+            next_up = suggest_next_up(
+                raw, t.meta.get("blockers") or [],
+                track_milestone=milestone_alignment or None,
+                in_progress_nums=in_progress_set,
+                order=next_up_order,
+            )
+            next_up_is_auto = True
+        else:
+            next_up = [n for n in (t.meta.get("next_up") or []) if n not in closed_nums]
+            next_up_is_auto = False
         out["tracks"].append({
             "name": t.name,
             "repo": t.repo,
@@ -140,6 +155,9 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "plan": plan_by_track.get(t.name),
             # Effective next_up ranking preset for this track (#326 Phase 2).
             "next_up_preset": next_up_preset_name,
+            # True when `next_up` above was auto-derived from the ranking preset
+            # (next_up_auto: true), not read from the curated list (#326).
+            "next_up_auto": next_up_is_auto,
         })
     out["untracked"] = [
         {"repo": repo, "issues": [normalize_issue(r) for r in rows]}

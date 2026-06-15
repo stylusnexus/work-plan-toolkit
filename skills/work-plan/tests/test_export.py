@@ -49,6 +49,44 @@ class BuildExportTest(unittest.TestCase):
         self.assertIsNone(out["tracks"][0]["path"])
         json.dumps(out)  # null is serializable
 
+class BuildExportNextUpAutoTest(unittest.TestCase):
+    """next_up_auto: true → export derives next_up live via the ranking preset."""
+
+    def _open(self, n, pri, ms="v1"):
+        return {"number": n, "state": "open", "title": f"#{n}",
+                "labels": [{"name": f"priority/{pri}"}], "milestone": {"title": ms},
+                "updatedAt": "2026-06-10T00:00:00Z", "blocked_by": [], "blocking": []}
+
+    def _track_auto(self, auto):
+        meta = {"status": "active", "launch_priority": "P2", "milestone_alignment": "v1",
+                "blockers": [], "next_up": [7], "depends_on": [],
+                "github": {"repo": "o/r", "issues": [1, 2, 3]}}
+        if auto:
+            meta["next_up_auto"] = True
+        return SimpleNamespace(name="t", repo="o/r", tier="private",
+                               path=Path("/tmp/notes/t.md"), folder="myrepo", meta=meta)
+
+    def _issues(self):
+        # P0 #3, P1 #2, P2 #1 — flow ranks by priority within the same milestone.
+        return [self._open(1, "P2"), self._open(2, "P1"), self._open(3, "P0")]
+
+    def test_auto_derives_and_flags(self):
+        out = build_export([self._track_auto(True)],
+                           {("o/r", "t"): self._issues()},
+                           {"o/r": "PRIVATE"}, now="t")
+        tr = out["tracks"][0]
+        self.assertEqual(tr["next_up"], [3, 2, 1])      # P0 → P1 → P2 (ignores stored [7])
+        self.assertTrue(tr["next_up_auto"])
+
+    def test_no_auto_uses_stored_list(self):
+        out = build_export([self._track_auto(False)],
+                           {("o/r", "t"): self._issues()},
+                           {"o/r": "PRIVATE"}, now="t")
+        tr = out["tracks"][0]
+        self.assertEqual(tr["next_up"], [7])            # the curated list, unchanged
+        self.assertFalse(tr["next_up_auto"])
+
+
 class BuildExportNextUpFilterTest(unittest.TestCase):
     """next_up entries whose issue is closed in the fetched payload are filtered out."""
 
