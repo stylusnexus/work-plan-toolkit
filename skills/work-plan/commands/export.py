@@ -93,11 +93,19 @@ def run(args: list[str]) -> int:
             visibility[t.repo] = repo_visibility(t.repo)
 
     # Compute untracked: open issues not referenced by any track, per repo.
+    # Iterate over every repo that has ANY track — NOT just repos in
+    # repo_to_numbers (which only collects tracks whose github.issues is
+    # non-empty). A repo whose only track has `issues: []` must still get its
+    # open issues surfaced as untracked; otherwise creating an empty track in a
+    # previously-trackless repo makes its open issues vanish — neither in the
+    # (empty) track nor in untracked, and the viewer's trackless fallback
+    # (treeModel.mergeFetchedUntracked) shuts off the moment a track exists (#342).
     # One `gh issue list` call per repo — bounded by the number of tracked repos
     # (typically a handful), not by issue count, so a serial loop is fine.
+    tracked_repos = {t.repo for t in tracks if t.repo}
     untracked_by_repo: dict[str, list] = {}
-    for repo in repo_to_numbers:
-        tracked = set(repo_to_numbers[repo])
+    for repo in tracked_repos:
+        tracked = set(repo_to_numbers.get(repo, []))
         open_rows = fetch_open_issues(repo)
         untracked_by_repo[repo] = [r for r in open_rows if r.get("number") not in tracked]
 
