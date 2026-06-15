@@ -2417,6 +2417,10 @@ export function activate(context: vscode.ExtensionContext): void {
     return raw === "match" ? null : parseInt(raw, 10);
   };
 
+  // Whether the Plans view auto-updates on a scanned repo's git activity (#287).
+  const plansAutoRefreshSetting = (): boolean =>
+    vscode.workspace.getConfiguration("workPlan").get<boolean>("plansAutoRefresh", true);
+
   // Distinct {repoKey: folder, label: slug} from the export's CONFIGURED repos
   // (#288), deduped by folder. Sourcing from `exp.repos` (not `exp.tracks`) means
   // a registered repo with a local clone but NO track (e.g. agent-armor) still
@@ -2462,7 +2466,10 @@ export function activate(context: vscode.ExtensionContext): void {
     (repoKey, rel) => ackedPlans.has(ackKey(repoKey, rel)),
     () => showAcked,
     unregisteredForPlans,
+    plansAutoRefreshSetting,
   );
+  // Tear down the Plans view's git watchers on deactivation (#287).
+  context.subscriptions.push({ dispose: () => plansProvider.dispose() });
 
   const setAck = async (repoKey: string, rel: string, on: boolean): Promise<void> => {
     const k = ackKey(repoKey, rel);
@@ -2714,6 +2721,24 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(plansView);
 
+  // Time-relative staleness re-evaluation (#287): a plan crosses the stall
+  // threshold purely as days pass, with no git event to trigger a re-scan. The
+  // cached docs carry `manifest_last_touched`; the render path re-derives
+  // staleness against `Date.now()` each time, so a cheap rerender() (no scan) on
+  // view-focus / window-focus keeps the verdict honest without thrashing.
+  context.subscriptions.push(
+    plansView.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        plansProvider.rerender();
+      }
+    }),
+    vscode.window.onDidChangeWindowState((s) => {
+      if (s.focused && plansView.visible) {
+        plansProvider.rerender();
+      }
+    }),
+  );
+
   // The Plans roots derive from provider.rawExport, which is null until the main
   // provider's async refresh resolves — and the provider is constructed after
   // that refresh is kicked off. Re-render the Plans tree whenever the export
@@ -2767,6 +2792,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("workPlan.stallDays")) {
         plansProvider.rerender();
+      }
+      // Toggling auto-refresh either way clears the cache via refresh(): OFF
+      // disposes the live watchers; ON forces a re-scan on next expand that
+      // re-attaches them — including the already-expanded repo the user is
+      // looking at, which an ON branch that only relied on lazy expand would
+      // miss (it stays cached, so getChildren never re-runs).
+      if (e.affectsConfiguration("workPlan.plansAutoRefresh")) {
+        plansProvider.refresh();
       }
     }),
   );
