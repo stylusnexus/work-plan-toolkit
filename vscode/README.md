@@ -104,15 +104,20 @@ The menu is grouped, with a separator between each group: **open the track file*
 
 A second tree below the Tracks view, in the same Work Plan container. Where the Tracks view is about *issues*, the Plans view is about *documents* — the plan/spec docs in your repos and their `plan-status` health. Its reason to exist is to catch the plans that **started executing and then drifted off** — half-built work scattered across repos that no issue-tracker view surfaces. It's read-only except for one **frontmatter-only** write (Confirm Verdict, below).
 
-Two states are made **loud**; everything else stays quiet:
+Every plan row carries a **verdict icon**. Because a panel full of red ✕'s reads as "errors" until you know what they mean, the icons are decoded by a title-bar **ℹ️ legend** button (`Show Plan Icon Legend`) that opens a self-demonstrating list — each row shows the real icon, its plain name, and a one-line meaning — and the hover tooltip leads with the same plain label (#348):
 
-| Signal | Means |
-|---|---|
-| **stalled** | A `partial` plan whose **declared manifest files** have gone cold — no commit touched them within the staleness window. "Started executing, drifted off." (This reads the *manifest's* git activity, not the plan doc's own date — that's null for gitignored docs.) |
-| **lie-gap** | Scored shipped by its file manifest, but fewer than a quarter of its own phase checkboxes are ticked — marked done while its phases were left open. Often a *false alarm*: the work genuinely shipped, nobody ticked the boxes. **Confirm Verdict** (below) silences it. |
-| **drift** | You stamped a verdict **baseline** on this plan, and the live verdict has since **diverged** from it (e.g. a once-shipped plan whose declared files were deleted → now partial). Shows `⚠ drifted (shipped → partial)`. Opt-in per plan (only stamped plans can drift), and a **Confirm Verdict** override suppresses it. |
+| Icon | Verdict | Means |
+|---|---|---|
+| 🕐 `clock` | **Stalled** | A `partial` plan whose **declared manifest files** have gone cold — no commit touched them within the staleness window. "Started executing, drifted off." (Reads the *manifest's* git activity, not the plan doc's own date — that's null for gitignored docs.) |
+| ✕ `error` | **Unverified** (lie-gap) | Scored shipped by its file manifest, but fewer than a quarter of its own phase checkboxes are ticked — marked done while its phases were left open. Often a *false alarm*: the work genuinely shipped, nobody ticked the boxes. **Confirm Verdict** (below) silences it. |
+| `issue-reopened` | **Drifted** | You stamped a verdict **baseline** on this plan, and the live verdict has since **diverged** from it (e.g. a once-shipped plan whose declared files were deleted → now partial). Shows `⚠ drifted (shipped → partial)`. Opt-in per plan (only stamped plans can drift), and a **Confirm Verdict** override suppresses it. |
+| ● `circle-filled` | **In progress** | A `partial` plan recently touched — actively in progress. |
+| ✓ `pass-filled` | **Shipped** | Done — phases checked and declared files present. |
+| ⊘ `circle-slash` | **Abandoned** | Marked `dead` — intentionally dropped. |
+| ? `question` | **Unknown** | No clear verdict (foreign or manifest-less doc). |
+| ○ `circle-outline` | **Acknowledged** | Dimmed — you acknowledged or confirmed this row, so it's muted (a modifier on any of the above). |
 
-Quiet states (active `partial`, clean shipped, `dead`) are listed without a flag.
+The first three are made **loud**; the rest stay quiet. Every state stays distinguishable by icon **shape**, never colour alone (#208).
 
 A plan whose **declared manifest points outside the repo** (an absolute, `~`, `..`-escape, or junk `/` path — usually a typo or misfiled plan) also gets a read-only **⚠ N off-tree path** marker, with the offending paths named in its tooltip. These silently drag the file score down, so surfacing them explains a verdict that looks worse than the work. Read-only — the viewer never edits a manifest.
 

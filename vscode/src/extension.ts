@@ -7,7 +7,7 @@ import {
 import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
-import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
+import { ackKey, unregisteredTrackRepos, LEGEND } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones } from "./model.ts";
@@ -2649,6 +2649,24 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.plans.refresh", () => {
       plansProvider.refresh();
+    }),
+  );
+
+  // Legend (#348) — an informational QuickPick decoding the verdict icons. Each
+  // row renders its real codicon via `$(icon)` in the label, so the picker is
+  // self-demonstrating; selecting a row does nothing (it's a reference, not an
+  // action). Built from the shared LEGEND so it can never drift from the tree.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.showLegend", () => {
+      const items: vscode.QuickPickItem[] = LEGEND.map((row) => ({
+        label: `$(${row.icon}) ${row.label}`,
+        detail: row.blurb,
+      }));
+      void vscode.window.showQuickPick(items, {
+        title: "Work Plan — plan verdict legend",
+        placeHolder: "What each plan icon means (reference only)",
+        matchOnDetail: true,
+      });
     }),
   );
 

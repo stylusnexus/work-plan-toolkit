@@ -2,8 +2,7 @@ import * as vscode from "vscode";
 import type { PlanDoc } from "./model.ts";
 import { planStatus, CliError } from "./cli.ts";
 import type { CliRunner } from "./cli.ts";
-import { planBucket, planDescription, isStalledForDisplay } from "./planModel.ts";
-import type { PlanBucket } from "./planModel.ts";
+import { planBucket, planDescription, isStalledForDisplay, BUCKET_META, BUCKET_RANK } from "./planModel.ts";
 
 // ---------------------------------------------------------------------------
 // Node types — five variants. `repo` and `doc` are the real tree nodes;
@@ -21,38 +20,8 @@ export type PlanNode =
   | { kind: "unregistered"; slug: string }             // track-only repo, no config entry → greyed "Add Repo to scan" row
   | { kind: "message"; text: string; icon: string; command?: string };
 
-// ---------------------------------------------------------------------------
-// Bucket ordering + verdict→icon mapping
-// ---------------------------------------------------------------------------
-
-/** Sort rank for a bucket — loud verdicts (stalled, lie-gap) float to the top. */
-const BUCKET_RANK: Record<PlanBucket, number> = {
-  stalled: 0,
-  "lie-gap": 1,
-  drift: 2,
-  active: 3,
-  shipped: 4,
-  dead: 5,
-  other: 6,
-};
-
-/** verdict-bucket → [codicon, ThemeColor id]. */
-// List-semantic tokens (not charts.*) so glyphs meet non-text contrast on dark
-// themes (a11y pass). error-states use list.errorForeground, warn-states
-// list.warningForeground; the distinct SHAPE still carries the meaning (#208).
-const BUCKET_ICON: Record<PlanBucket, [string, string]> = {
-  stalled: ["warning", "list.warningForeground"],
-  "lie-gap": ["error", "list.errorForeground"],
-  // Drift is loud — a distinct alert glyph so a regressed plan reads apart from
-  // stalled (warning) and lie-gap (error).
-  drift: ["alert", "list.warningForeground"],
-  // Unify "active" on charts.blue (matches the active TRACK icon) — charts.yellow
-  // was the lowest-contrast hue on dark.
-  active: ["circle-filled", "charts.blue"],
-  shipped: ["pass-filled", "charts.green"],
-  dead: ["circle-slash", "descriptionForeground"],
-  other: ["question", "descriptionForeground"],
-};
+// Bucket ordering (BUCKET_RANK) and verdict→icon/label metadata (BUCKET_META)
+// live in planModel.ts — the pure, vscode-free module the legend + tests share.
 
 // ---------------------------------------------------------------------------
 // PlansProvider
@@ -278,7 +247,8 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const item = new vscode.TreeItem(filename, vscode.TreeItemCollapsibleState.None);
 
     // Icon — verdict-driven, with a muted override when the plan has been ack'd.
-    const [icon, color] = acked ? ["circle-outline", "descriptionForeground"] : BUCKET_ICON[bucket];
+    const meta = BUCKET_META[bucket];
+    const [icon, color] = acked ? ["circle-outline", "descriptionForeground"] : [meta.icon, meta.color];
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
     const ackLabel = docAcked ? " · ✅ ack'd (saved)" : localAcked ? " · ack'd" : "";
@@ -294,7 +264,9 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // the phase/file rollup, and any unchecked items.
     const tip = new vscode.MarkdownString(undefined, true);
     tip.appendMarkdown(`\`${doc.rel}\`\n\n`);
-    tip.appendMarkdown(`${doc.glyph} **${doc.verdict}** — ${doc.rationale}\n\n`);
+    // Lead with the plain verdict label + its themed codicon (#348) so the hover
+    // decodes the row icon; keep the raw CLI verdict after it for precision.
+    tip.appendMarkdown(`$(${meta.icon}) **${meta.label}** · _${doc.verdict}_ — ${doc.rationale}\n\n`);
     tip.appendMarkdown(
       `Phases ${doc.checkboxes_done}/${doc.checkboxes_total} · ` +
       `Files ${doc.files_present}/${doc.files_declared}`,
