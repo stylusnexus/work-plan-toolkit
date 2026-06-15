@@ -370,7 +370,7 @@ export async function runWrite(
  * one day ahead — "2026.06.15" vs a 2026.06.14 deploy — so every updated user
  * got a false "CLI incompatible" warning; 0.9.1 corrects it.)
  */
-export const MIN_CLI_VERSION = "2026.06.14";
+export const MIN_CLI_VERSION = "2026.06.15";
 
 /**
  * Parses the version token from `work-plan --version` output.
