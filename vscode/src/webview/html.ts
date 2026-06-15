@@ -373,7 +373,16 @@ ${afterRun}
     fit(); // initial fit-to-width so a dense map is navigable from the start
   }
 
-  document.addEventListener("workplan:graph-rendered", setupGraphControls);
+  // The loader (an earlier script element) may dispatch "workplan:graph-rendered"
+  // BEFORE this script attaches the listener — mermaid.run() can resolve in a
+  // microtask that drains between the two script elements. So wire idempotently:
+  // if the SVG is already present the render finished, run setup now; otherwise
+  // wait for the event. Exactly one path fires, so setup never double-runs.
+  if (document.querySelector(".graph-figure svg")) {
+    setupGraphControls();
+  } else {
+    document.addEventListener("workplan:graph-rendered", setupGraphControls);
+  }
 }());
 </script>`;
 

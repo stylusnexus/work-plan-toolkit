@@ -175,6 +175,17 @@ describe("buildHtml — graphDef embedding", () => {
     assert.ok(html.includes('dispatchEvent(new Event("workplan:graph-rendered"))'), "loader must signal render done");
     assert.ok(html.includes('addEventListener("workplan:graph-rendered"'), "controller must listen for render done");
   });
+
+  it("the controller wiring is idempotent against an early render event (#216 review)", () => {
+    const html = buildHtml(BASE);
+    // mermaid.run() can resolve before the messaging script attaches its
+    // listener; the controller must self-check for an already-present SVG and
+    // run setup directly instead of only relying on the (possibly-missed) event.
+    assert.ok(
+      html.includes('document.querySelector(".graph-figure svg")'),
+      "controller must run setup directly if the SVG already rendered",
+    );
+  });
 });
 
 describe("buildHtml — theme adaptivity (#207)", () => {
