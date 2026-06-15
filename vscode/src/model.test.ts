@@ -5,6 +5,7 @@ import {
   isBlocked,
   completionRatio,
   trackedIssueNumbers,
+  collectMilestones,
   SCHEMA_VERSION,
 } from "./model.ts";
 import type { Issue, Track, Export } from "./model.ts";
@@ -137,5 +138,31 @@ describe("trackedIssueNumbers", () => {
     const t1 = makeTrack({ repo: "o/r", issues: [makeIssue({ number: 7 })], next_up: [7] });
     const t2 = makeTrack({ name: "b", repo: "o/r", blockers: [7] });
     assert.deepEqual(trackedIssueNumbers(exp([t1, t2]), "o/r"), [7]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectMilestones (#213)
+// ---------------------------------------------------------------------------
+
+describe("collectMilestones", () => {
+  const exp = (tracks: Track[]): Export => ({
+    schema: SCHEMA_VERSION, generated_at: "t", tracks,
+  });
+
+  test("unions track milestone_alignment + issue milestone, sorted + deduped", () => {
+    const t1 = makeTrack({ milestone_alignment: "v1.0.0", issues: [makeIssue({ milestone: "v1.1.0" })] });
+    const t2 = makeTrack({ name: "b", milestone_alignment: "v1.0.0", issues: [makeIssue({ milestone: "v2.0.0" })] });
+    assert.deepEqual(collectMilestones(exp([t1, t2])), ["v1.0.0", "v1.1.0", "v2.0.0"]);
+  });
+
+  test("drops null/empty milestone values", () => {
+    const t = makeTrack({ milestone_alignment: null, issues: [makeIssue({ milestone: null }), makeIssue({ milestone: "v1" })] });
+    assert.deepEqual(collectMilestones(exp([t])), ["v1"]);
+  });
+
+  test("empty when no milestones present", () => {
+    const t = makeTrack({ milestone_alignment: null, issues: [] });
+    assert.deepEqual(collectMilestones(exp([t])), []);
   });
 });
