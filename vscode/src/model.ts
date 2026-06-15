@@ -226,3 +226,21 @@ export function trackedIssueNumbers(exp: Export, repo: string): number[] {
   }
   return [...nums];
 }
+
+/**
+ * Distinct milestone labels already present in the export — drawn from both
+ * track `milestone_alignment` and issue `milestone` fields — sorted for a
+ * stable quick-pick (#213). Used to suggest existing milestones when editing a
+ * track's `milestone_alignment`, so the edit path doesn't accept blind free
+ * text. Null/empty values are dropped. Pure.
+ */
+export function collectMilestones(exp: Export): string[] {
+  const set = new Set<string>();
+  for (const t of exp.tracks) {
+    if (t.milestone_alignment) set.add(t.milestone_alignment);
+    for (const i of t.issues) {
+      if (i.milestone) set.add(i.milestone);
+    }
+  }
+  return [...set].sort();
+}

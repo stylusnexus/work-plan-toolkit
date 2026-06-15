@@ -290,6 +290,19 @@ class ExportCommandUntrackedTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out["untracked"], [])
 
+    def test_empty_track_still_surfaces_untracked(self):
+        """A repo whose only track has issues:[] must still surface its open
+        issues as untracked (#342). repo_to_numbers omits such a track, so the
+        untracked loop must key off repos-with-tracks, not tracked issues."""
+        tracks = [_track("general", _SHARED_REPO, [])]  # empty track
+        export_map = {}  # no tracked issues to fetch
+        open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_C]}  # but the repo has open issues
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(rc, 0)
+        entry = next(e for e in out["untracked"] if e["repo"] == _SHARED_REPO)
+        nums = sorted(i["number"] for i in entry["issues"])
+        self.assertEqual(nums, [1, 3])  # both open issues are untracked
+
     def test_schema_stays_1_with_untracked(self):
         tracks = [_track("alpha", _SHARED_REPO, [1])]
         open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_B]}

@@ -280,7 +280,7 @@ A skill has two distinct contracts: (1) the underlying **CLI** that does the wor
 
 | Tool | Install command | Then invoke as |
 |---|---|---|
-| **npm (standalone CLI / any editor)** | `npm install -g @stylusnexus/work-plan` (requires `python3` + `yq` + `gh` already on PATH — the postinstall warns if any are missing). | `work-plan <subcommand>` |
+| **npm (standalone CLI / any editor)** | `npm install -g @stylusnexus/work-plan` (requires `python3` + `yq` + `gh` already on PATH — the CLI warns on first run if any are missing). | `work-plan <subcommand>` |
 | **Claude Code** | **Plugin (recommended):** `/plugin marketplace add stylusnexus/agent-plugins` → `/plugin install work-plan@stylus-nexus`. Or script: `./install.sh` / `.\install.ps1` | Plugin: `/work-plan:brief` … `/work-plan:run <sub>`. Script: bare `/work-plan <subcommand>` |
 | **Codex** | **Plugin:** `codex plugin marketplace add stylusnexus/agent-plugins` → `codex plugin add work-plan@stylus-nexus`. Or script: `./install.sh --target=$HOME/.agents` | Plugin: `@work-plan` / `/skills`. Script: direct CLI |
 | **Cursor** | Skip installer. Clone repo + copy `shims/cursor/work-plan.cursorrules` into your project's `.cursorrules` (or merge it in) | `python3 <toolkit>/skills/work-plan/work_plan.py <sub>` — alias `wp` recommended |

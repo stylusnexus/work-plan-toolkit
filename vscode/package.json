@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -668,7 +668,7 @@
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.2.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "ovsx": "^0.10.0",
     "typescript": "^5.8.0"
   },

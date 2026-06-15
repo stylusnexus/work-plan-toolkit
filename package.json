@@ -8,14 +8,10 @@
   "files": [
     "bin/",
     "skills/work-plan/",
-    "scripts/npm-check-deps.js",
     "VERSION",
     "LICENSE",
     "README.md"
   ],
-  "scripts": {
-    "postinstall": "node scripts/npm-check-deps.js"
-  },
   "engines": {
     "node": ">=18"
   },
