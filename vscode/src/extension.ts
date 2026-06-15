@@ -10,7 +10,7 @@ import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
-import { trackedIssueNumbers } from "./model.ts";
+import { trackedIssueNumbers, collectMilestones } from "./model.ts";
 import { badgeCounts } from "./treeModel.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
@@ -808,6 +808,35 @@ export function activate(context: vscode.ExtensionContext): void {
           if (value !== undefined) {
             // Normalize: strip spaces, trim
             value = value.trim() === "" ? "" : value.split(",").map(s => s.trim()).join(",");
+          }
+        } else if (field === "launch_priority") {
+          // Constrain to P0–P3 — same affordance as New Track (#213), so the
+          // edit path can't write arbitrary priority text.
+          value = await vscode.window.showQuickPick(
+            ["P0", "P1", "P2", "P3"],
+            { placeHolder: "New launch_priority" },
+          );
+        } else if (field === "milestone_alignment") {
+          // Suggest milestones already present in the export, with an escape
+          // hatch for a new value and a clear option (#213). Read from the RAW
+          // export so an active lens can't narrow the suggestions.
+          const milestoneExp = provider.rawExport ?? provider.currentExport;
+          const TYPE_NEW = "$(pencil) Type a new milestone…";
+          const CLEAR = "$(x) Clear milestone";
+          const existing = milestoneExp ? collectMilestones(milestoneExp) : [];
+          const picked = await vscode.window.showQuickPick(
+            [TYPE_NEW, CLEAR, ...existing],
+            { placeHolder: "New milestone_alignment" },
+          );
+          if (picked === undefined) return; // cancelled
+          if (picked === CLEAR) {
+            value = "";
+          } else if (picked === TYPE_NEW) {
+            const raw = await vscode.window.showInputBox({ prompt: "New milestone (e.g. v1.0.0)" });
+            if (raw === undefined) return; // cancelled
+            value = raw.trim();
+          } else {
+            value = picked;
           }
         } else {
           value = await vscode.window.showInputBox({ prompt: `New value for ${field}` });
