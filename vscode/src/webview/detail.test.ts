@@ -1206,3 +1206,53 @@ describe("renderDetail — dep disclosure button (#257)", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: Set Next-Up button in the next-up section
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — Set Next-Up button", () => {
+  it("renders the work-plan-set-next button in the next-up section", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes('id="work-plan-set-next"'),
+      `Expected work-plan-set-next button id in:\n${html.slice(0, 1000)}`,
+    );
+  });
+
+  it("button label is 'Set Next-Up'", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("Set Next-Up"),
+      `Expected 'Set Next-Up' label in:\n${html.slice(0, 1000)}`,
+    );
+  });
+
+  it("button has aria-label for screen readers", () => {
+    const html = renderDetail(platformHealth);
+    assert.ok(
+      html.includes("Set which issues are next up for this track"),
+      `Expected aria-label / title on Set Next-Up button:\n${html.slice(0, 1000)}`,
+    );
+  });
+
+  it("button renders even for tracks with empty next_up", () => {
+    const html = renderDetail(emptyTrack);
+    assert.ok(
+      html.includes('id="work-plan-set-next"'),
+      `Expected work-plan-set-next button even on empty next_up:\n${html.slice(0, 1000)}`,
+    );
+  });
+
+  it("button appears inside the next-up section div", () => {
+    const html = renderDetail(platformHealth);
+    const nextUpStart = html.indexOf('class="next-up"');
+    assert.ok(nextUpStart !== -1, "Expected .next-up section");
+    const nextUpEnd = html.indexOf("</div>", nextUpStart);
+    const section = html.slice(nextUpStart, nextUpEnd);
+    assert.ok(
+      section.includes('id="work-plan-set-next"'),
+      `Expected Set Next-Up button inside .next-up section:\n${section}`,
+    );
+  });
+});
