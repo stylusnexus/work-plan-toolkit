@@ -2713,10 +2713,12 @@ export function activate(context: vscode.ExtensionContext): void {
       if (e.affectsConfiguration("workPlan.stallDays")) {
         plansProvider.rerender();
       }
-      // Toggling auto-refresh OFF tears existing watchers down immediately
-      // (refresh() disposes them); toggling ON lets them recreate on next expand.
-      if (e.affectsConfiguration("workPlan.plansAutoRefresh")
-          && !plansAutoRefreshSetting()) {
+      // Toggling auto-refresh either way clears the cache via refresh(): OFF
+      // disposes the live watchers; ON forces a re-scan on next expand that
+      // re-attaches them — including the already-expanded repo the user is
+      // looking at, which an ON branch that only relied on lazy expand would
+      // miss (it stays cached, so getChildren never re-runs).
+      if (e.affectsConfiguration("workPlan.plansAutoRefresh")) {
         plansProvider.refresh();
       }
     }),
