@@ -31,7 +31,7 @@ export const BUCKET_META: Record<PlanBucket, BucketMeta> = {
   // warning triangle, and frees the triangle from the loud trio (#348).
   stalled: { icon: "clock", color: "list.warningForeground",
     label: "Stalled", blurb: "In progress but gone cold — no commits within your stall window." },
-  // Lie-gap keeps the red `error` shape (a strong \"this is wrong\" signal); the
+  // Lie-gap keeps the red `error` shape (a strong "this is wrong" signal); the
   // plain label is what disambiguates it from a generic failure (#348).
   "lie-gap": { icon: "error", color: "list.errorForeground",
     label: "Unverified", blurb: "Reads as shipped, but its phases are still unchecked — the claim isn't backed by progress." },
