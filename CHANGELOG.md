@@ -6,6 +6,34 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.15+488753b — 2026-06-15 (#356)
+
+feat: graph zoom/export, Plans auto-update, native auto-next picker, verdict legend, settings gear
+
+VS Code extension **v0.12.0** + CLI. Five features (each reviewed, CI-green, merged to `dev` individually).
+
+## Features
+
+- **Dependency graph: zoom / pan / fit-to-width + Export SVG/PNG (#216).** The graph is now a pan/zoom viewport — scroll-wheel zoom, drag-to-pan, header buttons (zoom ±, Fit, Reset), and Export as SVG or PNG. Vanilla JS, no new dependency, CSP-clean. Dense maps stay navigable.
+- **Plans view auto-updates on git activity (#287).** Committing a stalled plan's declared files clears its "stalled" verdict without a manual Refresh — a per-repo `.git`-refs watcher debounce-rescans only that repo; time-relative staleness re-evaluates on focus. New `workPlan.plansAutoRefresh` setting (default on).
+- **Native auto-next picker for Handoff (#274).** Brings the CLI's `--auto-next` to the viewer (its `[Y/n/edit]` TTY prompt can't run under VS Code's non-TTY stdin). New read-only `handoff --suggest-next` JSON feed → a pre-checked multi-select QuickPick → writes via the audited `handoff --set-next` path (public-repo confirm + session log).
+- **Plan verdict-icon legend + plain labels (#348).** An ℹ️ title-bar button opens a self-demonstrating QuickPick decoding each Plans icon; the tooltip leads with a plain label (lie-gap→"Unverified", etc.); two sharpened shapes (stalled→clock, drift→issue-reopened). The #208 distinct-shape a11y invariant is now test-enforced.
+- **Settings gear (#352).** A `$(gear)` button (last nav icon in the Tracks title bar) opens the Settings UI scoped to this extension; also "Work Plan: Open Settings" in the palette.
+
+## CLI
+
+- `handoff --suggest-next` — read-only JSON suggestion feed for the native auto-next picker (no prompt, no write). Shares `_compute_auto_next` with the interactive `--auto-next`.
+
+## Compatibility
+
+- VS Code extension `0.11.1` → `0.12.0`. `MIN_CLI_VERSION` → `2026.06.15` (the native auto-next picker needs `handoff --suggest-next`).
+
+## Verification
+
+All merged with green CI (Tests matrix 3.9–3.12 × ubuntu/macos/windows + typecheck/build/lint). 1080 CLI tests + 661 vscode tests pass. Each feature reviewed by the code-reviewer agent; #216 and #287 had one Important finding each, both fixed before merge.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.15+e3f3cdf — 2026-06-15 (#346)
 
 feat(vscode,export): consistent Edit Fields affordances, untracked-issue fix, npm-12 posture
