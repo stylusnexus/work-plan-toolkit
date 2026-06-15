@@ -244,6 +244,20 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.openSettings — gear button: open the Settings UI scoped to this
+  // extension's settings (#352), so users reach workPlan.* without searching.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.openSettings", () => {
+      void vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        "@ext:stylusnexus.work-plan-viewer",
+      );
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.sortTracks — quick-pick a sort mode for track order in the tree.
   // Sort is a display concern; currentExport / rawExport are NOT affected.
   // -------------------------------------------------------------------------
