@@ -205,6 +205,11 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.autoNext",
+        "title": "Suggest Next-Up (auto)…",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.setNextUpPreset",
         "title": "Set Next-Up Order…",
         "category": "Work Plan"
@@ -437,9 +442,14 @@
           "group": "1_workPlanEdit@4"
         },
         {
-          "command": "workPlan.setNextUpPreset",
+          "command": "workPlan.autoNext",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanEdit@5"
+        },
+        {
+          "command": "workPlan.setNextUpPreset",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanEdit@6"
         },
         {
           "command": "workPlan.refreshMd",

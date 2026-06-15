@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
   isAlreadyExistsError,
-  notesVcsStatus, notesVcsRun, notesVcsUndo,
+  notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
@@ -946,6 +946,86 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: set-next failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.autoNext — native auto-next picker (#274). Reimplements the CLI's
+  // interactive `--auto-next` (a TTY prompt that no-ops under VS Code's non-TTY
+  // stdin, #183): read the algorithmic suggestion via the read-only
+  // `handoff --suggest-next` (no write), let the user uncheck candidates in a
+  // multi-select QuickPick (display order = the CLI's priority order, so the
+  // sequence is preserved), then write via the audited `setNext` path.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.autoNext", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const suggestion = await withWriteProgress(
+          `Work Plan: computing next-up suggestion for ${track}…`,
+          () => suggestNextUp(runner, track),
+        );
+
+        if (suggestion.suggested.length === 0) {
+          const why = suggestion.error
+            ? ` (${suggestion.error})`
+            : suggestion.skipped.length
+              ? ` — ${suggestion.skipped.length} candidate(s) already queued on a sibling track`
+              : "";
+          vscode.window.showInformationMessage(
+            `Work Plan: no auto next-up suggestion for ${track}${why}.`,
+          );
+          return;
+        }
+
+        type Cand = vscode.QuickPickItem & { number: number };
+        const items: Cand[] = suggestion.suggested.map((s) => ({
+          label: `#${s.number}  ${s.title}`,
+          description: [s.priority, s.milestone].filter(Boolean).join(" · "),
+          number: s.number,
+          picked: true,
+        }));
+        const skippedNote = suggestion.skipped.length
+          ? ` · ${suggestion.skipped.length} skipped (queued on a sibling)`
+          : "";
+        const picked = await vscode.window.showQuickPick(items, {
+          canPickMany: true,
+          ignoreFocusOut: true,
+          placeHolder: `Auto next-up for ${track}${skippedNote} — uncheck any to drop, Enter to apply`,
+        });
+        if (!picked) return; // Escape → cancel, no write
+        if (picked.length === 0) {
+          vscode.window.showInformationMessage("Work Plan: nothing selected — next-up unchanged.");
+          return;
+        }
+        // Multi-select returns items in DISPLAY order, which here IS the CLI's
+        // priority order — so the queue keeps the algorithm's sequence (#274).
+        const issues = picked.map((p) => p.number);
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting next-up on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "setNext", track, issues },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track} (session logged)`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: auto next-up failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
