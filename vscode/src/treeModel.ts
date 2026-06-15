@@ -1,4 +1,4 @@
-import type { Export, Issue, Track } from "./model.ts";
+import type { Export, Issue, Track, TierDuplicate } from "./model.ts";
 
 // ---------------------------------------------------------------------------
 // Node types
@@ -16,6 +16,21 @@ export interface UntrackedIssueNode {
   kind: "untrackedIssue";
   repo: string;
   issue: Issue;
+}
+
+/**
+ * A read-only advisory under a repo (#361): N tracks exist in both the shared
+ * and private tier. Surfaces the otherwise-invisible "exists in both" condition
+ * and names the `dedupe-tiers` verb. Has NO command — the destructive cleanup
+ * stays in the CLI; this only makes the condition visible.
+ */
+export interface TierDupWarningNode {
+  kind: "tierDupWarning";
+  repo: string;
+  folder: string | null;
+  count: number;
+  /** How many of `count` are safe to auto-remove (private issues ⊆ shared). */
+  safeCount: number;
 }
 
 export interface TrackNode {
@@ -49,6 +64,12 @@ export interface RepoNode {
    * untracked issues or when the CLI did not emit the field (older versions).
    */
   untracked: Issue[];
+  /**
+   * Tracks present in both this repo's shared and private tier (#361).
+   * Populated from `Export.tier_duplicates`; `[]` when none or when the CLI
+   * predates the field. Drives the read-only `tierDupWarning` advisory node.
+   */
+  tierDuplicates: TierDuplicate[];
   /**
    * Config repo key (the key under `repos:` in config.yml) for a configured
    * repo (#288), or null for a track-only repo not present in `Export.repos`
@@ -225,6 +246,7 @@ export function buildTree(exp: Export): RepoNode[] {
       tier: "private",
       tracks: [],
       untracked: [],
+      tierDuplicates: [],
       folder: cr.folder,
       hasLocal: cr.has_local,
     });
@@ -241,6 +263,7 @@ export function buildTree(exp: Export): RepoNode[] {
         tier: track.tier ?? "private",
         tracks: [],
         untracked: [],
+        tierDuplicates: [],
         folder: null,
         hasLocal: false,
       });
@@ -277,6 +300,8 @@ export function buildTree(exp: Export): RepoNode[] {
   for (const node of repoMap.values()) {
     if (node.repo !== "(no repo)") {
       node.untracked = exp.untracked?.find(u => u.repo === node.repo)?.issues ?? [];
+      node.tierDuplicates =
+        exp.tier_duplicates?.filter(d => d.repo === node.repo) ?? [];
     }
   }
 
