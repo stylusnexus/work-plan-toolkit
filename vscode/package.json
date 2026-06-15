@@ -81,6 +81,12 @@
         "icon": "$(sort-precedence)"
       },
       {
+        "command": "workPlan.openSettings",
+        "title": "Open Settings",
+        "category": "Work Plan",
+        "icon": "$(gear)"
+      },
+      {
         "command": "workPlan.plans.refresh",
         "title": "Refresh Plans",
         "category": "Work Plan",
@@ -338,6 +344,11 @@
           "command": "workPlan.searchIssues",
           "when": "view == workPlan.tree",
           "group": "navigation@5"
+        },
+        {
+          "command": "workPlan.openSettings",
+          "when": "view == workPlan.tree",
+          "group": "navigation@99"
         },
         {
           "command": "workPlan.hygiene",
