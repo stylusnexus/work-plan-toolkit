@@ -193,7 +193,12 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }
   // Next-up steps
   // -------------------------------------------------------------------------
 
-  parts.push('<div class="next-up"><b>Next up:</b> ');
+  parts.push(
+    '<div class="next-up"><b>Next up:</b> ' +
+    `<button id="work-plan-set-next" class="open-file-btn" ` +
+    `title="Set which issues are next up for this track" ` +
+    `aria-label="Set which issues are next up for this track">Set Next-Up</button>`,
+  );
 
   if (track.next_up.length === 0) {
     parts.push("empty");

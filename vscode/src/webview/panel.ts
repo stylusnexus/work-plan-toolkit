@@ -337,6 +337,17 @@ export class WorkPlanPanel {
         }
         break;
       }
+      case "setNextUp": {
+        // Resolve the current track and delegate to workPlan.setNext.
+        // resolveTrackName() reads node?.name, so pass { name } — the minimal
+        // shape needed for it to resolve without falling back to a QuickPick.
+        if (this._currentTrackName) {
+          void vscode.commands.executeCommand("workPlan.setNext", {
+            name: this._currentTrackName,
+          });
+        }
+        break;
+      }
     }
   }
 

@@ -70,6 +70,13 @@ export interface ToggleInProgressMessage {
   clear: boolean;
 }
 
+/** Trigger the Set Next-Up flow for the current track from the detail panel.
+ *  No payload — the host resolves the current track by name and delegates to
+ *  workPlan.setNext, which walks the user through the iterative issue-pick. */
+export interface SetNextUpMessage {
+  type: "setNextUp";
+}
+
 export type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
@@ -79,7 +86,8 @@ export type WebviewMessage =
   | OpenTrackFileMessage
   | OpenPlanMessage
   | CloseIssueMessage
-  | ToggleInProgressMessage;
+  | ToggleInProgressMessage
+  | SetNextUpMessage;
 
 // ---------------------------------------------------------------------------
 // Type guard for incoming webview messages
@@ -131,6 +139,8 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && Number.isInteger(msg["number"])
         && (msg["number"] as number) > 0
         && typeof msg["clear"] === "boolean";
+    case "setNextUp":
+      return true; // no payload to validate
     default:
       return false;
   }

@@ -563,3 +563,40 @@ describe("buildHtml — dep-detail-row toggle DOM wiring (#257 B3)", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Set Next-Up client-side handler
+// ---------------------------------------------------------------------------
+
+describe("buildHtml — Set Next-Up button client script", () => {
+  it("client script looks up the work-plan-set-next element", () => {
+    const html = buildHtml(BASE);
+    assert.ok(
+      html.includes("work-plan-set-next"),
+      `Expected client script to reference 'work-plan-set-next':\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("client script wires a click on work-plan-set-next to post({ type: 'setNextUp' })", () => {
+    const html = buildHtml(BASE);
+    // The handler must post the setNextUp message type.
+    assert.ok(
+      html.includes('"setNextUp"') || html.includes("'setNextUp'"),
+      `Expected post({ type: "setNextUp" }) in client script:\n${html.slice(0, 3000)}`,
+    );
+  });
+
+  it("setNextUp post is inside a null-guard (if setNextBtn)", () => {
+    const html = buildHtml(BASE);
+    // The script should have a null guard before adding the event listener.
+    // Find the section around "work-plan-set-next" and verify a conditional guard.
+    const idx = html.indexOf("work-plan-set-next");
+    assert.ok(idx !== -1, "work-plan-set-next not found in html");
+    const snippet = html.slice(idx - 50, idx + 300);
+    // There must be an 'if' check nearby (null guard pattern)
+    assert.ok(
+      snippet.includes("if (") || snippet.includes("if("),
+      `Expected a null-guard 'if' near the setNextBtn handler:\n${snippet}`,
+    );
+  });
+});
