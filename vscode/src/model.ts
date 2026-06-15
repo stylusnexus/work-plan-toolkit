@@ -83,6 +83,13 @@ export interface Track {
   blockers: number[];
   /** Issue numbers queued as next-up. */
   next_up: number[];
+  /**
+   * The effective preset name driving next-up ordering (e.g. "flow",
+   * "priority-driven", "backlog", "custom"), as emitted by `export --json`
+   * (#326 Phase 2). Optional on the wire — older CLIs omit it; the viewer
+   * degrades gracefully (no indicator) when absent.
+   */
+  next_up_preset?: string;
   /** Track slugs that this track explicitly depends on (#102). */
   depends_on: string[];
   rollup: Rollup;

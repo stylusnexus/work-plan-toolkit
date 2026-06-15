@@ -27,9 +27,12 @@ const DETAIL_ISSUE_CAP = 50;
  * same behaviour as before #101.
  *
  * @param track - The track to render.
+ * @param opts  - Optional rendering flags.
+ * @param opts.showNextUpPreset - When true (and `track.next_up_preset` is set),
+ *   render a "Next-up order:" meta row below the next-up steps (#326).
  * @returns     HTML string (safe to set as innerHTML — all text is escaped).
  */
-export function renderDetail(track: Track): string {
+export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }): string {
   const parts: string[] = [];
 
   // -------------------------------------------------------------------------
@@ -204,6 +207,16 @@ export function renderDetail(track: Track): string {
   }
 
   parts.push("</div>");
+
+  // -------------------------------------------------------------------------
+  // Next-up ordering preset (#326)
+  // -------------------------------------------------------------------------
+
+  if (opts?.showNextUpPreset && track.next_up_preset) {
+    parts.push(
+      `<div class="next-up-preset"><b>Next-up order:</b> ${esc(track.next_up_preset)}</div>`,
+    );
+  }
 
   return parts.join("\n");
 }

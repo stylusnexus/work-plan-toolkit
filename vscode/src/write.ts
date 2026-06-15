@@ -49,7 +49,11 @@ export type WriteAction =
   // Promote a private track to the shared tier + push (#306). repoKey is the
   // config folder key (disambiguates the track). Public-repo gated by the CLI's
   // needs_confirm, which executeWrite drives.
-  | { kind: "pushTrack"; track: string; repoKey?: string };
+  | { kind: "pushTrack"; track: string; repoKey?: string }
+  // Set the per-track next-up ordering preset (#326 Phase 3). repoKey is the
+  // config folder key (passed as --repo=<key> to the CLI). preset is omitted
+  // when clear=true (which resets to the default "flow").
+  | { kind: "setNextUpPreset"; track: string; repoKey?: string; preset?: string; clear?: boolean };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -237,6 +241,15 @@ export function actionToArgs(action: WriteAction): string[] {
       return [
         "push-track",
         ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "setNextUpPreset":
+      return [
+        "set-next-up",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        ...(action.clear ? ["--clear"] : action.preset ? [`--preset=${action.preset}`] : []),
         "--",
         action.track,
       ];

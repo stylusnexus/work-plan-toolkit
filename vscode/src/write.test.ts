@@ -405,6 +405,106 @@ describe("actionToArgs", () => {
     const sepIdx = args.indexOf("--");
     assert.deepEqual(args.slice(sepIdx + 1), ["7", "--repo", "safe-track"]);
   });
+
+  // setNextUpPreset (#326)
+  test("setNextUpPreset with preset 'flow' → ['set-next-up', '--preset=flow', '--', track]", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      preset: "flow",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--preset=flow",
+      "--",
+      "platform-health",
+    ]);
+  });
+
+  test("setNextUpPreset with preset 'priority-driven' → '--preset=priority-driven'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      preset: "priority-driven",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--preset=priority-driven",
+      "--",
+      "platform-health",
+    ]);
+  });
+
+  test("setNextUpPreset with preset 'backlog' → '--preset=backlog'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "ph",
+      preset: "backlog",
+    };
+    assert.deepEqual(actionToArgs(action), ["set-next-up", "--preset=backlog", "--", "ph"]);
+  });
+
+  test("setNextUpPreset with clear=true → '--clear' instead of preset flag", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      clear: true,
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--clear",
+      "--",
+      "platform-health",
+    ]);
+  });
+
+  test("setNextUpPreset with repoKey → '--repo=<key>' before '--'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "platform-health",
+      repoKey: "myrepo",
+      preset: "flow",
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--repo=myrepo",
+      "--preset=flow",
+      "--",
+      "platform-health",
+    ]);
+  });
+
+  test("setNextUpPreset with repoKey and clear → '--repo' + '--clear' before '--'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "ph",
+      repoKey: "myrepo",
+      clear: true,
+    };
+    assert.deepEqual(actionToArgs(action), [
+      "set-next-up",
+      "--repo=myrepo",
+      "--clear",
+      "--",
+      "ph",
+    ]);
+  });
+
+  test("setNextUpPreset with dash-led track name → track name stays a positional after '--'", () => {
+    const action: WriteAction = {
+      kind: "setNextUpPreset",
+      track: "--confirm=evil",
+      preset: "flow",
+    };
+    const args = actionToArgs(action);
+    const sepIdx = args.indexOf("--");
+    assert.ok(sepIdx !== -1, "must contain a '--' separator");
+    assert.equal(args[sepIdx + 1], "--confirm=evil", "track must appear after '--'");
+    assert.ok(
+      args.slice(0, sepIdx).every(a => a !== "--confirm=evil"),
+      "dash-led track must not appear before the separator",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -196,6 +196,11 @@
       {
         "command": "workPlan.setNext",
         "title": "Set Next-Up & Log Session",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.setNextUpPreset",
+        "title": "Set Next-Up Order…",
         "category": "Work Plan"
       },
       {
@@ -421,6 +426,11 @@
           "group": "1_workPlanEdit@4"
         },
         {
+          "command": "workPlan.setNextUpPreset",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanEdit@5"
+        },
+        {
           "command": "workPlan.refreshMd",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "5_workPlanSync@1"
@@ -614,6 +624,11 @@
             "Every 15 minutes"
           ],
           "description": "Auto-refresh interval in seconds (0 = off). Silently re-polls the CLI in the background — useful when teammates are pushing shared-track changes."
+        },
+        "workPlan.showNextUpPreset": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active next-up ordering preset in the track detail panel. Hidden automatically when the track has no preset set (older CLI or preset not configured)."
         },
         "workPlan.stallDays": {
           "type": "string",
