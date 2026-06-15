@@ -6,6 +6,25 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.15+c80ece1 — 2026-06-15 (#341)
+
+feat: toggle auto next-up per track (#338) — CLI --auto + viewer (0.11.0)
+
+Production deploy: completes #338 — turn auto next-up on/off per track.
+
+## #338
+- **CLI:** `set-next-up --auto=on|off` toggles a track's `next_up_auto` flag (standalone or combined with a preset; public-repo confirm-gated). `export --json` `next_up_auto` field reflects the setting.
+- **VS Code (0.11.0):** an "Auto next-up: ON/OFF" toggle folded into the "Set Next-Up Order…" QuickPick (✓ current state), and the detail panel's "Next-up order:" row shows `flow · auto` when active.
+
+## Publishes (post-merge)
+- CLI changed → **npm** republish (same-day → `2026.6.15-2`).
+- VS Code **0.11.0** → Marketplace + Open VSX.
+- `MIN_CLI_VERSION` unchanged (`2026.06.14` ≤ deploy VERSION; degrades gracefully).
+- Tag + repin the agent-plugins catalog.
+
+## Test plan
+- [x] dev CI green; full Python suite 1075 OK; VS Code typecheck + 639 tests + build clean.
+
 ## 2026.06.15+a627bc9 — 2026-06-15 (#337)
 
 fix(export): auto-derive next-up so the viewer surfaces the ranking (#326)
