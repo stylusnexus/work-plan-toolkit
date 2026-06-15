@@ -105,17 +105,21 @@ export function buildHtml(o: WebviewHtmlOptions): string {
   // a second nonce'd inline script initialises it.
   // ESM path: import + initialize in a single module script.
   let loaderScript: string;
+  // After Mermaid renders the SVG, signal the controller (#216) so it can wire
+  // pan/zoom/export to the now-present <svg>. Promise.resolve() guards a mermaid
+  // build whose run() is synchronous; a render failure still must not throw.
+  const afterRun = `Promise.resolve(mermaid.run()).then(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); }).catch(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); });`;
   if (isModule) {
     loaderScript = `${scriptOpenTag}
 import mermaid from "${mermaidUri}";
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "${mermaidTheme}" });
-mermaid.run();
+${afterRun}
 </script>`;
   } else {
     loaderScript = `<script nonce="${nonce}" src="${mermaidUri}"></script>
 <script nonce="${nonce}">
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "${mermaidTheme}" });
-mermaid.run();
+${afterRun}
 </script>`;
   }
 
@@ -256,6 +260,120 @@ mermaid.run();
       });
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Dependency-graph pan / zoom / fit / export (#216). Vanilla — no extra dep,
+  // CSP-clean (this script already carries the nonce). Wired after Mermaid
+  // finishes rendering (the loader dispatches "workplan:graph-rendered").
+  // -------------------------------------------------------------------------
+  function setupGraphControls() {
+    var figure = document.querySelector(".graph-figure");
+    var svg = figure ? figure.querySelector("svg") : null;
+    if (!figure || !svg) { return; }
+
+    var state = { scale: 1, tx: 0, ty: 0 };
+    function clamp(s) { return Math.min(8, Math.max(0.1, s)); }
+    function apply() {
+      svg.style.transform = "translate(" + state.tx + "px," + state.ty + "px) scale(" + state.scale + ")";
+    }
+    function zoomAt(factor, cx, cy) {
+      var ns = clamp(state.scale * factor);
+      var r = ns / state.scale;
+      state.tx = cx - r * (cx - state.tx);
+      state.ty = cy - r * (cy - state.ty);
+      state.scale = ns;
+      apply();
+    }
+    // Intrinsic graph size from the SVG viewBox (Mermaid always emits one);
+    // fall back to the rendered box divided by the current scale.
+    function graphSize() {
+      var vb = svg.viewBox && svg.viewBox.baseVal;
+      if (vb && vb.width > 0 && vb.height > 0) { return { w: vb.width, h: vb.height }; }
+      var r = svg.getBoundingClientRect();
+      return { w: r.width / state.scale, h: r.height / state.scale };
+    }
+    function fit() {
+      var box = figure.getBoundingClientRect();
+      var g = graphSize();
+      var pad = 24;
+      var s = clamp(Math.min((box.width - pad) / g.w, (box.height - pad) / g.h));
+      state.scale = s;
+      state.tx = Math.max(pad / 2, (box.width - g.w * s) / 2);
+      state.ty = pad / 2;
+      apply();
+    }
+    function reset() { state.scale = 1; state.tx = 0; state.ty = 0; apply(); }
+
+    figure.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      var r = figure.getBoundingClientRect();
+      zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+
+    var dragging = false, lastX = 0, lastY = 0;
+    figure.addEventListener("pointerdown", function (e) {
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      figure.classList.add("grabbing");
+      try { figure.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    figure.addEventListener("pointermove", function (e) {
+      if (!dragging) { return; }
+      state.tx += e.clientX - lastX; state.ty += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY; apply();
+    });
+    function endDrag() { dragging = false; figure.classList.remove("grabbing"); }
+    figure.addEventListener("pointerup", endDrag);
+    figure.addEventListener("pointercancel", endDrag);
+
+    function on(id, fn) {
+      var el = document.getElementById(id);
+      if (el) { el.addEventListener("click", fn); }
+    }
+    function center() { var r = figure.getBoundingClientRect(); return [r.width / 2, r.height / 2]; }
+    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); });
+    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); });
+    on("graph-fit", fit);
+    on("graph-reset", reset);
+
+    // Export: clone the SVG, strip our live transform, serialize. PNG rasterizes
+    // the cloned SVG onto a canvas (self-contained SVG → canvas isn't tainted).
+    function cleanSvg() {
+      var clone = svg.cloneNode(true);
+      clone.style.transform = "";
+      clone.removeAttribute("style");
+      var g = graphSize();
+      clone.setAttribute("width", g.w);
+      clone.setAttribute("height", g.h);
+      // Mermaid's SVG already carries the xmlns namespace; cloneNode preserves
+      // it, so we don't re-add the literal (keeping the doc free of network URLs).
+      return new XMLSerializer().serializeToString(clone);
+    }
+    on("graph-export-svg", function () {
+      post({ type: "exportGraph", format: "svg", data: cleanSvg() });
+    });
+    on("graph-export-png", function () {
+      var g = graphSize();
+      var scale = 2; // 2x for a crisp raster
+      var svgStr = cleanSvg();
+      var url = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgStr)));
+      var img = new Image();
+      img.onload = function () {
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(g.w * scale));
+        canvas.height = Math.max(1, Math.round(g.h * scale));
+        var ctx = canvas.getContext("2d");
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        post({ type: "exportGraph", format: "png", data: canvas.toDataURL("image/png") });
+      };
+      img.onerror = function () { post({ type: "exportGraph", format: "svg", data: svgStr }); };
+      img.src = url;
+    });
+
+    fit(); // initial fit-to-width so a dense map is navigable from the start
+  }
+
+  document.addEventListener("workplan:graph-rendered", setupGraphControls);
 }());
 </script>`;
 
@@ -334,13 +452,42 @@ mermaid.run();
       cursor: pointer;
       flex-shrink: 0;
     }
-    .mermaid {
+    /* Zoom / fit / export controls (#216). margin-left:auto pushes the group to
+       the right edge of the header; each button is small + keyboard-focusable. */
+    .graph-controls { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
+    .graph-ctl {
+      font-size: 0.8em;
+      min-width: 28px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--fg);
+      cursor: pointer;
+    }
+    .graph-ctl:hover { color: var(--link); border-color: var(--link); }
+    .graph-ctl:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+    /* The graph-figure is the pan/zoom VIEWPORT (#216): fixed-height, clipped,
+       grab cursor. The card chrome moved here from .mermaid so the SVG can be
+       transformed freely inside without fighting padding/scrollbars. */
+    .graph-figure {
+      position: relative;
+      height: 60vh;
+      min-height: 280px;
+      overflow: hidden;
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 4px;
-      padding: 12px;
-      overflow: auto;
+      cursor: grab;
+      touch-action: none;
     }
+    .graph-figure.grabbing { cursor: grabbing; }
+    .mermaid {
+      padding: 12px;
+      /* svg is positioned + transformed by the pan/zoom controller; origin at
+         top-left so button/wheel zoom math is simple. */
+    }
+    .mermaid svg { transform-origin: 0 0; max-width: none; will-change: transform; }
     .detail-card {
       background: var(--card-bg);
       border: 1px solid var(--border);
@@ -587,6 +734,14 @@ mermaid.run();
   <div class="graph-header">
     <h2>Dependency graph</h2>
     <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
+    <div class="graph-controls" role="group" aria-label="Graph zoom and export controls">
+      <button type="button" class="graph-ctl" id="graph-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <button type="button" class="graph-ctl" id="graph-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button type="button" class="graph-ctl" id="graph-fit" title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
+      <button type="button" class="graph-ctl" id="graph-reset" title="Reset to 100%" aria-label="Reset zoom to 100 percent">100%</button>
+      <button type="button" class="graph-ctl" id="graph-export-svg" title="Export graph as SVG" aria-label="Export graph as SVG">SVG</button>
+      <button type="button" class="graph-ctl" id="graph-export-png" title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
+    </div>
   </div>
   <div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
     <pre class="mermaid">${graphDef}</pre>

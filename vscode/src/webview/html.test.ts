@@ -157,6 +157,24 @@ describe("buildHtml — graphDef embedding", () => {
     // Resting state is dim-but-visible, never fully transparent.
     assert.ok(!/\.move-btn\s*\{[^}]*opacity:\s*0;/.test(html), "move-btn must not rest at opacity:0");
   });
+
+  it("renders keyboard-operable zoom/fit/export controls (#216)", () => {
+    const html = buildHtml(BASE);
+    for (const id of ["graph-zoom-out", "graph-zoom-in", "graph-fit", "graph-reset", "graph-export-svg", "graph-export-png"]) {
+      assert.ok(html.includes(`id="${id}"`), `missing control button #${id}`);
+    }
+    // Real <button>s with aria-labels (keyboard + screen-reader operable), and a
+    // labelled group wrapper.
+    assert.ok(html.includes('class="graph-controls" role="group"'), "controls need a labelled group");
+    assert.ok(/<button type="button" class="graph-ctl"[^>]*aria-label=/.test(html), "control buttons need aria-labels");
+  });
+
+  it("wires the controller to a post-render hook (#216)", () => {
+    const html = buildHtml(BASE);
+    // The loader signals render-completion; the messaging IIFE listens for it.
+    assert.ok(html.includes('dispatchEvent(new Event("workplan:graph-rendered"))'), "loader must signal render done");
+    assert.ok(html.includes('addEventListener("workplan:graph-rendered"'), "controller must listen for render done");
+  });
 });
 
 describe("buildHtml — theme adaptivity (#207)", () => {
