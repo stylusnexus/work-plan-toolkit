@@ -2,8 +2,12 @@ import * as vscode from "vscode";
 import type { PlanDoc } from "./model.ts";
 import { planStatus, CliError } from "./cli.ts";
 import type { CliRunner } from "./cli.ts";
-import { planBucket, planDescription, isStalledForDisplay } from "./planModel.ts";
-import type { PlanBucket } from "./planModel.ts";
+import { planBucket, planDescription, isStalledForDisplay, BUCKET_META, BUCKET_RANK } from "./planModel.ts";
+
+// Coalesce a burst of git events (a rebase rewrites many refs) into one re-scan
+// per repo (#287). 750ms is long enough to ride out a multi-commit operation,
+// short enough that a single commit clears a stalled flag near-instantly.
+const RESCAN_DEBOUNCE_MS = 750;
 
 // ---------------------------------------------------------------------------
 // Node types — five variants. `repo` and `doc` are the real tree nodes;
@@ -21,38 +25,8 @@ export type PlanNode =
   | { kind: "unregistered"; slug: string }             // track-only repo, no config entry → greyed "Add Repo to scan" row
   | { kind: "message"; text: string; icon: string; command?: string };
 
-// ---------------------------------------------------------------------------
-// Bucket ordering + verdict→icon mapping
-// ---------------------------------------------------------------------------
-
-/** Sort rank for a bucket — loud verdicts (stalled, lie-gap) float to the top. */
-const BUCKET_RANK: Record<PlanBucket, number> = {
-  stalled: 0,
-  "lie-gap": 1,
-  drift: 2,
-  active: 3,
-  shipped: 4,
-  dead: 5,
-  other: 6,
-};
-
-/** verdict-bucket → [codicon, ThemeColor id]. */
-// List-semantic tokens (not charts.*) so glyphs meet non-text contrast on dark
-// themes (a11y pass). error-states use list.errorForeground, warn-states
-// list.warningForeground; the distinct SHAPE still carries the meaning (#208).
-const BUCKET_ICON: Record<PlanBucket, [string, string]> = {
-  stalled: ["warning", "list.warningForeground"],
-  "lie-gap": ["error", "list.errorForeground"],
-  // Drift is loud — a distinct alert glyph so a regressed plan reads apart from
-  // stalled (warning) and lie-gap (error).
-  drift: ["alert", "list.warningForeground"],
-  // Unify "active" on charts.blue (matches the active TRACK icon) — charts.yellow
-  // was the lowest-contrast hue on dark.
-  active: ["circle-filled", "charts.blue"],
-  shipped: ["pass-filled", "charts.green"],
-  dead: ["circle-slash", "descriptionForeground"],
-  other: ["question", "descriptionForeground"],
-};
+// Bucket ordering (BUCKET_RANK) and verdict→icon/label metadata (BUCKET_META)
+// live in planModel.ts — the pure, vscode-free module the legend + tests share.
 
 // ---------------------------------------------------------------------------
 // PlansProvider
@@ -67,6 +41,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
   // doc's absolute path minus its rel, so doc nodes can form resourceUris.
   private cache = new Map<string, { docs: PlanDoc[]; repoRoot: string }>();
 
+  // Git-activity watchers + per-repo debounce timers (#287). A watcher exists
+  // only for a repo currently in `cache` (i.e. expanded/scanned) — we never
+  // eagerly watch a collapsed repo. Both are torn down by refresh()/dispose().
+  private gitWatchers = new Map<string, vscode.Disposable>();
+  private rescanTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   constructor(
     private readonly runner: CliRunner,
     private readonly repos: () => { repoKey: string; label: string }[],
@@ -78,6 +58,9 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // from `repos()` on purpose: these have no folder key, so Scan All and the
     // roll-up (which both work off `repos()`/the cache) must never try them.
     private readonly unregistered: () => string[] = () => [],
+    // Whether to auto-update on git activity (#287). Read live so toggling the
+    // `workPlan.plansAutoRefresh` setting takes effect without a reload.
+    private readonly autoUpdate: () => boolean = () => true,
   ) {}
 
   /** A doc is acknowledged if EITHER the per-machine workspaceState ack is set
@@ -167,6 +150,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
         // `{"repo": str(repo_root), ...}`), so doc nodes form their resourceUri
         // as `<repoRoot>/<rel>`.
         this.cache.set(repoKey, { docs: res.docs, repoRoot: res.repo });
+        this._ensureGitWatcher(repoKey, res.repo);
       } catch (err: unknown) {
         if (err instanceof CliError) {
           const blob = `${err.message} ${err.stderr}`.toLowerCase();
@@ -278,7 +262,8 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const item = new vscode.TreeItem(filename, vscode.TreeItemCollapsibleState.None);
 
     // Icon — verdict-driven, with a muted override when the plan has been ack'd.
-    const [icon, color] = acked ? ["circle-outline", "descriptionForeground"] : BUCKET_ICON[bucket];
+    const meta = BUCKET_META[bucket];
+    const [icon, color] = acked ? ["circle-outline", "descriptionForeground"] : [meta.icon, meta.color];
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
     const ackLabel = docAcked ? " · ✅ ack'd (saved)" : localAcked ? " · ack'd" : "";
@@ -294,7 +279,9 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     // the phase/file rollup, and any unchecked items.
     const tip = new vscode.MarkdownString(undefined, true);
     tip.appendMarkdown(`\`${doc.rel}\`\n\n`);
-    tip.appendMarkdown(`${doc.glyph} **${doc.verdict}** — ${doc.rationale}\n\n`);
+    // Lead with the plain verdict label + its themed codicon (#348) so the hover
+    // decodes the row icon; keep the raw CLI verdict after it for precision.
+    tip.appendMarkdown(`$(${meta.icon}) **${meta.label}** · _${doc.verdict}_ — ${doc.rationale}\n\n`);
     tip.appendMarkdown(
       `Phases ${doc.checkboxes_done}/${doc.checkboxes_total} · ` +
       `Files ${doc.files_present}/${doc.files_declared}`,
@@ -357,6 +344,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
         try {
           const res = await planStatus(this.runner, r.repoKey, this.stallDays() ?? undefined);
           this.cache.set(r.repoKey, { docs: res.docs, repoRoot: res.repo });
+          this._ensureGitWatcher(r.repoKey, res.repo);
         } catch {
           // No local clone / scan error — leave uncached.
         }
@@ -368,12 +356,18 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     );
   }
 
-  /** Clears one repo's scan cache (or all) and re-renders the Plans tree. */
+  /** Clears one repo's scan cache (or all) and re-renders the Plans tree. Also
+   *  tears down the matching git watcher(s) (#287) — the watcher is recreated
+   *  when the repo is next expanded/scanned, against its fresh repoRoot. */
   refresh(repoKey?: string): void {
     if (repoKey) {
       this.cache.delete(repoKey);
+      this._disposeWatcher(repoKey);
     } else {
       this.cache.clear();
+      for (const key of [...this.gitWatchers.keys()]) {
+        this._disposeWatcher(key);
+      }
     }
     this._onDidChangeTreeData.fire(undefined);
   }
@@ -387,5 +381,80 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
    */
   rerender(): void {
     this._onDidChangeTreeData.fire(undefined);
+  }
+
+  // -------------------------------------------------------------------------
+  // Git-activity auto-update (#287)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Watch a cached repo's git refs so a commit to a plan's declared files clears
+   * its stalled state without a manual Refresh. We watch `.git/{HEAD,logs/HEAD,
+   * refs/**}` — the files a commit/checkout/reset rewrites — not the objects
+   * store (huge + excluded by the default watcherExclude), and debounce-rescan
+   * only this repo. No-op when auto-update is off or a watcher already exists.
+   */
+  private _ensureGitWatcher(repoKey: string, repoRoot: string): void {
+    if (!this.autoUpdate() || this.gitWatchers.has(repoKey)) {
+      return;
+    }
+    const pattern = new vscode.RelativePattern(
+      vscode.Uri.file(repoRoot), ".git/{HEAD,logs/HEAD,refs/**}",
+    );
+    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+    const onGit = (): void => this._scheduleRescan(repoKey);
+    watcher.onDidChange(onGit);
+    watcher.onDidCreate(onGit);
+    watcher.onDidDelete(onGit);
+    this.gitWatchers.set(repoKey, watcher);
+  }
+
+  /** Debounced per-repo re-scan trigger (#287) — coalesces a burst of git events
+   *  into a single plan-status run. */
+  private _scheduleRescan(repoKey: string): void {
+    const pending = this.rescanTimers.get(repoKey);
+    if (pending) {
+      clearTimeout(pending);
+    }
+    this.rescanTimers.set(repoKey, setTimeout(() => {
+      this.rescanTimers.delete(repoKey);
+      void this._rescanRepo(repoKey);
+    }, RESCAN_DEBOUNCE_MS));
+  }
+
+  /** Re-run plan-status for one already-cached repo and re-render (#287). A repo
+   *  that was collapsed/cleared since the event is skipped (we never eagerly scan
+   *  a collapsed repo); a transient scan failure keeps the stale cache. */
+  private async _rescanRepo(repoKey: string): Promise<void> {
+    if (!this.cache.has(repoKey)) {
+      return;
+    }
+    try {
+      const res = await planStatus(this.runner, repoKey, this.stallDays() ?? undefined);
+      this.cache.set(repoKey, { docs: res.docs, repoRoot: res.repo });
+      this._onDidChangeTreeData.fire(undefined);
+    } catch {
+      // Mid-rebase / index lock / transient failure — keep the last good cache;
+      // the next git event or a manual refresh recovers.
+    }
+  }
+
+  /** Dispose one repo's watcher + pending debounce timer (#287). */
+  private _disposeWatcher(repoKey: string): void {
+    this.gitWatchers.get(repoKey)?.dispose();
+    this.gitWatchers.delete(repoKey);
+    const timer = this.rescanTimers.get(repoKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.rescanTimers.delete(repoKey);
+    }
+  }
+
+  /** Tear down every watcher + timer. Called from extension deactivation so the
+   *  provider leaves no file watchers behind (#287). */
+  dispose(): void {
+    for (const key of [...this.gitWatchers.keys()]) {
+      this._disposeWatcher(key);
+    }
   }
 }

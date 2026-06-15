@@ -2,12 +2,12 @@ import * as vscode from "vscode";
 import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
   isAlreadyExistsError,
-  notesVcsStatus, notesVcsRun, notesVcsUndo,
+  notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
-import { ackKey, unregisteredTrackRepos } from "./planModel.ts";
+import { ackKey, unregisteredTrackRepos, LEGEND } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones } from "./model.ts";
@@ -240,6 +240,20 @@ export function activate(context: vscode.ExtensionContext): void {
           panel.renderEmpty("No tracks match the selected view.");
         }
       }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.openSettings — gear button: open the Settings UI scoped to this
+  // extension's settings (#352), so users reach workPlan.* without searching.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.openSettings", () => {
+      void vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        "@ext:stylusnexus.work-plan-viewer",
+      );
     }),
   );
 
@@ -946,6 +960,86 @@ export function activate(context: vscode.ExtensionContext): void {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
           : `Work Plan: set-next failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
+  // workPlan.autoNext — native auto-next picker (#274). Reimplements the CLI's
+  // interactive `--auto-next` (a TTY prompt that no-ops under VS Code's non-TTY
+  // stdin, #183): read the algorithmic suggestion via the read-only
+  // `handoff --suggest-next` (no write), let the user uncheck candidates in a
+  // multi-select QuickPick (display order = the CLI's priority order, so the
+  // sequence is preserved), then write via the audited `setNext` path.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.autoNext", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const suggestion = await withWriteProgress(
+          `Work Plan: computing next-up suggestion for ${track}…`,
+          () => suggestNextUp(runner, track),
+        );
+
+        if (suggestion.suggested.length === 0) {
+          const why = suggestion.error
+            ? ` (${suggestion.error})`
+            : suggestion.skipped.length
+              ? ` — ${suggestion.skipped.length} candidate(s) already queued on a sibling track`
+              : "";
+          vscode.window.showInformationMessage(
+            `Work Plan: no auto next-up suggestion for ${track}${why}.`,
+          );
+          return;
+        }
+
+        type Cand = vscode.QuickPickItem & { number: number };
+        const items: Cand[] = suggestion.suggested.map((s) => ({
+          label: `#${s.number}  ${s.title}`,
+          description: [s.priority, s.milestone].filter(Boolean).join(" · "),
+          number: s.number,
+          picked: true,
+        }));
+        const skippedNote = suggestion.skipped.length
+          ? ` · ${suggestion.skipped.length} skipped (queued on a sibling)`
+          : "";
+        const picked = await vscode.window.showQuickPick(items, {
+          canPickMany: true,
+          ignoreFocusOut: true,
+          placeHolder: `Auto next-up for ${track}${skippedNote} — uncheck any to drop, Enter to apply`,
+        });
+        if (!picked) return; // Escape → cancel, no write
+        if (picked.length === 0) {
+          vscode.window.showInformationMessage("Work Plan: nothing selected — next-up unchanged.");
+          return;
+        }
+        // Multi-select returns items in DISPLAY order, which here IS the CLI's
+        // priority order — so the queue keeps the algorithm's sequence (#274).
+        const issues = picked.map((p) => p.number);
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: setting next-up on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "setNext", track, issues },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: set next-up on ${track} (session logged)`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: auto next-up failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
     }),
@@ -2337,6 +2431,10 @@ export function activate(context: vscode.ExtensionContext): void {
     return raw === "match" ? null : parseInt(raw, 10);
   };
 
+  // Whether the Plans view auto-updates on a scanned repo's git activity (#287).
+  const plansAutoRefreshSetting = (): boolean =>
+    vscode.workspace.getConfiguration("workPlan").get<boolean>("plansAutoRefresh", true);
+
   // Distinct {repoKey: folder, label: slug} from the export's CONFIGURED repos
   // (#288), deduped by folder. Sourcing from `exp.repos` (not `exp.tracks`) means
   // a registered repo with a local clone but NO track (e.g. agent-armor) still
@@ -2382,7 +2480,10 @@ export function activate(context: vscode.ExtensionContext): void {
     (repoKey, rel) => ackedPlans.has(ackKey(repoKey, rel)),
     () => showAcked,
     unregisteredForPlans,
+    plansAutoRefreshSetting,
   );
+  // Tear down the Plans view's git watchers on deactivation (#287).
+  context.subscriptions.push({ dispose: () => plansProvider.dispose() });
 
   const setAck = async (repoKey: string, rel: string, on: boolean): Promise<void> => {
     const k = ackKey(repoKey, rel);
@@ -2634,6 +2735,24 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(plansView);
 
+  // Time-relative staleness re-evaluation (#287): a plan crosses the stall
+  // threshold purely as days pass, with no git event to trigger a re-scan. The
+  // cached docs carry `manifest_last_touched`; the render path re-derives
+  // staleness against `Date.now()` each time, so a cheap rerender() (no scan) on
+  // view-focus / window-focus keeps the verdict honest without thrashing.
+  context.subscriptions.push(
+    plansView.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        plansProvider.rerender();
+      }
+    }),
+    vscode.window.onDidChangeWindowState((s) => {
+      if (s.focused && plansView.visible) {
+        plansProvider.rerender();
+      }
+    }),
+  );
+
   // The Plans roots derive from provider.rawExport, which is null until the main
   // provider's async refresh resolves — and the provider is constructed after
   // that refresh is kicked off. Re-render the Plans tree whenever the export
@@ -2649,6 +2768,24 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.plans.refresh", () => {
       plansProvider.refresh();
+    }),
+  );
+
+  // Legend (#348) — an informational QuickPick decoding the verdict icons. Each
+  // row renders its real codicon via `$(icon)` in the label, so the picker is
+  // self-demonstrating; selecting a row does nothing (it's a reference, not an
+  // action). Built from the shared LEGEND so it can never drift from the tree.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.plans.showLegend", () => {
+      const items: vscode.QuickPickItem[] = LEGEND.map((row) => ({
+        label: `$(${row.icon}) ${row.label}`,
+        detail: row.blurb,
+      }));
+      void vscode.window.showQuickPick(items, {
+        title: "Work Plan — plan verdict legend",
+        placeHolder: "What each plan icon means (reference only)",
+        matchOnDetail: true,
+      });
     }),
   );
 
@@ -2669,6 +2806,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("workPlan.stallDays")) {
         plansProvider.rerender();
+      }
+      // Toggling auto-refresh either way clears the cache via refresh(): OFF
+      // disposes the live watchers; ON forces a re-scan on next expand that
+      // re-attaches them — including the already-expanded repo the user is
+      // looking at, which an ON branch that only relied on lazy expand would
+      // miss (it stays cached, so getChildren never re-runs).
+      if (e.affectsConfiguration("workPlan.plansAutoRefresh")) {
+        plansProvider.refresh();
       }
     }),
   );

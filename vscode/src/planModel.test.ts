@@ -1,6 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { isStalledForDisplay, planBucket, planDescription, ackKey, unregisteredTrackRepos } from "./planModel.ts";
+import { isStalledForDisplay, planBucket, planDescription, ackKey, unregisteredTrackRepos,
+         BUCKET_META, BUCKET_RANK, LEGEND } from "./planModel.ts";
+import type { PlanBucket } from "./planModel.ts";
 import type { Export, PlanDoc, Track } from "./model.ts";
 
 function doc(o: Partial<PlanDoc> = {}): PlanDoc {
@@ -176,5 +178,47 @@ describe("planDescription — off-tree paths (#286 slice 3)", () => {
   test("no marker when none", () => {
     const d = planDescription(doc({ verdict: "shipped", lie_gap: false, manifest_last_touched: "2026-06-11" }), 14, NOW);
     assert.ok(!d.includes("off-tree"), d);
+  });
+});
+
+// All seven buckets planBucket can emit. Keep in sync with the PlanBucket union;
+// the "every bucket" tests below fail loudly if a new bucket is added without
+// metadata/legend coverage.
+const ALL_BUCKETS: PlanBucket[] = ["stalled", "lie-gap", "drift", "active", "shipped", "dead", "other"];
+
+describe("BUCKET_META (#348)", () => {
+  test("has an entry for every bucket", () => {
+    for (const b of ALL_BUCKETS) assert.ok(BUCKET_META[b], `missing meta for ${b}`);
+    assert.equal(Object.keys(BUCKET_META).length, ALL_BUCKETS.length);
+  });
+  test("every bucket has a non-empty icon, color, label, and blurb", () => {
+    for (const b of ALL_BUCKETS) {
+      const m = BUCKET_META[b];
+      for (const [k, v] of Object.entries(m)) assert.ok(v.length > 0, `${b}.${k} is empty`);
+    }
+  });
+  // The #208 a11y invariant: every state is distinguishable by SHAPE, never by
+  // colour alone — so no two buckets may share a codicon.
+  test("icons are distinct shapes across buckets (#208)", () => {
+    const icons = ALL_BUCKETS.map((b) => BUCKET_META[b].icon);
+    assert.equal(new Set(icons).size, icons.length, `duplicate icon: ${icons}`);
+  });
+  test("labels are distinct and human-readable across buckets", () => {
+    const labels = ALL_BUCKETS.map((b) => BUCKET_META[b].label);
+    assert.equal(new Set(labels).size, labels.length, `duplicate label: ${labels}`);
+  });
+});
+
+describe("LEGEND (#348)", () => {
+  test("covers every bucket in rank order, then the ack'd modifier last", () => {
+    const buckets = [...ALL_BUCKETS].sort((a, b) => BUCKET_RANK[a] - BUCKET_RANK[b]);
+    const expected = buckets.map((b) => BUCKET_META[b].label);
+    assert.deepEqual(LEGEND.slice(0, buckets.length).map((r) => r.label), expected);
+    const last = LEGEND[LEGEND.length - 1];
+    assert.equal(LEGEND.length, buckets.length + 1);
+    assert.ok(last.modifier === true && last.label === "Acknowledged", "ack'd row missing/last");
+  });
+  test("ack'd modifier icon matches the muted override in plansTree (circle-outline)", () => {
+    assert.equal(LEGEND[LEGEND.length - 1].icon, "circle-outline");
   });
 });

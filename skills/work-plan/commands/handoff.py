@@ -9,6 +9,7 @@ Use --interactive (or -i) for the legacy blank-prompt mode where you fill in
 each section by hand.
 """
 import fnmatch
+import json
 import subprocess
 from datetime import datetime, timedelta
 
@@ -30,9 +31,10 @@ from lib.prompts import prompt_lines, parse_flags, prompt_input
 
 
 def run(args: list[str]) -> int:
-    flags, positional = parse_flags(args, {"--interactive", "-i", "--set-next", "--auto-next", "--repo"})
+    flags, positional = parse_flags(args, {"--interactive", "-i", "--set-next", "--auto-next", "--suggest-next", "--repo"})
     interactive = flags.get("--interactive", False) or flags.get("-i", False)
     auto_next = flags.get("--auto-next", False)
+    suggest_next = flags.get("--suggest-next", False)
 
     # Support both --set-next=4167,4148 (parse_flags handles via key=value) and
     # --set-next 4167,4148 (space-separated). For the space form, parse_flags
@@ -79,6 +81,12 @@ def run(args: list[str]) -> int:
         return 1
     if not track:
         return 1
+
+    # --suggest-next: read-only. Compute the algorithmic next_up suggestion and
+    # emit it as JSON for a non-CLI caller (the VS Code native picker, #274) to
+    # render + confirm. No prompt, no write — the caller writes via --set-next.
+    if suggest_next:
+        return _suggest_next_json(track, cfg)
 
     # Apply --set-next first if present, so derived/interactive output reflects it.
     if isinstance(set_next_raw, str):
@@ -129,6 +137,81 @@ def _apply_set_next(track, raw: str, cfg: dict) -> int:
     return 0
 
 
+def _compute_auto_next(track, cfg: dict):
+    """Compute the sibling-filtered next_up suggestion (read-only — no prompt,
+    no write). Shared by the interactive --auto-next flow and the --suggest-next
+    JSON output (#274).
+
+    Returns (suggestion, by_num, skipped, had_raw):
+      - suggestion: list[int] — ordered issue numbers to queue
+      - by_num: {int: issue} — fetched issues keyed by number (for decoration)
+      - skipped: list[(int, str)] — (issue, sibling_track) dropped as already-claimed
+      - had_raw: bool — whether the algorithm produced ANY candidate before the
+        sibling filter (distinguishes "no open non-blocker issues" from
+        "all candidates claimed by siblings"). Caller guarantees track.repo and a
+        non-empty issue list.
+    """
+    issue_nums = track.meta.get("github", {}).get("issues") or []
+    issues = fetch_issues(track.repo, issue_nums)
+    blocker_nums = track.meta.get("blockers") or []
+    track_milestone = track.meta.get("milestone_alignment") or None
+    hot_nums = hot_issue_numbers(track.local_path) if track.local_path else set()
+    in_progress_set = {i["number"] for i in issues if issue_in_progress(i, hot_nums)}
+    _, order = resolve_next_up_order(track.meta, cfg.get("next_up_default"))
+    raw_suggestion = suggest_next_up(
+        issues, blocker_nums,
+        track_milestone=track_milestone,
+        in_progress_nums=in_progress_set,
+        order=order,
+    )
+    claimed = _sibling_claimed_next_up_map(track, cfg)
+    suggestion, skipped = [], []
+    for num in raw_suggestion:
+        if num in claimed:
+            skipped.append((num, claimed[num]))
+        else:
+            suggestion.append(num)
+    by_num = {i["number"]: i for i in issues}
+    return suggestion, by_num, skipped, bool(raw_suggestion)
+
+
+def _suggest_next_json(track, cfg: dict) -> int:
+    """Emit the algorithmic next_up suggestion as JSON for a non-CLI caller (#274).
+
+    Read-only: never prompts or writes. Soft errors (no repo / no issues) are
+    reported in the payload with an empty `suggested`, so the caller always gets
+    parseable JSON and exit 0; hard errors (track resolution) are handled upstream
+    in run() before this is reached.
+    """
+    out = {
+        "track": track.name,
+        "repo": track.repo,
+        "current": track.meta.get("next_up") or [],
+        "suggested": [],
+        "skipped": [],
+    }
+    if not track.repo:
+        out["error"] = f"track '{track.name}' has no github.repo"
+        print(json.dumps(out))
+        return 0
+    if not (track.meta.get("github", {}).get("issues") or []):
+        out["error"] = f"no issues attached to '{track.name}'"
+        print(json.dumps(out))
+        return 0
+    suggestion, by_num, skipped, _ = _compute_auto_next(track, cfg)
+    for num in suggestion:
+        i = by_num.get(num, {})
+        out["suggested"].append({
+            "number": num,
+            "title": i.get("title", ""),
+            "priority": extract_priority(i.get("labels", [])),
+            "milestone": short_milestone(i.get("milestone")) or "",
+        })
+    out["skipped"] = [{"number": n, "claimed_by": s} for n, s in skipped]
+    print(json.dumps(out))
+    return 0
+
+
 def _apply_auto_next(track, cfg: dict) -> int:
     """Suggest a next_up list from open issues; prompt user to apply/edit/skip.
 
@@ -150,38 +233,19 @@ def _apply_auto_next(track, cfg: dict) -> int:
         print(f"No issues attached to {track.name}; nothing to suggest.")
         return 0
 
-    issues = fetch_issues(track.repo, issue_nums)
-    blocker_nums = track.meta.get("blockers") or []
-    track_milestone = track.meta.get("milestone_alignment") or None
-    hot_nums = hot_issue_numbers(track.local_path) if track.local_path else set()
-    in_progress_set = {i["number"] for i in issues if issue_in_progress(i, hot_nums)}
-    _, order = resolve_next_up_order(track.meta, cfg.get("next_up_default"))
-    raw_suggestion = suggest_next_up(
-        issues, blocker_nums,
-        track_milestone=track_milestone,
-        in_progress_nums=in_progress_set,
-        order=order,
-    )
-    if not raw_suggestion:
+    suggestion, by_num, skipped, had_raw = _compute_auto_next(track, cfg)
+    # Print one line per sibling-claimed skip so the user knows what was dropped.
+    for num, sib in skipped:
+        print(f"↷ skipped #{num} (already next_up on '{sib}')")
+
+    if not had_raw:
         print(f"No open, non-blocker issues for {track.name}; next_up unchanged.")
         return 0
-
-    # Filter sibling-claimed issues out of the suggestion. Print one line
-    # per skip so the user knows what was dropped and why.
-    claimed = _sibling_claimed_next_up_map(track, cfg)
-    suggestion = []
-    for num in raw_suggestion:
-        if num in claimed:
-            print(f"↷ skipped #{num} (already next_up on '{claimed[num]}')")
-        else:
-            suggestion.append(num)
-
     if not suggestion:
         print(f"All suggested issues are already next_up on sibling tracks; next_up unchanged.")
         return 0
 
     # Decorate with title + priority + milestone for the preview.
-    by_num = {i["number"]: i for i in issues}
     print(f"\nSuggested next_up for {track.name}:")
     for num in suggestion:
         i = by_num.get(num, {})

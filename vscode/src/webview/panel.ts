@@ -348,6 +348,48 @@ export class WorkPlanPanel {
         }
         break;
       }
+      case "exportGraph": {
+        void this._handleExportGraph(raw.format, raw.data);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Write the exported dependency graph to disk via a Save dialog (#216). The
+   * webview did the rendering (SVG serialize / PNG rasterize); the host only
+   * picks a destination and writes bytes — SVG as utf-8 text, PNG decoded from
+   * its base64 data-URL payload.
+   */
+  private async _handleExportGraph(format: "svg" | "png", data: string): Promise<void> {
+    const trackSlug = (this._currentTrackName ?? "dependency-graph")
+      .replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "dependency-graph";
+    const defaultUri = vscode.Uri.file(`${trackSlug}.${format}`);
+    const filters: Record<string, string[]> = format === "svg"
+      ? { "SVG image": ["svg"] }
+      : { "PNG image": ["png"] };
+    const target = await vscode.window.showSaveDialog({ defaultUri, filters });
+    if (!target) {
+      return; // user cancelled
+    }
+    try {
+      let bytes: Uint8Array;
+      if (format === "png") {
+        // data is a `data:image/png;base64,…` URL — strip the prefix and decode.
+        const comma = data.indexOf(",");
+        const b64 = comma >= 0 ? data.slice(comma + 1) : data;
+        bytes = Uint8Array.from(Buffer.from(b64, "base64"));
+      } else {
+        bytes = new TextEncoder().encode(data);
+      }
+      await vscode.workspace.fs.writeFile(target, bytes);
+      vscode.window.showInformationMessage(
+        `Work Plan: graph exported to ${target.fsPath}`,
+      );
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(
+        `Work Plan: graph export failed — ${String(err)}`,
+      );
     }
   }
 

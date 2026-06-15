@@ -157,6 +157,35 @@ describe("buildHtml — graphDef embedding", () => {
     // Resting state is dim-but-visible, never fully transparent.
     assert.ok(!/\.move-btn\s*\{[^}]*opacity:\s*0;/.test(html), "move-btn must not rest at opacity:0");
   });
+
+  it("renders keyboard-operable zoom/fit/export controls (#216)", () => {
+    const html = buildHtml(BASE);
+    for (const id of ["graph-zoom-out", "graph-zoom-in", "graph-fit", "graph-reset", "graph-export-svg", "graph-export-png"]) {
+      assert.ok(html.includes(`id="${id}"`), `missing control button #${id}`);
+    }
+    // Real <button>s with aria-labels (keyboard + screen-reader operable), and a
+    // labelled group wrapper.
+    assert.ok(html.includes('class="graph-controls" role="group"'), "controls need a labelled group");
+    assert.ok(/<button type="button" class="graph-ctl"[^>]*aria-label=/.test(html), "control buttons need aria-labels");
+  });
+
+  it("wires the controller to a post-render hook (#216)", () => {
+    const html = buildHtml(BASE);
+    // The loader signals render-completion; the messaging IIFE listens for it.
+    assert.ok(html.includes('dispatchEvent(new Event("workplan:graph-rendered"))'), "loader must signal render done");
+    assert.ok(html.includes('addEventListener("workplan:graph-rendered"'), "controller must listen for render done");
+  });
+
+  it("the controller wiring is idempotent against an early render event (#216 review)", () => {
+    const html = buildHtml(BASE);
+    // mermaid.run() can resolve before the messaging script attaches its
+    // listener; the controller must self-check for an already-present SVG and
+    // run setup directly instead of only relying on the (possibly-missed) event.
+    assert.ok(
+      html.includes('document.querySelector(".graph-figure svg")'),
+      "controller must run setup directly if the SVG already rendered",
+    );
+  });
 });
 
 describe("buildHtml — theme adaptivity (#207)", () => {

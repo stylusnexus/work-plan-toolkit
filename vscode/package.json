@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -81,10 +81,22 @@
         "icon": "$(sort-precedence)"
       },
       {
+        "command": "workPlan.openSettings",
+        "title": "Open Settings",
+        "category": "Work Plan",
+        "icon": "$(gear)"
+      },
+      {
         "command": "workPlan.plans.refresh",
         "title": "Refresh Plans",
         "category": "Work Plan",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "workPlan.plans.showLegend",
+        "title": "Show Plan Icon Legend",
+        "category": "Work Plan",
+        "icon": "$(info)"
       },
       {
         "command": "workPlan.plans.scanAll",
@@ -196,6 +208,11 @@
       {
         "command": "workPlan.setNext",
         "title": "Set Next-Up & Log Session",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.autoNext",
+        "title": "Suggest Next-Up (auto)…",
         "category": "Work Plan"
       },
       {
@@ -329,6 +346,11 @@
           "group": "navigation@5"
         },
         {
+          "command": "workPlan.openSettings",
+          "when": "view == workPlan.tree",
+          "group": "navigation@99"
+        },
+        {
           "command": "workPlan.hygiene",
           "when": "view == workPlan.tree",
           "group": "9_maintenance"
@@ -362,6 +384,11 @@
           "command": "workPlan.plans.refresh",
           "when": "view == workPlan.plans",
           "group": "navigation@2"
+        },
+        {
+          "command": "workPlan.plans.showLegend",
+          "when": "view == workPlan.plans",
+          "group": "navigation@3"
         },
         {
           "command": "workPlan.plans.toggleAcknowledged",
@@ -426,9 +453,14 @@
           "group": "1_workPlanEdit@4"
         },
         {
-          "command": "workPlan.setNextUpPreset",
+          "command": "workPlan.autoNext",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanEdit@5"
+        },
+        {
+          "command": "workPlan.setNextUpPreset",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanEdit@6"
         },
         {
           "command": "workPlan.refreshMd",
@@ -650,6 +682,11 @@
           ],
           "default": "match",
           "description": "How cold a plan's build (its declared files) must be to read as 'stalled' in the Plans view."
+        },
+        "workPlan.plansAutoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-update the Plans view when a scanned repo's git activity changes (e.g. committing a plan's declared files clears its 'stalled' state) without a manual Refresh. Watches each expanded repo's .git refs; falls back to manual refresh when off."
         }
       }
     }

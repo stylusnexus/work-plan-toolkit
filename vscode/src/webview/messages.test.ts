@@ -117,6 +117,21 @@ describe("isWebviewMessage — regression: previously-dropped message types", ()
       "setNextUp must be in BOTH the WebviewMessage union AND the isWebviewMessage guard",
     );
   });
+
+  it("#216: exportGraph (svg) passes the guard", () => {
+    assert.equal(
+      isWebviewMessage({ type: "exportGraph", format: "svg", data: "<svg/>" }),
+      true,
+      "exportGraph must be in BOTH the WebviewMessage union AND the guard",
+    );
+  });
+
+  it("#216: exportGraph (png) passes the guard", () => {
+    assert.equal(
+      isWebviewMessage({ type: "exportGraph", format: "png", data: "data:image/png;base64,AAAA" }),
+      true,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -278,5 +293,24 @@ describe("isWebviewMessage — rejects malformed payloads", () => {
       isWebviewMessage({ type: "toggleInProgress", number: -2, clear: true }),
       false,
     );
+  });
+
+  // exportGraph (#216)
+  it("rejects exportGraph with an unknown format", () => {
+    assert.equal(
+      isWebviewMessage({ type: "exportGraph", format: "pdf", data: "x" }),
+      false,
+    );
+  });
+
+  it("rejects exportGraph with empty data", () => {
+    assert.equal(
+      isWebviewMessage({ type: "exportGraph", format: "svg", data: "" }),
+      false,
+    );
+  });
+
+  it("rejects exportGraph without data", () => {
+    assert.equal(isWebviewMessage({ type: "exportGraph", format: "png" }), false);
   });
 });
