@@ -218,8 +218,9 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }
   // -------------------------------------------------------------------------
 
   if (opts?.showNextUpPreset && track.next_up_preset) {
+    const autoSuffix = track.next_up_auto ? " · auto" : "";
     parts.push(
-      `<div class="next-up-preset"><b>Next-up order:</b> ${esc(track.next_up_preset)}</div>`,
+      `<div class="next-up-preset"><b>Next-up order:</b> ${esc(track.next_up_preset)}${autoSuffix}</div>`,
     );
   }
 

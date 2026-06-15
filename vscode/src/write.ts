@@ -52,8 +52,10 @@ export type WriteAction =
   | { kind: "pushTrack"; track: string; repoKey?: string }
   // Set the per-track next-up ordering preset (#326 Phase 3). repoKey is the
   // config folder key (passed as --repo=<key> to the CLI). preset is omitted
-  // when clear=true (which resets to the default "flow").
-  | { kind: "setNextUpPreset"; track: string; repoKey?: string; preset?: string; clear?: boolean };
+  // when clear=true (which resets to the default "flow"). auto, when present,
+  // toggles automatic next-up ranking (#338) — can be combined with preset or
+  // used alone (no preset → no --preset/--clear flag emitted).
+  | { kind: "setNextUpPreset"; track: string; repoKey?: string; preset?: string; clear?: boolean; auto?: "on" | "off" };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -110,6 +112,8 @@ export type WriteOutcome =
  *   closeIssue      → ["close-issue", "--repo=<slug>", "--reason=<r>", ..."--comment=<c>", "--", number]
  *   issueInProgress → ["in-progress", ..."--clear", "--repo=<slug>", "--", number]
  *   pushTrack       → ["push-track", ..."--repo=<key>", "--", track]
+  setNextUpPreset → ["set-next-up", ..."--repo=<key>", "--preset=<p>"|"--clear"|"--auto=on|off", "--", track]
+                    (auto alone: ["set-next-up", ..."--repo=<key>", "--auto=on|off", "--", track])
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -250,6 +254,7 @@ export function actionToArgs(action: WriteAction): string[] {
         "set-next-up",
         ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         ...(action.clear ? ["--clear"] : action.preset ? [`--preset=${action.preset}`] : []),
+        ...(action.auto ? [`--auto=${action.auto}`] : []),
         "--",
         action.track,
       ];
