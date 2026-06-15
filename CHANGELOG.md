@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.15+d52d670 — 2026-06-15 (#333)
+
+feat: configurable per-track next-up ordering (#326) + issue-link fix (0.10.0)
+
+Production deploy: the configurable auto next-up feature (#326, all 3 phases) plus the detail-panel issue-link fix.
+
+## #326 — configurable per-track next-up ordering
+Replaces the hardcoded next-up ranking with a dependency-aware default + per-track presets.
+- **New default ranking:** in-progress-first → milestone → (blocked-by excluded, in-progress exempt) → unblocking fan-out → priority → recency → issue#. Uses #257's `blocked_by`/`blocking` edges (blocked = gate, fan-out = boost) and the in-progress signal.
+- **Presets** (`lib/next_up.py`): `flow` (default), `priority-driven`, `backlog` — per-track via `next_up_order: {preset}` frontmatter, with a global `next_up_default` in config.
+- **New CLI command** `set-next-up <track> --preset=<p>` (guarded, public-repo confirm-gated). `export --json` emits `next_up_preset` per track.
+- **VS Code (0.10.0):** a "Set Next-Up Order…" track-menu QuickPick (writes via the CLI confirm flow) + a detail-panel preset indicator (`workPlan.showNextUpPreset` setting). Degrades gracefully on older CLIs.
+
+## Issue-link fix (was 0.9.2 on dev, ships in 0.10.0)
+Detail-panel + search issue-number links now carry a real `https://github.com/<repo>/issues/<n>` href, so clicking opens GitHub even if the webview script is blocked/stale (previously such a click silently scrolled to the top). Adds the missing `font-src` CSP directive.
+
+## Versions / publishes (post-merge)
+- CLI changed → **npm** republish (same-day → `2026.6.14-2`).
+- VS Code extension **0.9.1 → 0.10.0** (Marketplace + Open VSX).
+- `MIN_CLI_VERSION` stays `2026.06.14` (≤ deploy VERSION; the preset feature degrades gracefully).
+- Tag the deploy + **repin the agent-plugins catalog** (Codex + Claude indexes) to the new tag.
+
+## Test plan
+- [x] dev CI green; full Python suite + VS Code typecheck/test/build all pass (1062 Python, 619 VS Code).
+- [x] Pre-deploy check: MIN_CLI_VERSION ≤ VERSION; export perf 9.9s at real scale (no regression); `next_up_preset` emitted.
+
 ## 2026.06.14+6579bf7 — 2026-06-14 (#323)
 
 fix(git_state): batch hot-branch detection — fixes multi-minute VS Code reload hang (#271)
