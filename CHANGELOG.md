@@ -6,6 +6,30 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.15+e3f3cdf — 2026-06-15 (#346)
+
+feat(vscode,export): consistent Edit Fields affordances, untracked-issue fix, npm-12 posture
+
+Deploy of five changes accumulated on `dev`.
+
+### feat
+- **vscode**: Edit Track Fields now uses consistent affordances for `launch_priority` (P0–P3 QuickPick) and `milestone_alignment` (suggests existing milestones + type-new/clear escape hatches), matching New Track. (#213 / #345) — ships as extension **v0.11.1**.
+
+### fix
+- **export**: a repo whose only track has `issues: []` no longer hides its open issues — `export --json` now computes untracked for every repo that has any track, not just repos with tracked issues. An empty track previously made a repo's open issues vanish entirely (not in the track, not in untracked, and the viewer's trackless fallback shuts off once a track exists). (#342 / #343)
+
+### chore
+- **npm**: dropped the redundant `postinstall` script (`scripts/npm-check-deps.js`) so the package is zero-lifecycle-script ahead of npm 12's install-time default-deny; the runtime preflight in `bin/work-plan` already covers the same check. (#280 / #344)
+- **deps-dev**: bumped esbuild 0.25 → 0.28.1 in /vscode, resolving the high-severity Dependabot alert (build-time bundler; not shipped). (#294 / #347)
+- **vscode**: extension version bump 0.11.0 → 0.11.1.
+
+Commits:
+fbf239c chore(deps-dev): bump esbuild 0.25 → 0.28.1 in /vscode (#347)
+64857a0 chore(vscode): bump extension to 0.11.1 (#213 Edit Fields affordances)
+8c70dda feat(vscode): consistent priority/milestone affordances in Edit Fields (#345)
+8dec257 chore(npm): drop redundant postinstall script for npm 12 default-deny compatibility (#344)
+73aa009 fix(export): surface untracked issues for repos whose only track is empty (#343)
+
 ## 2026.06.15+c80ece1 — 2026-06-15 (#341)
 
 feat: toggle auto next-up per track (#338) — CLI --auto + viewer (0.11.0)
