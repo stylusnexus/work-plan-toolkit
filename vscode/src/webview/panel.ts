@@ -201,7 +201,10 @@ export class WorkPlanPanel {
       : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
     const isDark = isDarkTheme();
     const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused, dark: isDark });
-    const detailHtml = renderDetail(track);
+    const showNextUpPreset = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<boolean>("showNextUpPreset", true);
+    const detailHtml = renderDetail(track, { showNextUpPreset });
 
     const html = buildHtml({
       cspSource: webview.cspSource,

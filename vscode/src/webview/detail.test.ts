@@ -918,6 +918,90 @@ describe("renderDetail — in-progress toggle button (#271 B4)", () => {
 // Dep disclosure button + chips (#257 B3)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Next-up preset indicator (#326)
+// ---------------------------------------------------------------------------
+
+describe("renderDetail — next_up_preset indicator (#326)", () => {
+  const presetTrack: Track = {
+    ...emptyTrack,
+    next_up_preset: "priority-driven",
+  };
+
+  it("renders the preset row when showNextUpPreset=true and next_up_preset is set", () => {
+    const html = renderDetail(presetTrack, { showNextUpPreset: true });
+    assert.ok(
+      html.includes("Next-up order:"),
+      `expected 'Next-up order:' heading:\n${html}`,
+    );
+    assert.ok(
+      html.includes("priority-driven"),
+      `expected preset name 'priority-driven':\n${html}`,
+    );
+  });
+
+  it("does NOT render the preset row when showNextUpPreset=false", () => {
+    const html = renderDetail(presetTrack, { showNextUpPreset: false });
+    assert.ok(
+      !html.includes("Next-up order:"),
+      `preset row must be hidden when showNextUpPreset=false:\n${html}`,
+    );
+  });
+
+  it("does NOT render the preset row when next_up_preset is absent (older CLI)", () => {
+    const html = renderDetail(emptyTrack, { showNextUpPreset: true });
+    assert.ok(
+      !html.includes("Next-up order:"),
+      `preset row must be hidden when next_up_preset is absent:\n${html}`,
+    );
+  });
+
+  it("does NOT render the preset row when opts is omitted (default: hidden)", () => {
+    const html = renderDetail(presetTrack);
+    assert.ok(
+      !html.includes("Next-up order:"),
+      `preset row must be hidden when opts is omitted:\n${html}`,
+    );
+  });
+
+  it("HTML-escapes the preset name in the preset row", () => {
+    const evilPresetTrack: Track = {
+      ...emptyTrack,
+      next_up_preset: '<script>alert("xss")</script>',
+    };
+    const html = renderDetail(evilPresetTrack, { showNextUpPreset: true });
+    assert.ok(
+      !html.includes("<script>"),
+      `raw <script> must not appear in preset row:\n${html}`,
+    );
+    assert.ok(
+      html.includes("&lt;script&gt;"),
+      `preset name must be HTML-escaped:\n${html}`,
+    );
+  });
+
+  it("renders 'flow' preset correctly", () => {
+    const flowTrack: Track = { ...emptyTrack, next_up_preset: "flow" };
+    const html = renderDetail(flowTrack, { showNextUpPreset: true });
+    assert.ok(html.includes("flow"), `expected 'flow' preset name:\n${html}`);
+    assert.ok(html.includes("Next-up order:"), `expected heading:\n${html}`);
+  });
+
+  it("renders 'backlog' preset correctly", () => {
+    const backlogTrack: Track = { ...emptyTrack, next_up_preset: "backlog" };
+    const html = renderDetail(backlogTrack, { showNextUpPreset: true });
+    assert.ok(html.includes("backlog"), `expected 'backlog' preset name:\n${html}`);
+  });
+
+  it("preset row appears inside a 'next-up-preset' div", () => {
+    const html = renderDetail(presetTrack, { showNextUpPreset: true });
+    assert.ok(
+      html.includes('class="next-up-preset"'),
+      `expected next-up-preset div class:\n${html}`,
+    );
+  });
+});
+
 describe("renderDetail — dep disclosure button (#257)", () => {
   it("an issue with blocked_by renders dep-toggle-btn carrying data-depissue and a dep-detail-row", () => {
     const track: Track = {
