@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.15+cf5a38f — 2026-06-15 (#335)
+
+feat(vscode): Set Next-Up button in detail panel (0.10.1) + README refresh
+
+VS Code-only deploy.
+
+## What
+- **Set Next-Up button** in the track detail panel (#334) — sets next-up from where you're looking, reusing the `workPlan.setNext` command (no picker fallback; resolves the open track). Extension **0.10.0 → 0.10.1**.
+- **Docs:** root README VS Code section refreshed to note the viewer's next-up controls (Set Next-Up + the Set Next-Up Order… preset picker), the per-issue in-progress badge, and the blocked-by/blocking dependency surfacing.
+
+## Publishes (post-merge)
+- **VS Code 0.10.1** → Marketplace + Open VSX.
+- **npm skipped** — the CLI is unchanged since the last deploy (delta is VS Code + docs only).
+- `MIN_CLI_VERSION` unchanged (`2026.06.14` ≤ deploy VERSION; the button needs no new CLI surface).
+- Tag the deploy + repin the agent-plugins catalog to the new tag.
+
+## Test plan
+- [x] dev CI green; VS Code typecheck + 629 tests + build clean.
+- [x] No `skills/` changes in the delta (CLI untouched) → npm correctly skipped.
+
 ## 2026.06.15+d52d670 — 2026-06-15 (#333)
 
 feat: configurable per-track next-up ordering (#326) + issue-link fix (0.10.0)
