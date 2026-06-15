@@ -661,6 +661,11 @@
           ],
           "default": "match",
           "description": "How cold a plan's build (its declared files) must be to read as 'stalled' in the Plans view."
+        },
+        "workPlan.plansAutoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-update the Plans view when a scanned repo's git activity changes (e.g. committing a plan's declared files clears its 'stalled' state) without a manual Refresh. Watches each expanded repo's .git refs; falls back to manual refresh when off."
         }
       }
     }
