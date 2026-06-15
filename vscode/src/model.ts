@@ -124,6 +124,30 @@ export interface ConfigRepo {
   visibility: "PUBLIC" | "PRIVATE" | null;
 }
 
+/**
+ * A track that exists in BOTH a repo's shared `.work-plan/` tier and the private
+ * `notes_root` tier (#361) — a private copy left behind after promotion. The CLI
+ * already resolves the collision ("using shared") but the private orphan keeps
+ * warning to stderr, which the viewer never sees; this surfaces it as a
+ * read-only health signal. Resolved with the `dedupe-tiers` CLI verb.
+ */
+export interface TierDuplicate {
+  /** GitHub slug "org/repo". */
+  repo: string | null;
+  /** Config repo key (the key under `repos:`), for the `--repo=` hint. */
+  folder: string | null;
+  /** Track name (filename stem, shared on both tiers). */
+  name: string;
+  /** Absolute path to the shared copy (the one that wins). */
+  shared_path: string;
+  /** Absolute path to the private orphan (the one dedupe-tiers would remove). */
+  private_path: string;
+  /** true when the private copy's issue refs are a subset of the shared copy's —
+   *  i.e. dedupe-tiers can remove it with no data loss. false = diverged, needs
+   *  manual review. */
+  safe: boolean;
+}
+
 /** Root shape emitted by `work-plan export --json`. */
 export interface Export {
   schema: number;
@@ -133,6 +157,8 @@ export interface Export {
   untracked?: { repo: string; issues: Issue[] }[];
   /** Every configured repo, regardless of track membership (#288, additive). */
   repos?: ConfigRepo[];
+  /** Tracks present in both the shared and private tier (#361, additive). */
+  tier_duplicates?: TierDuplicate[];
 }
 
 /** A plan/spec doc with its plan-status verdict (#164). */

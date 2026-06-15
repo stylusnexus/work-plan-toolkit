@@ -394,6 +394,38 @@ describe("buildTree", () => {
     assert.deepEqual(tree[0].untracked[0], issue);
   });
 
+  // --- tier_duplicates (#361) ---
+
+  test("MOCKUP_EXPORT (no tier_duplicates key) → all repo nodes have tierDuplicates:[]", () => {
+    const tree = buildTree(MOCKUP_EXPORT);
+    for (const node of tree) {
+      assert.deepEqual(node.tierDuplicates, []);
+    }
+  });
+
+  test("tier_duplicates: matched repo gets its entries; unmatched repo gets []", () => {
+    const dup = {
+      repo: "your-org/myproject", folder: "myproject", name: "auth-flow",
+      shared_path: "/p/myproject/.work-plan/auth-flow.md",
+      private_path: "/notes/myproject/auth-flow.md", safe: true,
+    };
+    const exp: Export = {
+      schema: 1,
+      generated_at: "2026-06-15T00:00:00Z",
+      tracks: [
+        makeTrack({ name: "t1", repo: "your-org/myproject" }),
+        makeTrack({ name: "t2", repo: "stylusnexus/work-plan-toolkit" }),
+      ],
+      tier_duplicates: [dup],
+    };
+    const tree = buildTree(exp);
+    const myproject = tree.find(n => n.repo === "your-org/myproject")!;
+    const wpt = tree.find(n => n.repo === "stylusnexus/work-plan-toolkit")!;
+    assert.equal(myproject.tierDuplicates.length, 1);
+    assert.strictEqual(myproject.tierDuplicates[0], dup);
+    assert.deepEqual(wpt.tierDuplicates, []);
+  });
+
   // --- configured repos (#288): seeded even with zero tracks ---
 
   test("a config repo with no tracks produces a repo node with empty tracks", () => {

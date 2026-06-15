@@ -86,7 +86,7 @@ def normalize_issue(i: dict, in_progress: bool = False,
 def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None, config_repos=None,
                  plan_by_track=None, hot_by_track=None,
-                 next_up_default=None) -> dict:
+                 next_up_default=None, tier_duplicates=None) -> dict:
     plan_by_track = plan_by_track or {}
     hot_by_track = hot_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
@@ -169,4 +169,9 @@ def build_export(tracks, issues_by_track, visibility, now: str,
     # the starting point for adding fresh tracks. Each entry:
     # {folder, repo(slug), local, has_local, visibility}.
     out["repos"] = list(config_repos or [])
+    # Shared/private tier duplicates (#361, additive): tracks that exist in both
+    # a repo's shared .work-plan/ and the private notes_root tier. Read-only
+    # health signal for the viewer; resolved with the `dedupe-tiers` CLI verb.
+    # Each entry: {repo, folder, name, shared_path, private_path, safe}.
+    out["tier_duplicates"] = list(tier_duplicates or [])
     return out

@@ -114,6 +114,12 @@ def find_tier_duplicates(cfg: dict) -> list:
     """
     pairs: list = []
 
+    # A duplicate requires a PRIVATE copy, which lives under notes_root. With no
+    # notes_root configured there can be no private tier and thus no duplicates —
+    # return early (also keeps the helper safe to call with a bare cfg).
+    if not cfg.get("notes_root"):
+        return pairs
+
     shared_active = {(t.repo, t.name): t
                      for t in _discover_shared_tracks(cfg, include_archive=False)}
     for t in _discover_private_tracks(cfg, include_archive=False):
