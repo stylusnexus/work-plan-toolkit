@@ -104,7 +104,7 @@ flowchart TB
 
 - **Morning** → `brief` shows multi-track plate, then `orient <track>` produces a ~15-line paste-block to drop into a fresh agent session.
 - **End of work block** → `handoff <track>` captures what you touched. Three ways to set `next_up` for tomorrow:
-  - `handoff <track> --auto-next` — algorithmic (no LLM): top-3 by priority then most-recently-updated, blockers excluded. Interactive `[Y/n/edit]` prompt — accept, edit, or skip.
+  - `handoff <track> --auto-next` — algorithmic (no LLM): top-3 by priority then most-recently-updated, blockers excluded. Interactive `[Y/n/edit]` prompt — accept, edit, or skip. (`--suggest-next` is the read-only, non-interactive sibling: it prints the same suggestion as JSON and writes nothing — the feed the VS Code **Suggest Next-Up (auto)** picker confirms, since the TTY prompt can't run under the extension.)
   - `handoff <track> --set-next 4167,4148` — explicit numbers when you know exactly which issues are next.
   - Free-form via Claude in your agent session, which can review project memory and write a curated list back. The two `--*-next` flags are the no-LLM paths.
   - For tracks where you don't want to bother curating at all, set `next_up_auto: true` in the track's frontmatter — `brief` will then derive the list live each invocation, ignoring whatever's stored.

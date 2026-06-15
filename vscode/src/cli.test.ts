@@ -18,6 +18,7 @@ import {
   notesVcsRun,
   notesVcsUndo,
   normalizeExportIssue,
+  suggestNextUp,
 } from "./cli.ts";
 import type { Export } from "./model.ts";
 
@@ -605,5 +606,53 @@ describe("checkAuth", () => {
     assert.deepEqual(await checkAuth(throwingRunner()), {
       authenticated: false, ghPresent: true, user: null,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suggestNextUp (#274) — read-only auto-next feed
+// ---------------------------------------------------------------------------
+
+const VALID_SUGGESTION = {
+  track: "api-core",
+  repo: "your-org/myproject",
+  current: [],
+  suggested: [
+    { number: 142, title: "Add SSO", priority: "P1", milestone: "v0.6" },
+    { number: 87, title: "Fix auth", priority: "P2", milestone: "" },
+  ],
+  skipped: [{ number: 99, claimed_by: "billing" }],
+};
+
+describe("suggestNextUp", () => {
+  test("parses a canned response into NextUpSuggestion", async () => {
+    const run = fakeRunner({ code: 0, stdout: JSON.stringify(VALID_SUGGESTION), stderr: "" });
+    const result = await suggestNextUp(run, "api-core");
+    assert.equal(result.track, "api-core");
+    assert.equal(result.suggested.length, 2);
+    assert.equal(result.suggested[0].number, 142);
+    assert.equal(result.skipped[0].claimed_by, "billing");
+  });
+
+  test("builds args: handoff --suggest-next, track after -- (no repo)", async () => {
+    const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_SUGGESTION), stderr: "" });
+    await suggestNextUp(run, "api-core");
+    assert.deepEqual(calls[0], ["handoff", "--suggest-next", "--", "api-core"]);
+  });
+
+  test("includes --repo=<key> before -- when given", async () => {
+    const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_SUGGESTION), stderr: "" });
+    await suggestNextUp(run, "api-core", "myrepo");
+    assert.deepEqual(calls[0], ["handoff", "--suggest-next", "--repo=myrepo", "--", "api-core"]);
+  });
+
+  test("nonzero exit throws CliError", async () => {
+    const run = fakeRunner({ code: 1, stdout: "", stderr: "boom" });
+    await assert.rejects(() => suggestNextUp(run, "api-core"), CliError);
+  });
+
+  test("unparseable stdout throws CliError", async () => {
+    const run = fakeRunner({ code: 0, stdout: "not-json{{", stderr: "" });
+    await assert.rejects(() => suggestNextUp(run, "api-core"), CliError);
   });
 });

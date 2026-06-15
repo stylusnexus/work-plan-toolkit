@@ -262,6 +262,63 @@ export async function planStatus(
   }
 }
 
+/** One issue in an auto-next suggestion (#274). */
+export interface NextUpCandidate {
+  number: number;
+  title: string;
+  priority: string;
+  milestone: string;
+}
+
+/** Read-only result of `handoff --suggest-next` (#274). `suggested` is in the
+ *  CLI's algorithmic priority order; `skipped` lists issues dropped because a
+ *  sibling active track already queued them. `error` is a soft, payload-level
+ *  note (no repo / no issues) — the call still resolves, not throws. */
+export interface NextUpSuggestion {
+  track: string;
+  repo: string | null;
+  current: number[];
+  suggested: NextUpCandidate[];
+  skipped: { number: number; claimed_by: string }[];
+  error?: string;
+}
+
+/**
+ * Compute the algorithmic next_up suggestion for a track WITHOUT writing — the
+ * read-only feed for the native auto-next picker (#274). The picker confirms +
+ * edits, then writes back via the audited `setNext` path (`handoff --set-next`).
+ */
+export async function suggestNextUp(
+  run: CliRunner,
+  track: string,
+  repoKey?: string,
+): Promise<NextUpSuggestion> {
+  const args = ["handoff", "--suggest-next"];
+  if (repoKey) args.push(`--repo=${repoKey}`);
+  args.push("--", track);
+  const result = await run(args);
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan handoff --suggest-next failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  try {
+    return JSON.parse(result.stdout) as NextUpSuggestion;
+  } catch {
+    throw new CliError({
+      message: `could not parse suggest-next JSON: ${result.stdout.slice(0, 200)}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+}
+
 /**
  * Runs an arbitrary write command (e.g. `set`, `confirm`).
  * Resolves with parsed JSON when the output is valid JSON, null otherwise
