@@ -123,6 +123,11 @@ describe("actionToArgs", () => {
     assert.deepEqual(actionToArgs(action), ["reconcile", "--draft", "--", "platform-health"]);
   });
 
+  test("reconcileApply → ['reconcile', '--yes', '--', track]", () => {
+    const action: WriteAction = { kind: "reconcileApply", track: "platform-health" };
+    assert.deepEqual(actionToArgs(action), ["reconcile", "--yes", "--", "platform-health"]);
+  });
+
   test("hygiene → ['hygiene', '--yes'] (no positionals, no separator)", () => {
     const action: WriteAction = { kind: "hygiene" };
     assert.deepEqual(actionToArgs(action), ["hygiene", "--yes"]);
