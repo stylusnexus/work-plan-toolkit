@@ -637,6 +637,11 @@
           "default": false,
           "description": "Expand all repo groups in the Tracks view on load. Off by default (repos start collapsed); a single-repo workspace always expands."
         },
+        "workPlan.autoFocusRepo": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the open workspace folder is a configured repo, default the Tracks view's lens to that repo (so you don't read another repo's issues by accident). Resolved by clone path, then git remote. A manual lens choice always wins; switch back to 'All tracks' any time. Turn off to always show every repo."
+        },
         "workPlan.autoRefreshInterval": {
           "type": "number",
           "default": 0,

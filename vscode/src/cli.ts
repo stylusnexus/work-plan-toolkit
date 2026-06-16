@@ -8,8 +8,15 @@ import type { Export, Issue, IssueDep, PlanStatus } from "./model.ts";
 /** Raw result from a single CLI invocation. Never throws; the caller decides. */
 export type CliResult = { code: number; stdout: string; stderr: string };
 
-/** Injectable runner — real spawn in production, fake in tests. */
-export type CliRunner = (args: string[]) => Promise<CliResult>;
+/** Per-invocation options. `cwd` targets a specific directory — used by the
+ *  repo auto-focus probe (#357), which runs `which-repo` from each workspace
+ *  folder. Omitted → the CLI runs in the extension host's default cwd. */
+export type CliRunOpts = { cwd?: string };
+
+/** Injectable runner — real spawn in production, fake in tests. A fake that
+ *  ignores `opts` (i.e. `(args) => …`) stays assignable, so existing callers and
+ *  test doubles need no change. */
+export type CliRunner = (args: string[], opts?: CliRunOpts) => Promise<CliResult>;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -64,9 +71,11 @@ export function isAlreadyExistsError(err: unknown): boolean {
  * Rejects only on spawn failure (e.g. ENOENT); non-zero exit resolves normally.
  */
 export function makeSpawnRunner(cliPath: string): CliRunner {
-  return (args: string[]): Promise<CliResult> => {
+  return (args: string[], opts?: CliRunOpts): Promise<CliResult> => {
     return new Promise((resolve, reject) => {
-      const child = spawn(cliPath, args, { shell: false });
+      // cwd: undefined keeps spawn's default (the extension host's cwd), so
+      // callers that omit opts are unaffected.
+      const child = spawn(cliPath, args, { shell: false, cwd: opts?.cwd });
       let stdout = "";
       let stderr = "";
       // A non-ENOENT spawn error (EPERM, signal abort) can emit both "error" and
@@ -460,6 +469,31 @@ export async function checkAuth(run: CliRunner): Promise<AuthState> {
     };
   } catch {
     return { authenticated: false, ghPresent: true, user: null };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// which-repo — resolve a directory to a configured repo (#357/#358)
+// ---------------------------------------------------------------------------
+
+/** Parsed `which-repo --json` result. `github` may be null for a repo with no
+ *  configured slug — the viewer can't focus those (the repo lens keys on the
+ *  slug), so they're treated as "no usable match." */
+export type ResolvedRepo = { key: string; github: string | null };
+
+/**
+ * Runs `which-repo --json` with `cwd` set to the given directory and returns the
+ * resolved repo, or null on no match / non-repo / parse failure. Never throws —
+ * auto-focus must degrade silently, never break activation.
+ */
+export async function whichRepo(run: CliRunner, cwd: string): Promise<ResolvedRepo | null> {
+  try {
+    const result = await run(["which-repo", "--json"], { cwd });
+    const blob = JSON.parse(result.stdout) as Partial<{ key: string | null; github: string | null }>;
+    if (!blob || blob.key == null) return null;
+    return { key: blob.key, github: blob.github ?? null };
+  } catch {
+    return null;
   }
 }
 
