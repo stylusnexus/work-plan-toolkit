@@ -47,6 +47,7 @@ SUBCOMMANDS = {
     "duplicates": "commands.duplicates",
     "coverage": "commands.coverage",
     "canonicalize": "commands.canonicalize",
+    "dedupe-tiers": "commands.dedupe_tiers",
     "hygiene": "commands.hygiene",
     "--hygiene": "commands.hygiene",      # flag-style alias
     "plan-status": "commands.plan_status",
@@ -57,6 +58,7 @@ SUBCOMMANDS = {
     "close-issue": "commands.close_issue",
     "in-progress": "commands.in_progress",
     "export": "commands.export",
+    "which-repo": "commands.which_repo",
     "auth-status": "commands.auth_status",
     "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
@@ -147,8 +149,12 @@ DESCRIPTIONS = [
      "Insert a canonical master issue table at the top of a track. The table has a Milestone column and is ordered active-milestone-first (the track's milestone_alignment milestone, then other milestones grouped with a blank divider row, then no-milestone last) so near-term work sits above someday work (#101). Refresh-md then targets ONLY this table, re-deriving it (so the order self-heals) and leaving narrative tables alone. Use --repo=<key> or track@repo to disambiguate; with --all, --repo=<key> scopes to one repo.",
      "ONE-TIME for hand-written tracks with multiple narrative tables, OR after restructuring a track.",
      "/work-plan canonicalize ux-redesign"),
+    ("dedupe-tiers", "[--repo=<key>] [--apply]",
+     "Remove private track copies that a shared twin in a repo's .work-plan/ supersedes (#359). When a track is promoted to the shared tier, the private original under notes_root is sometimes left behind (bulk/manual promotion, or a failed unlink) — discover_tracks then warns 'exists in both shared and private' on every run with no cleanup path. This removes the safe orphans and REFUSES any whose private copy references issue numbers the shared one lacks (no silent data loss; the invariant is issue_refs(private) ⊆ issue_refs(shared)). Covers active and archived tiers. Default is a dry-run report; --apply deletes (auto-committed to notes_root, so undoable).",
+     "When `exists in both shared and private` warnings appear, or after a bulk promote that left private originals behind.",
+     "/work-plan dedupe-tiers --repo=critforge --apply"),
     ("hygiene", "[--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]",
-     "Weekly cleanup wrapper: refresh-md + reconcile + duplicates. With --repo=<key>, steps 1 and 2 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).",
+     "Weekly cleanup wrapper: refresh-md + reconcile + dedupe-tiers (report-only) + duplicates. With --repo=<key>, steps 1–3 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).",
      "WEEKLY — runs all three hygiene commands in sequence so you don't have to remember each. Use --repo=<key> to clean up one project without touching the others.",
      "/work-plan hygiene --repo=myproject"),
     ("export", "--json",
@@ -219,6 +225,10 @@ DESCRIPTIONS = [
      "Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it (#306). Moves the track's `.md` into the repo's `.work-plan/` (on its `plan_branch`, via a worktree), removes the private copy so it isn't duplicated, commits to the plan branch, and pushes — unless `--no-push` (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a `plan_branch` (else hints `plan-branch init`). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`).",
      "When a private track is ready to share with teammates — promote it to the shared plan branch in one step instead of hand-moving the file.",
      "/work-plan push-track my-feature --repo=myproject"),
+    ("which-repo", "[--json]",
+     "Resolve the current directory to one configured repo — by local clone path first, then the git `origin` remote. Prints the matched config key + GitHub slug, or reports no match. Read-only. Underlies `brief` cwd auto-scope and the VS Code viewer's repo auto-focus.",
+     "Rarely run by hand — it's the shared resolver the viewer and `brief` call. Useful to confirm which repo a checkout maps to.",
+     "/work-plan which-repo --json"),
 ]
 
 

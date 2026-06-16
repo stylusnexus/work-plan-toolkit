@@ -23,8 +23,13 @@ def detect_drift(body: str, github_issues: list[dict]) -> list[dict]:
                 continue
             gh_state = state_by_num[num]
             looks_closed = any(k in body_status for k in ("✅", "shipped", "merged", "closed"))
-            looks_open = "🔲" in body_status or "open" in body_status
 
+            # Asymmetric by design: CLOSED is terminal, so a closed issue whose
+            # row doesn't explicitly read closed (open marker, ambiguous, or empty)
+            # is drift. OPEN is not terminal — an open issue legitimately sits in
+            # many states (in-progress, blocked, todo), so only an explicit closed
+            # marker contradicts it. A broad open-side check (`not looks_open`)
+            # would false-positive every in-progress row, which is why we don't.
             if gh_state == "CLOSED" and not looks_closed:
                 drift.append({"issue": num, "body_status": body_status, "github_state": "CLOSED"})
             elif gh_state == "OPEN" and looks_closed:

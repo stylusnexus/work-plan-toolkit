@@ -1,8 +1,10 @@
 """brief subcommand — fully featured."""
+import os
 from datetime import datetime
 from pathlib import Path
 
 from lib.config import load_config, ConfigError
+from lib.cwd_repo import resolve_repo_for_dir
 from lib.tracks import (
     discover_tracks, discover_archived_tracks, filter_tracks_by_repo,
     priority_rank, recency_sort_key,
@@ -24,9 +26,9 @@ from lib.render import time_aware_framing, render_track_row, render_archived_reo
 
 def run(args: list[str]) -> int:
     flags, _ = parse_flags(args, {"--repo"})
-    repo_key = flags.get("--repo")
-    if repo_key is True:
-        print("usage: work_plan.py brief [--repo=<key>]")
+    repo_arg = flags.get("--repo")
+    if repo_arg is True:
+        print("usage: work_plan.py brief [--repo=<key> | --repo=all]")
         return 2
 
     try:
@@ -36,15 +38,39 @@ def run(args: list[str]) -> int:
         return 1
 
     tracks = discover_tracks(cfg)
+
+    # Resolve the effective scope key ONCE, then thread it through both the track
+    # filter and the archived-reopen pass so the two can never diverge (#358):
+    #   explicit --repo=<key> → scope to it (unchanged behavior, no banner)
+    #   explicit --repo=all   → force the full view (no scope, no auto-detect)
+    #   --repo omitted        → auto-detect from cwd (unless opted out); banner on hit
+    auto_scoped = False
+    if isinstance(repo_arg, str):
+        repo_key = None if repo_arg.lower() == "all" else repo_arg
+    else:
+        repo_key = None
+        if cfg.get("brief_auto_scope", True):
+            match = resolve_repo_for_dir(cfg, os.getcwd())
+            # Only auto-scope when the detected repo actually has tracks — a
+            # convenience must never hide tracks you'd otherwise see.
+            if match and filter_tracks_by_repo(tracks, match["key"]):
+                repo_key = match["key"]
+                auto_scoped = True
+
     if repo_key:
         scoped = filter_tracks_by_repo(tracks, repo_key)
         if not scoped:
+            # Reachable only via an explicit --repo (the auto path above already
+            # guaranteed a non-empty match).
             print(f"No tracks found for repo '{repo_key}'.")
             available = sorted((cfg.get("repos") or {}).keys())
             if available:
                 print(f"Configured repo keys: {', '.join(available)}")
             return 0
         tracks = scoped
+        if auto_scoped:
+            print(f"Scoped to repo '{repo_key}' (cwd). Use --repo=all to see everything.")
+            print()
     active = [t for t in tracks if t.has_frontmatter
               and t.meta.get("status") in ("active", "in-progress", "blocked")]
 

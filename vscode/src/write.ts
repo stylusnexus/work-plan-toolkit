@@ -11,6 +11,11 @@ export type WriteAction =
   | { kind: "setNext"; track: string; issues: number[] }
   | { kind: "refresh"; track: string }
   | { kind: "reconcileDraft"; track: string }
+  // Non-draft reconcile (#221) — applies the label-drift ADDs/MOVEs the draft
+  // previewed. `--yes` runs it non-interactively; writes are local frontmatter
+  // only (the read-only-GitHub contract holds), and the CLI self-skips MOVEs into
+  // PUBLIC destination tracks. Routed through executeWrite for a uniform path.
+  | { kind: "reconcileApply"; track: string }
   | { kind: "hygiene" }
   | { kind: "slot"; track: string; issue: number }
   | { kind: "batchSlot"; track: string; issues: number[] }
@@ -92,6 +97,7 @@ export type WriteOutcome =
  *   setNext         → ["handoff", "--set-next=<csv>", "--", track]   (equals form)
  *   refresh         → ["refresh-md", "--yes", "--", track]
  *   reconcileDraft  → ["reconcile", "--draft", "--", track]
+ *   reconcileApply  → ["reconcile", "--yes", "--", track]
  *   hygiene         → ["hygiene", "--yes"]
  *   slot            → ["slot", "--no-move", "--", issue, track]
  *   batchSlot       → ["batch-slot", "--no-move", "--", ...issues, track]
@@ -138,6 +144,9 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "reconcileDraft":
       return ["reconcile", "--draft", "--", action.track];
+
+    case "reconcileApply":
+      return ["reconcile", "--yes", "--", action.track];
 
     case "hygiene":
       return ["hygiene", "--yes"];

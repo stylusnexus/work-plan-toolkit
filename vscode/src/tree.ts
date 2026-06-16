@@ -1,17 +1,19 @@
 import * as vscode from "vscode";
 import type { Export, Issue } from "./model.ts";
 import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge } from "./treeModel.ts";
-import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, StatusCategory, TrackSort } from "./treeModel.ts";
+import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
+import { lensShouldApply } from "./autofocus.ts";
+import type { LensSource } from "./autofocus.ts";
 import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
-export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode };
+export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode };
 
 /** Every node kind the Tracks tree can render. */
-type TreeNode = RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode | EmptyRepoNode | FetchUntrackedNode;
+type TreeNode = RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode | EmptyRepoNode | FetchUntrackedNode | TierDupWarningNode;
 // Re-export Lens so extension.ts only needs to import from tree.ts.
 export type { Lens };
 // Re-export TrackSort so extension.ts only needs to import from tree.ts.
@@ -59,6 +61,9 @@ export class WorkPlanTreeProvider
   private _filteredCache: Export | null = null;
   private roots: RepoNode[] = [];
   private _activeLens: Lens = { kind: "all" };
+  // Who set _activeLens (#357). Auto-focus uses this to never override a lens the
+  // user picked. Starts "auto" so the first activation auto-focus can apply.
+  private _lensSource: LensSource = "auto";
   private _activeSort: TrackSort = "default";
   // On-demand open-issue fetches for trackless repos (#303), keyed by github
   // slug. `export` doesn't emit untracked for repos with no tracks, so the user
@@ -144,10 +149,15 @@ export class WorkPlanTreeProvider
   }
 
   /**
-   * Applies a new lens and re-renders the tree.
-   * Does not re-fetch from the CLI — works off the cached export.
+   * Applies a new lens and re-renders the tree (works off the cached export — no
+   * CLI re-fetch). `source` records who chose it (#357): user choices are sticky,
+   * so an `"auto"` call is a no-op once the user has set a lens. Defaults to
+   * `"user"` so every existing call site (the QuickPick, the milestone filter, the
+   * "All tracks" reset) marks its lens user-chosen without passing the arg.
    */
-  setLens(lens: Lens): void {
+  setLens(lens: Lens, source: LensSource = "user"): void {
+    if (!lensShouldApply(this._lensSource, source)) return;
+    this._lensSource = source;
     this._activeLens = lens;
     this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
     this.roots = this._applySortToRepos(
@@ -157,6 +167,16 @@ export class WorkPlanTreeProvider
       ),
     );
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Re-arms auto-focus by clearing a prior user override (#357). Called when the
+   * workspace folders change, so opening a different folder can auto-focus again.
+   * State-only — no re-render. A plain refresh() deliberately does NOT call this,
+   * so a background poll can never clobber the lens the user chose.
+   */
+  resetLensSource(): void {
+    this._lensSource = "auto";
   }
 
   /**
@@ -232,12 +252,27 @@ export class WorkPlanTreeProvider
           ? [{ kind: "untrackedGroup", repo: element.repo, issues: element.untracked }]
           : [];
 
+      // Read-only tier-duplicate advisory (#361), pinned at the top of the repo
+      // so the "exists in both tiers" condition is visible at a glance instead
+      // of buried in unread stderr. No command — cleanup stays in the CLI.
+      const tierDupWarn: TierDupWarningNode[] =
+        element.tierDuplicates.length > 0
+          ? [{
+              kind: "tierDupWarning",
+              repo: element.repo,
+              folder: element.folder,
+              count: element.tierDuplicates.length,
+              safeCount: element.tierDuplicates.filter(d => d.safe).length,
+            }]
+          : [];
+
       // A configured-but-empty repo (#288): the dimmed "add a track" affordance,
       // plus — for a real repo (has a slug to query) — an on-demand fetch of its
       // open issues (#303), since `export` doesn't emit untracked for a trackless
       // repo. After a fetch, the Untracked bucket renders alongside.
       if (element.tracks.length === 0) {
         const children: TreeNode[] = [
+          ...tierDupWarn,
           { kind: "emptyRepo", repo: element.repo, folder: element.folder },
           ...untrackedGroup,
         ];
@@ -251,7 +286,7 @@ export class WorkPlanTreeProvider
         }
         return children;
       }
-      return [...element.tracks, ...untrackedGroup];
+      return [...tierDupWarn, ...element.tracks, ...untrackedGroup];
     }
     if (element.kind === "untrackedGroup") {
       return element.issues.map(
@@ -281,6 +316,9 @@ export class WorkPlanTreeProvider
       return this.roots.find(r => r.repo === element.repo);
     }
     if (element.kind === "fetchUntracked") {
+      return this.roots.find(r => r.repo === element.repo);
+    }
+    if (element.kind === "tierDupWarning") {
       return this.roots.find(r => r.repo === element.repo);
     }
     // untrackedIssue → its group
@@ -323,7 +361,38 @@ export class WorkPlanTreeProvider
     if (node.kind === "untrackedIssue") {
       return this._untrackedIssueTreeItem(node);
     }
+    if (node.kind === "tierDupWarning") {
+      return this._tierDupWarningTreeItem(node);
+    }
     return this._trackTreeItem(node);
+  }
+
+  private _tierDupWarningTreeItem(node: TierDupWarningNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      `${node.count} track${node.count === 1 ? "" : "s"} duplicated across tiers`,
+      vscode.TreeItemCollapsibleState.None,
+    );
+    const cmd = node.folder ? `dedupe-tiers --repo=${node.folder}` : "dedupe-tiers";
+    item.description = cmd;
+    item.iconPath = new vscode.ThemeIcon(
+      "warning",
+      new vscode.ThemeColor("list.warningForeground"),
+    );
+    item.contextValue = "workPlanTierDupWarning";
+    const diverged = node.count - node.safeCount;
+    const md = new vscode.MarkdownString(undefined, true);
+    md.appendMarkdown(
+      `$(warning) **${node.count} track${node.count === 1 ? "" : "s"} ` +
+      `exist in both the shared and private tier.**\n\n` +
+      `Private copies left behind after a track was promoted to the shared ` +
+      `\`.work-plan/\` tier. The CLI uses the shared copy; the private orphan is ignored.\n\n` +
+      `- ${node.safeCount} safe to remove automatically (private issues ⊆ shared)\n` +
+      `- ${diverged} diverged — need manual review\n\n` +
+      `Resolve from a terminal:\n\n\`/work-plan ${cmd}\`\n\n` +
+      `(dry-run report; add \`--apply\` to remove the safe ones)`,
+    );
+    item.tooltip = md;
+    return item;
   }
 
   // ---------------------------------------------------------------------------
@@ -420,6 +489,7 @@ export class WorkPlanTreeProvider
         tier: "private",
         tracks: [],
         untracked: [],
+        tierDuplicates: [],
         folder: node.folder,
         hasLocal: false,
       }

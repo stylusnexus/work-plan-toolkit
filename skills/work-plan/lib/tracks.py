@@ -1,4 +1,5 @@
 """Discover tracks under notes_root and shared .work-plan/ dirs."""
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,15 +75,74 @@ def discover_tracks(cfg: dict) -> list[Track]:
     for t in private:
         key = (t.repo, t.name)
         if key in shared_keys:
+            hint = f" --repo={t.folder}" if t.folder else ""
             print(
                 f"WARN: track {t.name!r} (repo={t.repo!r}) exists in both shared"
-                f" ({shared_keys[key].path}) and private ({t.path}); using shared.",
+                f" ({shared_keys[key].path}) and private ({t.path}); using shared."
+                f" → resolve with `/work-plan dedupe-tiers{hint}`.",
                 file=sys.stderr,
             )
         else:
             merged.append(t)
 
     return merged
+
+
+def issue_refs(track: "Track") -> set:
+    """All GitHub issue numbers a track references: the union of its frontmatter
+    `github.issues` list and every `#NNNN` token in its body. Used by
+    dedupe-tiers as the no-data-loss invariant — a private copy is only safe to
+    drop when its issue refs are a subset of the shared twin's.
+    """
+    refs: set = set()
+    fm_issues = (track.meta.get("github") or {}).get("issues") or []
+    for n in fm_issues:
+        try:
+            refs.add(int(n))
+        except (TypeError, ValueError):
+            continue
+    for m in re.finditer(r"#(\d+)", track.body or ""):
+        refs.add(int(m.group(1)))
+    return refs
+
+
+def find_tier_duplicates(cfg: dict) -> list:
+    """Return (shared, private) Track pairs that collide on (repo, name) across
+    BOTH the active and archived tiers. Unlike discover_tracks, this does NOT
+    print a warning and does NOT drop the private side — it hands both copies to
+    the caller (dedupe-tiers) so the orphan can be inspected and removed.
+    """
+    pairs: list = []
+
+    # A duplicate requires a PRIVATE copy, which lives under notes_root. With no
+    # notes_root configured there can be no private tier and thus no duplicates —
+    # return early (also keeps the helper safe to call with a bare cfg).
+    if not cfg.get("notes_root"):
+        return pairs
+
+    shared_active = {(t.repo, t.name): t
+                     for t in _discover_shared_tracks(cfg, include_archive=False)}
+    for t in _discover_private_tracks(cfg, include_archive=False):
+        s = shared_active.get((t.repo, t.name))
+        if s is not None:
+            pairs.append((s, t))
+
+    shared_arch = {(t.repo, t.name): t
+                   for t in _discover_shared_tracks(cfg, include_archive=True,
+                                                    archive_only=True)}
+    notes_root = Path(cfg["notes_root"]).expanduser()
+    if notes_root.exists():
+        for md_path in sorted(notes_root.rglob("*.md")):
+            if "archive" not in md_path.parts:
+                continue
+            if md_path.name.startswith((".", "_", "-")):
+                continue
+            t = _build_track(md_path, notes_root, cfg)
+            s = shared_arch.get((t.repo, t.name))
+            if s is not None:
+                pairs.append((s, t))
+
+    return pairs
 
 
 def filter_tracks_by_repo(tracks: list[Track], key: str) -> list[Track]:
@@ -176,10 +236,12 @@ def discover_archived_tracks(cfg: dict) -> list[Track]:
     for t in private_archived:
         key = (t.repo, t.name)
         if key in shared_keys:
+            hint = f" --repo={t.folder}" if t.folder else ""
             print(
                 f"WARN: archived track {t.name!r} (repo={t.repo!r}) exists in"
                 f" both shared ({shared_keys[key].path}) and private"
-                f" ({t.path}); using shared.",
+                f" ({t.path}); using shared."
+                f" → resolve with `/work-plan dedupe-tiers{hint}`.",
                 file=sys.stderr,
             )
         else:
