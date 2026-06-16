@@ -109,3 +109,53 @@ jobs:
       - name: Run bin/work-plan launcher test (Linux/macOS)
         if: runner.os != 'Windows'
         run: python3 tests/test_bin_wrapper.py
+
+  # Installer smoke test on Linux (#5). The unittest matrix exercises the CLI but
+  # never runs install.sh or its --target override, and it downloads the yq binary
+  # directly rather than going through the README one-liners. This job mechanizes
+  # the installer-centric acceptance criteria from #5: install.sh --help, a real
+  # install into a scratch target, the --target override, and work_plan.py --help.
+  # What stays genuinely manual is the per-distro package-manager one-liners
+  # (apt/pacman/dnf) and non-Ubuntu distros — GitHub-hosted Ubuntu can't prove those.
+  smoke-install:
+    name: install.sh smoke (ubuntu)
+    needs: lint-py39
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mikefarah/yq
+        run: |
+          sudo curl -sSL -o /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: install.sh --help renders
+        run: |
+          out=$(./install.sh --help)
+          echo "$out"
+          echo "$out" | grep -q "Usage: ./install.sh"
+
+      - name: install.sh into a scratch target
+        run: |
+          target="${RUNNER_TEMP}/claude"
+          mkdir -p "${target}"
+          ./install.sh --target="${target}"
+          test -f "${target}/skills/work-plan/work_plan.py"
+          test -f "${target}/skills/work-plan/.installed-from"
+          test -f "${target}/commands/work-plan.md"
+
+      - name: install.sh --target override (Codex layout)
+        run: |
+          target="${RUNNER_TEMP}/agents"
+          mkdir -p "${target}"
+          ./install.sh --target="${target}"
+          test -f "${target}/skills/work-plan/work_plan.py"
+
+      - name: work_plan.py --help executes
+        run: python3 skills/work-plan/work_plan.py --help
