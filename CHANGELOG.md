@@ -6,6 +6,38 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.16+ebd6045 — 2026-06-16 (#370)
+
+feat: repo-scoping (brief auto-scope + viewer auto-focus), reconcile one-click apply, dedupe-tiers
+
+Deploy of the cwd-aware repo-scoping feature pair plus several CLI/viewer improvements bundled since the last release.
+
+## Highlights
+
+**Repo scoping (cwd-aware) — #358 / #357**
+- `which-repo` resolver maps a directory to a configured repo (local clone path first, then git remote) — the shared substrate both surfaces use.
+- **CLI:** `brief` auto-scopes to the repo of the cwd when `--repo` is omitted (one-line banner; `--repo=all` for the full view; `brief_auto_scope: false` opt-out). Archived-reopen callouts are scoped to the same repo.
+- **Viewer:** the Tracks lens auto-focuses on the open workspace folder's repo (by GitHub slug), with a sticky manual override, re-arm on folder change, and a `workPlan.autoFocusRepo` opt-out.
+
+**Reconcile one-click apply — #221**
+- The viewer's Check Label Drift preview now offers an **Apply reconcile** action that performs the write through the public-repo leak guard, instead of sending you to a terminal.
+
+**dedupe-tiers — #359 / #361**
+- New `dedupe-tiers` CLI command removes private track copies a shared `.work-plan/` twin supersedes (refuses any whose private copy holds issue refs the shared one lacks). The viewer surfaces a read-only ⚠ tier-duplicate advisory naming the command.
+
+**CI — #5**
+- `install.sh` is now smoke-tested on Linux in CI (help, real install, `--target` override, `work_plan.py --help`).
+
+**Chore**
+- Removed a dead variable in drift detection and pinned the intentional CLOSED-broad / OPEN-narrow asymmetry with tests.
+
+## Surfaces published this deploy
+- **npm** `@stylusnexus/work-plan` (CLI changed).
+- **VS Code** `stylusnexus.work-plan-viewer` **0.13.0** (Marketplace + Open VSX).
+- agent-plugins catalog repinned to the new tag.
+
+CLI floor for the viewer unchanged (≥ `2026.06.15`); all new viewer features degrade gracefully on an older CLI.
+
 ## 2026.06.15+488753b — 2026-06-15 (#356)
 
 feat: graph zoom/export, Plans auto-update, native auto-next picker, verdict legend, settings gear
