@@ -58,6 +58,7 @@ SUBCOMMANDS = {
     "close-issue": "commands.close_issue",
     "in-progress": "commands.in_progress",
     "export": "commands.export",
+    "which-repo": "commands.which_repo",
     "auth-status": "commands.auth_status",
     "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
@@ -224,6 +225,10 @@ DESCRIPTIONS = [
      "Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it (#306). Moves the track's `.md` into the repo's `.work-plan/` (on its `plan_branch`, via a worktree), removes the private copy so it isn't duplicated, commits to the plan branch, and pushes — unless `--no-push` (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a `plan_branch` (else hints `plan-branch init`). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`).",
      "When a private track is ready to share with teammates — promote it to the shared plan branch in one step instead of hand-moving the file.",
      "/work-plan push-track my-feature --repo=myproject"),
+    ("which-repo", "[--json]",
+     "Resolve the current directory to one configured repo — by local clone path first, then the git `origin` remote. Prints the matched config key + GitHub slug, or reports no match. Read-only. Underlies `brief` cwd auto-scope and the VS Code viewer's repo auto-focus.",
+     "Rarely run by hand — it's the shared resolver the viewer and `brief` call. Useful to confirm which repo a checkout maps to.",
+     "/work-plan which-repo --json"),
 ]
 
 
