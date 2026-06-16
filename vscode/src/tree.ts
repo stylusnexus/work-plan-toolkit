@@ -4,6 +4,8 @@ import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDe
 import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
+import { lensShouldApply } from "./autofocus.ts";
+import type { LensSource } from "./autofocus.ts";
 import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
@@ -59,6 +61,9 @@ export class WorkPlanTreeProvider
   private _filteredCache: Export | null = null;
   private roots: RepoNode[] = [];
   private _activeLens: Lens = { kind: "all" };
+  // Who set _activeLens (#357). Auto-focus uses this to never override a lens the
+  // user picked. Starts "auto" so the first activation auto-focus can apply.
+  private _lensSource: LensSource = "auto";
   private _activeSort: TrackSort = "default";
   // On-demand open-issue fetches for trackless repos (#303), keyed by github
   // slug. `export` doesn't emit untracked for repos with no tracks, so the user
@@ -144,10 +149,15 @@ export class WorkPlanTreeProvider
   }
 
   /**
-   * Applies a new lens and re-renders the tree.
-   * Does not re-fetch from the CLI — works off the cached export.
+   * Applies a new lens and re-renders the tree (works off the cached export — no
+   * CLI re-fetch). `source` records who chose it (#357): user choices are sticky,
+   * so an `"auto"` call is a no-op once the user has set a lens. Defaults to
+   * `"user"` so every existing call site (the QuickPick, the milestone filter, the
+   * "All tracks" reset) marks its lens user-chosen without passing the arg.
    */
-  setLens(lens: Lens): void {
+  setLens(lens: Lens, source: LensSource = "user"): void {
+    if (!lensShouldApply(this._lensSource, source)) return;
+    this._lensSource = source;
     this._activeLens = lens;
     this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
     this.roots = this._applySortToRepos(
@@ -157,6 +167,16 @@ export class WorkPlanTreeProvider
       ),
     );
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Re-arms auto-focus by clearing a prior user override (#357). Called when the
+   * workspace folders change, so opening a different folder can auto-focus again.
+   * State-only — no re-render. A plain refresh() deliberately does NOT call this,
+   * so a background poll can never clobber the lens the user chose.
+   */
+  resetLensSource(): void {
+    this._lensSource = "auto";
   }
 
   /**

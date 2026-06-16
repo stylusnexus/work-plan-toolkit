@@ -5,6 +5,7 @@ import {
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState } from "./cli.ts";
+import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos, LEGEND } from "./planModel.ts";
@@ -73,6 +74,39 @@ export function activate(context: vscode.ExtensionContext): void {
         : undefined;
   };
   context.subscriptions.push(provider.onDidChangeTreeData(syncBadge));
+
+  // -------------------------------------------------------------------------
+  // Repo auto-focus (#357): default the tree's lens to the repo of the open
+  // workspace folder, so you're not reading another repo's issues by accident.
+  // Probes each folder via `which-repo` (cwd-scoped) and focuses the first that
+  // resolves to a configured repo with a github slug. setLens(..., "auto") is a
+  // no-op once the user has picked a lens, so this never fights a manual choice.
+  // -------------------------------------------------------------------------
+
+  const autoFocusRepo = async (): Promise<void> => {
+    const enabled = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<boolean>("autoFocusRepo", true);
+    if (!enabled) return;
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders || folders.length === 0) return;
+    try {
+      const slug = await pickAutoFocusSlug(runner, folders.map(f => f.uri.fsPath));
+      if (slug) provider.setLens({ kind: "repo", repo: slug }, "auto");
+    } catch {
+      // Auto-focus is a convenience — never surface its failure.
+    }
+  };
+
+  // Re-arm + re-resolve when the workspace folders change (folder opened/closed).
+  // resetLensSource() clears any prior user override so a deliberate folder switch
+  // can focus again; a plain refresh() never resets it.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      provider.resetLensSource();
+      void autoFocusRepo();
+    }),
+  );
 
   // -------------------------------------------------------------------------
   // refreshAndRerender — shared helper: reload CLI data + re-render panel.
@@ -2891,6 +2925,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // the Tracks welcome banner) — no second `gh` call.
   provider.refresh().then(() => {
     maybeShowAuthToast(provider.lastAuth);
+    // Auto-focus AFTER the first load so the repo lens filters against populated
+    // data immediately (setLens works off the cached export).
+    void autoFocusRepo();
   }, (err: unknown) => {
     if (err instanceof CliError) {
       vscode.window.showErrorMessage(
