@@ -1235,31 +1235,47 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = await resolveTrackName(node);
         if (!track) return;
 
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: `Work Plan: reconciling ${track} (draft)…`,
-            cancellable: false,
-          },
-          async () => {
-            const outcome: WriteOutcome = await executeWrite(
-              runner,
-              { kind: "reconcileDraft", track },
-              confirmPublicWrite,
-            );
-
-            if (outcome.status === "written") {
-              outputChannel.clear();
-              outputChannel.append(outcome.stdout);
-              outputChannel.show(true);
-              vscode.window.showInformationMessage(
-                "Work Plan: label-drift preview (draft) — see the Work Plan output channel.",
-              );
-            } else {
-              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
-            }
-          },
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: reconciling ${track} (draft)…`,
+          () => executeWrite(runner, { kind: "reconcileDraft", track }, confirmPublicWrite),
         );
+
+        if (outcome.status !== "written") {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          return;
+        }
+
+        outputChannel.clear();
+        outputChannel.append(outcome.stdout);
+        outputChannel.show(true);
+
+        // Offer a one-click apply of the drift the draft just showed (#221)
+        // instead of forcing a trip to the terminal. The message resolves only
+        // once the draft progress has cleared, so the spinner doesn't linger
+        // while we wait for the user's choice. The apply re-runs the analysis
+        // non-interactively (`--yes`) and self-skips MOVEs into PUBLIC tracks.
+        const action = await vscode.window.showInformationMessage(
+          "Work Plan: label-drift preview (draft) — see the Work Plan output channel.",
+          "Apply reconcile",
+        );
+        if (action !== "Apply reconcile") return;
+
+        const applied: WriteOutcome = await withWriteProgress(
+          `Work Plan: applying reconcile to ${track}…`,
+          () => executeWrite(runner, { kind: "reconcileApply", track }, confirmPublicWrite),
+        );
+
+        if (applied.status === "written") {
+          outputChannel.clear();
+          outputChannel.append(applied.stdout);
+          outputChannel.show(true);
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: reconcile applied to ${track} — see the Work Plan output channel.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
       } catch (err: unknown) {
         const msg = err instanceof CliError
           ? `Work Plan: ${err.message}`
