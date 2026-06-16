@@ -48,7 +48,7 @@ The five essentials you'll use 80% of the time are:
 
 | Command | When |
 |---|---|
-| `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. Add `--repo=<key>` to scope to one project. |
+| `/work-plan brief` | Morning. Multi-track snapshot — what's on your plate across every active track. Run from inside a configured repo's checkout and it **auto-scopes to that repo** (one-line banner; `--repo=all` shows everything). Add `--repo=<key>` to scope to a specific project. |
 | `/work-plan handoff <track>` | End of a work block. Captures what you touched. Use `--auto-next` for an algorithmic priority-sorted `next_up` (no LLM), `--set-next 1,2,3` for explicit numbers, or pair with Claude in chat for a curated pick. |
 | `/work-plan orient <track>` | Switching context. ~15-line paste-block of priority / last session / next pick / git state — drop into a fresh Claude Code terminal. |
 | `/work-plan reconcile <track> \| --all \| --repo=<key> [--draft] [--yes]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. In an `--all`/`--repo` sweep it also moves issues relabeled from one track to another in the same repo. `--draft` previews proposed ADDs/MOVEs/FLAGs; `--yes` applies without prompting. `--repo=<key>` scopes the sweep to one repo. |
@@ -510,7 +510,8 @@ See `docs/usage-examples.md` for end-to-end scenarios (morning brief, mid-work h
 
 | Subcommand | What it does |
 |---|---|
-| `brief [--repo=<key>]` | Multi-track snapshot of all active tracks across configured repos. `--repo=<key>` filters to one project (matches the folder name under `notes_root` or the `org/repo` GitHub slug; archived-reopen callouts are also scoped). |
+| `brief [--repo=<key> \| --repo=all]` | Multi-track snapshot of all active tracks across configured repos. When `--repo` is omitted and you're inside a configured repo's checkout, `brief` **auto-scopes to that repo** (resolved by clone path, then git remote) and prints a one-line banner; `--repo=all` forces the full cross-repo view. `--repo=<key>` filters to one project explicitly (matches the folder name under `notes_root` or the `org/repo` GitHub slug). In all cases the archived-reopen callouts are scoped to the same repo. Disable cwd auto-scope with `brief_auto_scope: false` in `config.yml`. |
+| `which-repo [--json]` | Resolve the current directory to one configured repo — by local clone path first, then the git `origin` remote. Prints the matched config key + GitHub slug, or reports no match. Read-only; it's the shared resolver behind `brief`'s cwd auto-scope and the VS Code viewer's repo auto-focus. |
 | `handoff <track> [--auto-next \| --set-next 1,2,3]` | Wrap up a work block. Writes a `### Session — <ts>` entry. `--auto-next` suggests a priority-sorted top-3 from open issues (interactive: apply / edit / skip). `--set-next 1,2,3` is the explicit form — note it writes the session entry too; for a field-only `next_up` change with no session log, use `set next_up=…`. Without either flag, just captures the session summary and reads any pre-existing `next_up`. |
 | `orient [track]` (alias: `where-was-i`) | Read-only paste block. With a track name: ~15-line track summary (priority, last session, next pick, git state). With no track: cwd snapshot (branch, recent commits, modified files) for non-track work. Add `--pick` for the interactive track picker. |
 | `slot <issue-num> [track]` | A new GitHub issue should belong to a track — adds it to the track's `github.issues` list. Non-interactive flags: `--move`/`--no-move` (relocate the issue off its prior track, or leave it; default no-move), `--confirm=<token>` (public-repo gate, see below). |
