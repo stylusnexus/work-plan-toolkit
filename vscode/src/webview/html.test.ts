@@ -188,6 +188,59 @@ describe("buildHtml — graphDef embedding", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Inline-script syntax (regression guard)
+// ---------------------------------------------------------------------------
+
+describe("buildHtml — inline scripts are valid JavaScript", () => {
+  // Extract the body of every inline <script> (those WITHOUT a src=) so each can
+  // be syntax-checked. The previous string-only assertions never executed the
+  // emitted JS, so a `\"` inside the messaging template literal collapsed to a
+  // bare `"`, produced adjacent string literals in the querySelector call, and a
+  // single parse error killed the ENTIRE messaging IIFE — every webview click
+  // handler (track select, focus toggle, graph zoom/pan/export) went dead. A
+  // syntax check on the emitted body catches that class of bug.
+  function inlineScriptBodies(html: string): string[] {
+    const bodies: string[] = [];
+    const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const attrs = m[1];
+      const body = m[2];
+      if (/\bsrc=/.test(attrs)) { continue; } // external loader — no inline body
+      if (body.trim() === "") { continue; }
+      bodies.push(body);
+    }
+    return bodies;
+  }
+
+  // new Function() parses the body without running it, so undefined runtime
+  // globals (mermaid, acquireVsCodeApi, document) don't matter — only syntax.
+  function assertParses(body: string, label: string): void {
+    assert.doesNotThrow(
+      () => { new Function(body); },
+      (err: unknown) =>
+        `inline ${label} is not valid JS: ${(err as Error).message}\n--- body head ---\n${body.slice(0, 200)}`,
+    );
+  }
+
+  it("every inline <script> parses (UMD path)", () => {
+    const bodies = inlineScriptBodies(buildHtml({ ...BASE, isModule: false }));
+    assert.ok(bodies.length >= 2, `expected ≥2 inline scripts, got ${bodies.length}`);
+    bodies.forEach((b, i) => assertParses(b, `UMD script #${i}`));
+  });
+
+  it("the messaging IIFE (with the dep-toggle querySelector) parses", () => {
+    // Specifically guards the #257 dep-disclosure selector that broke (#216 was
+    // only the symptom users hit first). The body must contain the selector and
+    // still parse cleanly.
+    const bodies = inlineScriptBodies(buildHtml(BASE));
+    const messaging = bodies.find((b) => b.includes("dep-detail-row[data-depissue="));
+    assert.ok(messaging, "messaging IIFE with the dep-toggle selector not found");
+    assertParses(messaging!, "messaging IIFE");
+  });
+});
+
 describe("buildHtml — theme adaptivity (#207)", () => {
   it("dark editor → Mermaid initialises with the dark theme", () => {
     const html = buildHtml({ ...BASE, isDark: true });
