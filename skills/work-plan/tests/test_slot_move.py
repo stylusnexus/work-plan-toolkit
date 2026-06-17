@@ -39,11 +39,20 @@ class SlotMoveTest(unittest.TestCase):
         cfg = {"notes_root": "/tmp/fake-notes",
                "repos": {"ok": {"github": "ok/ok"}}}
         gh_proc = MagicMock(returncode=0, stdout="{}", stderr="")
+        # Writes go through lib.membership_guard now; return each track's own
+        # meta/body from parse_file so the guard mutates them in place.
+        by_path = {str(t.path): t for t in tracks}
+
+        def fake_parse(p):
+            t = by_path[str(p)]
+            return (t.meta, t.body)
+
         with patch("commands.slot.subprocess.run", return_value=gh_proc), \
              patch("commands.slot.load_config", return_value=cfg), \
              patch("commands.slot.discover_tracks", return_value=tracks), \
              patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
-             patch("commands.slot.write_file") as mw:
+             patch("lib.membership_guard.parse_file", side_effect=fake_parse), \
+             patch("lib.membership_guard.write_file") as mw:
             rc = slot.run(args)
         return rc, mw
 

@@ -52,11 +52,21 @@ def _drive(args, tracks=None, vis="PRIVATE"):
     cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/repo"}}}
     gh_proc = MagicMock(returncode=0, stdout="{}", stderr="")
 
+    # Writes go through lib.membership_guard (re-read via parse_file, write via
+    # write_file). Returning each track's own meta/body lets the guard mutate
+    # them in place, so assertions on track.meta still observe the merge.
+    by_path = {str(t.path): t for t in tracks}
+
+    def fake_parse(p):
+        t = by_path[str(p)]
+        return (t.meta, t.body)
+
     with patch("commands.batch_slot.load_config", return_value=cfg), \
          patch("commands.batch_slot.discover_tracks", return_value=tracks), \
          patch("commands.batch_slot.subprocess.run", return_value=gh_proc), \
          patch("lib.write_guard.repo_visibility", return_value=vis), \
-         patch("commands.batch_slot.write_file") as mw:
+         patch("lib.membership_guard.parse_file", side_effect=fake_parse), \
+         patch("lib.membership_guard.write_file") as mw:
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = batch_slot.run(args)
@@ -272,6 +282,12 @@ class BatchSlotTest(unittest.TestCase):
         def _raise(*a, **kw):
             raise AssertionError("input() must not be called on non-interactive path")
 
+        by_path = {str(t.path): t for t in (source, target)}
+
+        def fake_parse(p):
+            t = by_path[str(p)]
+            return (t.meta, t.body)
+
         with patch("builtins.input", side_effect=_raise), \
              patch("lib.prompts.prompt_input", side_effect=_raise):
             cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/repo"}}}
@@ -280,7 +296,8 @@ class BatchSlotTest(unittest.TestCase):
                  patch("commands.batch_slot.discover_tracks", return_value=[source, target]), \
                  patch("commands.batch_slot.subprocess.run", return_value=gh_proc), \
                  patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
-                 patch("commands.batch_slot.write_file"):
+                 patch("lib.membership_guard.parse_file", side_effect=fake_parse), \
+                 patch("lib.membership_guard.write_file"):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
                     rc = batch_slot.run(["42", "beta", "--move"])

@@ -56,11 +56,22 @@ def _drive(args, tracks=None, vis="PRIVATE"):
     cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/repo"}}}
     gh_proc = MagicMock(returncode=0, stdout="{}", stderr="")
 
+    # The write path now goes through lib.membership_guard, which re-reads the
+    # file (parse_file) and writes the merged result (write_file). Returning the
+    # track's own meta/body objects from parse_file lets the guard mutate them in
+    # place, so assertions on track.meta still observe the merge.
+    by_path = {str(t.path): t for t in tracks}
+
+    def fake_parse(p):
+        t = by_path[str(p)]
+        return (t.meta, t.body)
+
     with patch("commands.slot.load_config", return_value=cfg), \
          patch("commands.slot.discover_tracks", return_value=tracks), \
          patch("commands.slot.subprocess.run", return_value=gh_proc), \
          patch("lib.write_guard.repo_visibility", return_value=vis), \
-         patch("commands.slot.write_file") as mw:
+         patch("lib.membership_guard.parse_file", side_effect=fake_parse), \
+         patch("lib.membership_guard.write_file") as mw:
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = slot.run(args)
@@ -223,6 +234,12 @@ class SlotNonInteractiveTest(unittest.TestCase):
         def _raise(*a, **kw):
             raise AssertionError("input() must not be called on non-interactive path")
 
+        by_path = {str(t.path): t for t in (source, target)}
+
+        def fake_parse(p):
+            t = by_path[str(p)]
+            return (t.meta, t.body)
+
         with patch("builtins.input", side_effect=_raise), \
              patch("lib.prompts.prompt_input", side_effect=_raise):
             cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/repo"}}}
@@ -231,12 +248,62 @@ class SlotNonInteractiveTest(unittest.TestCase):
                  patch("commands.slot.discover_tracks", return_value=[source, target]), \
                  patch("commands.slot.subprocess.run", return_value=gh_proc), \
                  patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
-                 patch("commands.slot.write_file"):
+                 patch("lib.membership_guard.parse_file", side_effect=fake_parse), \
+                 patch("lib.membership_guard.write_file"):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
                     # --move (prior owner path) + private repo (no confirm gate)
                     rc = slot.run(["42", "beta", "--move"])
         self.assertEqual(rc, 0)
+
+
+class SlotExpectGuardTest(unittest.TestCase):
+    """--expect compare-and-swap staleness guard (#241)."""
+
+    def test_expect_match_writes(self):
+        from lib.membership_guard import issues_fingerprint
+        track = _track(name="alpha", repo="ok/repo", issues=[10, 20])
+        fp = issues_fingerprint(track.meta)
+        rc, mw, out = _drive(["30", "alpha", f"--expect={fp}"],
+                             tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        self.assertIn(30, track.meta["github"]["issues"])
+
+    def test_expect_mismatch_aborts_with_stale_json(self):
+        import json
+        from lib.membership_guard import issues_fingerprint
+        track = _track(name="alpha", repo="ok/repo", issues=[10, 20])
+        stale_fp = issues_fingerprint({"github": {"issues": [10]}})  # what we thought
+        rc, mw, out = _drive(["30", "alpha", f"--expect={stale_fp}"],
+                             tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        data = json.loads(out.strip())  # stdout is pure JSON in --expect mode
+        self.assertTrue(data["stale"])
+        self.assertEqual(data["current"], [10, 20])
+        self.assertEqual(data["track"], "alpha")
+
+    def test_no_expect_never_aborts(self):
+        track = _track(name="alpha", repo="ok/repo", issues=[10, 20])
+        rc, mw, out = _drive(["30", "alpha"], tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+
+    def test_confirm_then_stale_order(self):
+        """Public repo + valid confirm token + a stale --expect: the confirm gate
+        is satisfied first, then the staleness CAS still aborts at write time."""
+        import json
+        from lib.membership_guard import issues_fingerprint
+        track = _track(name="alpha", repo="ok/repo", issues=[10, 20])
+        tok = make_token("ok/repo", "alpha")
+        stale_fp = issues_fingerprint({"github": {"issues": [10]}})
+        rc, mw, out = _drive(["30", "alpha", f"--confirm={tok}", f"--expect={stale_fp}"],
+                             tracks=[track], vis="PUBLIC")
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        data = json.loads(out.strip())
+        self.assertTrue(data["stale"])
 
 
 if __name__ == "__main__":
