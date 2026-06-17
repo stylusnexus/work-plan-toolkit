@@ -139,18 +139,23 @@ def run(args: list[str]) -> int:
 
     sources = _find_prior_owners(issue_num, target.repo, target.name, tracks)
 
-    proc = subprocess.run(
-        ["gh", "issue", "view", str(issue_num),
-         "--repo", target.repo, "--json", "milestone"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode == 0:
-        info = json.loads(proc.stdout)
-        m = info.get("milestone", {})
-        if m and m.get("title") and m["title"] != target.meta.get("milestone_alignment"):
-            print(f"⚠  #{issue_num} is on milestone '{m['title']}', "
-                  f"track '{target.name}' aligned to '{target.meta.get('milestone_alignment')}'.",
-                  file=notes)
+    # Milestone mismatch is advisory only — never let gh being absent/odd crash
+    # the command (it sits between the rebase guard and the write).
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "view", str(issue_num),
+             "--repo", target.repo, "--json", "milestone"],
+            capture_output=True, text=True,
+        )
+        if proc.returncode == 0:
+            info = json.loads(proc.stdout)
+            m = info.get("milestone", {})
+            if m and m.get("title") and m["title"] != target.meta.get("milestone_alignment"):
+                print(f"⚠  #{issue_num} is on milestone '{m['title']}', "
+                      f"track '{target.name}' aligned to '{target.meta.get('milestone_alignment')}'.",
+                      file=notes)
+    except (OSError, json.JSONDecodeError):
+        pass
 
     # Move sources first (each re-read + merged onto fresh disk), then the
     # target. The target write carries `expect`: on a detected concurrent change

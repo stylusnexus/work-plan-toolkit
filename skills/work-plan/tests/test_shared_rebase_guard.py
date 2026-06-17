@@ -52,18 +52,20 @@ def _git_stub(*, rebase_rc=0, remote_exists=True, rebase_none=False):
 
 class RebaseOntoOriginTest(unittest.TestCase):
 
-    def test_clean_rebase_returns_true(self):
+    def test_clean_rebase_returns_true_with_autostash(self):
         gitfn, calls = _git_stub(rebase_rc=0, remote_exists=True)
         with patch("lib.plan_worktree._git", side_effect=gitfn):
             self.assertTrue(plan_worktree.rebase_onto_origin(Path("/wt"), "work-plan/plan"))
-        self.assertIn(("rebase", "origin/work-plan/plan"), calls)
+        # --autostash so a dirty .work-plan/ (the normal write-then-commit flow)
+        # doesn't make the rebase refuse with a spurious needs_rebase.
+        self.assertIn(("rebase", "--autostash", "origin/work-plan/plan"), calls)
         self.assertNotIn(("rebase", "--abort"), calls)
 
     def test_unpublished_branch_returns_true_without_rebasing(self):
         gitfn, calls = _git_stub(remote_exists=False)
         with patch("lib.plan_worktree._git", side_effect=gitfn):
             self.assertTrue(plan_worktree.rebase_onto_origin(Path("/wt"), "work-plan/plan"))
-        self.assertNotIn(("rebase", "origin/work-plan/plan"), calls)
+        self.assertNotIn(("rebase", "--autostash", "origin/work-plan/plan"), calls)
 
     def test_conflict_aborts_and_returns_false(self):
         gitfn, calls = _git_stub(rebase_rc=1, remote_exists=True)

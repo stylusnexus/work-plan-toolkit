@@ -287,14 +287,19 @@ def rebase_onto_origin(worktree: Path, branch: str) -> bool:
     fetch_branch(wt, branch)
     if not remote_branch_exists(wt, branch):
         return True  # unpublished — no upstream to rebase onto; local wins
-    proc = _git(wt, "rebase", f"origin/{branch}")
+    # --autostash: the normal flow is write-file-then-commit, so the worktree's
+    # .work-plan/ is routinely dirty when we rebase. Without autostash git would
+    # refuse the rebase on the dirty precondition and we'd report a spurious
+    # {needs_rebase}; autostash shelves the local edits, rebases, and reapplies
+    # them on top — so a clean rebase succeeds even with pending plan edits.
+    proc = _git(wt, "rebase", "--autostash", f"origin/{branch}")
     if proc is None:
         return False
     if proc.returncode == 0:
         return True
-    # Conflict (or other rebase failure): abort so the worktree is never left in
-    # a partially-rebased state. A blind write over a diverged shared branch is
-    # exactly what this guard exists to prevent.
+    # True conflict (autostash reapply or replayed commits): abort so the
+    # worktree is never left in a partially-rebased state. A blind write over a
+    # diverged shared branch is exactly what this guard exists to prevent.
     _git(wt, "rebase", "--abort")
     return False
 

@@ -16,14 +16,30 @@ This module adds two things:
 
   * `guarded_membership_write(...)` — ALWAYS re-reads the file from disk
     immediately before writing, applies the membership delta to the FRESH
-    frontmatter, and writes back the fresh body unchanged. So a concurrent
-    body-only edit is preserved rather than clobbered. When `expect` is supplied
-    and the on-disk membership no longer matches it, the write is ABORTED and a
-    `{"stale": ...}` signal is returned instead of overwriting — the caller
-    re-prompts on fresh state. When `expect` is None (the manual single-writer
-    path) the abort is skipped, but the re-read + merge still happens: strictly
-    safer than a blind overwrite, with the same observable result for a lone
-    writer.
+    frontmatter, and writes back the rest of the frontmatter and the body
+    unchanged. So a concurrent edit to the body OR to other frontmatter fields
+    (status, last_touched, depends_on, …) is preserved — only the issues list is
+    replaced. When `expect` is supplied and the on-disk membership no longer
+    matches it, the write is ABORTED and a `{"stale": ...}` signal is returned
+    instead of overwriting — the caller re-prompts on fresh state. When `expect`
+    is None (the manual single-writer path) the abort is skipped, but the
+    re-read + merge still happens: strictly safer than a blind overwrite, with
+    the same observable result for a lone writer.
+
+Scope of the guarantee (deliberately narrow — don't oversell it):
+  - This is a check-then-act, not a locked atomic CAS: `parse_file` then
+    `write_file` are separate syscalls with no file lock, so a writer landing in
+    the sub-millisecond window between them isn't caught. `expect` narrows the
+    window vs. a blind overwrite; it does not eliminate it. Adequate for the real
+    usage (interactive single user + occasional same-machine background).
+  - `shared_rebase_guard` lands a shared-tier write on top of origin AS OF THE
+    LAST FETCH; it is NOT a cross-machine atomic CAS against origin. A teammate
+    pushing between the rebase and the eventual (separate) push is reconciled by
+    the non-fast-forward push being rejected + rebase-on-next-write, not by this
+    write path.
+  - `frontmatter.write_file` re-serializes the frontmatter via yq on every
+    write, so body-only edits round-trip verbatim but YAML comments / key order
+    are normalized (a pre-existing property, not introduced here).
 """
 import hashlib
 import json
@@ -91,9 +107,12 @@ def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
 
 def shared_rebase_guard(target, cfg):
     """Before writing a SHARED-tier track pinned to a `plan_branch`, fetch +
-    rebase its worktree onto origin so a teammate's pushed plan change isn't
-    clobbered (#241). The fingerprint CAS guards a same-machine race; this guards
-    the cross-machine (git push/pull) race.
+    rebase its worktree onto origin so the write lands on top of a teammate's
+    pushed plan changes (#241). Best-effort: this reduces the cross-machine
+    (git push/pull) race, it does not make the write atomic against origin — a
+    teammate pushing after the rebase is reconciled by the non-fast-forward push
+    rejection + rebase-on-next-write, not here. The fingerprint CAS covers the
+    same-machine race.
 
     Returns (ok: bool, reason: str | None):
       (True, None)        — safe to proceed: the track is private, a legacy

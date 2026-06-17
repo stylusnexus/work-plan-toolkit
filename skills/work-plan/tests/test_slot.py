@@ -290,6 +290,31 @@ class SlotExpectGuardTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         mw.assert_called_once()
 
+    def test_milestone_check_gh_missing_does_not_crash(self):
+        """The advisory `gh issue view` milestone check sits between the rebase
+        guard and the write — if gh is absent (FileNotFoundError) the slot must
+        still complete the write, not crash."""
+        track = _track(name="alpha", repo="ok/repo", issues=[10])
+        cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/repo"}}}
+        by_path = {str(track.path): track}
+
+        def fake_parse(p):
+            t = by_path[str(p)]
+            return (t.meta, t.body)
+
+        with patch("commands.slot.load_config", return_value=cfg), \
+             patch("commands.slot.discover_tracks", return_value=[track]), \
+             patch("commands.slot.subprocess.run", side_effect=FileNotFoundError("gh")), \
+             patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
+             patch("lib.membership_guard.parse_file", side_effect=fake_parse), \
+             patch("lib.membership_guard.write_file") as mw:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = slot.run(["30", "alpha"])
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()  # write still happens despite the gh crash
+        self.assertIn(30, track.meta["github"]["issues"])
+
     def test_confirm_then_stale_order(self):
         """Public repo + valid confirm token + a stale --expect: the confirm gate
         is satisfied first, then the staleness CAS still aborts at write time."""

@@ -128,25 +128,29 @@ def run(args: list[str]) -> int:
             skipped.append(issue_num)
             continue
 
-        # Milestone mismatch check (non-blocking warning).
-        proc = subprocess.run(
-            ["gh", "issue", "view", str(issue_num),
-             "--repo", target.repo, "--json", "milestone"],
-            capture_output=True, text=True,
-        )
-        if proc.returncode == 0:
-            info = json.loads(proc.stdout)
-            m = info.get("milestone", {})
-            if (
-                m and m.get("title")
-                and m["title"] != target.meta.get("milestone_alignment")
-            ):
-                print(
-                    f"⚠  #{issue_num} is on milestone '{m['title']}', "
-                    f"track '{target.name}' aligned to"
-                    f" '{target.meta.get('milestone_alignment')}'.",
-                    file=notes,
-                )
+        # Milestone mismatch check (non-blocking warning). Never let gh being
+        # absent/odd crash the command — it's advisory and sits before the write.
+        try:
+            proc = subprocess.run(
+                ["gh", "issue", "view", str(issue_num),
+                 "--repo", target.repo, "--json", "milestone"],
+                capture_output=True, text=True,
+            )
+            if proc.returncode == 0:
+                info = json.loads(proc.stdout)
+                m = info.get("milestone", {})
+                if (
+                    m and m.get("title")
+                    and m["title"] != target.meta.get("milestone_alignment")
+                ):
+                    print(
+                        f"⚠  #{issue_num} is on milestone '{m['title']}', "
+                        f"track '{target.name}' aligned to"
+                        f" '{target.meta.get('milestone_alignment')}'.",
+                        file=notes,
+                    )
+        except (OSError, json.JSONDecodeError):
+            pass
 
         # Prior-owner detection.
         sources = _find_prior_owners(
