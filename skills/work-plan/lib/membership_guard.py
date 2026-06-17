@@ -87,3 +87,47 @@ def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
     fresh_meta.setdefault("github", {})["issues"] = final
     write_file(Path(path), fresh_meta, fresh_body)
     return {"written": final}
+
+
+def shared_rebase_guard(target, cfg):
+    """Before writing a SHARED-tier track pinned to a `plan_branch`, fetch +
+    rebase its worktree onto origin so a teammate's pushed plan change isn't
+    clobbered (#241). The fingerprint CAS guards a same-machine race; this guards
+    the cross-machine (git push/pull) race.
+
+    Returns (ok: bool, reason: str | None):
+      (True, None)        — safe to proceed: the track is private, a legacy
+                            shared track (no plan_branch → working-tree tier), or
+                            the worktree rebased cleanly / had no upstream.
+      (False, reason)     — the shared branch diverged and could NOT auto-rebase;
+                            the caller MUST abort and surface {needs_rebase}
+                            rather than blind-write over a diverged branch.
+
+    Never raises — an unexpected guard error degrades to "proceed" (consistent
+    with the toolkit's never-break-the-command VCS philosophy; the underlying
+    plan_worktree ops are themselves never-raise).
+    """
+    try:
+        if getattr(target, "tier", None) != "shared":
+            return (True, None)
+        repos = (cfg or {}).get("repos", {}) or {}
+        entry = repos.get(getattr(target, "folder", None))
+        if entry is None:
+            for e in repos.values():
+                if e and e.get("github") == getattr(target, "repo", None):
+                    entry = e
+                    break
+        branch = entry.get("plan_branch") if entry else None
+        local = entry.get("local") if entry else None
+        if not branch or not local:
+            return (True, None)  # legacy shared tier (working tree) — no rebase
+        from lib import plan_worktree
+        worktree = plan_worktree.ensure_worktree(Path(local).expanduser(), branch)
+        if worktree is None:
+            return (True, None)  # can't ensure the worktree — degrade, proceed
+        if not plan_worktree.rebase_onto_origin(worktree, branch):
+            return (False, f"shared plan branch '{branch}' diverged and could not "
+                           f"auto-rebase; resolve manually")
+        return (True, None)
+    except Exception:
+        return (True, None)

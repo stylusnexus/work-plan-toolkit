@@ -5,7 +5,7 @@ import sys
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
-from lib.membership_guard import guarded_membership_write
+from lib.membership_guard import guarded_membership_write, shared_rebase_guard
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags, prompt_input
 
@@ -115,6 +115,14 @@ def run(args: list[str]) -> int:
             ),
             "token": make_token(target.repo, target.name),
         }))
+        return 0
+
+    # Shared-tier rebase (#241): for a track pinned to a plan_branch, pull +
+    # rebase the worktree onto origin before writing so a teammate's pushed plan
+    # change isn't clobbered. A divergence we can't auto-rebase aborts cleanly.
+    ok, reason = shared_rebase_guard(target, cfg)
+    if not ok:
+        print(json.dumps({"needs_rebase": True, "reason": reason, "track": target.name}))
         return 0
 
     # Determine move behavior from flags.
