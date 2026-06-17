@@ -296,6 +296,36 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.suggestTracks",
+        "title": "Suggest Tracks for Untracked Issues…",
+        "category": "Work Plan",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "workPlan.acceptSuggestion",
+        "title": "Accept Suggestion (slot into track)…",
+        "category": "Work Plan",
+        "icon": "$(check)"
+      },
+      {
+        "command": "workPlan.dismissSuggestion",
+        "title": "Dismiss Suggestion",
+        "category": "Work Plan",
+        "icon": "$(close)"
+      },
+      {
+        "command": "workPlan.batchAcceptSuggestions",
+        "title": "Accept All Suggestions…",
+        "category": "Work Plan",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "workPlan.dismissAllSuggestions",
+        "title": "Dismiss All Suggestions",
+        "category": "Work Plan",
+        "icon": "$(close-all)"
+      },
+      {
         "command": "workPlan.dailyBrief",
         "title": "Daily Brief",
         "category": "Work Plan",
@@ -503,6 +533,41 @@
           "group": "1_workPlanWrite@1"
         },
         {
+          "command": "workPlan.suggestTracks",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
+          "group": "1_workPlanWrite@2"
+        },
+        {
+          "command": "workPlan.suggestTracks",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@3"
+        },
+        {
+          "command": "workPlan.batchAcceptSuggestions",
+          "when": "view == workPlan.tree && viewItem == workPlanSuggestedGroup",
+          "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.dismissAllSuggestions",
+          "when": "view == workPlan.tree && viewItem == workPlanSuggestedGroup",
+          "group": "1_workPlanWrite@2"
+        },
+        {
+          "command": "workPlan.acceptSuggestion",
+          "when": "view == workPlan.tree && viewItem == workPlanSuggestedIssue",
+          "group": "1_workPlanWrite@1"
+        },
+        {
+          "command": "workPlan.dismissSuggestion",
+          "when": "view == workPlan.tree && viewItem == workPlanSuggestedIssue",
+          "group": "1_workPlanWrite@2"
+        },
+        {
+          "command": "workPlan.dismissSuggestion",
+          "when": "view == workPlan.tree && viewItem == workPlanNeedsReviewIssue",
+          "group": "1_workPlanWrite@1"
+        },
+        {
           "command": "workPlan.plans.acknowledge",
           "when": "view == workPlan.plans && viewItem =~ /workPlanPlan-(stalled|dead)/",
           "group": "1_ack"
@@ -603,6 +668,22 @@
         {
           "command": "workPlan.clearRepoLocal",
           "when": "false"
+        },
+        {
+          "command": "workPlan.acceptSuggestion",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.dismissSuggestion",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.batchAcceptSuggestions",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.dismissAllSuggestions",
+          "when": "false"
         }
       ]
     },
@@ -692,6 +773,18 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-update the Plans view when a scanned repo's git activity changes (e.g. committing a plan's declared files clears its 'stalled' state) without a manual Refresh. Watches each expanded repo's .git refs; falls back to manual refresh when off."
+        },
+        "workPlan.autoSlotSuggestions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show AI track suggestions for untracked issues under the Untracked bucket. Run 'Suggest Tracks for Untracked Issues' to scan, ask Claude with the relayed prompt, and a 'Suggested' / 'Needs review' sub-bucket appears once answers are written. Off by default."
+        },
+        "workPlan.autoSlotConfidenceThreshold": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence cutoff for a clear-margin suggestion to land in the one-click 'Suggested' bucket (vs 'Needs review'). 0–1; higher means fewer one-click accepts. Default 0.7."
         }
       }
     }

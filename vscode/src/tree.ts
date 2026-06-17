@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import type { Export, Issue } from "./model.ts";
-import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge } from "./treeModel.ts";
-import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, StatusCategory, TrackSort } from "./treeModel.ts";
+import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge, suggestedIssueNode } from "./treeModel.ts";
+import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, SuggestedGroupNode, SuggestedIssueNode, NeedsReviewGroupNode, StatusCategory, TrackSort } from "./treeModel.ts";
+import type { SuggestionBuckets } from "./suggestions.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
 import { lensShouldApply } from "./autofocus.ts";
@@ -10,10 +11,20 @@ import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
-export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode };
+export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, SuggestedGroupNode, SuggestedIssueNode, NeedsReviewGroupNode };
 
 /** Every node kind the Tracks tree can render. */
-type TreeNode = RepoNode | TrackNode | UntrackedGroupNode | UntrackedIssueNode | EmptyRepoNode | FetchUntrackedNode | TierDupWarningNode;
+type TreeNode =
+  | RepoNode
+  | TrackNode
+  | UntrackedGroupNode
+  | UntrackedIssueNode
+  | EmptyRepoNode
+  | FetchUntrackedNode
+  | TierDupWarningNode
+  | SuggestedGroupNode
+  | SuggestedIssueNode
+  | NeedsReviewGroupNode;
 // Re-export Lens so extension.ts only needs to import from tree.ts.
 export type { Lens };
 // Re-export TrackSort so extension.ts only needs to import from tree.ts.
@@ -71,6 +82,12 @@ export class WorkPlanTreeProvider
   // node's `untracked` on every (re)build. Survives lens/sort re-renders and a
   // full refresh (a snapshot until the user re-fetches), cleared on nothing.
   private readonly _fetchedUntracked = new Map<string, Issue[]>();
+  // Auto-slot suggestions (#241), keyed by github slug: the suggested/needsReview
+  // buckets parsed from each repo's per-repo answers file, plus the batch_id of
+  // the scan they belong to (so a stale answers file from a prior scan is
+  // ignored). Populated by setSuggestions when an fs.watch fires or on cold-open.
+  private readonly _suggestionsByRepo = new Map<string, SuggestionBuckets>();
+  private readonly _batchIdByRepo = new Map<string, string>();
   // Last GitHub-auth probe result (#auth). null before the first probe. Drives
   // the `workPlanGitHubAuthed` context key + lets activation show its one-time
   // toast off the same probe the tree already ran (no second `gh` call).
@@ -134,6 +151,36 @@ export class WorkPlanTreeProvider
     const built = this._filteredCache ? buildTree(this._filteredCache) : [];
     this.roots = this._applySortToRepos(mergeFetchedUntracked(built, this._fetchedUntracked));
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Records the batch_id of the active auto-slot scan for `repo` (#241), so a
+   * later answers-file read can validate the file belongs to this scan. Called by
+   * the Suggest Tracks command right after the scan emits its batch.
+   */
+  setBatchId(repo: string, batchId: string): void {
+    this._batchIdByRepo.set(repo, batchId);
+  }
+
+  /** The active scan's batch_id for `repo`, or undefined if none scanned yet. */
+  getBatchId(repo: string): string | undefined {
+    return this._batchIdByRepo.get(repo);
+  }
+
+  /**
+   * Stores freshly-parsed auto-slot suggestions for `repo` (#241) and re-renders
+   * so the Suggested / Needs review buckets appear (or clear). Works off the
+   * cached filtered export — no CLI re-fetch. Empty buckets are stored too, so a
+   * watch event that empties the file removes the buckets.
+   */
+  setSuggestions(repo: string, buckets: SuggestionBuckets): void {
+    this._suggestionsByRepo.set(repo, buckets);
+    this._onDidChangeTreeData.fire();
+  }
+
+  /** The parsed suggestions for `repo`, or undefined when none have been read. */
+  getSuggestions(repo: string): SuggestionBuckets | undefined {
+    return this._suggestionsByRepo.get(repo);
   }
 
   /**
@@ -289,12 +336,51 @@ export class WorkPlanTreeProvider
       return [...tierDupWarn, ...element.tracks, ...untrackedGroup];
     }
     if (element.kind === "untrackedGroup") {
-      return element.issues.map(
-        (issue): UntrackedIssueNode => ({ kind: "untrackedIssue", repo: element.repo, issue })
-      );
+      // Auto-slot suggestion sub-buckets (#241) nest as the FIRST children of the
+      // Untracked group, ahead of the plain untracked issues, when the feature is
+      // on and a Claude session has written matching answers for this repo's scan.
+      const children: TreeNode[] = [];
+      // Issue numbers surfaced in a suggestion sub-bucket are removed from the
+      // plain list below, so a suggested issue shows in ONE place, not two.
+      const bucketed = new Set<number>();
+      if (this._autoSlotEnabled()) {
+        const buckets = this._suggestionsByRepo.get(element.repo);
+        if (buckets) {
+          if (buckets.suggested.length > 0) {
+            children.push({ kind: "suggestedGroup", repo: element.repo, suggestions: buckets.suggested });
+            for (const s of buckets.suggested) bucketed.add(s.issueNumber);
+          }
+          if (buckets.needsReview.length > 0) {
+            children.push({ kind: "needsReviewGroup", repo: element.repo, suggestions: buckets.needsReview });
+            for (const s of buckets.needsReview) bucketed.add(s.issueNumber);
+          }
+        }
+      }
+      return [
+        ...children,
+        ...element.issues
+          .filter(issue => !bucketed.has(issue.number))
+          .map((issue): UntrackedIssueNode => ({ kind: "untrackedIssue", repo: element.repo, issue })),
+      ];
     }
-    // TrackNode or UntrackedIssueNode — leaves; no children.
+    if (element.kind === "suggestedGroup") {
+      const untracked = this.roots.find(r => r.repo === element.repo)?.untracked ?? [];
+      return element.suggestions.map(s => suggestedIssueNode(element.repo, s, untracked, "suggested"));
+    }
+    if (element.kind === "needsReviewGroup") {
+      const untracked = this.roots.find(r => r.repo === element.repo)?.untracked ?? [];
+      return element.suggestions.map(s => suggestedIssueNode(element.repo, s, untracked, "needsReview"));
+    }
+    // TrackNode, UntrackedIssueNode, or SuggestedIssueNode — leaves; no children.
     return [];
+  }
+
+  /** Whether the auto-slot Suggested/NeedsReview buckets should render (#241).
+   *  Off by default — the feature is opt-in via workPlan.autoSlotSuggestions. */
+  private _autoSlotEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration("workPlan")
+      .get<boolean>("autoSlotSuggestions", false);
   }
 
   /**
@@ -320,6 +406,19 @@ export class WorkPlanTreeProvider
     }
     if (element.kind === "tierDupWarning") {
       return this.roots.find(r => r.repo === element.repo);
+    }
+    // suggestedGroup / needsReviewGroup / suggestedIssue → the repo's Untracked
+    // group (the suggestion sub-buckets and their issues all nest under it).
+    if (
+      element.kind === "suggestedGroup" ||
+      element.kind === "needsReviewGroup" ||
+      element.kind === "suggestedIssue"
+    ) {
+      const repoNode = this.roots.find(r => r.repo === element.repo);
+      if (repoNode) {
+        return { kind: "untrackedGroup", repo: repoNode.repo, issues: repoNode.untracked };
+      }
+      return undefined;
     }
     // untrackedIssue → its group
     const repoNode = this.roots.find(r => r.repo === element.repo);
@@ -363,6 +462,15 @@ export class WorkPlanTreeProvider
     }
     if (node.kind === "tierDupWarning") {
       return this._tierDupWarningTreeItem(node);
+    }
+    if (node.kind === "suggestedGroup") {
+      return this._suggestedGroupTreeItem(node);
+    }
+    if (node.kind === "needsReviewGroup") {
+      return this._needsReviewGroupTreeItem(node);
+    }
+    if (node.kind === "suggestedIssue") {
+      return this._suggestedIssueTreeItem(node);
     }
     return this._trackTreeItem(node);
   }
@@ -541,6 +649,74 @@ export class WorkPlanTreeProvider
       title: "Open Issue",
       arguments: [{ repo: node.repo, number: node.issue.number }],
     };
+    return item;
+  }
+
+  // --- Auto-slot suggestion nodes (#241) ---
+
+  private _suggestedGroupTreeItem(node: SuggestedGroupNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      "Suggested",
+      vscode.TreeItemCollapsibleState.Expanded,
+    );
+    item.description = `${node.suggestions.length}`;
+    item.iconPath = new vscode.ThemeIcon("sparkle");
+    item.contextValue = "workPlanSuggestedGroup";
+    item.tooltip =
+      `${node.suggestions.length} issue(s) with a confident track suggestion — ` +
+      "accept individually, or Accept All from the right-click menu.";
+    return item;
+  }
+
+  private _needsReviewGroupTreeItem(node: NeedsReviewGroupNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      "Needs review",
+      vscode.TreeItemCollapsibleState.Collapsed,
+    );
+    item.description = `${node.suggestions.length}`;
+    item.iconPath = new vscode.ThemeIcon("sparkle");
+    item.contextValue = "workPlanNeedsReviewGroup";
+    item.tooltip =
+      `${node.suggestions.length} lower-confidence or close-call suggestion(s) — ` +
+      "no one-click accept; click an issue to open it and decide.";
+    return item;
+  }
+
+  private _suggestedIssueTreeItem(node: SuggestedIssueNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      `#${node.issue.number}  ${node.issue.title}`,
+      vscode.TreeItemCollapsibleState.None,
+    );
+    // Lead with the rationale + target track, NOT the percentage (the spec keeps
+    // the number out of the at-a-glance label; it lives in the tooltip only).
+    const rationale = node.rationale.trim();
+    item.description = rationale
+      ? `→ ${node.suggestedTrack} · ${rationale}`
+      : `→ ${node.suggestedTrack}`;
+    item.iconPath = new vscode.ThemeIcon("lightbulb");
+    item.contextValue =
+      node.tier === "suggested" ? "workPlanSuggestedIssue" : "workPlanNeedsReviewIssue";
+
+    const pct = Math.round(node.confidence * 100);
+    const tip = new vscode.MarkdownString(undefined, true);
+    tip.appendMarkdown(`**#${node.issue.number}** ${node.issue.title}\n\n`);
+    tip.appendMarkdown(`$(lightbulb) Suggested track: **${node.suggestedTrack}**\n\n`);
+    if (node.runnerUp) {
+      tip.appendMarkdown(`Runner-up: ${node.runnerUp}\n\n`);
+    }
+    tip.appendMarkdown(
+      `Confidence: ${pct}% · margin: ${node.margin === "clear" ? "clear" : "narrow (needs review)"}\n\n`,
+    );
+    if (rationale) tip.appendMarkdown(`_${rationale}_`);
+    item.tooltip = tip;
+
+    // A "Suggested" (one-click) issue opens the accept QuickPick on click; a
+    // "Needs review" issue opens the issue itself (no one-click accept).
+    item.command =
+      node.tier === "suggested"
+        ? { command: "workPlan.acceptSuggestion", title: "Accept suggestion", arguments: [node] }
+        : { command: "workPlan.openIssue", title: "Open Issue", arguments: [{ repo: node.repo, number: node.issue.number }] };
+
     return item;
   }
 }

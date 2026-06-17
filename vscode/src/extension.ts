@@ -1,18 +1,22 @@
 import * as vscode from "vscode";
+import * as fs from "node:fs";
 import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
+  autoTriageScan,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos, LEGEND } from "./planModel.ts";
-import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode } from "./tree.ts";
+import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode, SuggestedIssueNode, SuggestedGroupNode } from "./tree.ts";
 import type { Track, Issue } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones } from "./model.ts";
 import { badgeCounts } from "./treeModel.ts";
+import { readSuggestions } from "./suggestions.ts";
+import { issuesFingerprint } from "./fingerprint.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
@@ -1608,6 +1612,374 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showErrorMessage(msg);
       }
     }),
+  );
+
+  // -------------------------------------------------------------------------
+  // Auto-slot suggestions (#241): offer to slot untracked issues into tracks.
+  //
+  // Flow: Suggest Tracks runs `auto-triage --json` → stores {batchId, answersPath}
+  // for the repo + relays the prompt → a Claude session writes answers to
+  // answersPath → an fs.watch fires → we re-read + bucket (suggestions.ts) and
+  // store on the provider → the tree shows Suggested / Needs review sub-buckets.
+  // Accept computes a CAS fingerprint (#241) of the target track's current issues
+  // and slots with --expect, branching on the staleness/rebase outcome.
+  // -------------------------------------------------------------------------
+
+  // Per-repo answers-file paths (the CLI-emitted absolute path, used verbatim)
+  // and their live fs.watchers, so a repo re-scanned mid-session swaps watchers
+  // cleanly and all watchers tear down on deactivation.
+  const autoSlotAnswersPath = new Map<string, string>();
+  const autoSlotWatchers = new Map<string, fs.FSWatcher>();
+  // Per-repo debounce timers — editors write the answers file in several syncs,
+  // so coalesce a burst of change events into one re-read (~300ms).
+  const autoSlotDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+
+  const autoSlotThreshold = (): number => {
+    const raw = vscode.workspace
+      .getConfiguration("workPlan")
+      .get<number>("autoSlotConfidenceThreshold", 0.7);
+    // Clamp to [0,1] so a hand-edited setting can't invert the buckets.
+    return Math.min(1, Math.max(0, raw));
+  };
+
+  // Dismissed suggestions (#241): per-repo, per-issue, persisted in workspaceState
+  // so a dismissed issue stays dropped to plain untracked across reloads. Keyed
+  // `autoSlot.dismissed.<repo>.<issueNumber>`.
+  const dismissKey = (repo: string, issueNumber: number): string =>
+    `autoSlot.dismissed.${repo}.${issueNumber}`;
+  const isDismissed = (repo: string, issueNumber: number): boolean =>
+    context.workspaceState.get<boolean>(dismissKey(repo, issueNumber), false);
+
+  // Re-read a repo's answers file, bucket it, and push onto the provider. Safe to
+  // call when the file doesn't exist yet (cold) — readSuggestions tolerates it.
+  const readAndStoreSuggestions = (repo: string): void => {
+    const path = autoSlotAnswersPath.get(repo);
+    const batchId = provider.getBatchId(repo);
+    if (!path || !batchId) return;
+    const buckets = readSuggestions(
+      path,
+      batchId,
+      autoSlotThreshold(),
+      (issueNumber) => isDismissed(repo, issueNumber),
+    );
+    if (buckets.batchMismatch) {
+      // A stale answers file from a prior scan — surface it once rather than
+      // silently applying nothing.
+      vscode.window.showWarningMessage(
+        `Work Plan: the suggestions file for ${repo} is from a different scan — re-run Suggest Tracks.`,
+      );
+    }
+    provider.setSuggestions(repo, buckets);
+  };
+
+  // Arm (or re-arm) an fs.watch on a repo's answers file. fs.watch fires on the
+  // file's directory entry; we debounce and re-read. The cache dir is created by
+  // the CLI before it prints answers_path, so the parent exists.
+  const watchAnswers = (repo: string, path: string): void => {
+    autoSlotWatchers.get(repo)?.close();
+    autoSlotAnswersPath.set(repo, path);
+    try {
+      const watcher = fs.watch(path, { persistent: false }, () => {
+        const prior = autoSlotDebounce.get(repo);
+        if (prior) clearTimeout(prior);
+        autoSlotDebounce.set(
+          repo,
+          setTimeout(() => {
+            autoSlotDebounce.delete(repo);
+            readAndStoreSuggestions(repo);
+          }, 300),
+        );
+      });
+      watcher.on("error", () => { /* file vanished/renamed — ignore */ });
+      autoSlotWatchers.set(repo, watcher);
+    } catch {
+      // The file may not exist yet (Claude hasn't written it). fs.watch on a
+      // missing path throws; the cold-open read below still picks it up once it
+      // lands on the next Suggest Tracks / reload. Best-effort — never fatal.
+    }
+    // Cold read: pick up an answers file already on disk from a prior session.
+    readAndStoreSuggestions(repo);
+  };
+
+  // Tear down every answers-file watcher + pending debounce on deactivation.
+  context.subscriptions.push({
+    dispose: () => {
+      for (const w of autoSlotWatchers.values()) w.close();
+      autoSlotWatchers.clear();
+      for (const t of autoSlotDebounce.values()) clearTimeout(t);
+      autoSlotDebounce.clear();
+    },
+  });
+
+  // Re-bucket all repos when the threshold flips (it shifts suggested↔needsReview).
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.autoSlotConfidenceThreshold")) {
+        for (const repo of autoSlotAnswersPath.keys()) readAndStoreSuggestions(repo);
+      }
+    }),
+  );
+
+  // Pick the repo for a palette invocation of Suggest Tracks: the configured repos
+  // (with a folder key — the --repo arg) drawn from the raw export.
+  const pickAutoSlotRepo = async (): Promise<{ repo: string; folder: string } | undefined> => {
+    const raw = provider.rawExport;
+    const choices = (raw?.repos ?? [])
+      .filter((r): r is typeof r & { repo: string; folder: string } =>
+        typeof r.repo === "string" && r.repo !== "" && typeof r.folder === "string" && r.folder !== "")
+      .map(r => ({ label: r.repo, repo: r.repo, folder: r.folder }));
+    if (choices.length === 0) {
+      vscode.window.showInformationMessage("Work Plan: no configured repos to triage — Add Repo first.");
+      return undefined;
+    }
+    if (choices.length === 1) return { repo: choices[0].repo, folder: choices[0].folder };
+    const pick = await vscode.window.showQuickPick(choices, {
+      placeHolder: "Suggest tracks for which repo?",
+    });
+    return pick ? { repo: pick.repo, folder: pick.folder } : undefined;
+  };
+
+  // workPlan.suggestTracks — run the auto-triage scan + relay the AI prompt.
+  // Accepts an UntrackedGroupNode / RepoNode (its repo + folder), or prompts.
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.suggestTracks",
+      async (node?: { repo?: string; folder?: string | null }) => {
+        try {
+          // Resolve repo (github slug, for the suggestions key) + folder (the
+          // --repo arg). A group/repo node carries repo; folder comes from the
+          // node or, failing that, the matching config repo.
+          let repo = typeof node?.repo === "string" ? node.repo : undefined;
+          let folder = typeof node?.folder === "string" ? node.folder : undefined;
+          if (repo && !folder) {
+            folder = provider.rawExport?.repos?.find(r => r.repo === repo)?.folder ?? undefined;
+          }
+          if (!repo || !folder) {
+            const picked = await pickAutoSlotRepo();
+            if (!picked) return;
+            repo = picked.repo;
+            folder = picked.folder;
+          }
+
+          const scan = await withWriteProgress(
+            `Work Plan: scanning ${repo} for untracked issues…`,
+            () => autoTriageScan(runner, folder!),
+          );
+
+          if (scan.untracked.length === 0) {
+            vscode.window.showInformationMessage(
+              `Work Plan: ${repo} has no untracked issues — full coverage.`,
+            );
+            return;
+          }
+
+          // Record the batch + arm the watcher on the CLI-emitted answers path
+          // (used verbatim — never recomputed).
+          provider.setBatchId(repo, scan.batch_id);
+          watchAnswers(repo, scan.answers_path);
+
+          // Relay the prompt to the output channel so the user can paste it to a
+          // Claude session, with the exact answers path to save to.
+          outputChannel.clear();
+          outputChannel.appendLine(
+            `Ask Claude to produce suggestions and save to ${scan.answers_path}`,
+          );
+          outputChannel.appendLine("");
+          outputChannel.append(scan.prompt);
+          outputChannel.show(true);
+
+          vscode.window.showInformationMessage(
+            `Work Plan: scanned ${scan.untracked.length} untracked issue(s) in ${repo}. ` +
+              "Ask Claude with the prompt in the Work Plan output channel; suggestions appear under Untracked.",
+          );
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: suggest-tracks failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+  );
+
+  // Build the candidate-track QuickPick for accept: the suggested track pre-listed
+  // first, then a separator + the rest (same same-repo-first logic as slotUntracked).
+  type AcceptTrackItem = vscode.QuickPickItem & { track?: string };
+  const buildAcceptTrackItems = (repo: string, suggestedTrack: string): AcceptTrackItem[] => {
+    const exp = provider.rawExport ?? provider.currentExport;
+    const all = exp?.tracks ?? [];
+    const sameRepo = all.filter(t => t.repo === repo).map(t => t.name);
+    const candidates = sameRepo.length > 0 ? sameRepo : all.map(t => t.name);
+    const others = candidates.filter(t => t !== suggestedTrack);
+    const items: AcceptTrackItem[] = [];
+    items.push({ label: suggestedTrack, description: "suggested", track: suggestedTrack });
+    if (others.length > 0) {
+      items.push({ label: "Other tracks", kind: vscode.QuickPickItemKind.Separator });
+      for (const t of others) items.push({ label: t, track: t });
+    }
+    return items;
+  };
+
+  // Compute the CAS fingerprint (#241) of a target track's CURRENT issue list, as
+  // the viewer last saw it, so --expect can detect an on-disk change. Returns
+  // undefined when the track isn't in the export (then we slot unguarded).
+  const expectFor = (trackName: string): string | undefined => {
+    const exp = provider.rawExport ?? provider.currentExport;
+    const t = exp?.tracks.find(tr => tr.name === trackName);
+    if (!t) return undefined;
+    return issuesFingerprint(t.issues.map(i => i.number));
+  };
+
+  // workPlan.acceptSuggestion — slot one suggested issue, picking/confirming the
+  // track. Branches on the CAS outcome (stale/needsRebase).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "workPlan.acceptSuggestion",
+      async (node?: SuggestedIssueNode) => {
+        if (!node || node.kind !== "suggestedIssue") return;
+        try {
+          const issue = node.issue.number;
+          const pick = await vscode.window.showQuickPick(
+            buildAcceptTrackItems(node.repo, node.suggestedTrack),
+            {
+              placeHolder: `Slot #${issue} into a track`,
+              ...({ detail: `${Math.round(node.confidence * 100)}% · ${node.rationale}` } as object),
+            },
+          );
+          if (!pick || !pick.track) return;
+          const track = pick.track;
+
+          const outcome = await withWriteProgress(
+            `Work Plan: adding #${issue} to ${track}…`,
+            () => executeWrite(
+              runner,
+              { kind: "slot", track, issue, expect: expectFor(track) },
+              confirmPublicWrite,
+            ),
+          );
+
+          if (outcome.status === "written") {
+            await refreshAfterWrite();
+            readAndStoreSuggestions(node.repo); // drop the just-accepted suggestion
+            vscode.window.showInformationMessage(`Work Plan: added #${issue} to ${track}`);
+          } else if (outcome.status === "cancelled") {
+            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+          } else if (outcome.status === "stale") {
+            vscode.window.showInformationMessage(
+              `Work Plan: ${track} changed since the suggestion — re-scan and try again.`,
+            );
+            await refreshAfterWrite();
+            readAndStoreSuggestions(node.repo);
+          } else {
+            // needsRebase
+            vscode.window.showWarningMessage(
+              `Work Plan: ${track}'s shared plan branch diverged — pull/resolve, then retry.`,
+            );
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: accept-suggestion failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    // workPlan.dismissSuggestion — drop a suggestion (suggested OR needs-review)
+    // back to plain untracked. Persists the dismiss key; no toast.
+    vscode.commands.registerCommand(
+      "workPlan.dismissSuggestion",
+      async (node?: SuggestedIssueNode) => {
+        if (!node || node.kind !== "suggestedIssue") return;
+        await context.workspaceState.update(dismissKey(node.repo, node.issue.number), true);
+        readAndStoreSuggestions(node.repo);
+      },
+    ),
+    // workPlan.batchAcceptSuggestions — accept multiple suggested issues at once,
+    // grouped by their suggested track, each batch slotted with its own --expect.
+    vscode.commands.registerCommand(
+      "workPlan.batchAcceptSuggestions",
+      async (node?: SuggestedGroupNode) => {
+        if (!node || node.kind !== "suggestedGroup") return;
+        try {
+          type Item = vscode.QuickPickItem & { issueNumber: number; track: string };
+          const items: Item[] = node.suggestions.map(s => ({
+            label: `#${s.issueNumber} → ${s.suggestedTrack}`,
+            description: s.rationale,
+            issueNumber: s.issueNumber,
+            track: s.suggestedTrack,
+            picked: true,
+          }));
+          const picks = await vscode.window.showQuickPick(items, {
+            canPickMany: true,
+            placeHolder: `Accept suggestions for ${node.repo} (each goes to its suggested track)`,
+          });
+          if (!picks || picks.length === 0) return;
+
+          // Group the chosen issues by their suggested track.
+          const byTrack = new Map<string, number[]>();
+          for (const p of picks) {
+            const list = byTrack.get(p.track) ?? [];
+            list.push(p.issueNumber);
+            byTrack.set(p.track, list);
+          }
+
+          let accepted = 0;
+          let staleTracks = 0;
+          let rebaseTracks = 0;
+          for (const [track, issues] of byTrack) {
+            const outcome = await withWriteProgress(
+              `Work Plan: adding ${issues.length} issue(s) to ${track}…`,
+              () => executeWrite(
+                runner,
+                { kind: "batchSlot", track, issues, expect: expectFor(track) },
+                confirmPublicWrite,
+              ),
+            );
+            if (outcome.status === "written") {
+              accepted += issues.length;
+            } else if (outcome.status === "stale") {
+              staleTracks++;
+            } else if (outcome.status === "needsRebase") {
+              rebaseTracks++;
+            }
+            // "cancelled" → user kept private for that track; skip silently.
+          }
+
+          if (accepted > 0) await refreshAfterWrite();
+          readAndStoreSuggestions(node.repo);
+
+          const parts: string[] = [];
+          if (accepted > 0) parts.push(`added ${accepted} issue(s)`);
+          if (staleTracks > 0) parts.push(`${staleTracks} track(s) changed — re-scan`);
+          if (rebaseTracks > 0) parts.push(`${rebaseTracks} track(s) need a pull/rebase`);
+          vscode.window.showInformationMessage(
+            `Work Plan: ${parts.length ? parts.join("; ") + "." : "no changes written."}`,
+          );
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: batch-accept failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    // workPlan.dismissAllSuggestions — dismiss every suggested issue in a group
+    // after a non-modal confirm.
+    vscode.commands.registerCommand(
+      "workPlan.dismissAllSuggestions",
+      async (node?: SuggestedGroupNode) => {
+        if (!node || node.kind !== "suggestedGroup") return;
+        const ok = await vscode.window.showWarningMessage(
+          `Dismiss all ${node.suggestions.length} suggestion(s) for ${node.repo}? They drop back to plain untracked.`,
+          "Dismiss all",
+        );
+        if (ok !== "Dismiss all") return;
+        for (const s of node.suggestions) {
+          await context.workspaceState.update(dismissKey(node.repo, s.issueNumber), true);
+        }
+        readAndStoreSuggestions(node.repo);
+      },
+    ),
   );
 
   // -------------------------------------------------------------------------
