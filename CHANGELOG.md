@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.18+64ae461 — 2026-06-18 (#376)
+
+feat: proactive auto-slot offer + collision guard, offline heuristic, webview-handler fix
+
+Deploy of the auto-slot feature set plus a critical webview regression fix. Three issues.
+
+## feat: proactive auto-slot offer + collision guard (#241)
+Offer to slot untracked GitHub issues into existing tracks, with an AI-suggested destination per issue, and the hard collision-prevention the issue requires. Built in 4 phases:
+- **CAS collision guard** — `slot`/`batch-slot` take `--expect=<fp>` (sha256 of the track's issue list); the write re-reads + merges onto fresh frontmatter and aborts `{stale}` instead of clobbering. Preserves concurrent body/other-field edits.
+- **Shared-tier rebase guard** — for a track on a `plan_branch`, fetch + `rebase --autostash` onto origin before writing; `{needs_rebase}` abort on un-rebasable divergence. `/security-review`'d.
+- **Suggestion engine** — `auto-triage --json` scan + `batch_id` + a v2 abstain-first answers schema (legacy v1 still applies).
+- **Viewer** (opt-in `workPlan.autoSlotSuggestions`) — Suggested (one-click Accept) / Needs-review sub-buckets under Untracked; Accept slots through the guard + public-repo modal, branching on stale/needsRebase. 5 commands, fs.watch, dismiss state.
+
+## feat: offline heuristic suggestion mode (#373)
+`auto-triage --heuristic` scores untracked issues against candidate tracks on local signals (milestone / track-label / title-scope keyword overlap), abstain-first, and writes the v2 answers file itself (`source: "heuristic"`) — so the Suggested bucket works with no Claude session (lower-trust, offline). New viewer command **Suggest Tracks (offline heuristic)**; heuristic suggestions are flagged lower-trust.
+
+## fix(vscode): webview handlers dead since 0.9.0 (#374)
+Escaped quotes in an inline-script template literal collapsed to a `SyntaxError`, killing the entire messaging IIFE — every webview click handler (track select, focus toggle, the 0.12.0 graph zoom/pan/export controls) was silently dead from 0.9.0 onward. Fixed; added a parse-guard test that `new Function()`-checks every inline script so this class fails CI.
+
+## Ships
+- VS Code extension **0.14.0** (Marketplace + Open VSX) — 0.13.0 already shipped 2026-06-16.
+- npm `@stylusnexus/work-plan` (CLI: the guard, `auto-triage --json/--heuristic`, v2 answers).
+- CLI floor unchanged (`2026.06.15`).
+
+Tests: CLI 1159 · VS Code 715 · tsc clean. Cross-language CAS fingerprint verified.
+
 ## 2026.06.16+ebd6045 — 2026-06-16 (#370)
 
 feat: repo-scoping (brief auto-scope + viewer auto-focus), reconcile one-click apply, dedupe-tiers
