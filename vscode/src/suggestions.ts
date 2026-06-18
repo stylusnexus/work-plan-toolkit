@@ -33,6 +33,9 @@ export interface SuggestionBuckets {
   suggested: SuggestionEntry[];
   needsReview: SuggestionEntry[];
   batchMismatch: boolean;
+  /** "heuristic" when the offline scorer produced these (#373) — the viewer
+   *  flags them lower-trust; absent/undefined for the LLM path. */
+  source?: string;
 }
 
 const EMPTY: SuggestionBuckets = { suggested: [], needsReview: [], batchMismatch: false };
@@ -101,6 +104,7 @@ export function parseSuggestions(
   }
 
   const rawSuggestions = Array.isArray(obj.suggestions) ? obj.suggestions : [];
+  const source = typeof obj.source === "string" ? obj.source : undefined;
 
   const suggested: SuggestionEntry[] = [];
   const needsReview: SuggestionEntry[] = [];
@@ -148,5 +152,5 @@ export function parseSuggestions(
     }
   }
 
-  return { suggested, needsReview, batchMismatch: false };
+  return { suggested, needsReview, batchMismatch: false, ...(source ? { source } : {}) };
 }

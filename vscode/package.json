@@ -302,6 +302,12 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "workPlan.suggestTracksOffline",
+        "title": "Suggest Tracks for Untracked Issues (offline heuristic)…",
+        "category": "Work Plan",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "workPlan.acceptSuggestion",
         "title": "Accept Suggestion (slot into track)…",
         "category": "Work Plan",
@@ -538,9 +544,19 @@
           "group": "1_workPlanWrite@2"
         },
         {
+          "command": "workPlan.suggestTracksOffline",
+          "when": "view == workPlan.tree && viewItem == workPlanUntrackedGroup",
+          "group": "1_workPlanWrite@3"
+        },
+        {
           "command": "workPlan.suggestTracks",
           "when": "view == workPlan.tree && viewItem == workPlanRepo",
           "group": "0_workPlanRepo@3"
+        },
+        {
+          "command": "workPlan.suggestTracksOffline",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@4"
         },
         {
           "command": "workPlan.batchAcceptSuggestions",

@@ -32,6 +32,7 @@ omitted entirely are left untracked (no error).
 """
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -98,6 +99,7 @@ Rules:
 
 def run(args: list[str]) -> int:
     apply_mode = "--apply" in args
+    heuristic = "--heuristic" in args
     repo_arg = next((a for a in args if a.startswith("--repo=")), None)
 
     limit = 100
@@ -186,6 +188,28 @@ def run(args: list[str]) -> int:
     batch_path = _batch_path(repo)
     batch_path.write_text(json.dumps(batch_obj, indent=2))
 
+    # --heuristic (#373): compute suggestions deterministically (no LLM) and
+    # write the v2 answers file ourselves, so the Suggested bucket works with no
+    # Claude session. Same schema the LLM path produces, stamped
+    # source:"heuristic" so the viewer can flag it lower-trust. Atomic
+    # (.tmp + os.replace) since the viewer watches this path live.
+    if heuristic:
+        from lib.heuristic_triage import score_suggestions
+        suggestions = score_suggestions(
+            untracked,
+            [{"slug": t.meta.get("track", t.name), "name": t.name,
+              "milestone": t.meta.get("milestone_alignment"),
+              "scope": t.meta.get("scope") or t.meta.get("description") or "",
+              "labels": (t.meta.get("github", {}) or {}).get("labels") or []}
+             for t in active_tracks],
+        )
+        answers_path = _answers_path(repo)
+        tmp = answers_path.with_suffix(answers_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(
+            {"version": 2, "source": "heuristic", "batch_id": batch_id,
+             "suggestions": suggestions}, indent=2))
+        os.replace(tmp, answers_path)
+
     # --json: emit the batch (+ prompt + answers path) as one machine-readable
     # object for the VS Code viewer, which captures batch_id to correlate the
     # answers a Claude session writes back (#241). No human prose on stdout.
@@ -227,6 +251,12 @@ def run(args: list[str]) -> int:
 
     print("=" * 60)
     print()
+    if heuristic:
+        print(f"Heuristic suggestions written to:")
+        print(f"  {_answers_path(repo)}")
+        print("They appear in the VS Code Suggested bucket, or apply from the terminal:")
+        print(f"  python3 ~/.claude/skills/work-plan/work_plan.py auto-triage --apply --repo={folder}")
+        return 0
     print(f"After the agent returns assignment JSON, save it (atomically — write")
     print(f"a .tmp then rename) to:")
     print(f"  {_answers_path(repo)}")

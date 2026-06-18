@@ -529,8 +529,12 @@ export interface AutoTriageScan {
 export async function autoTriageScan(
   run: CliRunner,
   folderKey: string,
+  opts: { heuristic?: boolean } = {},
 ): Promise<AutoTriageScan> {
   const args = ["auto-triage", "--json", `--repo=${folderKey}`];
+  // --heuristic (#373): the CLI writes the v2 answers file itself (no LLM), so
+  // suggestions appear with no Claude session — lower-trust, but offline.
+  if (opts.heuristic) args.push("--heuristic");
   const result = await run(args);
   if (result.code !== 0) {
     throw new CliError({

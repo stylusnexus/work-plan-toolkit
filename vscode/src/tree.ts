@@ -659,12 +659,14 @@ export class WorkPlanTreeProvider
       "Suggested",
       vscode.TreeItemCollapsibleState.Expanded,
     );
-    item.description = `${node.suggestions.length}`;
+    const heuristic = this._suggestionsByRepo.get(node.repo)?.source === "heuristic";
+    item.description = heuristic ? `${node.suggestions.length} · heuristic` : `${node.suggestions.length}`;
     item.iconPath = new vscode.ThemeIcon("sparkle");
     item.contextValue = "workPlanSuggestedGroup";
     item.tooltip =
       `${node.suggestions.length} issue(s) with a confident track suggestion — ` +
-      "accept individually, or Accept All from the right-click menu.";
+      "accept individually, or Accept All from the right-click menu." +
+      (heuristic ? "\n\nOffline heuristic matches (no AI) — lower-trust; review before accepting." : "");
     return item;
   }
 

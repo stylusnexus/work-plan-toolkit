@@ -146,3 +146,22 @@ describe("parseSuggestions — v2 answers parsing + bucketing (#241)", () => {
     assert.deepEqual(out.needsReview.map(s => s.issueNumber).sort(), [2, 3]);
   });
 });
+
+describe("parseSuggestions — source threading (#373)", () => {
+  test("heuristic source is surfaced for the viewer to flag lower-trust", () => {
+    const json = JSON.stringify({
+      version: 2, source: "heuristic", batch_id: BATCH,
+      suggestions: [{ issue: 1, verdict: "suggest", track: "t", confidence: 0.9, margin: "clear", rationale: "milestone v0.4" }],
+    });
+    const out = parseSuggestions(json, BATCH, 0.7, noneDismissed);
+    assert.equal(out.source, "heuristic");
+    assert.equal(out.suggested.length, 1);
+  });
+
+  test("absent source → undefined (LLM path)", () => {
+    const out = parseSuggestions(answers([
+      { issue: 1, verdict: "suggest", track: "t", confidence: 0.9, margin: "clear", rationale: "x" },
+    ]), BATCH, 0.7, noneDismissed);
+    assert.equal(out.source, undefined);
+  });
+});

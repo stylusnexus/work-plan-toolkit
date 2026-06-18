@@ -366,6 +366,39 @@ class AutoTriageJsonScanTest(unittest.TestCase):
         self.assertIn("scope", data["tracks"][0])
 
 
+class AutoTriageHeuristicTest(unittest.TestCase):
+    """--heuristic (#373): the CLI writes the v2 answers file itself, no LLM."""
+
+    def test_heuristic_writes_answers_file_with_source_and_batch_id(self):
+        cfg = _make_cfg()
+        track = _make_track("auth-flow", "org/myrepo", [], slug="auth-flow")
+        track.meta["milestone_alignment"] = "v0.4"
+        open_issues = [{"number": 4501, "title": "auth thing", "state": "OPEN",
+                        "milestone": {"title": "v0.4"}, "labels": []}]
+        with tempfile.TemporaryDirectory() as tmp:
+            batch_file = Path(tmp) / "auto_triage.org_myrepo.json"
+            answers_file = Path(tmp) / "auto_triage.org_myrepo.answers.json"
+            with patch("commands.auto_triage.load_config", return_value=cfg), \
+                 patch("commands.auto_triage.discover_tracks", return_value=[track]), \
+                 patch("commands.auto_triage.fetch_open_issues", return_value=open_issues), \
+                 patch("commands.auto_triage._batch_path", return_value=batch_file), \
+                 patch("commands.auto_triage._answers_path", return_value=answers_file):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = auto_triage.run(["--heuristic"])
+            self.assertEqual(rc, 0)
+            self.assertTrue(answers_file.exists(), "heuristic must write the answers file")
+            doc = json.loads(answers_file.read_text())
+            self.assertEqual(doc["version"], 2)
+            self.assertEqual(doc["source"], "heuristic")
+            batch = json.loads(batch_file.read_text())
+            self.assertEqual(doc["batch_id"], batch["batch_id"])  # correlates
+            sug = doc["suggestions"][0]
+            self.assertEqual(sug["issue"], 4501)
+            self.assertEqual(sug["verdict"], "suggest")
+            self.assertEqual(sug["track"], "auth-flow")
+
+
 class AutoTriageV2AnswersTest(unittest.TestCase):
     """v2 abstain-first answers schema (#241) + back-compat with v1."""
 

@@ -1739,66 +1739,82 @@ export function activate(context: vscode.ExtensionContext): void {
     return pick ? { repo: pick.repo, folder: pick.folder } : undefined;
   };
 
-  // workPlan.suggestTracks — run the auto-triage scan + relay the AI prompt.
-  // Accepts an UntrackedGroupNode / RepoNode (its repo + folder), or prompts.
+  // Shared scan driver for both Suggest Tracks variants. heuristic=false runs the
+  // LLM path (relays a prompt for a Claude session to answer); heuristic=true runs
+  // the offline scorer (#373) — the CLI writes the answers file itself, so
+  // suggestions appear immediately via the watcher's cold read, no session needed.
+  const runSuggestScan = async (
+    node: { repo?: string; folder?: string | null } | undefined,
+    heuristic: boolean,
+  ): Promise<void> => {
+    try {
+      let repo = typeof node?.repo === "string" ? node.repo : undefined;
+      let folder = typeof node?.folder === "string" ? node.folder : undefined;
+      if (repo && !folder) {
+        folder = provider.rawExport?.repos?.find(r => r.repo === repo)?.folder ?? undefined;
+      }
+      if (!repo || !folder) {
+        const picked = await pickAutoSlotRepo();
+        if (!picked) return;
+        repo = picked.repo;
+        folder = picked.folder;
+      }
+
+      const scan = await withWriteProgress(
+        `Work Plan: scanning ${repo} for untracked issues…`,
+        () => autoTriageScan(runner, folder!, { heuristic }),
+      );
+
+      if (scan.untracked.length === 0) {
+        vscode.window.showInformationMessage(
+          `Work Plan: ${repo} has no untracked issues — full coverage.`,
+        );
+        return;
+      }
+
+      // Record the batch + arm the watcher on the CLI-emitted answers path (used
+      // verbatim). The watcher's cold read picks up the heuristic answers the CLI
+      // just wrote; for the LLM path it fires when the Claude session writes them.
+      provider.setBatchId(repo, scan.batch_id);
+      watchAnswers(repo, scan.answers_path);
+
+      if (heuristic) {
+        vscode.window.showInformationMessage(
+          `Work Plan: ${scan.untracked.length} untracked issue(s) in ${repo} — offline heuristic ` +
+            "suggestions are under Untracked (lower-trust; review before accepting).",
+        );
+        return;
+      }
+
+      // LLM path: relay the prompt for a Claude session to answer.
+      outputChannel.clear();
+      outputChannel.appendLine(
+        `Ask Claude to produce suggestions and save to ${scan.answers_path}`,
+      );
+      outputChannel.appendLine("");
+      outputChannel.append(scan.prompt);
+      outputChannel.show(true);
+
+      vscode.window.showInformationMessage(
+        `Work Plan: scanned ${scan.untracked.length} untracked issue(s) in ${repo}. ` +
+          "Ask Claude with the prompt in the Work Plan output channel; suggestions appear under Untracked.",
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof CliError
+        ? `Work Plan: ${err.message}`
+        : `Work Plan: suggest-tracks failed — ${String(err)}`;
+      vscode.window.showErrorMessage(msg);
+    }
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "workPlan.suggestTracks",
-      async (node?: { repo?: string; folder?: string | null }) => {
-        try {
-          // Resolve repo (github slug, for the suggestions key) + folder (the
-          // --repo arg). A group/repo node carries repo; folder comes from the
-          // node or, failing that, the matching config repo.
-          let repo = typeof node?.repo === "string" ? node.repo : undefined;
-          let folder = typeof node?.folder === "string" ? node.folder : undefined;
-          if (repo && !folder) {
-            folder = provider.rawExport?.repos?.find(r => r.repo === repo)?.folder ?? undefined;
-          }
-          if (!repo || !folder) {
-            const picked = await pickAutoSlotRepo();
-            if (!picked) return;
-            repo = picked.repo;
-            folder = picked.folder;
-          }
-
-          const scan = await withWriteProgress(
-            `Work Plan: scanning ${repo} for untracked issues…`,
-            () => autoTriageScan(runner, folder!),
-          );
-
-          if (scan.untracked.length === 0) {
-            vscode.window.showInformationMessage(
-              `Work Plan: ${repo} has no untracked issues — full coverage.`,
-            );
-            return;
-          }
-
-          // Record the batch + arm the watcher on the CLI-emitted answers path
-          // (used verbatim — never recomputed).
-          provider.setBatchId(repo, scan.batch_id);
-          watchAnswers(repo, scan.answers_path);
-
-          // Relay the prompt to the output channel so the user can paste it to a
-          // Claude session, with the exact answers path to save to.
-          outputChannel.clear();
-          outputChannel.appendLine(
-            `Ask Claude to produce suggestions and save to ${scan.answers_path}`,
-          );
-          outputChannel.appendLine("");
-          outputChannel.append(scan.prompt);
-          outputChannel.show(true);
-
-          vscode.window.showInformationMessage(
-            `Work Plan: scanned ${scan.untracked.length} untracked issue(s) in ${repo}. ` +
-              "Ask Claude with the prompt in the Work Plan output channel; suggestions appear under Untracked.",
-          );
-        } catch (err: unknown) {
-          const msg = err instanceof CliError
-            ? `Work Plan: ${err.message}`
-            : `Work Plan: suggest-tracks failed — ${String(err)}`;
-          vscode.window.showErrorMessage(msg);
-        }
-      },
+      (node?: { repo?: string; folder?: string | null }) => runSuggestScan(node, false),
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.suggestTracksOffline",
+      (node?: { repo?: string; folder?: string | null }) => runSuggestScan(node, true),
     ),
   );
 
