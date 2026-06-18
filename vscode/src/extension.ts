@@ -1790,10 +1790,22 @@ export function activate(context: vscode.ExtensionContext): void {
       watchAnswers(repo, scan.answers_path);
 
       if (heuristic) {
-        vscode.window.showInformationMessage(
-          `Work Plan: ${scan.untracked.length} untracked issue(s) in ${repo} — offline heuristic ` +
-            "suggestions are under Untracked (lower-trust; review before accepting).",
-        );
+        // watchAnswers cold-read just populated the buckets — report the REAL
+        // count so we don't promise suggestions when everything abstained.
+        const b = provider.getSuggestions(repo);
+        const n = (b?.suggested.length ?? 0) + (b?.needsReview.length ?? 0);
+        if (n === 0) {
+          vscode.window.showInformationMessage(
+            `Work Plan: offline matching found no confident track for ${repo}'s ` +
+              `${scan.untracked.length} untracked issue(s) — all left untracked. ` +
+              "Try Suggest Tracks (with AI) for smarter matches.",
+          );
+        } else {
+          vscode.window.showInformationMessage(
+            `Work Plan: ${n} offline match(es) under ${repo}'s Untracked bucket ` +
+              "(no AI — lower-trust; review before accepting).",
+          );
+        }
         return;
       }
 

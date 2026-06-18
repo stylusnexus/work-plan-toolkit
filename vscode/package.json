@@ -303,7 +303,7 @@
       },
       {
         "command": "workPlan.suggestTracksOffline",
-        "title": "Suggest Tracks for Untracked Issues (offline heuristic)…",
+        "title": "Suggest Tracks for Untracked Issues (offline, no AI)…",
         "category": "Work Plan",
         "icon": "$(sparkle)"
       },
@@ -789,11 +789,6 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-update the Plans view when a scanned repo's git activity changes (e.g. committing a plan's declared files clears its 'stalled' state) without a manual Refresh. Watches each expanded repo's .git refs; falls back to manual refresh when off."
-        },
-        "workPlan.autoSlotSuggestions": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show AI track suggestions for untracked issues under the Untracked bucket. Run 'Suggest Tracks for Untracked Issues' to scan, ask Claude with the relayed prompt, and a 'Suggested' / 'Needs review' sub-bucket appears once answers are written. Off by default."
         },
         "workPlan.autoSlotConfidenceThreshold": {
           "type": "number",
