@@ -6,6 +6,28 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.18+d4980a1 — 2026-06-18 (#380)
+
+fix: auto-slot UX hotfix — JSON early-exits, remove enable gate, drop 'heuristic' jargon (0.14.1)
+
+Hotfix for the v0.14.0 auto-slot feature shipped earlier today. One issue surfaced three UX problems; all fixed.
+
+## fix(auto-triage): --json early-exits emit JSON, not human text
+**Suggest Tracks** crashed with `could not parse auto-triage JSON` on a repo with **no active tracks** — the CLI's `--json` scan took the "No active tracks found … run group first" early-exit, which printed a bare human line and returned 0, so the viewer's `JSON.parse(stdout)` threw. The "no untracked — full coverage" exit had the same hazard. Both now emit a parseable `{note: "no_active_tracks" | "full_coverage"}` in `--json` mode (human text kept for the terminal), and the viewer shows a "create a track first" / "full coverage" message instead of an error.
+
+## fix(vscode): remove the auto-slot enable gate
+`workPlan.autoSlotSuggestions` (default off) hid the Suggested bucket — so running Suggest Tracks produced suggestions the setting then hid, and the command looked like it did nothing. Removed: nothing generates suggestions in the background, so running the command IS the opt-in. Buckets render whenever a scan has produced them. (Kept `autoSlotConfidenceThreshold`.)
+
+## fix(vscode): drop "heuristic" jargon
+The offline command is now **"Suggest Tracks for Untracked Issues (offline, no AI)…"**, the tree badge reads "· offline", and the offline toast reports the **real match count** — saying plainly when nothing matched ("all left untracked; try the AI variant") instead of pointing at an empty bucket.
+
+## Ships
+- VS Code extension **0.14.1**.
+- npm `@stylusnexus/work-plan` (CLI auto-triage `--json` early-exit fix) — same-day republish, needs `version_suffix`.
+- CLI floor unchanged (`2026.06.15`).
+
+Tests: CLI 1162 · VS Code 715 · tsc clean.
+
 ## 2026.06.18+64ae461 — 2026-06-18 (#376)
 
 feat: proactive auto-slot offer + collision guard, offline heuristic, webview-handler fix
