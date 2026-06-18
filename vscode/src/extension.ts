@@ -1765,7 +1765,18 @@ export function activate(context: vscode.ExtensionContext): void {
         () => autoTriageScan(runner, folder!, { heuristic }),
       );
 
-      if (scan.untracked.length === 0) {
+      // No tracks to suggest INTO — suggestions are impossible until one exists.
+      // (The CLI takes this early-exit only when there are zero active tracks,
+      // so the normal batch path always has a non-empty tracks list.)
+      if (scan.note === "no_active_tracks") {
+        vscode.window.showInformationMessage(
+          `Work Plan: ${repo} has no active tracks to suggest into — create one first ` +
+            "(right-click the repo → New Track, or run Group Issues).",
+        );
+        return;
+      }
+
+      if (scan.note === "full_coverage" || (scan.untracked ?? []).length === 0) {
         vscode.window.showInformationMessage(
           `Work Plan: ${repo} has no untracked issues — full coverage.`,
         );
@@ -1779,10 +1790,22 @@ export function activate(context: vscode.ExtensionContext): void {
       watchAnswers(repo, scan.answers_path);
 
       if (heuristic) {
-        vscode.window.showInformationMessage(
-          `Work Plan: ${scan.untracked.length} untracked issue(s) in ${repo} — offline heuristic ` +
-            "suggestions are under Untracked (lower-trust; review before accepting).",
-        );
+        // watchAnswers cold-read just populated the buckets — report the REAL
+        // count so we don't promise suggestions when everything abstained.
+        const b = provider.getSuggestions(repo);
+        const n = (b?.suggested.length ?? 0) + (b?.needsReview.length ?? 0);
+        if (n === 0) {
+          vscode.window.showInformationMessage(
+            `Work Plan: offline matching found no confident track for ${repo}'s ` +
+              `${scan.untracked.length} untracked issue(s) — all left untracked. ` +
+              "Try Suggest Tracks (with AI) for smarter matches.",
+          );
+        } else {
+          vscode.window.showInformationMessage(
+            `Work Plan: ${n} offline match(es) under ${repo}'s Untracked bucket ` +
+              "(no AI — lower-trust; review before accepting).",
+          );
+        }
         return;
       }
 

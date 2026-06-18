@@ -100,6 +100,7 @@ Rules:
 def run(args: list[str]) -> int:
     apply_mode = "--apply" in args
     heuristic = "--heuristic" in args
+    json_mode = "--json" in args
     repo_arg = next((a for a in args if a.startswith("--repo=")), None)
 
     limit = 100
@@ -153,7 +154,14 @@ def run(args: list[str]) -> int:
         and t.meta.get("status") in ("active", "in-progress", "blocked")
     ]
     if not active_tracks:
-        print(f"No active tracks found for {repo}. Run /work-plan group first.")
+        # --json callers (the VS Code viewer) parse stdout as JSON, so this
+        # informational early-exit must stay machine-readable rather than a bare
+        # human line (which crashed Suggest Tracks with a JSON parse error).
+        if json_mode:
+            print(json.dumps({"repo": repo, "folder": folder,
+                              "tracks": [], "untracked": [], "note": "no_active_tracks"}))
+        else:
+            print(f"No active tracks found for {repo}. Run /work-plan group first.")
         return 0
 
     # Build per-repo set of already-tracked issue numbers
@@ -168,7 +176,11 @@ def run(args: list[str]) -> int:
     untracked = [i for i in open_issues if i.get("number") not in tracked_nums]
 
     if not untracked:
-        print(f"No untracked issues found for {repo} — full coverage!")
+        if json_mode:
+            print(json.dumps({"repo": repo, "folder": folder,
+                              "tracks": [], "untracked": [], "note": "full_coverage"}))
+        else:
+            print(f"No untracked issues found for {repo} — full coverage!")
         return 0
 
     batch_id = _make_batch_id(repo)
