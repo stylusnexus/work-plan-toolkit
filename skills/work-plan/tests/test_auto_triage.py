@@ -399,6 +399,40 @@ class AutoTriageHeuristicTest(unittest.TestCase):
             self.assertEqual(sug["track"], "auth-flow")
 
 
+class AutoTriageJsonEarlyExitTest(unittest.TestCase):
+    """--json informational early-exits must stay parseable JSON, not human text
+    (the bug that crashed Suggest Tracks with 'could not parse auto-triage JSON')."""
+
+    def test_no_active_tracks_emits_json_note(self):
+        cfg = _make_cfg()
+        # A parked track → no ACTIVE tracks for the repo.
+        parked = _make_track("old", "org/myrepo", [1], status="parked")
+        rc, out, _ = _drive_prepare(["--json"], cfg=cfg, tracks=[parked],
+                                    open_issues=_open_issues(2, 3))
+        self.assertEqual(rc, 0)
+        data = json.loads(out.strip())  # MUST parse — was a bare human line
+        self.assertEqual(data["note"], "no_active_tracks")
+        self.assertEqual(data["tracks"], [])
+
+    def test_no_untracked_emits_json_note(self):
+        cfg = _make_cfg()
+        tracks = [_make_track("auth-flow", "org/myrepo", [1, 2])]
+        rc, out, _ = _drive_prepare(["--json"], cfg=cfg, tracks=tracks,
+                                    open_issues=_open_issues(1, 2))  # all tracked
+        self.assertEqual(rc, 0)
+        data = json.loads(out.strip())
+        self.assertEqual(data["note"], "full_coverage")
+        self.assertEqual(data["untracked"], [])
+
+    def test_no_active_tracks_human_text_without_json(self):
+        cfg = _make_cfg()
+        parked = _make_track("old", "org/myrepo", [1], status="parked")
+        rc, out, _ = _drive_prepare([], cfg=cfg, tracks=[parked],
+                                    open_issues=_open_issues(2, 3))
+        self.assertEqual(rc, 0)
+        self.assertIn("group", out)  # the human guidance still shows
+
+
 class AutoTriageV2AnswersTest(unittest.TestCase):
     """v2 abstain-first answers schema (#241) + back-compat with v1."""
 

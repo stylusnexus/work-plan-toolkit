@@ -21,8 +21,8 @@ export interface UntrackedIssueNode {
 
 /**
  * Auto-slot suggestion buckets (#241), nested as the FIRST children of a repo's
- * Untracked group when `workPlan.autoSlotSuggestions` is on and a Claude session
- * has written answers for the current scan batch:
+ * Untracked group once the user has run Suggest Tracks for the repo and answers
+ * have been written for the current scan batch:
  *   - `suggestedGroup`/`suggestedIssue`: high-confidence, clear-margin matches —
  *     one-click accept (the issue's click opens the accept QuickPick).
  *   - `needsReviewGroup`/`needsReviewIssue`: narrow-margin or below-threshold

@@ -337,23 +337,23 @@ export class WorkPlanTreeProvider
     }
     if (element.kind === "untrackedGroup") {
       // Auto-slot suggestion sub-buckets (#241) nest as the FIRST children of the
-      // Untracked group, ahead of the plain untracked issues, when the feature is
-      // on and a Claude session has written matching answers for this repo's scan.
+      // Untracked group, ahead of the plain untracked issues. They appear only
+      // after the user explicitly runs Suggest Tracks for this repo (nothing
+      // generates them in the background), so the explicit command IS the opt-in
+      // — there's no separate enable setting to forget (#373 follow-up).
       const children: TreeNode[] = [];
       // Issue numbers surfaced in a suggestion sub-bucket are removed from the
       // plain list below, so a suggested issue shows in ONE place, not two.
       const bucketed = new Set<number>();
-      if (this._autoSlotEnabled()) {
-        const buckets = this._suggestionsByRepo.get(element.repo);
-        if (buckets) {
-          if (buckets.suggested.length > 0) {
-            children.push({ kind: "suggestedGroup", repo: element.repo, suggestions: buckets.suggested });
-            for (const s of buckets.suggested) bucketed.add(s.issueNumber);
-          }
-          if (buckets.needsReview.length > 0) {
-            children.push({ kind: "needsReviewGroup", repo: element.repo, suggestions: buckets.needsReview });
-            for (const s of buckets.needsReview) bucketed.add(s.issueNumber);
-          }
+      const buckets = this._suggestionsByRepo.get(element.repo);
+      if (buckets) {
+        if (buckets.suggested.length > 0) {
+          children.push({ kind: "suggestedGroup", repo: element.repo, suggestions: buckets.suggested });
+          for (const s of buckets.suggested) bucketed.add(s.issueNumber);
+        }
+        if (buckets.needsReview.length > 0) {
+          children.push({ kind: "needsReviewGroup", repo: element.repo, suggestions: buckets.needsReview });
+          for (const s of buckets.needsReview) bucketed.add(s.issueNumber);
         }
       }
       return [
@@ -373,14 +373,6 @@ export class WorkPlanTreeProvider
     }
     // TrackNode, UntrackedIssueNode, or SuggestedIssueNode — leaves; no children.
     return [];
-  }
-
-  /** Whether the auto-slot Suggested/NeedsReview buckets should render (#241).
-   *  Off by default — the feature is opt-in via workPlan.autoSlotSuggestions. */
-  private _autoSlotEnabled(): boolean {
-    return vscode.workspace
-      .getConfiguration("workPlan")
-      .get<boolean>("autoSlotSuggestions", false);
   }
 
   /**
@@ -659,14 +651,14 @@ export class WorkPlanTreeProvider
       "Suggested",
       vscode.TreeItemCollapsibleState.Expanded,
     );
-    const heuristic = this._suggestionsByRepo.get(node.repo)?.source === "heuristic";
-    item.description = heuristic ? `${node.suggestions.length} · heuristic` : `${node.suggestions.length}`;
+    const offline = this._suggestionsByRepo.get(node.repo)?.source === "heuristic";
+    item.description = offline ? `${node.suggestions.length} · offline` : `${node.suggestions.length}`;
     item.iconPath = new vscode.ThemeIcon("sparkle");
     item.contextValue = "workPlanSuggestedGroup";
     item.tooltip =
       `${node.suggestions.length} issue(s) with a confident track suggestion — ` +
       "accept individually, or Accept All from the right-click menu." +
-      (heuristic ? "\n\nOffline heuristic matches (no AI) — lower-trust; review before accepting." : "");
+      (offline ? "\n\nOffline matches (no AI) — lower-trust; review before accepting." : "");
     return item;
   }
 
