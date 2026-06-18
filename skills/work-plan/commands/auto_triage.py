@@ -9,14 +9,30 @@ Two-step (same pattern as `group`):
 Use --repo=<key> to scope to one configured repo. When the config has a
 single repo, --repo is inferred automatically.
 
-Answers JSON format (written to cache/auto_triage.answers.json):
-  [
-    {"track": "auth-flow", "issues": [4501, 4502]},
-    {"track": "tabletop-sessions", "issues": [4503]}
-  ]
-Issues omitted from every list are left untracked (no error).
+Answers JSON — two accepted shapes (the reader sniffs which one):
+
+  v1 (legacy, still accepted):
+    [
+      {"track": "auth-flow", "issues": [4501, 4502]},
+      {"track": "tabletop-sessions", "issues": [4503]}
+    ]
+
+  v2 (preferred — abstain-first, per-issue, carries confidence/rationale the
+  VS Code viewer renders; #241):
+    {"version": 2, "batch_id": "<from the batch file>", "suggestions": [
+      {"issue": 4501, "verdict": "suggest", "track": "auth-flow",
+       "runner_up": "tabletop-sessions", "confidence": 0.82, "margin": "clear",
+       "rationale": "shares milestone v0.4.0 and label area/auth"},
+      {"issue": 4507, "verdict": "abstain", "rationale": "no track covers billing"}
+    ]}
+
+In v2 `--apply` slots only verdict=="suggest" assignments whose margin is "clear"
+(narrow-margin / abstained issues stay untracked — the safe default). Issues
+omitted entirely are left untracked (no error).
 """
+import hashlib
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -29,36 +45,61 @@ from lib.tracks import discover_tracks
 from lib.github_state import fetch_open_issues
 
 
-def _batch_path() -> Path:
-    return cache_dir() / "auto_triage.json"
+def _repo_slug(repo) -> str:
+    """Filesystem-safe slug for a repo's per-repo cache files (#241): two repos
+    never collide on the single fixed cache path (a multi-repo clobber race)."""
+    return (repo or "").replace("/", "_")
 
 
-def _answers_path() -> Path:
-    return cache_dir() / "auto_triage.answers.json"
+def _batch_path(repo=None) -> Path:
+    name = f"auto_triage.{_repo_slug(repo)}.json" if repo else "auto_triage.json"
+    return cache_dir() / name
+
+
+def _answers_path(repo=None) -> Path:
+    name = f"auto_triage.{_repo_slug(repo)}.answers.json" if repo else "auto_triage.answers.json"
+    return cache_dir() / name
+
+
+def _make_batch_id(repo: str) -> str:
+    """A short id correlating an answers file to the batch that produced it. The
+    viewer checks it so a stale answers file from an older scan isn't rendered as
+    current (mtime alone can't tell — answers are always newer than the batch)."""
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    return hashlib.sha256(f"{repo}:{stamp}".encode("utf-8")).hexdigest()[:12]
 
 
 PROMPT_TEMPLATE = """\
-You have a list of EXISTING tracks and a list of UNTRACKED open issues.
-Assign each issue to the most appropriate existing track.
+For EACH untracked issue below, decide whether one of the EXISTING tracks is a
+clearly correct home — and if not, ABSTAIN. Most untracked issues will NOT have
+a clear home; that is normal and correct. Only suggest a track when the issue is
+unmistakably about that track's scope.
 
-Return JSON — an array of assignment objects:
-[
-  {"track": "<exact-track-slug>", "issues": [<issue-numbers>]},
-  ...
-]
+Return JSON in this exact shape:
+{"version": 2, "batch_id": "<copy the batch_id printed below>", "suggestions": [
+  {"issue": <num>, "verdict": "suggest", "track": "<exact-track-slug>",
+   "runner_up": "<second-best slug or null>", "confidence": <0.0-1.0>,
+   "margin": "clear" | "narrow",
+   "rationale": "<the concrete shared signal: a label, milestone, or scope keyword>"},
+  {"issue": <num>, "verdict": "abstain", "rationale": "<why no track fits>"}
+]}
 
 Rules:
 - Use ONLY the track slugs listed under "Existing tracks" below.
-- An issue can appear in AT MOST ONE track assignment.
-- Omit issues that genuinely don't fit any existing track (they stay untracked).
+- Name your top choice AND your runner-up. If you cannot clearly distinguish
+  them, set "margin": "narrow" — that means neither is clearly right.
+- "rationale" must cite a CONCRETE shared signal (a label, a milestone, a scope
+  keyword). "Generally related" is not a valid reason — abstain instead.
+- When in doubt, ABSTAIN (verdict "abstain", no track). A wrong suggestion a
+  human rubber-stamps is worse than no suggestion.
 - Do NOT invent new tracks — that's /work-plan group's job.
-- Do NOT include empty assignments (issues: []).
 
 """
 
 
 def run(args: list[str]) -> int:
     apply_mode = "--apply" in args
+    heuristic = "--heuristic" in args
     repo_arg = next((a for a in args if a.startswith("--repo=")), None)
 
     limit = 100
@@ -77,7 +118,13 @@ def run(args: list[str]) -> int:
         return 1
 
     if apply_mode:
-        return _apply(cfg)
+        # Resolve repo for per-repo cache files; no --repo falls back to the
+        # legacy fixed filenames (back-compat with the pre-#241 terminal flow).
+        apply_repo = None
+        if repo_arg:
+            folder = repo_arg.split("=", 1)[1]
+            apply_repo = cfg.get("repos", {}).get(folder, {}).get("github")
+        return _apply(cfg, apply_repo)
 
     # -----------------------------------------------------------------------
     # Step 1: fetch untracked issues + print AI prompt
@@ -115,7 +162,8 @@ def run(args: list[str]) -> int:
         if t.repo == repo and t.has_frontmatter:
             tracked_nums.update(t.meta.get("github", {}).get("issues") or [])
 
-    print(f"Fetching open issues from {repo}...")
+    # Progress goes to stderr so --json keeps stdout a single clean JSON object.
+    print(f"Fetching open issues from {repo}...", file=sys.stderr)
     open_issues = fetch_open_issues(repo, limit=500)
     untracked = [i for i in open_issues if i.get("number") not in tracked_nums]
 
@@ -123,28 +171,69 @@ def run(args: list[str]) -> int:
         print(f"No untracked issues found for {repo} — full coverage!")
         return 0
 
-    batch_path = _batch_path()
-    batch_path.write_text(json.dumps({
+    batch_id = _make_batch_id(repo)
+    batch_obj = {
+        "batch_id": batch_id,
         "repo": repo,
         "folder": folder,
         "untracked": untracked,
         "tracks": [{"slug": t.meta.get("track", t.name), "name": t.name,
                     "milestone": t.meta.get("milestone_alignment"),
-                    "priority": t.meta.get("launch_priority")}
+                    "priority": t.meta.get("launch_priority"),
+                    # Scope/description grounds the match on what the track is
+                    # FOR, not just its slug string (#241, ai-engineer review).
+                    "scope": t.meta.get("scope") or t.meta.get("description") or ""}
                    for t in active_tracks],
-    }, indent=2))
+    }
+    batch_path = _batch_path(repo)
+    batch_path.write_text(json.dumps(batch_obj, indent=2))
+
+    # --heuristic (#373): compute suggestions deterministically (no LLM) and
+    # write the v2 answers file ourselves, so the Suggested bucket works with no
+    # Claude session. Same schema the LLM path produces, stamped
+    # source:"heuristic" so the viewer can flag it lower-trust. Atomic
+    # (.tmp + os.replace) since the viewer watches this path live.
+    if heuristic:
+        from lib.heuristic_triage import score_suggestions
+        suggestions = score_suggestions(
+            untracked,
+            [{"slug": t.meta.get("track", t.name), "name": t.name,
+              "milestone": t.meta.get("milestone_alignment"),
+              "scope": t.meta.get("scope") or t.meta.get("description") or "",
+              "labels": (t.meta.get("github", {}) or {}).get("labels") or []}
+             for t in active_tracks],
+        )
+        answers_path = _answers_path(repo)
+        tmp = answers_path.with_suffix(answers_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(
+            {"version": 2, "source": "heuristic", "batch_id": batch_id,
+             "suggestions": suggestions}, indent=2))
+        os.replace(tmp, answers_path)
+
+    # --json: emit the batch (+ prompt + answers path) as one machine-readable
+    # object for the VS Code viewer, which captures batch_id to correlate the
+    # answers a Claude session writes back (#241). No human prose on stdout.
+    if "--json" in args:
+        print(json.dumps({**batch_obj,
+                          "prompt": PROMPT_TEMPLATE,
+                          "answers_path": str(_answers_path(repo))}))
+        return 0
 
     print(f"Found {len(untracked)} untracked issues ({len(active_tracks)} active tracks).")
     print()
     print("=" * 60)
     print(PROMPT_TEMPLATE)
 
+    print(f"batch_id: {batch_id}  (copy into the answers JSON)")
+    print()
     print("Existing tracks:")
     for t in active_tracks:
         slug = t.meta.get("track", t.name)
         milestone = t.meta.get("milestone_alignment", "—")
         priority = t.meta.get("launch_priority", "—")
-        print(f"  {slug}  [{priority}, {milestone}]")
+        scope = t.meta.get("scope") or t.meta.get("description") or ""
+        scope_txt = f" — {scope}" if scope else ""
+        print(f"  {slug}  [{priority}, {milestone}]{scope_txt}")
 
     print()
     print("Untracked issues to assign:")
@@ -162,16 +251,75 @@ def run(args: list[str]) -> int:
 
     print("=" * 60)
     print()
-    print(f"After the agent returns assignment JSON, save it to:")
-    print(f"  {_answers_path()}")
+    if heuristic:
+        print(f"Heuristic suggestions written to:")
+        print(f"  {_answers_path(repo)}")
+        print("They appear in the VS Code Suggested bucket, or apply from the terminal:")
+        print(f"  python3 ~/.claude/skills/work-plan/work_plan.py auto-triage --apply --repo={folder}")
+        return 0
+    print(f"After the agent returns assignment JSON, save it (atomically — write")
+    print(f"a .tmp then rename) to:")
+    print(f"  {_answers_path(repo)}")
     print("Then run:")
-    print("  python3 ~/.claude/skills/work-plan/work_plan.py auto-triage --apply")
+    print(f"  python3 ~/.claude/skills/work-plan/work_plan.py auto-triage --apply --repo={folder}")
     return 0
 
 
-def _apply(cfg: dict) -> int:
-    answers_path = _answers_path()
-    batch_path = _batch_path()
+def _normalize_answers(answers, batch_id=None):
+    """Collapse either answers shape into v1 assignment objects [{track, issues}].
+
+    - v2 (dict with "suggestions"): keep only verdict=="suggest" whose margin is
+      not "narrow" (abstains and narrow-margin items stay untracked — the safe
+      default), group by track. confidence/rationale are for the viewer; the
+      write ignores them.
+    - v1 (list): passed through.
+
+    The file is model-authored/untrusted, so every field is hardened: issue
+    numbers int-coerced, malformed entries skipped, unknown shapes ignored.
+    Returns (assignments, batch_mismatch: bool).
+    """
+    mismatch = False
+    if isinstance(answers, dict) and "suggestions" in answers:
+        if batch_id and answers.get("batch_id") and answers["batch_id"] != batch_id:
+            mismatch = True
+        by_track: dict = {}
+        for s in answers.get("suggestions") or []:
+            if not isinstance(s, dict):
+                continue
+            if s.get("verdict") != "suggest":
+                continue
+            if s.get("margin") == "narrow":
+                continue
+            slug = (s.get("track") or "").strip()
+            if not slug:
+                continue
+            try:
+                num = int(s.get("issue"))
+            except (TypeError, ValueError):
+                continue
+            by_track.setdefault(slug, []).append(num)
+        return ([{"track": k, "issues": v} for k, v in by_track.items()], mismatch)
+
+    # v1 legacy list.
+    out = []
+    for a in answers if isinstance(answers, list) else []:
+        if not isinstance(a, dict):
+            continue
+        slug = (a.get("track") or "").strip()
+        nums = []
+        for n in a.get("issues") or []:
+            try:
+                nums.append(int(n))
+            except (TypeError, ValueError):
+                continue
+        if slug and nums:
+            out.append({"track": slug, "issues": nums})
+    return (out, mismatch)
+
+
+def _apply(cfg: dict, repo: str = None) -> int:
+    answers_path = _answers_path(repo)
+    batch_path = _batch_path(repo)
     if not answers_path.exists():
         print(f"ERROR: {answers_path} not found. Run without --apply first.")
         return 1
@@ -186,7 +334,11 @@ def _apply(cfg: dict) -> int:
         print(f"ERROR: batch folder '{folder}' not in config.yml repos.")
         return 1
 
-    answers = json.loads(answers_path.read_text())
+    raw_answers = json.loads(answers_path.read_text())
+    answers, batch_mismatch = _normalize_answers(raw_answers, batch.get("batch_id"))
+    if batch_mismatch:
+        print("⚠  answers batch_id does not match the current batch — these "
+              "suggestions may be from an older scan. Re-run without --apply to refresh.")
 
     tracks = discover_tracks(cfg)
     tracks_by_slug = {}

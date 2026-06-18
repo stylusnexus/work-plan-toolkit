@@ -17,8 +17,12 @@ export type WriteAction =
   // PUBLIC destination tracks. Routed through executeWrite for a uniform path.
   | { kind: "reconcileApply"; track: string }
   | { kind: "hygiene" }
-  | { kind: "slot"; track: string; issue: number }
-  | { kind: "batchSlot"; track: string; issues: number[] }
+  // `expect` (#241) opts into the CLI's compare-and-swap staleness guard: the
+  // fingerprint of the target track's issue list as the viewer last saw it. If
+  // the on-disk list changed since, the CLI aborts with {stale} and the caller
+  // re-offers instead of clobbering. Omitted → today's unguarded behaviour.
+  | { kind: "slot"; track: string; issue: number; expect?: string }
+  | { kind: "batchSlot"; track: string; issues: number[]; expect?: string }
   | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
   | { kind: "renameTrack"; track: string; newSlug: string }
@@ -71,7 +75,14 @@ export type ConfirmPrompt = (reason: string) => Promise<ConfirmDecision>;
 /** Result of executeWrite. */
 export type WriteOutcome =
   | { status: "written"; stdout: string }
-  | { status: "cancelled" };
+  | { status: "cancelled" }
+  // The CLI's #241 guards declined the write so the caller can re-offer on fresh
+  // state instead of treating it as success:
+  //  - "stale": the target's issue list changed since the offer (CAS mismatch);
+  //    `current` is the fresh on-disk list.
+  //  - "needsRebase": a shared-tier plan branch diverged and couldn't auto-rebase.
+  | { status: "stale"; current: number[] }
+  | { status: "needsRebase" };
 
 // ---------------------------------------------------------------------------
 // actionToArgs
@@ -152,10 +163,24 @@ export function actionToArgs(action: WriteAction): string[] {
       return ["hygiene", "--yes"];
 
     case "slot":
-      return ["slot", "--no-move", "--", String(action.issue), action.track];
+      return [
+        "slot",
+        "--no-move",
+        ...(action.expect ? [`--expect=${action.expect}`] : []),
+        "--",
+        String(action.issue),
+        action.track,
+      ];
 
     case "batchSlot":
-      return ["batch-slot", "--no-move", "--", ...action.issues.map(String), action.track];
+      return [
+        "batch-slot",
+        "--no-move",
+        ...(action.expect ? [`--expect=${action.expect}`] : []),
+        "--",
+        ...action.issues.map(String),
+        action.track,
+      ];
 
     case "close":
       return [
@@ -314,13 +339,39 @@ export async function executeWrite(
 
     // Re-invoke with the equals-form confirm token. It MUST land before the
     // `--` separator (#194) — anything after `--` is a positional to a strict
-    // parser, which would swallow the token instead of honouring it.
+    // parser, which would swallow the token instead of honouring it. The
+    // confirmed re-invocation also carries --expect, so it can STILL come back
+    // {stale}/{needs_rebase} even though confirm was satisfied (#241).
     const confirmedArgs = withConfirmToken(args, token);
     const confirmedResult = await runWrite(run, confirmedArgs);
-    return { status: "written", stdout: confirmedResult.stdout };
+    return guardOutcome(confirmedResult.json) ?? { status: "written", stdout: confirmedResult.stdout };
   }
 
-  return { status: "written", stdout: result.stdout };
+  // #241 staleness / shared-rebase signals can arrive on the first (unconfirmed)
+  // call too — a private-repo slot never hits the confirm gate.
+  return guardOutcome(result.json) ?? { status: "written", stdout: result.stdout };
+}
+
+/**
+ * Maps a CLI JSON response to a guard WriteOutcome, or null when it's a normal
+ * write. The CLI emits these as pure-JSON stdout (it routes advisory notes to
+ * stderr in --expect mode) so they parse cleanly.
+ */
+function guardOutcome(json: unknown): WriteOutcome | null {
+  if (json === null || typeof json !== "object") {
+    return null;
+  }
+  const blob = json as Record<string, unknown>;
+  if (blob.stale === true) {
+    const current = Array.isArray(blob.current)
+      ? blob.current.filter((n): n is number => typeof n === "number")
+      : [];
+    return { status: "stale", current };
+  }
+  if (blob.needs_rebase === true) {
+    return { status: "needsRebase" };
+  }
+  return null;
 }
 
 /**

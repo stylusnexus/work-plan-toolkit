@@ -75,6 +75,8 @@ All three follow the same pattern:
 
 Show the proposed labels/clusters/assignments BEFORE applying. The user may want to override.
 
+**`auto-triage` answers — write atomically and copy the `batch_id`.** The VS Code viewer watches the answers file and reads suggestions live (#241), so a half-written file would be read mid-write. Write to a `.tmp` sibling and then rename it onto the final `auto_triage.<repo>.answers.json` path the CLI printed (the Write tool's create-then-replace is fine; never append). Use the **v2** answers shape — `{"version": 2, "batch_id": "<copy from the scan output>", "suggestions": [...]}` — and copy the `batch_id` the scan printed so the viewer can tell fresh suggestions from a stale older scan. Prefer `"verdict": "abstain"` for issues with no clear home: most untracked issues genuinely have none, and a wrong suggestion a human rubber-stamps is worse than silence.
+
 **Which one to use:**
 - `group` — issues need to be *clustered into new track files* (run once per milestone or after a re-org)
 - `auto-triage` — untracked issues need to be *assigned to existing tracks* (run after `coverage` shows a gap)

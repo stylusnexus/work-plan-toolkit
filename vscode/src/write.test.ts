@@ -1103,3 +1103,85 @@ describe("actionToArgs — pushTrack", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// #241 — staleness / shared-rebase guard threading
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — slot/batchSlot --expect (#241)", () => {
+  test("slot with expect emits --expect=<fp> as a flag before '--'", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "slot", track: "tabletop", issue: 4234, expect: "deadbeef12345678" }),
+      ["slot", "--no-move", "--expect=deadbeef12345678", "--", "4234", "tabletop"],
+    );
+  });
+
+  test("slot without expect is unchanged (back-compat)", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "slot", track: "tabletop", issue: 4234 }),
+      ["slot", "--no-move", "--", "4234", "tabletop"],
+    );
+  });
+
+  test("batchSlot with expect emits --expect before '--'", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "batchSlot", track: "tabletop", issues: [1, 2], expect: "abc123def456abcd" }),
+      ["batch-slot", "--no-move", "--expect=abc123def456abcd", "--", "1", "2", "tabletop"],
+    );
+  });
+});
+
+describe("executeWrite — #241 guard outcomes", () => {
+  test("first-call {stale} (private repo, no confirm) → {status:'stale', current}", async () => {
+    const action: WriteAction = { kind: "slot", track: "tabletop", issue: 30, expect: "stalefp00000000" };
+    const staleResult: CliResult = {
+      code: 0,
+      stdout: JSON.stringify({ stale: true, reason: "changed", current: [10, 20], track: "tabletop" }),
+      stderr: "",
+    };
+    const { run, calls } = recordingRunner([staleResult]);
+    const outcome = await executeWrite(run, action, neverConfirm());
+    assert.equal(calls.length, 1);
+    assert.deepEqual(outcome, { status: "stale", current: [10, 20] });
+  });
+
+  test("{needs_rebase} → {status:'needsRebase'}", async () => {
+    const action: WriteAction = { kind: "slot", track: "shared-trk", issue: 30 };
+    const rebaseResult: CliResult = {
+      code: 0,
+      stdout: JSON.stringify({ needs_rebase: true, reason: "diverged", track: "shared-trk" }),
+      stderr: "",
+    };
+    const { run } = recordingRunner([rebaseResult]);
+    const outcome = await executeWrite(run, action, neverConfirm());
+    assert.deepEqual(outcome, { status: "needsRebase" });
+  });
+
+  test("confirm → writeAnyway, then the confirmed call comes back {stale}", async () => {
+    const action: WriteAction = { kind: "slot", track: "pub", issue: 30, expect: "stalefp00000000" };
+    const needsConfirm: CliResult = {
+      code: 0,
+      stdout: JSON.stringify({ needs_confirm: true, reason: "PUBLIC", token: "tok123" }),
+      stderr: "",
+    };
+    const staleOnConfirmed: CliResult = {
+      code: 0,
+      stdout: JSON.stringify({ stale: true, current: [10], track: "pub" }),
+      stderr: "",
+    };
+    const { run, calls } = recordingRunner([needsConfirm, staleOnConfirmed]);
+    const outcome = await executeWrite(run, action, alwaysConfirm("writeAnyway"));
+    assert.equal(calls.length, 2, "confirm flow re-invokes");
+    // The confirmed re-invocation carries BOTH --confirm and --expect.
+    assert.ok(calls[1].includes("--confirm=tok123"));
+    assert.ok(calls[1].includes("--expect=stalefp00000000"));
+    assert.deepEqual(outcome, { status: "stale", current: [10] });
+  });
+
+  test("normal slot write still returns {status:'written'} (no false guard trip)", async () => {
+    const action: WriteAction = { kind: "slot", track: "t", issue: 30, expect: "fp" };
+    const { run } = recordingRunner([{ code: 0, stdout: "✓ Slotted #30 into 't'.", stderr: "" }]);
+    const outcome = await executeWrite(run, action, neverConfirm());
+    assert.deepEqual(outcome, { status: "written", stdout: "✓ Slotted #30 into 't'." });
+  });
+});

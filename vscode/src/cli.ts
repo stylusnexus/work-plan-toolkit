@@ -498,6 +498,69 @@ export async function whichRepo(run: CliRunner, cwd: string): Promise<ResolvedRe
 }
 
 // ---------------------------------------------------------------------------
+// auto-triage scan (#241) — fetch untracked issues + the AI prompt for the viewer
+// ---------------------------------------------------------------------------
+
+/**
+ * The one JSON object emitted by `auto-triage --json --repo=<key>` (#241). The
+ * viewer captures `batch_id` to correlate the answers a Claude session writes
+ * back, and `answers_path` (used verbatim — never recomputed) is where those
+ * answers must land. `prompt` is relayed to the output channel.
+ */
+export interface AutoTriageScan {
+  batch_id: string;
+  repo: string;
+  folder: string | null;
+  untracked: { number: number; title: string }[];
+  tracks: { slug: string; name: string; milestone: string | null; priority: string | null; scope: string }[];
+  prompt: string;
+  /** Absolute path the agent should write the answers JSON to (per-repo). */
+  answers_path: string;
+}
+
+/**
+ * Runs `auto-triage --json --repo=<folderKey>` and returns the parsed scan
+ * (#241). The CLI prints progress to stderr so stdout is one clean JSON object.
+ * A "full coverage" repo (no untracked issues) prints a human line instead of
+ * JSON — that parses as failure, surfaced as a soft CliError the caller can
+ * detect and message as "nothing to triage". Throws CliError on non-zero exit
+ * or unparseable output.
+ */
+export async function autoTriageScan(
+  run: CliRunner,
+  folderKey: string,
+  opts: { heuristic?: boolean } = {},
+): Promise<AutoTriageScan> {
+  const args = ["auto-triage", "--json", `--repo=${folderKey}`];
+  // --heuristic (#373): the CLI writes the v2 answers file itself (no LLM), so
+  // suggestions appear with no Claude session — lower-trust, but offline.
+  if (opts.heuristic) args.push("--heuristic");
+  const result = await run(args);
+  if (result.code !== 0) {
+    throw new CliError({
+      message: `work-plan auto-triage failed (exit ${result.code}): ${result.stderr.trim()}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    throw new CliError({
+      message: `could not parse auto-triage JSON: ${result.stdout.slice(0, 200)}`,
+      args,
+      code: result.code,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  return parsed as AutoTriageScan;
+}
+
+// ---------------------------------------------------------------------------
 // notes-vcs — opt-in local history for the private notes_root tier (#103/#224)
 // ---------------------------------------------------------------------------
 

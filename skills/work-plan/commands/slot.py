@@ -1,10 +1,11 @@
 """slot subcommand."""
 import json
 import subprocess
+import sys
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
-from lib.frontmatter import write_file
+from lib.membership_guard import guarded_membership_write, shared_rebase_guard
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags, prompt_input
 
@@ -28,7 +29,7 @@ def run(args: list[str]) -> int:
     # --confirm uses equals form: --confirm=<token>
     # --move / --no-move are bare flags
     # --repo uses equals form: --repo=<key>
-    flags, positional = parse_flags(args, {"--confirm", "--move", "--no-move", "--repo"})
+    flags, positional = parse_flags(args, {"--confirm", "--move", "--no-move", "--repo", "--expect"})
     if not positional:
         print("usage: work_plan.py slot <issue-num> [track | track@repo] [--repo=<key>]")
         return 2
@@ -116,39 +117,67 @@ def run(args: list[str]) -> int:
         }))
         return 0
 
+    # Shared-tier rebase (#241): for a track pinned to a plan_branch, pull +
+    # rebase the worktree onto origin before writing so a teammate's pushed plan
+    # change isn't clobbered. A divergence we can't auto-rebase aborts cleanly.
+    ok, reason = shared_rebase_guard(target, cfg)
+    if not ok:
+        print(json.dumps({"needs_rebase": True, "reason": reason, "track": target.name}))
+        return 0
+
     # Determine move behavior from flags.
     # --move: remove issue from prior owners.
     # Default / --no-move: add-only; print a note naming prior owners.
     do_move = "--move" in flags
 
+    # --expect=<fp> opts into the compare-and-swap staleness guard (#241). When
+    # present (the assisted/viewer path), advisory notes go to stderr so stdout
+    # stays pure for the {stale} abort signal the caller parses.
+    expect = flags.get("--expect")
+    expect = expect if isinstance(expect, str) else None
+    notes = sys.stderr if expect is not None else sys.stdout
+
     sources = _find_prior_owners(issue_num, target.repo, target.name, tracks)
 
-    issues.append(issue_num)
-    target.meta.setdefault("github", {})["issues"] = sorted(issues)
+    # Milestone mismatch is advisory only — never let gh being absent/odd crash
+    # the command (it sits between the rebase guard and the write).
+    try:
+        proc = subprocess.run(
+            ["gh", "issue", "view", str(issue_num),
+             "--repo", target.repo, "--json", "milestone"],
+            capture_output=True, text=True,
+        )
+        if proc.returncode == 0:
+            info = json.loads(proc.stdout)
+            m = info.get("milestone", {})
+            if m and m.get("title") and m["title"] != target.meta.get("milestone_alignment"):
+                print(f"⚠  #{issue_num} is on milestone '{m['title']}', "
+                      f"track '{target.name}' aligned to '{target.meta.get('milestone_alignment')}'.",
+                      file=notes)
+    except (OSError, json.JSONDecodeError):
+        pass
 
-    proc = subprocess.run(
-        ["gh", "issue", "view", str(issue_num),
-         "--repo", target.repo, "--json", "milestone"],
-        capture_output=True, text=True,
-    )
-    if proc.returncode == 0:
-        info = json.loads(proc.stdout)
-        m = info.get("milestone", {})
-        if m and m.get("title") and m["title"] != target.meta.get("milestone_alignment"):
-            print(f"⚠  #{issue_num} is on milestone '{m['title']}', "
-                  f"track '{target.name}' aligned to '{target.meta.get('milestone_alignment')}'.")
-
+    # Move sources first (each re-read + merged onto fresh disk), then the
+    # target. The target write carries `expect`: on a detected concurrent change
+    # to the membership list it aborts with {stale} instead of clobbering.
     if sources and do_move:
         for src in sources:
-            src_issues = [n for n in (src.meta.get("github", {}).get("issues") or [])
-                          if n != issue_num]
-            src.meta.setdefault("github", {})["issues"] = src_issues
-            write_file(src.path, src.meta, src.body)
-            print(f"  ✓ Removed #{issue_num} from '{src.name}'.")
+            guarded_membership_write(src.path, remove_nums=[issue_num])
+            print(f"  ✓ Removed #{issue_num} from '{src.name}'.", file=notes)
     elif sources and not do_move:
         names = ", ".join(f"'{t.name}'" for t in sources)
-        print(f"ℹ #{issue_num} still listed in {names} — re-run with --move to relocate.")
+        print(f"ℹ #{issue_num} still listed in {names} — re-run with --move to relocate.",
+              file=notes)
 
-    write_file(target.path, target.meta, target.body)
+    result = guarded_membership_write(target.path, add_nums=[issue_num], expect=expect)
+    if result.get("stale"):
+        print(json.dumps({
+            "stale": True,
+            "reason": result["reason"],
+            "current": result["current"],
+            "track": target.name,
+        }))
+        return 0
+
     print(f"✓ Slotted #{issue_num} into '{target.name}'.")
     return 0

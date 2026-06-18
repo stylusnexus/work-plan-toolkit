@@ -347,5 +347,108 @@ class AutoTriageApplyTest(unittest.TestCase):
         self.assertIn("0 issue(s) assigned", buf.getvalue())
 
 
+class AutoTriageJsonScanTest(unittest.TestCase):
+    """--json scan mode (#241): emit a machine batch with a batch_id."""
+
+    def test_json_mode_emits_batch_with_id_and_prompt(self):
+        cfg = _make_cfg()
+        tracks = [_make_track("auth-flow", "org/myrepo", [])]
+        rc, out, _ = _drive_prepare(["--json"], cfg=cfg, tracks=tracks,
+                                    open_issues=_open_issues(4501, 4502))
+        self.assertEqual(rc, 0)
+        data = json.loads(out.strip())  # stdout is a single JSON object
+        self.assertIn("batch_id", data)
+        self.assertTrue(data["batch_id"])
+        self.assertEqual({i["number"] for i in data["untracked"]}, {4501, 4502})
+        self.assertIn("prompt", data)
+        self.assertIn("answers_path", data)
+        # Track entries carry scope text for grounded matching.
+        self.assertIn("scope", data["tracks"][0])
+
+
+class AutoTriageHeuristicTest(unittest.TestCase):
+    """--heuristic (#373): the CLI writes the v2 answers file itself, no LLM."""
+
+    def test_heuristic_writes_answers_file_with_source_and_batch_id(self):
+        cfg = _make_cfg()
+        track = _make_track("auth-flow", "org/myrepo", [], slug="auth-flow")
+        track.meta["milestone_alignment"] = "v0.4"
+        open_issues = [{"number": 4501, "title": "auth thing", "state": "OPEN",
+                        "milestone": {"title": "v0.4"}, "labels": []}]
+        with tempfile.TemporaryDirectory() as tmp:
+            batch_file = Path(tmp) / "auto_triage.org_myrepo.json"
+            answers_file = Path(tmp) / "auto_triage.org_myrepo.answers.json"
+            with patch("commands.auto_triage.load_config", return_value=cfg), \
+                 patch("commands.auto_triage.discover_tracks", return_value=[track]), \
+                 patch("commands.auto_triage.fetch_open_issues", return_value=open_issues), \
+                 patch("commands.auto_triage._batch_path", return_value=batch_file), \
+                 patch("commands.auto_triage._answers_path", return_value=answers_file):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = auto_triage.run(["--heuristic"])
+            self.assertEqual(rc, 0)
+            self.assertTrue(answers_file.exists(), "heuristic must write the answers file")
+            doc = json.loads(answers_file.read_text())
+            self.assertEqual(doc["version"], 2)
+            self.assertEqual(doc["source"], "heuristic")
+            batch = json.loads(batch_file.read_text())
+            self.assertEqual(doc["batch_id"], batch["batch_id"])  # correlates
+            sug = doc["suggestions"][0]
+            self.assertEqual(sug["issue"], 4501)
+            self.assertEqual(sug["verdict"], "suggest")
+            self.assertEqual(sug["track"], "auth-flow")
+
+
+class AutoTriageV2AnswersTest(unittest.TestCase):
+    """v2 abstain-first answers schema (#241) + back-compat with v1."""
+
+    def _batch(self, nums, batch_id="abc123"):
+        return {"batch_id": batch_id, "repo": "org/myrepo", "folder": "myrepo",
+                "untracked": [{"number": n} for n in nums]}
+
+    def test_v2_applies_only_clear_suggestions(self):
+        cfg = _make_cfg()
+        track = _make_track("auth-flow", "org/myrepo", [], slug="auth-flow")
+        answers = {"version": 2, "batch_id": "abc123", "suggestions": [
+            {"issue": 4501, "verdict": "suggest", "track": "auth-flow",
+             "margin": "clear", "confidence": 0.9, "rationale": "label area/auth"},
+            {"issue": 4502, "verdict": "suggest", "track": "auth-flow",
+             "margin": "narrow", "confidence": 0.55, "rationale": "maybe"},
+            {"issue": 4507, "verdict": "abstain", "rationale": "no fit"},
+        ]}
+        rc, mwrite, out = _drive_apply(cfg=cfg, tracks=[track],
+                                       batch=self._batch([4501, 4502, 4507]),
+                                       answers=answers)
+        self.assertEqual(rc, 0)
+        mwrite.assert_called_once()  # only the clear suggestion is written
+        written = mwrite.call_args[0][1]["github"]["issues"]
+        self.assertIn(4501, written)
+        self.assertNotIn(4502, written)  # narrow margin → left untracked
+        self.assertNotIn(4507, written)  # abstained → left untracked
+
+    def test_v1_answers_still_apply(self):
+        cfg = _make_cfg()
+        track = _make_track("auth-flow", "org/myrepo", [], slug="auth-flow")
+        answers = [{"track": "auth-flow", "issues": [4501]}]  # legacy shape
+        rc, mwrite, out = _drive_apply(cfg=cfg, tracks=[track],
+                                       batch=self._batch([4501]), answers=answers)
+        self.assertEqual(rc, 0)
+        mwrite.assert_called_once()
+        self.assertIn(4501, mwrite.call_args[0][1]["github"]["issues"])
+
+    def test_batch_id_mismatch_warns_but_applies(self):
+        cfg = _make_cfg()
+        track = _make_track("auth-flow", "org/myrepo", [], slug="auth-flow")
+        answers = {"version": 2, "batch_id": "STALE", "suggestions": [
+            {"issue": 4501, "verdict": "suggest", "track": "auth-flow",
+             "margin": "clear", "rationale": "label area/auth"}]}
+        rc, mwrite, out = _drive_apply(cfg=cfg, tracks=[track],
+                                       batch=self._batch([4501], batch_id="abc123"),
+                                       answers=answers)
+        self.assertEqual(rc, 0)
+        self.assertIn("older scan", out)
+        mwrite.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,11 @@
 """batch-slot subcommand — slot multiple issues into a track at once."""
 import json
 import subprocess
+import sys
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
-from lib.frontmatter import write_file
+from lib.membership_guard import guarded_membership_write, shared_rebase_guard
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags
 
@@ -25,7 +26,7 @@ def _find_prior_owners(issue_num: int, repo: str, target_name: str, tracks):
 
 def run(args: list[str]) -> int:
     flags, positional = parse_flags(
-        args, {"--confirm", "--move", "--no-move", "--repo"}
+        args, {"--confirm", "--move", "--no-move", "--repo", "--expect"}
     )
 
     if len(positional) < 2:
@@ -99,7 +100,21 @@ def run(args: list[str]) -> int:
         )
         return 0
 
+    # Shared-tier rebase (#241): pull + rebase the plan_branch worktree onto
+    # origin before writing; an un-rebasable divergence aborts cleanly.
+    ok, reason = shared_rebase_guard(target, cfg)
+    if not ok:
+        print(json.dumps({"needs_rebase": True, "reason": reason, "track": target.name}))
+        return 0
+
     do_move = "--move" in flags
+
+    # --expect=<fp> opts into the compare-and-swap staleness guard (#241). When
+    # present (the assisted/viewer path) advisory notes go to stderr so stdout
+    # stays pure for the {stale} abort signal the caller parses.
+    expect = flags.get("--expect")
+    expect = expect if isinstance(expect, str) else None
+    notes = sys.stderr if expect is not None else sys.stdout
 
     # Collect source tracks that need issue removal (consolidated per source).
     source_removals: dict[str, tuple] = {}  # source_name -> (source_track, set[issue_num])
@@ -113,24 +128,29 @@ def run(args: list[str]) -> int:
             skipped.append(issue_num)
             continue
 
-        # Milestone mismatch check (non-blocking warning).
-        proc = subprocess.run(
-            ["gh", "issue", "view", str(issue_num),
-             "--repo", target.repo, "--json", "milestone"],
-            capture_output=True, text=True,
-        )
-        if proc.returncode == 0:
-            info = json.loads(proc.stdout)
-            m = info.get("milestone", {})
-            if (
-                m and m.get("title")
-                and m["title"] != target.meta.get("milestone_alignment")
-            ):
-                print(
-                    f"⚠  #{issue_num} is on milestone '{m['title']}', "
-                    f"track '{target.name}' aligned to"
-                    f" '{target.meta.get('milestone_alignment')}'."
-                )
+        # Milestone mismatch check (non-blocking warning). Never let gh being
+        # absent/odd crash the command — it's advisory and sits before the write.
+        try:
+            proc = subprocess.run(
+                ["gh", "issue", "view", str(issue_num),
+                 "--repo", target.repo, "--json", "milestone"],
+                capture_output=True, text=True,
+            )
+            if proc.returncode == 0:
+                info = json.loads(proc.stdout)
+                m = info.get("milestone", {})
+                if (
+                    m and m.get("title")
+                    and m["title"] != target.meta.get("milestone_alignment")
+                ):
+                    print(
+                        f"⚠  #{issue_num} is on milestone '{m['title']}', "
+                        f"track '{target.name}' aligned to"
+                        f" '{target.meta.get('milestone_alignment')}'.",
+                        file=notes,
+                    )
+        except (OSError, json.JSONDecodeError):
+            pass
 
         # Prior-owner detection.
         sources = _find_prior_owners(
@@ -149,7 +169,8 @@ def run(args: list[str]) -> int:
             names = ", ".join(f"'{t.name}'" for t in sources)
             print(
                 f"ℹ #{issue_num} still listed in {names}"
-                f" — re-run with --move to relocate."
+                f" — re-run with --move to relocate.",
+                file=notes,
             )
 
     if not slotted:
@@ -160,21 +181,25 @@ def run(args: list[str]) -> int:
             )
         return 0
 
-    # Write source tracks (consolidated removals).
+    # Write source tracks (consolidated removals), each re-read + merged onto
+    # fresh disk so a concurrent edit to a source track isn't clobbered.
     if do_move:
         for src_name, (src, removals) in source_removals.items():
-            src_issues = [
-                n for n in (src.meta.get("github", {}).get("issues") or [])
-                if n not in removals
-            ]
-            src.meta.setdefault("github", {})["issues"] = src_issues
-            write_file(src.path, src.meta, src.body)
+            guarded_membership_write(src.path, remove_nums=removals)
             removed_str = ", ".join(f"#{n}" for n in sorted(removals))
-            print(f"  ✓ Removed {removed_str} from '{src_name}'.")
+            print(f"  ✓ Removed {removed_str} from '{src_name}'.", file=notes)
 
-    # Write target track once.
-    target.meta.setdefault("github", {})["issues"] = sorted(issues)
-    write_file(target.path, target.meta, target.body)
+    # Write target track once. Carries `expect`: on a detected concurrent change
+    # to the membership list it aborts with {stale} instead of clobbering.
+    result = guarded_membership_write(target.path, add_nums=slotted, expect=expect)
+    if result.get("stale"):
+        print(json.dumps({
+            "stale": True,
+            "reason": result["reason"],
+            "current": result["current"],
+            "track": target.name,
+        }))
+        return 0
 
     slotted_str = ", ".join(f"#{n}" for n in slotted)
     print(f"✓ Slotted {slotted_str} into '{target.name}'.")
