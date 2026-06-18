@@ -1,4 +1,5 @@
 import type { Export, Issue, Track, TierDuplicate } from "./model.ts";
+import type { SuggestionEntry } from "./suggestions.ts";
 
 // ---------------------------------------------------------------------------
 // Node types
@@ -16,6 +17,40 @@ export interface UntrackedIssueNode {
   kind: "untrackedIssue";
   repo: string;
   issue: Issue;
+}
+
+/**
+ * Auto-slot suggestion buckets (#241), nested as the FIRST children of a repo's
+ * Untracked group when `workPlan.autoSlotSuggestions` is on and a Claude session
+ * has written answers for the current scan batch:
+ *   - `suggestedGroup`/`suggestedIssue`: high-confidence, clear-margin matches —
+ *     one-click accept (the issue's click opens the accept QuickPick).
+ *   - `needsReviewGroup`/`needsReviewIssue`: narrow-margin or below-threshold
+ *     matches — NO one-click accept (the issue's click opens the issue itself).
+ * Abstains never reach the tree (they stay plain untracked).
+ */
+export interface SuggestedGroupNode {
+  kind: "suggestedGroup";
+  repo: string;
+  suggestions: SuggestionEntry[];
+}
+
+export interface SuggestedIssueNode {
+  kind: "suggestedIssue";
+  repo: string;
+  issue: Issue;
+  suggestedTrack: string;
+  runnerUp?: string;
+  confidence: number;
+  rationale: string;
+  margin: "clear" | "narrow";
+  tier: "suggested" | "needsReview";
+}
+
+export interface NeedsReviewGroupNode {
+  kind: "needsReviewGroup";
+  repo: string;
+  suggestions: SuggestionEntry[];
 }
 
 /**
@@ -342,6 +377,49 @@ export function mergeFetchedUntracked(
       ? { ...repo, untracked: fetched.get(repo.repo)! }
       : repo,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Auto-slot suggestion nodes (#241)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the SuggestedIssueNode for a single suggestion entry, resolving the
+ * full Issue (for the title) from the repo's untracked list. When the issue is
+ * no longer in the untracked list (e.g. it got tracked between scan and render),
+ * a minimal placeholder Issue is synthesized so the node still renders coherently
+ * — the next refresh drops it. Pure.
+ */
+export function suggestedIssueNode(
+  repo: string,
+  entry: SuggestionEntry,
+  untracked: Issue[],
+  tier: "suggested" | "needsReview",
+): SuggestedIssueNode {
+  const issue =
+    untracked.find(i => i.number === entry.issueNumber) ??
+    ({
+      number: entry.issueNumber,
+      title: `#${entry.issueNumber}`,
+      state: "open",
+      assignee: "—",
+      milestone: null,
+      in_progress: false,
+      in_progress_label: false,
+      blocked_by: [],
+      blocking: [],
+    } as Issue);
+  return {
+    kind: "suggestedIssue",
+    repo,
+    issue,
+    suggestedTrack: entry.suggestedTrack,
+    ...(entry.runnerUp ? { runnerUp: entry.runnerUp } : {}),
+    confidence: entry.confidence,
+    rationale: entry.rationale,
+    margin: entry.margin,
+    tier,
+  };
 }
 
 // ---------------------------------------------------------------------------

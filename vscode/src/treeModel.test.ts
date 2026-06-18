@@ -10,8 +10,10 @@ import {
   sortTracks,
   repoDescription,
   visibilityTierBadge,
+  suggestedIssueNode,
 } from "./treeModel.ts";
 import type { RepoNode, TrackNode } from "./treeModel.ts";
+import type { SuggestionEntry } from "./suggestions.ts";
 import type { Export, Track, Issue } from "./model.ts";
 
 // ---------------------------------------------------------------------------
@@ -826,5 +828,46 @@ describe("buildTree — TrackNode.closed (#220)", () => {
     const ph = tree[0].tracks[0];   // platform-health: rollup 12/8
     assert.equal(ph.open, 12);
     assert.equal(ph.closed, 8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suggestedIssueNode (#241)
+// ---------------------------------------------------------------------------
+
+describe("suggestedIssueNode", () => {
+  const entry: SuggestionEntry = {
+    issueNumber: 4501,
+    suggestedTrack: "auth-flow",
+    runnerUp: "billing",
+    confidence: 0.82,
+    margin: "clear",
+    rationale: "matches the auth scope",
+  };
+
+  test("resolves the full Issue from the untracked list", () => {
+    const issue = makeIssue({ number: 4501, title: "Add OAuth refresh" });
+    const node = suggestedIssueNode("org/repo", entry, [issue], "suggested");
+    assert.equal(node.kind, "suggestedIssue");
+    assert.strictEqual(node.issue, issue);
+    assert.equal(node.suggestedTrack, "auth-flow");
+    assert.equal(node.runnerUp, "billing");
+    assert.equal(node.confidence, 0.82);
+    assert.equal(node.margin, "clear");
+    assert.equal(node.tier, "suggested");
+  });
+
+  test("synthesizes a placeholder Issue when the number isn't in untracked", () => {
+    const node = suggestedIssueNode("org/repo", entry, [], "needsReview");
+    assert.equal(node.issue.number, 4501);
+    assert.equal(node.issue.title, "#4501");
+    assert.equal(node.issue.state, "open");
+    assert.equal(node.tier, "needsReview");
+  });
+
+  test("omits runnerUp when the entry has none", () => {
+    const noRunner: SuggestionEntry = { ...entry, runnerUp: undefined };
+    const node = suggestedIssueNode("org/repo", noRunner, [], "suggested");
+    assert.equal(node.runnerUp, undefined);
   });
 });

@@ -267,6 +267,43 @@ def is_published(local_path: Path, branch: str) -> bool:
     return remote_branch_exists(local_path, branch)
 
 
+def rebase_onto_origin(worktree: Path, branch: str) -> bool:
+    """Fetch origin/<branch> and rebase the worktree (checked out at <branch>)
+    onto it, so a shared-tier write lands on top of any teammate's pushed plan
+    changes instead of diverging (#241).
+
+    Returns:
+      True  — the worktree is now at-or-ahead of origin: rebase succeeded,
+              there was nothing to replay, or the branch isn't published yet
+              (local is authoritative — nothing to rebase onto).
+      False — the rebase hit a conflict (it is ABORTED so the worktree is left
+              clean, never half-rebased) or git couldn't run. The caller must
+              NOT write — it surfaces {needs_rebase} and bails.
+
+    Never raises.
+    """
+    wt = Path(worktree).expanduser()
+    # Fetch so origin/<branch> is authoritative before we compare.
+    fetch_branch(wt, branch)
+    if not remote_branch_exists(wt, branch):
+        return True  # unpublished — no upstream to rebase onto; local wins
+    # --autostash: the normal flow is write-file-then-commit, so the worktree's
+    # .work-plan/ is routinely dirty when we rebase. Without autostash git would
+    # refuse the rebase on the dirty precondition and we'd report a spurious
+    # {needs_rebase}; autostash shelves the local edits, rebases, and reapplies
+    # them on top — so a clean rebase succeeds even with pending plan edits.
+    proc = _git(wt, "rebase", "--autostash", f"origin/{branch}")
+    if proc is None:
+        return False
+    if proc.returncode == 0:
+        return True
+    # True conflict (autostash reapply or replayed commits): abort so the
+    # worktree is never left in a partially-rebased state. A blind write over a
+    # diverged shared branch is exactly what this guard exists to prevent.
+    _git(wt, "rebase", "--abort")
+    return False
+
+
 def unpushed_oneline(local_path: Path, branch: str) -> list:
     """One-line summaries of commits on local `branch` not yet on origin
     (`origin/<branch>..<branch>`). If origin/<branch> doesn't exist, every commit
