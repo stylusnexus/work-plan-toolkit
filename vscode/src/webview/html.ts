@@ -233,7 +233,7 @@ ${afterRun}
     var depToggle = target.closest(".dep-toggle-btn");
     if (depToggle) {
       var depIssue = depToggle.getAttribute("data-depissue");
-      var depRow = document.querySelector(".dep-detail-row[data-depissue=\"" + depIssue + "\"]");
+      var depRow = document.querySelector('.dep-detail-row[data-depissue="' + depIssue + '"]');
       if (depRow) {
         var depHidden = depRow.hasAttribute("hidden");
         if (depHidden) { depRow.removeAttribute("hidden"); } else { depRow.setAttribute("hidden", ""); }
