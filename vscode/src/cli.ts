@@ -516,6 +516,10 @@ export interface AutoTriageScan {
   prompt: string;
   /** Absolute path the agent should write the answers JSON to (per-repo). */
   answers_path: string;
+  /** Set on informational early-exits the CLI emits as JSON in --json mode:
+   *  "no_active_tracks" (nothing to suggest into) / "full_coverage" (no
+   *  untracked issues). batch_id/prompt/answers_path are absent in those cases. */
+  note?: string;
 }
 
 /**

@@ -1765,7 +1765,18 @@ export function activate(context: vscode.ExtensionContext): void {
         () => autoTriageScan(runner, folder!, { heuristic }),
       );
 
-      if (scan.untracked.length === 0) {
+      // No tracks to suggest INTO — suggestions are impossible until one exists.
+      // (The CLI takes this early-exit only when there are zero active tracks,
+      // so the normal batch path always has a non-empty tracks list.)
+      if (scan.note === "no_active_tracks") {
+        vscode.window.showInformationMessage(
+          `Work Plan: ${repo} has no active tracks to suggest into — create one first ` +
+            "(right-click the repo → New Track, or run Group Issues).",
+        );
+        return;
+      }
+
+      if (scan.note === "full_coverage" || (scan.untracked ?? []).length === 0) {
         vscode.window.showInformationMessage(
           `Work Plan: ${repo} has no untracked issues — full coverage.`,
         );
