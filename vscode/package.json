@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -297,7 +297,7 @@
       },
       {
         "command": "workPlan.suggestTracks",
-        "title": "Suggest Tracks for Untracked Issues…",
+        "title": "Suggest Tracks for Untracked Issues (with AI)…",
         "category": "Work Plan",
         "icon": "$(sparkle)"
       },
