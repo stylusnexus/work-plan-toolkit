@@ -6,6 +6,35 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.19+9cf7cdc — 2026-06-19 (#385)
+
+fix(viewer): repo focus no longer hides other repos; repo-scope toggle + deps security (VS Code 0.15.0)
+
+Production deploy. VS Code extension **0.15.0**; npm CLI republished from the stamped VERSION.
+
+## Viewer: repo-focus regression fixed (#383)
+A repo lens (including the #357 auto-focus, previously on by default) filtered the track list but forwarded the full configured-repos list, so every *other* repo was seeded with zero tracks and rendered as **"No tracks yet — add one"** — indistinguishable from a deleted repo. Opening one repo's folder made every other repo's tracks look gone.
+
+- `applyLens` now scopes the forwarded repos to the active lens; the tree's empty-state renders only for a repo genuinely empty in the raw export.
+- **`workPlan.autoFocusRepo` now defaults to OFF** — the Tracks view shows every repo on open.
+- `autoFocusRepo` reacts to the setting toggling at runtime (no reload needed).
+- The per-repo `Repo: X` lens enumeration is replaced by a single state-aware **Select View** toggle — **Focus current repo** ↔ **Display all repos** — which also writes `workPlan.autoFocusRepo` so the default scope follows your last choice.
+- The "fetch open issues" toast now says "untracked open issues" (it excludes already-tracked issues, so "no open issues" was false).
+
+## Dependency security (#384)
+Transitive bumps clearing 5 Dependabot alerts: `undici` 7.27.2→7.28.0 and `form-data` 4.0.5→4.0.6 (both build-time, via `@vscode/vsce`), `dompurify` 3.4.8→3.4.11 (bundled via mermaid into the shipped webview).
+
+## Verification
+- 721 viewer tests pass; `tsc --noEmit` clean; production build + VSIX package succeed.
+- Independent code-review pass on the full deploy diff: **SHIP, no blockers** (verified lens/source re-entrancy, `scopeReposToLens` correctness, empty-state guard).
+- `npm audit` → 0 vulnerabilities.
+
+## Deploy notes
+- VS Code: `vscode/package.json` → 0.15.0, README Status line updated.
+- CLI floor unchanged.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.19+ae4eff6 — 2026-06-19 (#382)
 
 fix(vscode): label AI Suggest-Tracks command '(with AI)' to match the offline toast (0.14.2)
