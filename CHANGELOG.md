@@ -6,6 +6,14 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.19+ae4eff6 — 2026-06-19 (#382)
+
+fix(vscode): label AI Suggest-Tracks command '(with AI)' to match the offline toast (0.14.2)
+
+VS Code-only label fix. The offline-match toast hints *try Suggest Tracks (with AI)*, but the AI command was titled "Suggest Tracks for Untracked Issues…" with no "with AI" — the hint pointed at a label that didn't exist. Renamed to **"Suggest Tracks for Untracked Issues (with AI)…"** to mirror the **(offline, no AI)** variant.
+
+Ships VS Code extension **0.14.2**. CLI unchanged → no npm republish. CLI floor `2026.06.15`.
+
 ## 2026.06.18+d4980a1 — 2026-06-18 (#380)
 
 fix: auto-slot UX hotfix — JSON early-exits, remove enable gate, drop 'heuristic' jargon (0.14.1)
