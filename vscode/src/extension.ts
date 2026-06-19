@@ -132,12 +132,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Repo-focus toolbar toggle (#357 follow-up). One slot, two states keyed on the
-  // LIVE lens (workPlan.repoLensActive context key): when focused on one repo the
-  // bar shows "Show All Repos" ($(list-flat)); when showing everything it shows
-  // "Focus Current Repo" ($(target)). Both are deliberate user actions, so they
-  // set the lens with source "user" — they hold regardless of the autoFocusRepo
-  // setting, and auto-focus never silently overrides them.
+  // Repo-focus commands (#357 follow-up). Palette-only (no toolbar/menu entry —
+  // the discoverable path is the state-aware toggle the Select View quick-pick
+  // prepends); these back that toggle and give keyboard users a direct command.
+  // Both are deliberate user actions, so they set the lens with source "user" —
+  // they hold regardless of the autoFocusRepo setting, and auto-focus never
+  // silently overrides them.
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.showAllRepos", () => {
       provider.setLens({ kind: "all" }, "user");
