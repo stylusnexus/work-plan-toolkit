@@ -318,9 +318,21 @@ export class WorkPlanTreeProvider
       // open issues (#303), since `export` doesn't emit untracked for a trackless
       // repo. After a fetch, the Untracked bucket renders alongside.
       if (element.tracks.length === 0) {
+        // The "add a track" empty-state must only show for a repo that is
+        // genuinely empty in the RAW (unfiltered) export. A repo with tracks in
+        // the raw data but zero here is hidden by an active lens — rendering
+        // "No tracks yet — add one" for it reads as data loss (the repo-lens
+        // "my tracks vanished" bug). applyLens already drops lens-filtered repos
+        // from the forwarded `repos` list, so post-fix such a node shouldn't
+        // reach here at all; this is the belt-and-suspenders guard against any
+        // future lens that forwards a repo with no surviving track.
+        const genuinelyEmpty =
+          !this.cache || !this.cache.tracks.some(t => t.repo === element.repo);
         const children: TreeNode[] = [
           ...tierDupWarn,
-          { kind: "emptyRepo", repo: element.repo, folder: element.folder },
+          ...(genuinelyEmpty
+            ? [{ kind: "emptyRepo", repo: element.repo, folder: element.folder } as TreeNode]
+            : []),
           ...untrackedGroup,
         ];
         if (element.repo !== "(no repo)") {

@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.14.2",
+  "version": "0.15.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -79,6 +79,16 @@
         "title": "Sort Tracks",
         "category": "Work Plan",
         "icon": "$(sort-precedence)"
+      },
+      {
+        "command": "workPlan.showAllRepos",
+        "title": "Show All Repos",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.focusCurrentRepo",
+        "title": "Focus Current Repo",
+        "category": "Work Plan"
       },
       {
         "command": "workPlan.openSettings",
@@ -736,8 +746,8 @@
         },
         "workPlan.autoFocusRepo": {
           "type": "boolean",
-          "default": true,
-          "description": "When the open workspace folder is a configured repo, default the Tracks view's lens to that repo (so you don't read another repo's issues by accident). Resolved by clone path, then git remote. A manual lens choice always wins; switch back to 'All tracks' any time. Turn off to always show every repo."
+          "default": false,
+          "description": "When the open workspace folder is a configured repo, default the Tracks view's lens to that repo (so you don't read another repo's issues by accident). Resolved by clone path, then git remote. Off by default — the Tracks view shows every repo; turn on to focus the current workspace's repo. A manual lens choice always wins, and the toolbar toggle flips this live without a reload."
         },
         "workPlan.autoRefreshInterval": {
           "type": "number",
