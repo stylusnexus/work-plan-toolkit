@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const autoFocusRepo = async (): Promise<void> => {
     const enabled = vscode.workspace
       .getConfiguration("workPlan")
-      .get<boolean>("autoFocusRepo", true);
+      .get<boolean>("autoFocusRepo", false);
     if (!enabled) return;
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
@@ -109,6 +109,53 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       provider.resetLensSource();
       void autoFocusRepo();
+    }),
+  );
+
+  // React to the auto-focus setting flipping at runtime. Without this, the
+  // setting was only read at activation/folder-change, so toggling it OFF did
+  // nothing until a reload — the already-applied auto repo lens stayed stuck,
+  // hiding every other repo's tracks. ON re-applies the focus; OFF resets the
+  // lens to "all" so all repos reappear immediately. setLens(...,"auto") is a
+  // no-op over a lens the USER picked, so a manual lens is never clobbered.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("workPlan.autoFocusRepo")) return;
+      const enabled = vscode.workspace
+        .getConfiguration("workPlan")
+        .get<boolean>("autoFocusRepo", false);
+      if (enabled) {
+        void autoFocusRepo();
+      } else {
+        provider.setLens({ kind: "all" }, "auto");
+      }
+    }),
+  );
+
+  // Repo-focus toolbar toggle (#357 follow-up). One slot, two states keyed on the
+  // LIVE lens (workPlan.repoLensActive context key): when focused on one repo the
+  // bar shows "Show All Repos" ($(list-flat)); when showing everything it shows
+  // "Focus Current Repo" ($(target)). Both are deliberate user actions, so they
+  // set the lens with source "user" — they hold regardless of the autoFocusRepo
+  // setting, and auto-focus never silently overrides them.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.showAllRepos", () => {
+      provider.setLens({ kind: "all" }, "user");
+    }),
+    vscode.commands.registerCommand("workPlan.focusCurrentRepo", async () => {
+      const folders = vscode.workspace.workspaceFolders;
+      const slug = folders
+        ? await pickAutoFocusSlug(runner, folders.map(f => f.uri.fsPath))
+        : null;
+      if (slug) {
+        provider.setLens({ kind: "repo", repo: slug }, "user");
+      } else {
+        // No workspace folder maps to a configured repo — nothing to focus.
+        // Stay present in the toolbar (don't shift layout); just say why.
+        vscode.window.showInformationMessage(
+          "Work Plan: no workspace folder maps to a configured repo to focus.",
+        );
+      }
     }),
   );
 
@@ -232,6 +279,45 @@ export function activate(context: vscode.ExtensionContext): void {
 
       // Build the quick-pick items, marking the active one.
       type QuickPickLensItem = vscode.QuickPickItem & { lens: Lens };
+      // A repo-scope shortcut also flips the persistent autoFocusRepo setting so
+      // the view's default scope tracks the user's last explicit choice.
+      type ScopeItem = QuickPickLensItem & { autoFocus: boolean };
+      const isLensItem = (i: vscode.QuickPickItem): i is QuickPickLensItem =>
+        "lens" in i;
+      const isScopeItem = (i: vscode.QuickPickItem): i is ScopeItem =>
+        "autoFocus" in i;
+
+      // Repo-scope toggle at the top (#357 follow-up): ONE state-aware entry, not
+      // the full per-repo enumeration (that was noise once the tree shows every
+      // repo by default). When the tree is showing all repos it offers "Focus
+      // current repo"; when already focused on one repo it offers "Display all
+      // repos". Folded in here rather than a dedicated toolbar icon to keep the
+      // title bar uncluttered. "Focus current repo" appears only when the open
+      // workspace folder maps to a configured repo.
+      const focused = activeLens.kind === "repo";
+      const folders = vscode.workspace.workspaceFolders;
+      const focusSlug = !focused && folders
+        ? await pickAutoFocusSlug(runner, folders.map(f => f.uri.fsPath))
+        : null;
+      const shortcuts: (QuickPickLensItem | vscode.QuickPickItem)[] = [];
+      if (focused) {
+        shortcuts.push({
+          label: "$(list-flat) Display all repos",
+          lens: { kind: "all" },
+          autoFocus: false,
+        } as ScopeItem);
+      } else if (focusSlug) {
+        shortcuts.push({
+          label: "$(target) Focus current repo",
+          description: focusSlug.split("/").pop() ?? focusSlug,
+          lens: { kind: "repo", repo: focusSlug },
+          autoFocus: true,
+        } as ScopeItem);
+      }
+      if (shortcuts.length > 0) {
+        shortcuts.push({ label: "Lenses", kind: vscode.QuickPickItemKind.Separator });
+      }
+
       const items: QuickPickLensItem[] = lensChoices.map(c => {
         const isActive =
           c.lens.kind === activeLens.kind &&
@@ -249,15 +335,29 @@ export function activate(context: vscode.ExtensionContext): void {
         };
       });
 
-      const pick = await vscode.window.showQuickPick(items, {
+      const pick = await vscode.window.showQuickPick([...shortcuts, ...items], {
         placeHolder: "Filter the Work Plan view",
       });
 
-      if (!pick) {
+      // The separator carries no lens (and isn't selectable); the guard narrows
+      // the union so the shortcut + lens items are handled by the one path.
+      if (!pick || !isLensItem(pick)) {
         return;
       }
 
-      provider.setLens(pick.lens);
+      // Apply as a user choice (always wins over auto-focus). Source "user" also
+      // makes the config write below a no-op re-apply rather than a fight.
+      provider.setLens(pick.lens, "user");
+
+      // A repo-scope shortcut also persists the choice as the default scope, so
+      // "Focus current repo" turns auto-focus ON and "Display all repos" turns it
+      // OFF. The onDidChangeConfiguration handler then sees a lens the user just
+      // set ("user" source) and no-ops, so this only updates the stored default.
+      if (isScopeItem(pick)) {
+        await vscode.workspace
+          .getConfiguration("workPlan")
+          .update("autoFocusRepo", pick.autoFocus, vscode.ConfigurationTarget.Global);
+      }
 
       // If the panel is open, re-render it from the (now-filtered) export.
       const panel = WorkPlanPanel.getCurrent();
@@ -494,10 +594,15 @@ export function activate(context: vscode.ExtensionContext): void {
             () => listRepoOpenIssues(runner, repo, exclude),
           );
           provider.setFetchedUntracked(repo, res.issues);
+          // This list EXCLUDES already-tracked issues (see `exclude` above), so
+          // it's the UNTRACKED open issues — not the repo's whole open-issue
+          // count. Saying "no open issues" when every open issue is already
+          // tracked is just false (the repo plainly has open issues); word both
+          // messages as "untracked" so the count matches what the action does.
           vscode.window.showInformationMessage(
             res.issues.length > 0
-              ? `Work Plan: ${res.issues.length} open issue(s) in ${repo}.`
-              : `Work Plan: no open issues in ${repo}.`,
+              ? `Work Plan: ${res.issues.length} untracked open issue(s) in ${repo}.`
+              : `Work Plan: no untracked open issues in ${repo} (all open issues are already tracked).`,
           );
         } catch (err: unknown) {
           const msg = err instanceof CliError

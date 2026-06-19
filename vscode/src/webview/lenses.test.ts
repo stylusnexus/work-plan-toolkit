@@ -166,28 +166,21 @@ describe("availableLenses — always starts with All", () => {
   });
 });
 
-describe("availableLenses — repo lenses", () => {
-  it("includes one entry per distinct repo, in first-seen order", () => {
+describe("availableLenses — no per-repo lenses (folded into the picker toggle)", () => {
+  // Repo scoping moved to the single "Focus current repo / Display all repos"
+  // toggle the picker prepends; availableLenses no longer enumerates one lens
+  // per repo (that was noise once the tree shows every repo by default). The
+  // `repo` Lens kind still exists and applyLens still honors it.
+  it("emits zero repo-kind lenses even with multiple repos in the export", () => {
     const choices = availableLenses(exp);
     const repoChoices = choices.filter(c => c.lens.kind === "repo");
-    assert.strictEqual(repoChoices.length, 2);
-    assert.deepStrictEqual(
-      repoChoices.map(c => (c.lens as { kind: "repo"; repo: string }).repo),
-      ["your-org/myproject", "stylusnexus/work-plan-toolkit"],
-    );
+    assert.strictEqual(repoChoices.length, 0);
   });
 
-  it("repo labels are prefixed with 'Repo: '", () => {
+  it("'All tracks' is immediately followed by the first milestone (no repo block between)", () => {
     const choices = availableLenses(exp);
-    const repoChoices = choices.filter(c => c.lens.kind === "repo");
-    assert.ok(repoChoices.every(c => c.label.startsWith("Repo: ")));
-  });
-
-  it("repo entries appear before milestone entries", () => {
-    const choices = availableLenses(exp);
-    const firstRepo = choices.findIndex(c => c.lens.kind === "repo");
-    const firstMilestone = choices.findIndex(c => c.lens.kind === "milestone");
-    assert.ok(firstRepo < firstMilestone, "repos should come before milestones");
+    assert.strictEqual(choices[0].lens.kind, "all");
+    assert.strictEqual(choices[1].lens.kind, "milestone");
   });
 });
 
@@ -370,14 +363,14 @@ describe("availableLenses — determinism", () => {
     assert.deepStrictEqual(a, b);
   });
 
-  it("returns exactly all + 2 repos + 2 milestones + 1 status(active) + 1 blocked = 7 choices for main fixture", () => {
+  it("returns exactly all + 2 milestones + 1 status(active) + 1 blocked = 5 choices for main fixture", () => {
     const choices = availableLenses(exp);
-    assert.strictEqual(choices.length, 7);
+    assert.strictEqual(choices.length, 5);
   });
 
-  it("returns exactly all + 1 repo + 1 status(active) = 3 choices for no-blocker, no-milestone fixture", () => {
+  it("returns exactly all + 1 status(active) = 2 choices for no-blocker, no-milestone fixture", () => {
     const choices = availableLenses(expNoBlockers);
-    assert.strictEqual(choices.length, 3);
+    assert.strictEqual(choices.length, 2);
   });
 });
 
@@ -607,33 +600,67 @@ describe("applyLens — untracked forwarding (#99 regression)", () => {
   });
 });
 
-describe("applyLens — repos forwarding (#288 regression)", () => {
-  // Same shape as the untracked bug above: the tree renders from the filtered
-  // export, and buildTree seeds a node for every configured repo so a zero-track
-  // repo still appears in the Tracks view. If applyLens drops `repos`, those
-  // empty repos vanish under EVERY lens (including "all") while the Plans view —
-  // which reads the raw export — keeps showing them.
-  const withRepos: Export = {
-    ...exp,
-    repos: [
-      {
-        folder: "agent-armor",
-        repo: "stylusnexus/agent-armor",
-        local: "/tmp/agent-armor",
-        has_local: true,
-        visibility: "PUBLIC",
-      },
-    ],
-  };
+describe("applyLens — repos forwarding (#288 + repo-lens-hides-tracks regression)", () => {
+  // buildTree seeds a node for every configured repo so a zero-track repo still
+  // appears in the Tracks view (#288) — so applyLens must forward `repos`. But
+  // the forwarded set is SCOPED to the lens: under a filtering lens, forwarding
+  // every configured repo seeds the OTHER repos with zero tracks, and the tree
+  // renders them as "No tracks yet — add one" — indistinguishable from a deleted
+  // repo. With repo auto-focus on (#357) that made "focus this repo" look like
+  // "every other repo's tracks vanished." So "all" forwards everything; "repo"
+  // forwards only the focused slug; filtering lenses forward only repos with a
+  // surviving track.
+  const A = { folder: "myproject", repo: "your-org/myproject", local: "/tmp/mp", has_local: true, visibility: "PRIVATE" as const };
+  const B = { folder: "work-plan-toolkit", repo: "stylusnexus/work-plan-toolkit", local: "/tmp/wpt", has_local: true, visibility: "PUBLIC" as const };
+  const EMPTY = { folder: "agent-armor", repo: "stylusnexus/agent-armor", local: "/tmp/aa", has_local: true, visibility: "PUBLIC" as const };
+  const withRepos: Export = { ...exp, repos: [A, B, EMPTY] };
 
-  it("forwards repos unchanged under the 'all' lens", () => {
+  it("forwards ALL configured repos unchanged under the 'all' lens (#288)", () => {
     const result = applyLens(withRepos, { kind: "all" });
     assert.deepStrictEqual(result.repos, withRepos.repos);
   });
 
-  it("forwards repos unchanged under a 'repo' lens", () => {
+  it("'repo' lens forwards ONLY the focused repo (others vanish, not shown as empty)", () => {
     const result = applyLens(withRepos, { kind: "repo", repo: "your-org/myproject" });
-    assert.deepStrictEqual(result.repos, withRepos.repos);
+    assert.deepStrictEqual(result.repos, [A]);
+  });
+
+  it("'repo' lens keeps the focused repo even when it has zero tracks (add-a-track affordance survives)", () => {
+    // agent-armor has no tracks but is the focused repo — it must still seed.
+    const result = applyLens(withRepos, { kind: "repo", repo: "stylusnexus/agent-armor" });
+    assert.deepStrictEqual(result.repos, [EMPTY]);
+    assert.strictEqual(result.tracks.length, 0);
+  });
+
+  it("'repo' lens for a slug not in the configured repos forwards an empty list", () => {
+    const result = applyLens(withRepos, { kind: "repo", repo: "ghost/none" });
+    assert.deepStrictEqual(result.repos, []);
+  });
+
+  it("'milestone' lens forwards only repos that still own a surviving track", () => {
+    // v0.4.0 survivors are org-sharing + docs-refresh, both in work-plan-toolkit.
+    const result = applyLens(withRepos, { kind: "milestone", milestone: "v0.4.0" });
+    assert.deepStrictEqual(result.repos, [B]);
+  });
+
+  it("'blocked' lens forwards only the surviving track's repo", () => {
+    // Only platform-health (your-org/myproject) is blocked.
+    const result = applyLens(withRepos, { kind: "blocked" });
+    assert.deepStrictEqual(result.repos, [A]);
+  });
+
+  it("'status:active' lens drops a configured repo with no surviving track", () => {
+    // active survivors: idea-mode (myproject) + org-sharing/docs-refresh (wpt);
+    // agent-armor (no tracks) drops out.
+    const result = applyLens(withRepos, { kind: "status", status: "active" });
+    assert.deepStrictEqual(result.repos, [A, B]);
+  });
+
+  it("does not mutate the input repos array", () => {
+    const before = JSON.stringify(withRepos.repos);
+    applyLens(withRepos, { kind: "repo", repo: "your-org/myproject" });
+    applyLens(withRepos, { kind: "blocked" });
+    assert.strictEqual(JSON.stringify(withRepos.repos), before);
   });
 
   it("leaves repos undefined when the source export has none", () => {
@@ -662,10 +689,17 @@ describe("describeView — empty when nothing is active", () => {
 });
 
 describe("describeView — lens only (default sort)", () => {
-  it("repo lens", () => {
+  it("repo lens uses the short name (drops the org/ prefix) so it survives title truncation", () => {
     assert.strictEqual(
-      describeView({ kind: "repo", repo: "org/repo" }, "default"),
-      "repo: org/repo",
+      describeView({ kind: "repo", repo: "stylusnexus/work-plan-toolkit" }, "default"),
+      "repo: work-plan-toolkit",
+    );
+  });
+
+  it("repo lens with no slash falls back to the whole string", () => {
+    assert.strictEqual(
+      describeView({ kind: "repo", repo: "soloname" }, "default"),
+      "repo: soloname",
     );
   });
 
