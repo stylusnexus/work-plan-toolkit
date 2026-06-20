@@ -46,5 +46,45 @@ class ShippedRowsTest(unittest.TestCase):
         self.assertEqual(rels, ["a.md", "b.md"])
 
 
+import tempfile
+from unittest import mock
+from lib import archive as archive_lib
+
+
+class MoveToArchiveTest(unittest.TestCase):
+    def _repo(self, d):
+        root = Path(d)
+        (root / "docs/plans").mkdir(parents=True)
+        (root / "docs/plans/x.md").write_text("# x")
+        return root
+
+    def test_archived_calls_git_mv_to_shipped_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            with mock.patch("lib.archive.git_state.git_mv", return_value=True) as mv:
+                outcome = archive_lib.move_to_archive("docs/plans/x.md", root, "shipped")
+            self.assertEqual(outcome, "archived")
+            mv.assert_called_once_with(
+                "docs/plans/x.md", "docs/plans/archive/shipped/x.md", root)
+
+    def test_collision_skips_without_calling_git_mv(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            dest = root / "docs/plans/archive/shipped"
+            dest.mkdir(parents=True)
+            (dest / "x.md").write_text("# already here")
+            with mock.patch("lib.archive.git_state.git_mv") as mv:
+                outcome = archive_lib.move_to_archive("docs/plans/x.md", root, "shipped")
+            self.assertEqual(outcome, "skipped_collision")
+            mv.assert_not_called()
+
+    def test_git_mv_failure_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            with mock.patch("lib.archive.git_state.git_mv", return_value=False):
+                outcome = archive_lib.move_to_archive("docs/plans/x.md", root, "shipped")
+            self.assertIsNone(outcome)
+
+
 if __name__ == "__main__":
     unittest.main()
