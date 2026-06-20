@@ -279,9 +279,9 @@ def _print_help() -> int:
     print("  Backfill priorities    →  /work-plan suggest-priorities --repo=myproject")
     print()
     print("=" * 80)
-    print(f"Config: ~/.claude/work-plan/config.yml  (or ~/.agents/work-plan/config.yml on Codex)")
-    print(f"Docs:   See the toolkit README for full setup, requirements, and platform-specific install.")
-    print(f"Meta:   --help / -h · --version / -v")
+    print("Config: ~/.claude/work-plan/config.yml  (or ~/.agents/work-plan/config.yml on Codex)")
+    print("Docs:   See the toolkit README for full setup, requirements, and platform-specific install.")
+    print("Meta:   --help / -h · --version / -v")
     return 0
 
 
@@ -296,7 +296,7 @@ def main(argv: list[str]) -> int:
         return 0
     if sub not in SUBCOMMANDS:
         print(f"unknown subcommand '{sub}'", file=sys.stderr)
-        print(f"Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
+        print("Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
         return 2
     try:
         module = __import__(SUBCOMMANDS[sub], fromlist=["run"])

@@ -31,7 +31,7 @@ def strip_range(p: str) -> str:
 
 def parse_declared_paths(text: str) -> list:
     """Extract declared file paths. First kind seen per path wins (dedup)."""
-    seen = {}  # path -> kind
+    seen: dict[str, str] = {}  # path -> kind
     for kind, raw in PATH_RE.findall(text):
         p = strip_range(raw)
         if "/" not in p:                       # skip bare tokens / commands
@@ -141,7 +141,8 @@ def score_manifest(
     offline testing; defaults wire to the filesystem and git.
     """
     if exists is None:
-        exists = lambda rel: (Path(repo_root) / rel).exists()
+        def exists(rel):
+            return (Path(repo_root) / rel).exists()
     if committed_since is None:
         from lib import git_state
         # Deliberate degradation: with no plan date we can't ask "committed since
@@ -181,7 +182,8 @@ def unsatisfied_paths(
     Same satisfaction rule and injectable predicates as `score_manifest`.
     """
     if exists is None:
-        exists = lambda rel: (Path(repo_root) / rel).exists()
+        def exists(rel):
+            return (Path(repo_root) / rel).exists()
     if committed_since is None:
         from lib import git_state
         committed_since = (

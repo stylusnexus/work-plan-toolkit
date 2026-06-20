@@ -196,7 +196,7 @@ evaluate_doc = _evaluate
 
 def _render(rows, repo_root) -> None:
     print(f"# plan-status — {repo_root}\n")
-    by = {}
+    by: dict = {}
     for r in rows:
         by.setdefault(r["verdict"], []).append(r)
     lie_gap = sum(1 for r in rows if r["lie_gap"])
@@ -445,7 +445,7 @@ def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
     raw_days = flags.get("--since-days")
-    if raw_days in (None, True):
+    if not isinstance(raw_days, str):
         dead_days = verdict_mod.DEAD_DAYS
     else:
         try:
