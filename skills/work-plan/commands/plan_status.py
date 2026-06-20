@@ -20,7 +20,8 @@ from lib.scratch import cache_dir
 from lib.prompts import parse_flags, prompt_yes_no
 
 KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
-         "--llm", "--apply", "--archive", "--issues", "--stall-days"}
+         "--llm", "--apply", "--archive", "--issues", "--stall-days",
+         "--include-archived", "--archive-shipped", "--include-lie-gap", "--yes"}
 _ORDER = ["shipped", "partial", "dead", "foreign", "manifest-less"]
 
 # Human verdict-override (#286): a reviewer affirms the verdict in the doc's
@@ -166,6 +167,7 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     verdict_drift = bool(baseline) and not override and baseline != v.label
     return {
         "rel": doc.rel, "kind": doc.kind,
+        "archived": doc.archived, "archive_kind": doc.archive_kind,
         "verdict": v.label, "glyph": v.glyph, "rationale": v.rationale,
         "files_present": score.satisfied, "files_declared": score.total,
         "checkboxes_done": done, "checkboxes_total": total_chk,
@@ -396,7 +398,8 @@ def run(args: list) -> int:
             return 2
     today = date.today()
 
-    docs = doc_discovery.discover_docs(repo_root)
+    docs = doc_discovery.discover_docs(
+        repo_root, include_archived=bool(flags.get("--include-archived")))
     type_filter = flags.get("--type")
     if type_filter and type_filter is not True:
         docs = [d for d in docs if d.kind == type_filter]
@@ -421,7 +424,10 @@ def run(args: list) -> int:
     if flags.get("--json"):
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))
         return 0
-    _render(rows, repo_root)
+    live_rows = [r for r in rows if not r.get("archived")]
+    _render(live_rows, repo_root)
     if flags.get("--stamp"):
-        _stamp_docs(docs, rows, draft=bool(flags.get("--draft")))
+        live_docs = [d for d in docs if not d.archived]
+        _stamp_docs(live_docs, [r for r in rows if not r.get("archived")],
+                    draft=bool(flags.get("--draft")))
     return 0
