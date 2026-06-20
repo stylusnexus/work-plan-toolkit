@@ -44,6 +44,13 @@ export type WriteAction =
   // (clear removes it). Frontmatter-only, same shape as planConfirm/planAck.
   | { kind: "planBaseline"; repoKey: string; rel: string }
   | { kind: "planBaselineClear"; repoKey: string; rel: string }
+  // Archive a shipped plan doc (#387) — moves the doc into archive/shipped/.
+  // Non-interactive + structured for the viewer (--yes --json). repoKey is the
+  // config folder key; rel is the repo-relative doc path.
+  | { kind: "planArchive"; repoKey: string; rel: string }
+  // Batch-archive every clean shipped doc in a repo (#387). includeLieGap opts
+  // unverified (lie-gap) shipped docs into the sweep.
+  | { kind: "planArchiveAllShipped"; repoKey: string; includeLieGap?: boolean }
   // Close a GitHub issue (#305) — one of two GitHub-mutating actions (the other is
   // issueInProgress). `repo` is the org/repo slug; gated by a mandatory UI modal in
   // the command handler (no needs_confirm token — closing doesn't leak private content
@@ -131,6 +138,8 @@ export type WriteOutcome =
  *   pushTrack       → ["push-track", ..."--repo=<key>", "--", track]
   setNextUpPreset → ["set-next-up", ..."--repo=<key>", "--preset=<p>"|"--clear"|"--auto=on|off", "--", track]
                     (auto alone: ["set-next-up", ..."--repo=<key>", "--auto=on|off", "--", track])
+ *   planArchive    → ["plan-archive", "--repo=<key>", "--yes", "--json", "--", rel]
+ *   planArchiveAllShipped → ["plan-status", "--repo=<key>", "--archive-shipped", "--yes", "--json", ..."--include-lie-gap"]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -255,6 +264,26 @@ export function actionToArgs(action: WriteAction): string[] {
 
     case "planBaselineClear":
       return ["plan-baseline", `--repo=${action.repoKey}`, "--clear", "--", action.rel];
+
+    case "planArchive":
+      return [
+        "plan-archive",
+        `--repo=${action.repoKey}`,
+        "--yes",
+        "--json",
+        "--",
+        action.rel,
+      ];
+
+    case "planArchiveAllShipped":
+      return [
+        "plan-status",
+        `--repo=${action.repoKey}`,
+        "--archive-shipped",
+        "--yes",
+        "--json",
+        ...(action.includeLieGap ? ["--include-lie-gap"] : []),
+      ];
 
     case "closeIssue":
       return [
