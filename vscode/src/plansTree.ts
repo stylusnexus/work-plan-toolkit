@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type { PlanDoc } from "./model.ts";
 import { planStatus, CliError } from "./cli.ts";
 import type { CliRunner } from "./cli.ts";
-import { planBucket, planDescription, isStalledForDisplay, BUCKET_META, BUCKET_RANK } from "./planModel.ts";
+import { planBucket, planDescription, isStalledForDisplay, isArchivable, BUCKET_META, BUCKET_RANK } from "./planModel.ts";
 
 // Coalesce a burst of git events (a rebase rewrites many refs) into one re-scan
 // per repo (#287). 750ms is long enough to ride out a multi-commit operation,
@@ -22,6 +22,7 @@ export type PlanNode =
   | { kind: "rollup" }                                  // synthetic cross-repo stalled roll-up (first root)
   | { kind: "repo"; repoKey: string; label: string }   // repoKey = folder key; label = slug for display
   | { kind: "doc"; repoKey: string; repoRoot: string; doc: PlanDoc }
+  | { kind: "archived"; repoKey: string; repoRoot: string; docs: PlanDoc[] }  // collapsed per-repo Archived folder (#387)
   | { kind: "unregistered"; slug: string }             // track-only repo, no config entry → greyed "Add Repo to scan" row
   | { kind: "message"; text: string; icon: string; command?: string };
 
@@ -93,6 +94,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       return this._childrenForRepo(element.repoKey);
     }
 
+    if (element.kind === "archived") {
+      return element.docs.map(
+        (doc): PlanNode => ({ kind: "doc", repoKey: element.repoKey, repoRoot: element.repoRoot, doc }),
+      );
+    }
+
     // doc / message → leaves.
     return [];
   }
@@ -128,6 +135,7 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     const out: { repoKey: string; repoRoot: string; doc: PlanDoc }[] = [];
     for (const [repoKey, entry] of this.cache) {
       for (const doc of entry.docs) {
+        if (doc.archived) continue;
         if (isStalledForDisplay(doc, stall, now)) {
           out.push({ repoKey, repoRoot: entry.repoRoot, doc });
         }
@@ -176,16 +184,24 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
 
     const now = Date.now();
     const stall = this.stallDays();
+    // Archived docs leave the live verdict buckets and live in a collapsed
+    // "Archived (N)" container node appended below them (#387).
+    const liveDocs = entry.docs.filter((doc) => !doc.archived);
+    const archivedDocs = entry.docs.filter((doc) => doc.archived);
     // "Show acknowledged" off → hide acked docs in the per-repo list too.
     const visible = this.showAcked()
-      ? entry.docs
-      : entry.docs.filter((doc) => !this._acked(repoKey, doc));
+      ? liveDocs
+      : liveDocs.filter((doc) => !this._acked(repoKey, doc));
     const sorted = [...visible].sort(
       (a, b) => BUCKET_RANK[planBucket(a, stall, now)] - BUCKET_RANK[planBucket(b, stall, now)],
     );
-    return sorted.map(
+    const nodes: PlanNode[] = sorted.map(
       (doc): PlanNode => ({ kind: "doc", repoKey, repoRoot: entry.repoRoot, doc }),
     );
+    if (archivedDocs.length > 0) {
+      nodes.push({ kind: "archived", repoKey, repoRoot: entry.repoRoot, docs: archivedDocs });
+    }
+    return nodes;
   }
 
   getTreeItem(node: PlanNode): vscode.TreeItem {
@@ -205,6 +221,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Collapsed);
       item.contextValue = "workPlanPlansRepo";
       item.iconPath = new vscode.ThemeIcon("repo");
+      const entry = this.cache.get(node.repoKey);
+      if (entry) {
+        const n = entry.docs.filter(
+          (d) => d.verdict === "shipped" && d.archived !== true).length;
+        if (n > 0) item.description = `· ${n} shipped`;
+      }
       return item;
     }
 
@@ -243,6 +265,16 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
       return item;
     }
 
+    if (node.kind === "archived") {
+      const item = new vscode.TreeItem(
+        `Archived (${node.docs.length})`,
+        vscode.TreeItemCollapsibleState.Collapsed,
+      );
+      item.contextValue = "workPlanPlansArchived";
+      item.iconPath = new vscode.ThemeIcon("archive");
+      return item;
+    }
+
     return this._docTreeItem(node);
   }
 
@@ -268,6 +300,9 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
 
     const ackLabel = docAcked ? " · ✅ ack'd (saved)" : localAcked ? " · ack'd" : "";
     item.description = planDescription(doc, stall, now) + ackLabel;
+    if (doc.archived) {
+      item.description = `archived · ${doc.archive_kind ?? "shipped"}`;
+    }
 
     // joinPath (not string concat) so a Windows repoRoot — backslashes from
     // Python's str(repo_root) — joins with doc.rel's forward slashes without a
@@ -326,6 +361,13 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     item.contextValue = base.startsWith("workPlanPlan-") && doc.verdict_baseline
       ? `${base} baselined`
       : base;
+    // Archive-eligibility token (#387): append " archivable" whenever the
+    // effective verdict is shipped — regardless of the base contextValue
+    // (bucket / confirmed / acked) — so lie-gap + override-confirmed docs still
+    // match the archive menu's regex when-clause.
+    if (isArchivable(doc)) {
+      item.contextValue = `${item.contextValue} archivable`;
+    }
     return item;
   }
 
