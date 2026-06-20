@@ -20,6 +20,7 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 - **Public-repo confirm modal.** Before any write into a repo that's public (or whose visibility `gh` can't determine), the extension surfaces the CLI's heads-up as a **"Write anyway / Keep private"** dialog and re-invokes with a confirm token — the leak guard, moved from a terminal prompt to a GUI. Private repos write straight through with no friction.
 - **Close an issue on GitHub (#305).** Right-click an **Untracked** issue → **Close Issue on GitHub…**, or use the **⊗** action on a tracked issue row in the detail panel. Pick a reason (Completed / Not planned), optionally add a closing comment, and confirm a mandatory **"Close on GitHub? — cannot be undone"** modal (fires on *every* close, public or private). For the common case where a PR merged to `dev` left its issue open.
 - **Mark / clear in-progress on GitHub (#271).** Use the in-progress toggle on a tracked issue row in the detail panel to add or remove the `work-plan:in-progress` label. Public repos go through the confirm-token modal. The viewer also derives in-progress automatically from a hot `feat/<n>-`/`fix/<n>-` branch — the label is for issues with no hot branch yet. These two actions are the only GitHub writes the extension makes; everything else is read-only on GitHub.
+- **Archive shipped plans.** Right-click a ✅ shipped plan → **Archive Plan…** (moves it to `archive/shipped/`), or right-click a repo → **Archive shipped plans…** to sweep them in bulk. Archived plans live in a collapsed **Archived (N)** folder per repo. Unverified (lie-gap) shipped plans are archivable singly with a warning and excluded from the bulk sweep by default.
 
 **Get started from empty** — a cold-start a new user can drive without the CLI:
 
@@ -136,7 +137,7 @@ A plan whose **declared manifest points outside the repo** (an absolute, `~`, `.
 - **No local clone.** Repos without a local checkout show a greyed "no local clone" state — there's no working tree to read manifest git activity from.
 - **`workPlan.stallDays` setting** controls the staleness window applied to the displayed state — **Match CLI** (the default, follows the CLI's own threshold) or a fixed 14 / 30 / 45 / 60 / 90 days. Changing it re-evaluates what's stalled instantly, no refetch.
 
-Read-only on git apart from the frontmatter-only **Confirm Verdict** write above: no stamp, archive, or issue-opening from the GUI — those stay CLI-only. Track ↔ plan navigation (jumping from a track to its plan and back) is tracked in [#285](https://github.com/stylusnexus/work-plan-toolkit/issues/285).
+Read-only on git apart from two writes: the frontmatter-only **Confirm Verdict** write above, and **Archive Plan…** / **Archive shipped plans…** (a `git mv` of a shipped doc into `archive/shipped/`). No stamp or issue-opening from the GUI — those stay CLI-only. Track ↔ plan navigation (jumping from a track to its plan and back) is tracked in [#285](https://github.com/stylusnexus/work-plan-toolkit/issues/285).
 
 ### Create & setup (the `⋯` overflow)
 
