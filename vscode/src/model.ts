@@ -204,6 +204,10 @@ export interface PlanDoc {
    * down and usually mean a typo/misfiled plan. Optional for older-CLI compat.
    */
   offtree_paths?: string[];
+  /** Set by `plan-status --include-archived`: this doc lives under
+   *  archive/shipped/ or archive/abandoned/. Optional for older-CLI compat. */
+  archived?: boolean;
+  archive_kind?: "shipped" | "abandoned";
   unchecked_items: string[];
   stall_days: number;
 }

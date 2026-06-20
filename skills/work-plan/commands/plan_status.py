@@ -16,11 +16,13 @@ from lib import verdict as verdict_mod
 from lib import status_header
 from lib import llm_evidence
 from lib import reconcile_actions
+from lib import archive as archive_lib
 from lib.scratch import cache_dir
 from lib.prompts import parse_flags, prompt_yes_no
 
 KNOWN = {"--repo", "--json", "--since-days", "--type", "--stamp", "--draft",
-         "--llm", "--apply", "--archive", "--issues", "--stall-days"}
+         "--llm", "--apply", "--archive", "--issues", "--stall-days",
+         "--include-archived", "--archive-shipped", "--include-lie-gap", "--yes"}
 _ORDER = ["shipped", "partial", "dead", "foreign", "manifest-less"]
 
 # Human verdict-override (#286): a reviewer affirms the verdict in the doc's
@@ -166,6 +168,7 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     verdict_drift = bool(baseline) and not override and baseline != v.label
     return {
         "rel": doc.rel, "kind": doc.kind,
+        "archived": doc.archived, "archive_kind": doc.archive_kind,
         "verdict": v.label, "glyph": v.glyph, "rationale": v.rationale,
         "files_present": score.satisfied, "files_declared": score.total,
         "checkboxes_done": done, "checkboxes_total": total_chk,
@@ -193,7 +196,7 @@ evaluate_doc = _evaluate
 
 def _render(rows, repo_root) -> None:
     print(f"# plan-status — {repo_root}\n")
-    by = {}
+    by: dict = {}
     for r in rows:
         by.setdefault(r["verdict"], []).append(r)
     lie_gap = sum(1 for r in rows if r["lie_gap"])
@@ -330,6 +333,62 @@ def _archive_dead(docs, rows, repo_root, draft: bool) -> int:
     return 0
 
 
+def _archive_shipped(rows, repo_root, draft, as_json, include_lie_gap, yes=False):
+    """Batch-archive every effective-shipped LIVE doc into archive/shipped/.
+    Lie-gap docs are excluded unless include_lie_gap; collisions are skipped."""
+    live = [r for r in rows if not r.get("archived")]
+    targets = reconcile_actions.shipped_rows(live, include_lie_gap=include_lie_gap)
+    excluded = [r for r in reconcile_actions.shipped_rows(live, include_lie_gap=True)
+                if r.get("lie_gap") and not include_lie_gap]
+
+    if as_json:
+        archived, skipped = [], []
+        if not draft:
+            for r in targets:
+                outcome = archive_lib.move_to_archive(r["rel"], repo_root, "shipped")
+                dest = reconcile_actions.archive_dest(r["rel"], "shipped")
+                if outcome == "archived":
+                    archived.append({"rel": r["rel"], "dest": dest})
+                elif outcome == "skipped_collision":
+                    skipped.append({"rel": r["rel"], "reason": "collision"})
+        print(json.dumps({
+            "action": "archive_shipped",
+            "archived": archived,
+            "skipped": skipped,
+            "lie_gap_excluded": [{"rel": r["rel"]} for r in excluded],
+        }))
+        return 0
+
+    if not targets:
+        print("No shipped plans to archive.")
+        if excluded:
+            print(f"({len(excluded)} unverified lie-gap shipped — "
+                  f"pass --include-lie-gap to include.)")
+        return 0
+    print(f"\n{'Would archive' if draft else 'Archive'} {len(targets)} shipped plan(s):")
+    for r in targets:
+        print(f"  {r['rel']}  ->  {reconcile_actions.archive_dest(r['rel'], 'shipped')}")
+    if excluded:
+        print(f"  (excluding {len(excluded)} unverified lie-gap; "
+              f"--include-lie-gap to include)")
+    if draft:
+        return 0
+    if not yes and not prompt_yes_no(f"Move {len(targets)} plan(s) to archive/shipped/? [y/N]"):
+        print("Skipped.")
+        return 0
+    archived = skipped = 0
+    for r in targets:
+        outcome = archive_lib.move_to_archive(r["rel"], repo_root, "shipped")
+        if outcome == "archived":
+            archived += 1
+            print(f"  ✓ {r['rel']}")
+        else:
+            skipped += 1
+            print(f"  ✗ {r['rel']} ({outcome or 'git mv failed'})")
+    print(f"Archived {archived}, skipped {skipped}.")
+    return 0
+
+
 def _repo_slug(flags):
     """Resolve the org/repo GitHub slug for the --repo key (for issue creation)."""
     repo = flags.get("--repo")
@@ -386,7 +445,7 @@ def run(args: list) -> int:
     flags, _ = parse_flags(args, KNOWN)
     repo_root = _resolve_repo_root(flags)
     raw_days = flags.get("--since-days")
-    if raw_days in (None, True):
+    if not isinstance(raw_days, str):
         dead_days = verdict_mod.DEAD_DAYS
     else:
         try:
@@ -396,7 +455,8 @@ def run(args: list) -> int:
             return 2
     today = date.today()
 
-    docs = doc_discovery.discover_docs(repo_root)
+    docs = doc_discovery.discover_docs(
+        repo_root, include_archived=bool(flags.get("--include-archived")))
     type_filter = flags.get("--type")
     if type_filter and type_filter is not True:
         docs = [d for d in docs if d.kind == type_filter]
@@ -414,6 +474,13 @@ def run(args: list) -> int:
     if flags.get("--archive"):
         return _archive_dead(docs, rows, repo_root, draft=bool(flags.get("--draft")))
 
+    if flags.get("--archive-shipped"):
+        return _archive_shipped(rows, repo_root,
+                                draft=bool(flags.get("--draft")),
+                                as_json=bool(flags.get("--json")),
+                                include_lie_gap=bool(flags.get("--include-lie-gap")),
+                                yes=bool(flags.get("--yes")))
+
     if flags.get("--issues"):
         return _issues_for_partials(docs, rows, repo_root, _repo_slug(flags),
                                     draft=bool(flags.get("--draft")))
@@ -421,7 +488,14 @@ def run(args: list) -> int:
     if flags.get("--json"):
         print(json.dumps({"repo": str(repo_root), "docs": rows}, indent=2))
         return 0
-    _render(rows, repo_root)
+    live_rows = [r for r in rows if not r.get("archived")]
+    _render(live_rows, repo_root)
+    n_shipped = len(reconcile_actions.shipped_rows(live_rows, include_lie_gap=True))
+    if n_shipped:
+        print(f"\n{n_shipped} shipped — archive with "
+              f"'plan-archive -- <rel>' or 'plan-status --archive-shipped'.")
     if flags.get("--stamp"):
-        _stamp_docs(docs, rows, draft=bool(flags.get("--draft")))
+        live_docs = [d for d in docs if not d.archived]
+        _stamp_docs(live_docs, [r for r in rows if not r.get("archived")],
+                    draft=bool(flags.get("--draft")))
     return 0

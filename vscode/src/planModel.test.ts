@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { isStalledForDisplay, planBucket, planDescription, ackKey, unregisteredTrackRepos,
-         BUCKET_META, BUCKET_RANK, LEGEND } from "./planModel.ts";
+         BUCKET_META, BUCKET_RANK, LEGEND, isArchivable } from "./planModel.ts";
 import type { PlanBucket } from "./planModel.ts";
 import type { Export, PlanDoc, Track } from "./model.ts";
 
@@ -220,5 +220,38 @@ describe("LEGEND (#348)", () => {
   });
   test("ack'd modifier icon matches the muted override in plansTree (circle-outline)", () => {
     assert.equal(LEGEND[LEGEND.length - 1].icon, "circle-outline");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isArchivable (#387)
+// ---------------------------------------------------------------------------
+
+function archDoc(over: Partial<PlanDoc>): PlanDoc {
+  return {
+    rel: "p.md", kind: "plan", verdict: "shipped", glyph: "✅", rationale: "",
+    files_present: 1, files_declared: 1, checkboxes_done: 1, checkboxes_total: 1,
+    last_touched: null, manifest_last_touched: null, stalled: false,
+    lie_gap: false, unchecked_items: [], stall_days: 14, ...over,
+  };
+}
+
+describe("isArchivable", () => {
+  test("plain shipped is archivable", () => {
+    assert.strictEqual(isArchivable(archDoc({ verdict: "shipped" })), true);
+  });
+  test("lie-gap shipped is archivable", () => {
+    assert.strictEqual(isArchivable(archDoc({ verdict: "shipped", lie_gap: true })), true);
+  });
+  test("override-confirmed shipped is archivable", () => {
+    assert.strictEqual(isArchivable(archDoc({ verdict: "shipped", override: "shipped" })), true);
+  });
+  test("partial / dead / manifest-less / foreign are not", () => {
+    for (const v of ["partial", "dead", "manifest-less", "foreign"] as const) {
+      assert.strictEqual(isArchivable(archDoc({ verdict: v })), false);
+    }
+  });
+  test("an already-archived doc is not re-archivable", () => {
+    assert.strictEqual(isArchivable(archDoc({ verdict: "shipped", archived: true })), false);
   });
 });

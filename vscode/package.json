@@ -195,6 +195,16 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.plans.archive",
+        "title": "Archive Plan…",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.plans.archiveAllShipped",
+        "title": "Archive shipped plans…",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.openTrack",
         "title": "Show in Work Plan",
         "category": "Work Plan"
@@ -632,6 +642,16 @@
           "command": "workPlan.plans.clearConfirmation",
           "when": "view == workPlan.plans && viewItem == workPlanPlanConfirmed",
           "group": "2_confirm"
+        },
+        {
+          "command": "workPlan.plans.archive",
+          "when": "view == workPlan.plans && viewItem =~ /archivable/",
+          "group": "4_archive"
+        },
+        {
+          "command": "workPlan.plans.archiveAllShipped",
+          "when": "view == workPlan.plans && viewItem =~ /workPlanPlansRepo/",
+          "group": "4_archive"
         }
       ],
       "commandPalette": [
@@ -671,6 +691,8 @@
           "command": "workPlan.plans.clearConfirmation",
           "when": "false"
         },
+        { "command": "workPlan.plans.archive", "when": "false" },
+        { "command": "workPlan.plans.archiveAllShipped", "when": "false" },
         {
           "command": "workPlan.openTrackFile",
           "when": "false"

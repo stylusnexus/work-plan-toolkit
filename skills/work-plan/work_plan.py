@@ -53,6 +53,7 @@ SUBCOMMANDS = {
     "plan-status": "commands.plan_status",
     "--plan-status": "commands.plan_status",  # flag-style alias
     "plan-confirm": "commands.plan_confirm",
+    "plan-archive": "commands.plan_archive",
     "plan-ack": "commands.plan_ack",
     "plan-baseline": "commands.plan_baseline",
     "close-issue": "commands.close_issue",
@@ -193,6 +194,10 @@ DESCRIPTIONS = [
      "Affirm a human verdict on ONE plan/spec doc by writing `verdict_override` into its YAML frontmatter — FRONTMATTER-ONLY (never the body, manifest, checkboxes, or status banner) (#286). plan-status then pins that verdict over the mechanical one and silences the 'shipped but boxes unchecked' lie-gap. Use when a plan genuinely shipped but its phase checkboxes were never ticked, so the red lie-gap X is a false alarm. `<rel>` is the repo-relative doc path from `plan-status --json`. On a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=<token>) — the VS Code viewer surfaces this as a modal. --clear removes the override.",
      "When the Plans view flags a genuinely-done plan with a lie-gap (red X) only because nobody ticked its checkboxes — confirm it instead of hand-ticking 24 boxes.",
      "/work-plan plan-confirm --repo=myproject --verdict=shipped -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
+    ("plan-archive", "--repo=<key> [--draft] [--yes] [--json] -- <rel>",
+     "Archive ONE plan/spec doc whose effective verdict is shipped: history-preserving `git mv` into archive/shipped/. Refuses non-shipped docs; skips (never overwrites) a name collision. --draft previews; --yes skips the prompt for non-interactive callers (the VS Code viewer); --json emits a single {action,rel,outcome,dest} object. `<rel>` is the repo-relative doc path from `plan-status --json`.",
+     "When a shipped plan clutters the active plans view and you want to move it to archive/shipped/ in one step — with full git history preserved.",
+     "/work-plan plan-archive --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
     ("plan-ack", "--repo=<key> [--clear] [--confirm=<token>] -- <rel>",
      "Persist an acknowledgment into ONE plan/spec doc's YAML **frontmatter only** (`acknowledged: true`) — never the body/manifest/checkboxes/banner (#286). Unlike the VS Code viewer's default ack (per-machine, ephemeral `workspaceState`), this is durable + shared: it's committed with the repo, and `plan-status` reads it back to demote the doc. `<rel>` is the repo-relative doc path. Public-repo gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`). `--clear` removes it.",
      "When you want a 'stop flagging this plan' that sticks across machines and teammates, not just on your laptop.",
@@ -274,9 +279,9 @@ def _print_help() -> int:
     print("  Backfill priorities    →  /work-plan suggest-priorities --repo=myproject")
     print()
     print("=" * 80)
-    print(f"Config: ~/.claude/work-plan/config.yml  (or ~/.agents/work-plan/config.yml on Codex)")
-    print(f"Docs:   See the toolkit README for full setup, requirements, and platform-specific install.")
-    print(f"Meta:   --help / -h · --version / -v")
+    print("Config: ~/.claude/work-plan/config.yml  (or ~/.agents/work-plan/config.yml on Codex)")
+    print("Docs:   See the toolkit README for full setup, requirements, and platform-specific install.")
+    print("Meta:   --help / -h · --version / -v")
     return 0
 
 
@@ -291,7 +296,7 @@ def main(argv: list[str]) -> int:
         return 0
     if sub not in SUBCOMMANDS:
         print(f"unknown subcommand '{sub}'", file=sys.stderr)
-        print(f"Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
+        print("Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
         return 2
     try:
         module = __import__(SUBCOMMANDS[sub], fromlist=["run"])

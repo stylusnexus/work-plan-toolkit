@@ -3294,6 +3294,98 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.archive",
+      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string; lie_gap?: boolean } }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
+        const { repoKey } = n;
+        const rel = n.doc.rel;
+        const lieGap = n.doc.lie_gap === true;
+        const filename = rel.split("/").pop() ?? rel;
+        const dest = `archive/shipped/${filename}`;
+        const title = lieGap ? "Archive unverified plan?" : "Archive plan?";
+        const detail = lieGap
+          ? `${rel}\n\nScored shipped but its phase checkboxes are mostly unticked (unverified). It will move to ${dest}.`
+          : `${rel}\n\nMoves to ${dest}.`;
+        const ok = await vscode.window.showWarningMessage(title, { modal: true, detail }, "Archive");
+        if (ok !== "Archive") return;
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: archiving…",
+            () => executeWrite(runner, { kind: "planArchive", repoKey, rel }, confirmPublicWrite),
+          );
+          if (outcome.status !== "written") return;
+          let parsed: { outcome?: string } = {};
+          try { parsed = JSON.parse(outcome.stdout); } catch { /* non-JSON: leave empty */ }
+          if (parsed.outcome === "archived") {
+            plansProvider.refresh(repoKey);
+            const pick = await vscode.window.showInformationMessage(
+              `Work Plan: archived ${filename} → archive/shipped/`, "Show");
+            if (pick === "Show") {
+              await vscode.commands.executeCommand("workPlan.plans.focus");
+            }
+          } else if (parsed.outcome === "skipped_collision") {
+            vscode.window.showWarningMessage(
+              `Work Plan: not archived — a file already exists at ${dest}.`);
+          } else if (parsed.outcome === "refused_not_shipped") {
+            vscode.window.showWarningMessage(
+              `Work Plan: ${filename} isn't shipped — not archived.`);
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: archive failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
+    vscode.commands.registerCommand(
+      "workPlan.plans.archiveAllShipped",
+      async (n?: { kind?: string; repoKey?: string }) => {
+        if (n?.kind !== "repo" || !n.repoKey) return;
+        const { repoKey } = n;
+        const docs = plansProvider.cachedDocs(repoKey);
+        if (!docs) {
+          vscode.window.showInformationMessage(
+            "Work Plan: expand the repo first to scan its plans, then archive.");
+          return;
+        }
+        const shipped = docs.filter((d) => d.verdict === "shipped" && d.archived !== true);
+        const clean = shipped.filter((d) => !d.lie_gap);
+        const lieGap = shipped.filter((d) => d.lie_gap);
+        if (clean.length === 0) {
+          vscode.window.showInformationMessage("Work Plan: no clean shipped plans to archive.");
+          return;
+        }
+        const names = clean.slice(0, 3).map((d) => d.rel.split("/").pop());
+        const more = clean.length > 3 ? `, … and ${clean.length - 3} more` : "";
+        const lieNote = lieGap.length
+          ? `\n\n(${lieGap.length} unverified lie-gap shipped excluded — use the per-plan action.)`
+          : "";
+        const ok = await vscode.window.showWarningMessage(
+          `Archive ${clean.length} shipped plan(s)?`,
+          { modal: true, detail: `${names.join(", ")}${more}${lieNote}` },
+          "Archive");
+        if (ok !== "Archive") return;
+        try {
+          const outcome = await withWriteProgress(
+            "Work Plan: archiving shipped plans…",
+            () => executeWrite(runner, { kind: "planArchiveAllShipped", repoKey }, confirmPublicWrite),
+          );
+          if (outcome.status !== "written") return;
+          let parsed: { archived?: unknown[] } = {};
+          try { parsed = JSON.parse(outcome.stdout); } catch { /* non-JSON */ }
+          const count = Array.isArray(parsed.archived) ? parsed.archived.length : clean.length;
+          plansProvider.refresh(repoKey);
+          vscode.window.showInformationMessage(`Work Plan: archived ${count} plan(s).`);
+        } catch (err: unknown) {
+          const msg = err instanceof CliError
+            ? `Work Plan: ${err.message}`
+            : `Work Plan: archive failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
   );
 
   const plansView = vscode.window.createTreeView("workPlan.plans", {
