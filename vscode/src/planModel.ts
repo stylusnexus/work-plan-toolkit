@@ -149,6 +149,13 @@ export function ackKey(repo: string, rel: string): string {
   return `${repo}::${rel}`;
 }
 
+/** Archive-eligibility (#387): a doc whose EFFECTIVE verdict is shipped — covers
+ *  plain shipped, lie-gap shipped, and override-confirmed shipped (the CLI pins
+ *  `verdict` to the override). An already-archived doc is never re-archivable. */
+export function isArchivable(doc: PlanDoc): boolean {
+  return doc.verdict === "shipped" && doc.archived !== true;
+}
+
 /**
  * GitHub slugs that tracks reference but that have NO `repos:` config entry
  * (#288 follow-up). The Plans view scans by config folder key — a track-only

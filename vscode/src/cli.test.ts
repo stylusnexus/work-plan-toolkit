@@ -211,13 +211,13 @@ describe("planStatus", () => {
   test("passes --stall-days when provided", async () => {
     const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_PLAN_STATUS), stderr: "" });
     await planStatus(run, "myrepo", 30);
-    assert.deepEqual(calls[0], ["plan-status", "--repo=myrepo", "--json", "--stall-days=30"]);
+    assert.deepEqual(calls[0], ["plan-status", "--repo=myrepo", "--json", "--include-archived", "--stall-days=30"]);
   });
 
-  test("omits --stall-days when not provided", async () => {
+  test("always passes --include-archived; omits --stall-days when not provided", async () => {
     const { run, calls } = recordingRunner({ code: 0, stdout: JSON.stringify(VALID_PLAN_STATUS), stderr: "" });
     await planStatus(run, "myrepo");
-    assert.deepEqual(calls[0], ["plan-status", "--repo=myrepo", "--json"]);
+    assert.deepEqual(calls[0], ["plan-status", "--repo=myrepo", "--json", "--include-archived"]);
   });
 
   test("throws CliError on a non-zero exit", async () => {

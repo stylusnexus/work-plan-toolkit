@@ -246,7 +246,7 @@ export async function planStatus(
   repoKey: string,
   stallDays?: number,
 ): Promise<PlanStatus> {
-  const args = ["plan-status", `--repo=${repoKey}`, "--json"];
+  const args = ["plan-status", `--repo=${repoKey}`, "--json", "--include-archived"];
   if (stallDays !== undefined) args.push(`--stall-days=${stallDays}`);
   const result = await run(args);
   if (result.code !== 0) {
