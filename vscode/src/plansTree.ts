@@ -425,6 +425,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  /** Public read of a repo's cached docs (#387) — for the bulk-archive command's
+   *  preview/count. Undefined when the repo hasn't been scanned (expanded) yet. */
+  cachedDocs(repoKey: string): PlanDoc[] | undefined {
+    return this.cache.get(repoKey)?.docs;
+  }
+
   // -------------------------------------------------------------------------
   // Git-activity auto-update (#287)
   // -------------------------------------------------------------------------
