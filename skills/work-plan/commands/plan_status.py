@@ -333,7 +333,7 @@ def _archive_dead(docs, rows, repo_root, draft: bool) -> int:
     return 0
 
 
-def _archive_shipped(rows, repo_root, draft, as_json, include_lie_gap):
+def _archive_shipped(rows, repo_root, draft, as_json, include_lie_gap, yes=False):
     """Batch-archive every effective-shipped LIVE doc into archive/shipped/.
     Lie-gap docs are excluded unless include_lie_gap; collisions are skipped."""
     live = [r for r in rows if not r.get("archived")]
@@ -373,7 +373,7 @@ def _archive_shipped(rows, repo_root, draft, as_json, include_lie_gap):
               f"--include-lie-gap to include)")
     if draft:
         return 0
-    if not prompt_yes_no(f"Move {len(targets)} plan(s) to archive/shipped/? [y/N]"):
+    if not yes and not prompt_yes_no(f"Move {len(targets)} plan(s) to archive/shipped/? [y/N]"):
         print("Skipped.")
         return 0
     archived = skipped = 0
@@ -478,7 +478,8 @@ def run(args: list) -> int:
         return _archive_shipped(rows, repo_root,
                                 draft=bool(flags.get("--draft")),
                                 as_json=bool(flags.get("--json")),
-                                include_lie_gap=bool(flags.get("--include-lie-gap")))
+                                include_lie_gap=bool(flags.get("--include-lie-gap")),
+                                yes=bool(flags.get("--yes")))
 
     if flags.get("--issues"):
         return _issues_for_partials(docs, rows, repo_root, _repo_slug(flags),

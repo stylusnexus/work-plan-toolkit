@@ -102,6 +102,26 @@ class ArchiveShippedBatchTest(unittest.TestCase):
             self.assertIn("1 shipped", out)
             self.assertIn("plan-archive", out)
 
+    def test_terminal_yes_skips_prompt_and_archives(self):
+        # Non-JSON terminal path: --yes must skip the y/N prompt (which defaults
+        # to "no" on non-TTY stdin) and archive, mirroring per-doc plan-archive.
+        with tempfile.TemporaryDirectory() as d:
+            root = _repo_batch(d)
+            with mock.patch("commands.plan_status.archive_lib.git_state.git_mv",
+                            return_value=True) as mv:
+                rc, out = _run(root, ["--archive-shipped", "--yes"])
+            self.assertEqual(rc, 0)
+            mv.assert_called_once()                 # clean.md archived, not skipped
+            self.assertIn("Archived 1", out)
+
+    def test_terminal_without_yes_declines_on_non_tty(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = _repo_batch(d)
+            with mock.patch("commands.plan_status.archive_lib.git_state.git_mv") as mv:
+                rc, out = _run(root, ["--archive-shipped"])
+            self.assertEqual(rc, 0)
+            mv.assert_not_called()                  # prompt defaults to no
+
 
 if __name__ == "__main__":
     unittest.main()
