@@ -56,5 +56,52 @@ class IncludeArchivedTest(unittest.TestCase):
             self.assertFalse(by_rel["docs/plans/live.md"]["archived"])
 
 
+LIEGAP = "# L\n\n**Files:**\n- Create: `src/b.ts`\n- [ ] Step 1\n- [ ] Step 2\n"
+
+
+def _repo_batch(d):
+    root = Path(d)
+    (root / "docs/plans").mkdir(parents=True)
+    (root / "docs/plans/clean.md").write_text(SHIPPED)
+    (root / "docs/plans/liegap.md").write_text(LIEGAP)
+    (root / "src").mkdir()
+    (root / "src/a.ts").write_text("export const a = 1")  # clean shipped
+    (root / "src/b.ts").write_text("export const b = 1")  # liegap shipped (0/2 boxes)
+    return root
+
+
+class ArchiveShippedBatchTest(unittest.TestCase):
+    def test_batch_json_archives_clean_excludes_liegap(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = _repo_batch(d)
+            with mock.patch("commands.plan_status.archive_lib.git_state.git_mv",
+                            return_value=True):
+                rc, out = _run(root, ["--archive-shipped", "--yes", "--json"])
+            self.assertEqual(rc, 0)
+            payload = json.loads(out)
+            self.assertEqual(payload["action"], "archive_shipped")
+            self.assertEqual([a["rel"] for a in payload["archived"]],
+                             ["docs/plans/clean.md"])
+            self.assertEqual([x["rel"] for x in payload["lie_gap_excluded"]],
+                             ["docs/plans/liegap.md"])
+
+    def test_batch_include_lie_gap_archives_both(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = _repo_batch(d)
+            with mock.patch("commands.plan_status.archive_lib.git_state.git_mv",
+                            return_value=True):
+                rc, out = _run(root, ["--archive-shipped", "--include-lie-gap",
+                                      "--yes", "--json"])
+            archived = sorted(a["rel"] for a in json.loads(out)["archived"])
+            self.assertEqual(archived,
+                             ["docs/plans/clean.md", "docs/plans/liegap.md"])
+
+    def test_footer_hint_lists_shipped_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = _run(_repo(d), [])   # human render
+            self.assertIn("1 shipped", out)
+            self.assertIn("plan-archive", out)
+
+
 if __name__ == "__main__":
     unittest.main()
