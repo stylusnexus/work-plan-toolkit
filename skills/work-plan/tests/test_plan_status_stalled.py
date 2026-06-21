@@ -78,6 +78,8 @@ class _Doc:
         d.rel = rel
         d.kind = kind
         d.path = _FakePath(name)
+        d.archived = False
+        d.archive_kind = None
         return d
 
 

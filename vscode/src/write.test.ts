@@ -1086,6 +1086,31 @@ describe("actionToArgs — issueInProgress", () => {
 });
 
 // ---------------------------------------------------------------------------
+// planArchive / planArchiveAllShipped — archive shipped plan docs (#387)
+// ---------------------------------------------------------------------------
+
+describe("actionToArgs — archive", () => {
+  test("planArchive uses --yes --json and -- rel", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "planArchive", repoKey: "proj", rel: "docs/plans/p.md" }),
+      ["plan-archive", "--repo=proj", "--yes", "--json", "--", "docs/plans/p.md"],
+    );
+  });
+  test("planArchiveAllShipped (clean only)", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "planArchiveAllShipped", repoKey: "proj" }),
+      ["plan-status", "--repo=proj", "--archive-shipped", "--yes", "--json"],
+    );
+  });
+  test("planArchiveAllShipped with lie-gap opt-in", () => {
+    assert.deepStrictEqual(
+      actionToArgs({ kind: "planArchiveAllShipped", repoKey: "proj", includeLieGap: true }),
+      ["plan-status", "--repo=proj", "--archive-shipped", "--yes", "--json", "--include-lie-gap"],
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // pushTrack — promote a private track to the shared tier (#306)
 // ---------------------------------------------------------------------------
 

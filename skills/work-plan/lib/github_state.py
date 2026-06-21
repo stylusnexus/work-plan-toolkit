@@ -198,8 +198,8 @@ def _normalize_gql_node(node) -> Optional[dict]:
     deps_truncated."""
     if not node:
         return None
-    labels = [{"name": l.get("name")} for l in
-              ((node.get("labels") or {}).get("nodes") or []) if l.get("name")]
+    labels = [{"name": lbl.get("name")} for lbl in
+              ((node.get("labels") or {}).get("nodes") or []) if lbl.get("name")]
     assignees = [{"login": a.get("login")} for a in
                  ((node.get("assignees") or {}).get("nodes") or []) if a.get("login")]
     ms = node.get("milestone")
@@ -378,7 +378,7 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
         return []
 
 
-def fetch_recent_issues(repo: str, since_iso: str, extra_labels: list[str] = None) -> list[dict]:
+def fetch_recent_issues(repo: str, since_iso: str, extra_labels: Optional[list[str]] = None) -> list[dict]:
     """Fetch issues created since `since_iso` (date YYYY-MM-DD)."""
     if not _valid_repo(repo):
         return []
@@ -434,7 +434,7 @@ def repo_visibility(repo: str) -> Optional[str]:
 
 
 def extract_priority(labels: list[dict]) -> str:
-    label_names = {l["name"] for l in labels}
+    label_names = {lbl["name"] for lbl in labels}
     for p in PRIORITY_LABELS:
         if p in label_names:
             return p.split("/")[1]
