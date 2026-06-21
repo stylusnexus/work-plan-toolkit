@@ -10,9 +10,9 @@ import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
-import { ackKey, unregisteredTrackRepos, LEGEND } from "./planModel.ts";
+import { ackKey, unregisteredTrackRepos, LEGEND, archivableSelection } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode, SuggestedIssueNode, SuggestedGroupNode } from "./tree.ts";
-import type { Track, Issue } from "./model.ts";
+import type { Track, Issue, PlanDoc } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones } from "./model.ts";
 import { badgeCounts } from "./treeModel.ts";
 import { readSuggestions } from "./suggestions.ts";
@@ -3296,41 +3296,78 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       "workPlan.plans.archive",
-      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string; lie_gap?: boolean } }) => {
-        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
-        const { repoKey } = n;
-        const rel = n.doc.rel;
-        const lieGap = n.doc.lie_gap === true;
-        const filename = rel.split("/").pop() ?? rel;
-        const dest = `archive/shipped/${filename}`;
-        const title = lieGap ? "Archive unverified plan?" : "Archive plan?";
-        const detail = lieGap
-          ? `${rel}\n\nScored shipped but its phase checkboxes are mostly unticked (unverified). It will move to ${dest}.`
-          : `${rel}\n\nMoves to ${dest}.`;
-        const ok = await vscode.window.showWarningMessage(title, { modal: true, detail }, "Archive");
-        if (ok !== "Archive") return;
+      async (
+        n?: { kind?: string; repoKey?: string; doc?: PlanDoc },
+        selected?: Array<{ kind?: string; repoKey?: string; doc?: PlanDoc }>,
+      ) => {
+        // view/item/context passes (clickedItem, fullSelection[]) (#393). Use the
+        // multi-selection when >1; otherwise the clicked node. archivableSelection
+        // drops non-doc / non-archivable nodes so a loose multi-select is safe.
+        const nodes = Array.isArray(selected) && selected.length > 1 ? selected : (n ? [n] : []);
+        const targets = archivableSelection(nodes);
+        if (targets.length === 0) { return; }
+
+        // One archive write → its parsed `outcome` (or null on a non-written /
+        // unparseable result). Shared by the single and batch paths.
+        const archiveOne = async (t: { repoKey: string; rel: string }): Promise<string | null> => {
+          const outcome = await executeWrite(
+            runner, { kind: "planArchive", repoKey: t.repoKey, rel: t.rel }, confirmPublicWrite);
+          if (outcome.status !== "written") { return null; }
+          try { return (JSON.parse(outcome.stdout) as { outcome?: string }).outcome ?? null; }
+          catch { return null; }
+        };
+
         try {
-          const outcome = await withWriteProgress(
-            "Work Plan: archiving…",
-            () => executeWrite(runner, { kind: "planArchive", repoKey, rel }, confirmPublicWrite),
-          );
-          if (outcome.status !== "written") return;
-          let parsed: { outcome?: string } = {};
-          try { parsed = JSON.parse(outcome.stdout); } catch { /* non-JSON: leave empty */ }
-          if (parsed.outcome === "archived") {
-            plansProvider.refresh(repoKey);
-            const pick = await vscode.window.showInformationMessage(
-              `Work Plan: archived ${filename} → archive/shipped/`, "Show");
-            if (pick === "Show") {
-              await vscode.commands.executeCommand("workPlan.plans.focus");
+          if (targets.length === 1) {
+            const t = targets[0];
+            const filename = t.rel.split("/").pop() ?? t.rel;
+            const dest = `archive/shipped/${filename}`;
+            const title = t.lieGap ? "Archive unverified plan?" : "Archive plan?";
+            const detail = t.lieGap
+              ? `${t.rel}\n\nScored shipped but its phase checkboxes are mostly unticked (unverified). It will move to ${dest}.`
+              : `${t.rel}\n\nMoves to ${dest}.`;
+            if (await vscode.window.showWarningMessage(title, { modal: true, detail }, "Archive") !== "Archive") { return; }
+            const result = await withWriteProgress("Work Plan: archiving…", () => archiveOne(t));
+            if (result === "archived") {
+              plansProvider.refresh(t.repoKey);
+              if (await vscode.window.showInformationMessage(
+                `Work Plan: archived ${filename} → archive/shipped/`, "Show") === "Show") {
+                await vscode.commands.executeCommand("workPlan.plans.focus");
+              }
+            } else if (result === "skipped_collision") {
+              vscode.window.showWarningMessage(`Work Plan: not archived — a file already exists at ${dest}.`);
+            } else if (result === "refused_not_shipped") {
+              vscode.window.showWarningMessage(`Work Plan: ${filename} isn't shipped — not archived.`);
             }
-          } else if (parsed.outcome === "skipped_collision") {
-            vscode.window.showWarningMessage(
-              `Work Plan: not archived — a file already exists at ${dest}.`);
-          } else if (parsed.outcome === "refused_not_shipped") {
-            vscode.window.showWarningMessage(
-              `Work Plan: ${filename} isn't shipped — not archived.`);
+            return;
           }
+
+          // Batch (#393): N selected archivable docs → one confirm, archive each,
+          // one refresh per affected repo, summary toast.
+          const names = targets.slice(0, 3).map((t) => t.rel.split("/").pop());
+          const more = targets.length > 3 ? `, … and ${targets.length - 3} more` : "";
+          const lie = targets.filter((t) => t.lieGap).length;
+          const lieNote = lie ? `\n\n(${lie} unverified lie-gap plan(s) included.)` : "";
+          const ok = await vscode.window.showWarningMessage(
+            `Archive ${targets.length} selected plan(s)?`,
+            { modal: true, detail: `${names.join(", ")}${more}\n\nEach moves to its repo's archive/shipped/.${lieNote}` },
+            "Archive");
+          if (ok !== "Archive") { return; }
+          let archived = 0;
+          let skipped = 0;
+          await withWriteProgress(`Work Plan: archiving ${targets.length} plan(s)…`, async () => {
+            for (const t of targets) {
+              const r = await archiveOne(t);
+              if (r === "archived") { archived++; } else { skipped++; }
+            }
+          });
+          for (const repoKey of new Set(targets.map((t) => t.repoKey))) {
+            plansProvider.refresh(repoKey);
+          }
+          vscode.window.showInformationMessage(
+            skipped
+              ? `Work Plan: archived ${archived}, skipped ${skipped} (collision / not shipped).`
+              : `Work Plan: archived ${archived} plan(s).`);
         } catch (err: unknown) {
           const msg = err instanceof CliError
             ? `Work Plan: ${err.message}`
@@ -3390,6 +3427,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const plansView = vscode.window.createTreeView("workPlan.plans", {
     treeDataProvider: plansProvider,
+    canSelectMany: true,   // multi-select batch archive (#393)
   });
   context.subscriptions.push(plansView);
 

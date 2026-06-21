@@ -25,9 +25,17 @@ class ArchiveTest(unittest.TestCase):
         return root
 
     def _run(self, root, args, mv_ok=True):
-        # stale last-commit (well beyond DEAD_DAYS) so the absent-file plan is dead
+        # stale last-commit (well beyond DEAD_DAYS) so the absent-file plan is dead.
+        # run() now reads the batched paths_last_commit_dates map (#391); mock its
+        # .get to return the stale date for every doc (path_last_commit_date is the
+        # fallback path, mocked too).
+        stale = datetime(2026, 1, 1)
+        batched = mock.MagicMock()
+        batched.get.return_value = stale
         with mock.patch("commands.plan_status.git_state.path_last_commit_date",
-                        return_value=datetime(2026, 1, 1)), \
+                        return_value=stale), \
+             mock.patch("commands.plan_status.git_state.paths_last_commit_dates",
+                        return_value=batched), \
              mock.patch("commands.plan_status.Path.cwd", return_value=root), \
              mock.patch("commands.plan_status.git_state.git_mv",
                         return_value=mv_ok) as mv, \
