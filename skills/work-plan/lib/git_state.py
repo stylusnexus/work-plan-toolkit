@@ -254,6 +254,92 @@ def paths_last_commit_date(rel_paths, repo_path: Path) -> Optional[datetime]:
         return None
 
 
+# A `%cI` commit line ("2026-06-19T10:00:00-07:00") vs a path line, so the
+# batched walk below can tell which is which without a sentinel (plan/spec doc
+# paths never look like an ISO timestamp).
+_ISO_DT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+
+def _is_inrepo_rel(p: str) -> bool:
+    """True if `p` is a repo-relative path that stays inside the repo — safe to
+    pass to `git log -- <p>`. Rejects empty, absolute (`/…`), home (`~…`),
+    backslash, and any `..` that escapes the root (a foreign plan's off-tree
+    declared path). git would exit 128 on those, poisoning the batch."""
+    if not p or p[0] in "/~" or "\\" in p:
+        return False
+    depth = 0
+    for part in p.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            depth -= 1
+            if depth < 0:
+                return False
+        else:
+            depth += 1
+    return True
+
+
+def paths_last_commit_dates(rel_paths, repo_path: Path) -> dict:
+    """Most-recent commit datetime touching EACH of `rel_paths`, in a SINGLE
+    `git log` walk (#391) — vs one `path_last_commit_date` subprocess per path,
+    whose spawn overhead makes a many-doc scan O(docs) in process startups.
+
+    Returns {rel_path: datetime} for paths with at least one commit; a path
+    never committed is omitted. `git log` walks newest-first, so the first
+    commit that touches a path is its last touch. Never raises (None/bad-repo/
+    git-error all yield the partial-or-empty map).
+    """
+    out: dict = {}
+    if not rel_paths or not repo_path or not Path(repo_path).exists():
+        return out
+    # Drop off-tree paths (absolute, ~, ..-escape) BEFORE the git call: an
+    # out-of-repo pathspec makes `git log -- <…>` exit 128, which would poison
+    # the WHOLE chunk and silently lose every other path in it. Such paths can't
+    # have a commit in this repo anyway, so omitting them is correct (#391).
+    paths = [p for p in dict.fromkeys(rel_paths) if _is_inrepo_rel(p)]
+    if not paths:
+        return out
+    # Chunk the pathspec so a many-doc repo (1000s of declared paths) can't blow
+    # past the OS arg-length limit; each chunk is one `git log` walk.
+    for i in range(0, len(paths), _BATCH_CHUNK):
+        _collect_last_dates(paths[i:i + _BATCH_CHUNK], repo_path, out)
+    return out
+
+
+_BATCH_CHUNK = 400
+
+
+def _collect_last_dates(paths, repo_path, out: dict) -> None:
+    """One `git log --name-only` walk over `paths`; record each path's newest
+    commit datetime into `out`. core.quotePath=false → non-ASCII paths print raw
+    so they match the rel strings exactly."""
+    remaining = set(paths)
+    proc = _git(repo_path, "-c", "core.quotePath=false",
+                "log", "--format=%cI", "--name-only", "--", *paths)
+    if proc is None or proc.returncode != 0:
+        return
+    cur = None
+    for line in proc.stdout.splitlines():
+        if not line:
+            continue
+        if _ISO_DT_RE.match(line):
+            cur = line
+            continue
+        if cur and line in remaining:
+            try:
+                # %cI carries a numeric tz offset (often negative, e.g. -07:00).
+                # Parse it, then drop tzinfo for a consistent NAIVE datetime — so
+                # callers can compare/max() across paths (a +offset and a -offset
+                # mix would otherwise be aware-vs-naive). .date() is unchanged.
+                out[line] = datetime.fromisoformat(cur).replace(tzinfo=None)
+            except ValueError:
+                pass
+            remaining.discard(line)
+            if not remaining:
+                break
+
+
 def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
     """True if `rel_path` has any commit on/around `since` or later (a datetime.date).
 
