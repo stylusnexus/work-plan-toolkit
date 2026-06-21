@@ -6,7 +6,7 @@ Manifest-less (prose) docs are flagged 👻 for the Phase 1b LLM pass.
 """
 import json
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from lib import config as config_mod
@@ -120,13 +120,41 @@ def _declared_paths_on_disk(decls, repo_root) -> list:
     return out
 
 
-def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
+def _committed_since_from_map(last_dates, plan_date, repo_root):
+    """`committed_since(rel)` served from the batched date map (#391), mirroring
+    manifest.score_manifest's default: with no plan date, degrade to a filesystem
+    existence check; otherwise "committed on/after plan_date" is `last-commit-date
+    >= plan_date - 1 day` (the same 1-day window `path_committed_since` widens to,
+    so same-day Modify commits still count)."""
+    if plan_date is None:
+        return lambda rel: (Path(repo_root) / rel).exists()
+    cutoff = plan_date - timedelta(days=1)
+
+    def committed_since(rel):
+        dt = last_dates.get(rel)
+        return dt is not None and dt.date() >= cutoff
+
+    return committed_since
+
+
+def _evaluate(doc, repo_root, today, dead_days, stall_days, last_dates=None) -> dict:
     text = _read(doc.path)
     decls = manifest.parse_declared_paths(text)
     pdate = manifest.plan_date_from_filename(doc.path.name)
-    score = manifest.score_manifest(decls, repo_root, pdate)
+    # `last_dates` is the batched {path: datetime} map precomputed in run() (#391)
+    # over every doc rel AND every declared path — one chunked git walk for the
+    # whole repo. When present, serve score_manifest's per-Modify-path
+    # `committed_since` (the real O(n) cost — 1434 git spawns on CritForge), the
+    # doc's own last-commit date, and the partial-staleness clock from it: zero
+    # git spawns in this loop. When absent (direct callers / tests), fall back to
+    # the per-path git calls so behavior is unchanged.
+    cs = _committed_since_from_map(last_dates, pdate, repo_root) if last_dates is not None else None
+    score = manifest.score_manifest(decls, repo_root, pdate, committed_since=cs)
     done, total_chk = manifest.count_checkboxes(text)
-    last_dt = git_state.path_last_commit_date(doc.rel, repo_root)
+    if last_dates is not None:
+        last_dt = last_dates.get(doc.rel)
+    else:
+        last_dt = git_state.path_last_commit_date(doc.rel, repo_root)
     last_d = last_dt.date() if last_dt else None
     if decls and manifest.out_of_tree_ratio(decls, repo_root) >= verdict_mod.FOREIGN_RATIO:
         v = verdict_mod.Verdict(
@@ -151,7 +179,11 @@ def _evaluate(doc, repo_root, today, dead_days, stall_days) -> dict:
     if v.label == "partial":
         on_disk = _declared_paths_on_disk(decls, repo_root)
         if on_disk:
-            manifest_dt = git_state.paths_last_commit_date(on_disk, repo_root)
+            if last_dates is not None:
+                ds = [last_dates[p] for p in on_disk if p in last_dates]
+                manifest_dt = max(ds) if ds else None
+            else:
+                manifest_dt = git_state.paths_last_commit_date(on_disk, repo_root)
             if manifest_dt is None:
                 stalled = True  # present on disk but never committed
             else:
@@ -462,7 +494,22 @@ def run(args: list) -> int:
         docs = [d for d in docs if d.kind == type_filter]
 
     stall_days = _resolve_stall_days(flags)
-    rows = [_evaluate(d, repo_root, today, dead_days, stall_days) for d in docs]
+    # Batch EVERY git date the scan needs — each doc's own rel plus every declared
+    # path (Modify paths drive score_manifest's committed_since, the real O(n)
+    # cost) — into one chunked git walk (#391), instead of a subprocess per path.
+    # This is what hung the Plans view on large repos (CritForge: 391 docs +
+    # 1434 declared paths = ~1800 git spawns → ~40s, now a handful of walks).
+    batch_paths = set()
+    for d in docs:
+        batch_paths.add(d.rel)
+        try:
+            for dp in manifest.parse_declared_paths(_read(d.path)):
+                batch_paths.add(dp.path)
+        except OSError:
+            pass
+    last_dates = git_state.paths_last_commit_dates(sorted(batch_paths), repo_root)
+    rows = [_evaluate(d, repo_root, today, dead_days, stall_days, last_dates)
+            for d in docs]
 
     if flags.get("--llm"):
         if flags.get("--apply"):
