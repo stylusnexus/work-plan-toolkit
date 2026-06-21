@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.21+4cab67a — 2026-06-21 (#390)
+
+feat(plan-archive): archive a shipped plan — CLI + VS Code viewer
+
+Ships #387 — archive a plan/spec doc scored ✅ shipped into `archive/shipped/`, from the CLI and the VS Code viewer.
+
+## Changes
+- **CLI:** new `plan-archive --repo=<key> [--draft] [--yes] [--json] -- <rel>` (per-doc, history-preserving `git mv`; refuses non-shipped; skips collisions, never overwrites); `plan-status --archive-shipped [--include-lie-gap]` batch sweep; `plan-status --include-archived` read (tags archived docs in `--json`); new `lib/archive.py` move primitive; `reconcile_actions.archive_dest(kind=)` + `shipped_rows`; discovery `include_archived` pass; footer hint.
+- **VS Code viewer (extension 0.16.0):** right-click **Archive Plan…** (gated on a new `archivable` contextValue token so lie-gap + override-confirmed shipped docs qualify); repo **Archive shipped plans…** bulk action; collapsed **Archived (N)** folder per repo; repo "· N shipped" count; post-archive toast with **Show**; palette suppression.
+- **Docs:** README (both command tables + Plans view), SKILL.md, vscode/README.
+
+## Provenance
+Spec → UX review → Codex spec-review → 13-task TDD build → defect-scan (clean) → code review (fixed a `--yes` no-op). CLI 1184 tests, viewer 729 tests, typecheck + build clean.
+
+## Notes
+- `MIN_CLI_VERSION` unchanged (`2026.06.15`); archive degrades gracefully on older CLIs.
+- ⚠️ Manual VS Code F5 E2E not run pre-deploy (shipped on explicit authorization).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.19+9cf7cdc — 2026-06-19 (#385)
 
 fix(viewer): repo focus no longer hides other repos; repo-scope toggle + deps security (VS Code 0.15.0)
