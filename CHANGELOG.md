@@ -6,6 +6,30 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.21+1d0cb70 — 2026-06-21 (#397)
+
+perf(plan-status)+feat(viewer): batch git calls + multi-select archive
+
+Combined deploy: a perf hotfix for the Plans-view hang + multi-select batch archive.
+
+## Changes
+- **perf(plan-status): batch per-doc/per-path git calls (#391/#392)** — `plan-status` spawned ~1,800 `git` subprocesses on CritForge (one per doc + one per `Modify:` path) ≈ 40s, hanging the VS Code Plans view. Now one chunked `git log --name-only` walk (`paths_last_commit_dates`) serves the doc date, `committed_since`, and the staleness clock. **~40s → ~14s.** Verdicts unchanged; off-tree pathspecs filtered; back-compat fallback for direct callers.
+- **feat(viewer): multi-select batch archive (#393/#394)** — `canSelectMany` on the Plans tree; right-click a multi-selection → **Archive Plan…** archives every archivable (shipped/unverified) doc behind one confirm, one refresh per repo, summary toast. Single-select unchanged. New `archivableSelection()` helper.
+
+## Versions
+- VS Code extension: 0.16.0 → **0.17.0**.
+- npm: derives `2026.6.21` (already published today) → publish with `version_suffix=-1`.
+- MIN_CLI_VERSION unchanged (`2026.06.15`).
+
+## Tests
+- CLI 1,193 (9 new); viewer 732 (3 new); typecheck + production build clean.
+- Multi-select archive manually verified in a VSIX install.
+
+## Follow-ups filed
+- #395 (docs freshness — done), #396 (batch Acknowledge/Baseline for non-shipped plans), #388 (un-archive), #386 (manifest).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.06.21+4cab67a — 2026-06-21 (#390)
 
 feat(plan-archive): archive a shipped plan — CLI + VS Code viewer
