@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { isStalledForDisplay, planBucket, planDescription, ackKey, unregisteredTrackRepos,
-         BUCKET_META, BUCKET_RANK, LEGEND, isArchivable } from "./planModel.ts";
+         BUCKET_META, BUCKET_RANK, LEGEND, isArchivable, archivableSelection } from "./planModel.ts";
 import type { PlanBucket } from "./planModel.ts";
 import type { Export, PlanDoc, Track } from "./model.ts";
 
@@ -253,5 +253,38 @@ describe("isArchivable", () => {
   });
   test("an already-archived doc is not re-archivable", () => {
     assert.strictEqual(isArchivable(archDoc({ verdict: "shipped", archived: true })), false);
+  });
+});
+
+describe("archivableSelection (#393)", () => {
+  const docNode = (repoKey: string, over: Partial<PlanDoc>) =>
+    ({ kind: "doc", repoKey, doc: archDoc(over) });
+
+  test("keeps only archivable doc nodes", () => {
+    const sel = archivableSelection([
+      docNode("r1", { rel: "a.md", verdict: "shipped" }),
+      docNode("r1", { rel: "b.md", verdict: "partial" }),       // not shipped
+      docNode("r1", { rel: "c.md", verdict: "shipped", archived: true }), // already archived
+      { kind: "repo", repoKey: "r1" },                          // not a doc
+      { kind: "archived", repoKey: "r1" },                      // folder node
+    ]);
+    assert.deepStrictEqual(sel, [{ repoKey: "r1", rel: "a.md", lieGap: false }]);
+  });
+
+  test("carries lieGap + spans repos, deduped", () => {
+    const sel = archivableSelection([
+      docNode("r1", { rel: "a.md", verdict: "shipped", lie_gap: true }),
+      docNode("r2", { rel: "x.md", verdict: "shipped" }),
+      docNode("r1", { rel: "a.md", verdict: "shipped", lie_gap: true }), // dup
+    ]);
+    assert.deepStrictEqual(sel, [
+      { repoKey: "r1", rel: "a.md", lieGap: true },
+      { repoKey: "r2", rel: "x.md", lieGap: false },
+    ]);
+  });
+
+  test("empty / undefined selection → []", () => {
+    assert.deepStrictEqual(archivableSelection([]), []);
+    assert.deepStrictEqual(archivableSelection(undefined), []);
   });
 });

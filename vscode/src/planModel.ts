@@ -156,6 +156,37 @@ export function isArchivable(doc: PlanDoc): boolean {
   return doc.verdict === "shipped" && doc.archived !== true;
 }
 
+/** One archivable target distilled from a tree selection (#393). */
+export interface ArchiveTarget {
+  repoKey: string;
+  rel: string;
+  lieGap: boolean;
+}
+
+/** Filter a Plans-tree selection to the archivable doc nodes (#393) — the
+ *  multi-select batch-archive set. Non-doc nodes (repo / Archived folder /
+ *  message) and non-archivable docs are dropped, so a sloppy multi-select can't
+ *  archive something it shouldn't. Structural (not PlanNode-typed) to keep this
+ *  module vscode-free and unit-testable. Deduped by repoKey+rel. */
+export function archivableSelection(
+  nodes: Array<{ kind?: string; repoKey?: string; doc?: PlanDoc }> | undefined,
+): ArchiveTarget[] {
+  const seen = new Set<string>();
+  const out: ArchiveTarget[] = [];
+  for (const n of nodes ?? []) {
+    if (n?.kind !== "doc" || !n.repoKey || !n.doc || !isArchivable(n.doc)) {
+      continue;
+    }
+    const key = `${n.repoKey} ${n.doc.rel}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push({ repoKey: n.repoKey, rel: n.doc.rel, lieGap: n.doc.lie_gap === true });
+  }
+  return out;
+}
+
 /**
  * GitHub slugs that tracks reference but that have NO `repos:` config entry
  * (#288 follow-up). The Plans view scans by config folder key — a track-only
