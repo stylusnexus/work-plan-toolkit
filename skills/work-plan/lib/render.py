@@ -1,5 +1,7 @@
 """Compose terminal output strings."""
 
+from lib.blockers import blocker_display
+
 
 def time_aware_framing(gap_seconds: int, current_hour: int, handoff_today: bool = True) -> str:
     """Adapt framing to gap-since-last-activity + hour."""
@@ -66,7 +68,9 @@ def render_track_row(t: dict) -> str:
     if t["blockers"]:
         for b in t["blockers"]:
             reason = b.get("reason", "manually flagged")
-            lines.append(f"    Blocker:    #{b['number']} — {reason}")
+            # blocker_display: `#N` for an issue ref, the prose verbatim for a
+            # free-text blocker (a raw `#{number}` would print `#<sentence>`).
+            lines.append(f"    Blocker:    {blocker_display(b['number'])} — {reason}")
     else:
         lines.append("    Blockers:   none")
 

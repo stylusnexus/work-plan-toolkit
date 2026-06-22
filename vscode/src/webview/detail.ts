@@ -5,6 +5,7 @@
  */
 
 import type { Track, Issue, TrackPlan, IssueDep } from "../model.ts";
+import { blockerIssue } from "../model.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -156,9 +157,15 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }
   if (track.blockers.length === 0) {
     parts.push("None.");
   } else {
-    const chips = track.blockers.map(n => {
-      const title = lookupTitle(track, n);
-      const label = title !== "" ? `#${n} ${esc(title)}` : `#${n}`;
+    const chips = track.blockers.map(b => {
+      const num = blockerIssue(b);
+      if (num === null) {
+        // Free-text blocker — render the prose, escaped (it was previously
+        // spliced in raw as `#${b}`, garbling the chip and injecting HTML).
+        return `<span class="chip">⛔ ${esc(String(b))}</span>`;
+      }
+      const title = lookupTitle(track, num);
+      const label = title !== "" ? `#${num} ${esc(title)}` : `#${num}`;
       return `<span class="chip">⛔ ${label}</span>`;
     });
     parts.push(chips.join(" "));
@@ -308,8 +315,13 @@ function renderIssueRow(track: Track, issue: Issue): string {
   // Dep disclosure button (#257 B3): deduped blocked_by + all blocking.
   // Same-repo blocked_by numbers already in track.blockers are skipped — the
   // manual ⛔ chip already owns them. Cross-repo deps with the same number keep.
+  // Resolve blockers to issue numbers first: a string-form ref ("#5548") would
+  // never `===` the numeric dep.number, so a raw `.includes` would double-render.
+  const blockerNums = new Set(
+    track.blockers.map(blockerIssue).filter((n): n is number => n !== null),
+  );
   const dedupedBlockedBy = (issue.blocked_by ?? []).filter(dep =>
-    !(dep.repo === track.repo && track.blockers.includes(dep.number)),
+    !(dep.repo === track.repo && blockerNums.has(dep.number)),
   );
   const blockingDeps = issue.blocking ?? [];
   const hasDepEdges = dedupedBlockedBy.length > 0 || blockingDeps.length > 0;

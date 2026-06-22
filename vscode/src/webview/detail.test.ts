@@ -187,6 +187,21 @@ describe("renderDetail — blocker chips", () => {
     const html = renderDetail(platformHealth);
     assert.ok(html.includes("OAuth scopes"), `Expected OAuth scopes title:\n${html}`);
   });
+
+  it("renders a free-text blocker as escaped prose, not '#<sentence>'", () => {
+    const track: Track = {
+      ...platformHealth,
+      blockers: ["gated on the cost verdict <urgent> & needs #5548"],
+    };
+    const html = renderDetail(track);
+    // The prose shows as a chip…
+    assert.ok(html.includes("gated on the cost verdict"), html);
+    // …but never as a bogus "#<sentence>" issue ref…
+    assert.ok(!html.includes("#gated"), html);
+    // …and its angle brackets / ampersand are HTML-escaped (no raw injection).
+    assert.ok(!html.includes("<urgent>"), html);
+    assert.ok(html.includes("&lt;urgent&gt;"), html);
+  });
 });
 
 describe("renderDetail — next_up steps", () => {
@@ -1140,6 +1155,35 @@ describe("renderDetail — dep disclosure button (#257)", () => {
     );
     // The manual ⛔ blocker chip still renders (blockers section)
     assert.ok(html.includes("⛔"), `manual blocker chip must still render:\n${html}`);
+  });
+
+  it("a STRING-form blocker (\"#300\") still dedupes its same-repo blocked_by dep", () => {
+    // Regression: `blockers.includes(dep.number)` compared 300 (number) against
+    // "#300" (string) → false → the dep double-rendered. Must resolve refs first.
+    const track: Track = {
+      ...emptyTrack,
+      repo: "your-org/myproject",
+      blockers: ["#300"],
+      issues: [
+        {
+          number: 101,
+          title: "blocked-by already a manual (string-form) blocker",
+          state: "open",
+          assignee: "@bob",
+          milestone: null,
+          in_progress: false,
+          in_progress_label: false,
+          blocked_by: [{ number: 300, repo: "your-org/myproject", title: "manual blocker" }],
+          blocking: [],
+        },
+      ],
+      rollup: { open: 1, closed: 0 },
+    };
+    const html = renderDetail(track);
+    assert.ok(
+      !html.includes('data-depissue="101"'),
+      `string-form blocker must dedupe its same-repo blocked_by dep:\n${html}`,
+    );
   });
 
   it("cross-repo blocked_by dep with same number as a manual blocker is NOT deduped (kept)", () => {

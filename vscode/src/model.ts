@@ -58,6 +58,36 @@ export interface TrackPlan {
  * A single work-plan track with its associated issues.
  * `status` is a free string: active | in-progress | blocked | parked | shipped | abandoned.
  */
+/**
+ * A track blocker: either a tracked issue number, or a free-text note. The
+ * frontmatter `blockers:` list accepts both — `- 5550` / `- "#5550"` is an
+ * issue ref; `- "gated on the cost verdict…"` is prose. The CLI export emits
+ * them verbatim, so any consumer that treats a blocker as a number must funnel
+ * it through `blockerIssue` first (a raw `i_${b}` of a prose blocker detonates
+ * the Mermaid graph; an unescaped one injects HTML into the detail panel).
+ */
+export type Blocker = number | string;
+
+/**
+ * The issue number a blocker refers to, or null when it is free-text.
+ *
+ * Accepts a bare number, or a string that is ONLY an issue ref — `"5550"` or
+ * `"#5550"` (optional leading `#`, surrounding whitespace tolerated). A string
+ * with any other content is free-text and returns null: we deliberately do NOT
+ * parse an embedded `#5550` out of prose, because that number is often an active
+ * `next_up` item the author is describing, not the blocker itself.
+ */
+export function blockerIssue(b: Blocker): number | null {
+  if (typeof b === "number") return Number.isInteger(b) ? b : null;
+  const m = /^\s*#?(\d+)\s*$/.exec(b);
+  if (m === null) return null;
+  const n = Number(m[1]);
+  // Reject leading-zero ("007") and overflow (>MAX_SAFE_INTEGER) digit strings:
+  // neither is a real GitHub issue number, so treat them as free-text rather
+  // than emit a bogus ref. The round-trip `String(n) === m[1]` catches both.
+  return Number.isSafeInteger(n) && String(n) === m[1] ? n : null;
+}
+
 export interface Track {
   name: string;
   repo: string;
@@ -79,8 +109,9 @@ export interface Track {
   milestone_alignment: string | null;
   /** "PUBLIC" | "PRIVATE" | null (best-effort). */
   visibility: "PUBLIC" | "PRIVATE" | null;
-  /** Issue numbers that are blocking this track. */
-  blockers: number[];
+  /** Track blockers. Usually issue numbers, but the frontmatter also accepts a
+   *  free-text note (e.g. "gated on the cost go/no-go verdict") — see Blocker. */
+  blockers: Blocker[];
   /** Issue numbers queued as next-up. */
   next_up: number[];
   /**
@@ -252,7 +283,10 @@ export function trackedIssueNumbers(exp: Export, repo: string): number[] {
     if (t.repo !== repo) continue;
     for (const i of t.issues) nums.add(i.number);
     for (const n of t.next_up) nums.add(n);
-    for (const n of t.blockers) nums.add(n);
+    for (const b of t.blockers) {
+      const num = blockerIssue(b);
+      if (num !== null) nums.add(num);
+    }
   }
   return [...nums];
 }
