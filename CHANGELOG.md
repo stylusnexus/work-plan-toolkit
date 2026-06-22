@@ -6,6 +6,29 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.22+f62c4cc — 2026-06-22 (#401)
+
+fix: free-text track blockers (graph bomb + brief relay)
+
+Ships the free-text-blocker fix to production (VS Code extension **0.17.1** + CLI).
+
+A `blockers:` frontmatter entry can be a free-text note, not just an issue number (surfaced on the CritForge `gpt-5-4-upgrades` track). `Track.blockers` was typed `number[]`, so consumers spliced the raw string into numeric positions.
+
+### Fixed
+- **VS Code dependency graph** — a prose blocker was spliced into a Mermaid node id (`i_<prose>`) → "Syntax error in text" across the whole graph pane. Free-text blockers now drop from graph edges (the track still shows ⛔ blocked); pure-`#N`/numeric blockers still draw edges.
+- **Detail panel** — free-text blockers render as an escaped chip (was an unescaped `#<sentence>`, an HTML-injection hole); a string-form ref like `"#5548"` now dedupes correctly against its same-repo blocked-by edge (was double-rendering).
+- **Sidebar badge** — shows `⛔ blocked` for a free-text-only blocker instead of the whole sentence.
+- **`brief` / `orient` relay (CLI)** — print a free-text blocker as prose, not `#<sentence>`; the next-up gate now excludes string-form refs correctly.
+
+### How
+`Blocker = number | string` + a shared `blockerIssue()` (TS) / `lib/blockers.py` (Python) normalizer. A bare number / `"5550"` / `"#5550"` resolves to an issue ref; any other string is free-text (an embedded `#5550` in prose is deliberately NOT parsed — it's often an active next_up item). Leading-zero and overflow digit strings are rejected.
+
+### Verification
+VS Code 750 tests + tsc + production build clean; CLI 1200 Python tests. PR #400 (the dev merge) passed the full matrix.
+
+### Docs
+`vscode/package.json` → 0.17.1, `vscode/README.md` Status line, root README blockers note. agent-plugins catalog repin follows post-tag.
+
 ## 2026.06.21+1d0cb70 — 2026-06-21 (#397)
 
 perf(plan-status)+feat(viewer): batch git calls + multi-select archive
