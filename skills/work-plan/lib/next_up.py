@@ -40,6 +40,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Iterable, Optional
 
+from lib.blockers import blocker_issue
 from lib.github_state import extract_priority, short_milestone
 
 PRIORITY_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -151,7 +152,10 @@ def suggest_next_up(
         List of issue numbers, highest-ranked first. Empty if nothing
         qualifies (e.g., everything closed or blocked).
     """
-    blockers = set(blocker_nums or [])
+    # Normalize blockers to issue numbers: a string-form ref ("5550"/"#5550")
+    # must still exclude issue 5550, and a free-text blocker resolves to None
+    # (dropped) so it harmlessly gates nothing.
+    blockers = {n for n in (blocker_issue(b) for b in (blocker_nums or [])) if n is not None}
     in_progress = set(in_progress_nums or [])
     # Resolve order: None → default preset; unknown names in list → skipped.
     effective_order = order if order is not None else PRESETS[DEFAULT_PRESET]
