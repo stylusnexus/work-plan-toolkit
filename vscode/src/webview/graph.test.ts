@@ -1142,3 +1142,84 @@ describe("toMermaid — blocked-by graph edges (#257)", () => {
     assert.ok(!mmd.includes("--x"), mmd);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Free-text blockers must not detonate the graph (the CritForge bomb)
+// ---------------------------------------------------------------------------
+//
+// `blockers:` accepts prose, not just issue numbers. A prose entry was being
+// spliced raw into a node id (`i_${b}`), producing a line like
+//   i_#5550 selective routing is gated ... (dev→main deploy) -->|blocks| t_x
+// which Mermaid rejects with "Syntax error in text" — a cosmetic DoS of the
+// whole graph pane. A pure "#5550"/"5550" blocker must still draw a real edge.
+
+const PROSE_BLOCKER =
+  "#5550 selective routing is gated on the cost go/no-go verdict, " +
+  "which needs #5548 telemetry on PROD (dev→main deploy) + data accumulation";
+
+const freeTextBlockerExp: Export = {
+  schema: 1,
+  generated_at: "2026-06-20T00:00:00Z",
+  tracks: [
+    {
+      name: "gpt-5-4-upgrades",
+      repo: "stylusnexus/CritForge",
+      tier: "private",
+      status: "active",
+      launch_priority: "P0",
+      milestone_alignment: "v1.0.0",
+      visibility: "PRIVATE",
+      blockers: [PROSE_BLOCKER, "#5548", 4773],
+      next_up: [5554, 5550],
+      rollup: { open: 6, closed: 0 },
+      issues: [
+        { number: 4773, title: "zero entity loss weight", state: "open", assignee: "@x", milestone: null },
+        { number: 5548, title: "tag $ai_content_type",    state: "open", assignee: "@x", milestone: null },
+        { number: 5554, title: "maps cost-telemetry",      state: "open", assignee: "@x", milestone: null },
+        { number: 5550, title: "selective routing",        state: "open", assignee: "@x", milestone: null },
+      ],
+    },
+  ],
+};
+
+describe("toMermaid — free-text blockers (#bomb)", () => {
+  for (const mode of ["full", "focused"] as const) {
+    const render = () =>
+      mode === "focused"
+        ? toMermaid(freeTextBlockerExp, "gpt-5-4-upgrades", { focus: true })
+        : toMermaid(freeTextBlockerExp);
+
+    it(`${mode}: the prose blocker never reaches the output`, () => {
+      const mmd = render();
+      assert.ok(!mmd.includes("selective routing is gated"), mmd);
+      assert.ok(!mmd.includes("i_#"), mmd);
+    });
+
+    it(`${mode}: every statement-leading i_ id is a well-formed i_<number>`, () => {
+      // The bug produced a statement `  i_#5550 selective routing ...`: an `i_`
+      // in node-id position followed by `#`/prose instead of a number. A valid
+      // id is `i_<number>` followed by `(` (node def) or whitespace (edge).
+      // (Anchored to line start so an `i_` inside a label — e.g. the title
+      // "$ai_content_type" — doesn't trip the check.)
+      const mmd = render();
+      for (const line of mmd.split("\n")) {
+        if (!/^\s*i_/.test(line)) continue;
+        assert.ok(/^\s*i_\d+(\(|\s)/.test(line), `malformed issue node statement: "${line}"`);
+      }
+    });
+
+    it(`${mode}: the pure "#5548" and numeric 4773 blockers still draw edges`, () => {
+      const mmd = render();
+      assert.ok(mmd.includes("i_5548 -->|blocks| t_gpt_5_4_upgrades"), mmd);
+      assert.ok(mmd.includes("i_4773 -->|blocks| t_gpt_5_4_upgrades"), mmd);
+    });
+
+    it(`${mode}: the track is still visibly blocked (⛔ marker survives)`, () => {
+      // The free-text blocker is a real blocker — statusCategory keys on
+      // blockers.length, so the ⛔ glyph + blocked class must still render.
+      const mmd = render();
+      assert.ok(mmd.includes("⛔ gpt-5-4-upgrades"), mmd);
+      assert.ok(mmd.includes("class t_gpt_5_4_upgrades blocked"), mmd);
+    });
+  }
+});

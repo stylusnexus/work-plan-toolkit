@@ -5,6 +5,7 @@
  */
 
 import type { Export, Track, Issue } from "../model.ts";
+import { blockerIssue } from "../model.ts";
 import { statusCategory } from "../treeModel.ts";
 
 // ---------------------------------------------------------------------------
@@ -99,8 +100,11 @@ function _toMermaidFull(exp: Export, selectedTrack: string | undefined, dark: bo
   // Collect issue numbers referenced as blocker or next_up (in insertion order).
   const referencedIssues = new Map<number, true>();
   for (const track of exp.tracks) {
-    for (const n of track.blockers) {
-      referencedIssues.set(n, true);
+    for (const b of track.blockers) {
+      // Free-text blockers aren't issue nodes — skip them (a raw `i_${b}` of a
+      // prose blocker is the Mermaid "Syntax error in text" bomb).
+      const num = blockerIssue(b);
+      if (num !== null) referencedIssues.set(num, true);
     }
     for (const n of track.next_up) {
       referencedIssues.set(n, true);
@@ -138,14 +142,16 @@ function _toMermaidFull(exp: Export, selectedTrack: string | undefined, dark: bo
 
     // blocks edges: i_<b> -->|blocks| t_<track>
     for (const b of track.blockers) {
-      lines.push(`  i_${b} -->|blocks| ${tid}`);
+      const num = blockerIssue(b);
+      if (num === null) continue; // free-text blocker — not a graph edge
+      lines.push(`  i_${num} -->|blocks| ${tid}`);
 
       // owns (cross-track): if issue b is owned by another track O, emit
       //   t_<O> -->|owns #<b>| t_<track>
-      const ownerName = issueOwner.get(b);
+      const ownerName = issueOwner.get(num);
       if (ownerName !== undefined && ownerName !== track.name) {
         const ownerId = tids.get(ownerName)!;
-        lines.push(`  ${ownerId} -->|owns #${b}| ${tid}`);
+        lines.push(`  ${ownerId} -->|owns #${num}| ${tid}`);
       }
     }
 
@@ -235,7 +241,9 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   //   - tracks that T explicitly depends_on, and tracks that depend_on T (#102).
   const includedTrackNames = new Set<string>([t.name]);
   for (const b of t.blockers) {
-    const ownerName = issueOwner.get(b);
+    const num = blockerIssue(b);
+    if (num === null) continue; // free-text blocker owns no track
+    const ownerName = issueOwner.get(num);
     if (ownerName !== undefined && ownerName !== t.name) {
       includedTrackNames.add(ownerName);
     }
@@ -256,7 +264,8 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   //   - T's blockers and T's next_up (in that order, deduped, preserving insertion order).
   const includedIssues = new Map<number, true>();
   for (const b of t.blockers) {
-    includedIssues.set(b, true);
+    const num = blockerIssue(b);
+    if (num !== null) includedIssues.set(num, true);
   }
   for (const n of t.next_up) {
     includedIssues.set(n, true);
@@ -291,12 +300,14 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
 
   // blocks edges from T's blockers → T
   for (const b of t.blockers) {
-    lines.push(`  i_${b} -->|blocks| ${tid}`);
+    const num = blockerIssue(b);
+    if (num === null) continue; // free-text blocker — not a graph edge
+    lines.push(`  i_${num} -->|blocks| ${tid}`);
     // owns edge from owning track → T
-    const ownerName = issueOwner.get(b);
+    const ownerName = issueOwner.get(num);
     if (ownerName !== undefined && ownerName !== t.name) {
       const ownerId = tids.get(ownerName)!;
-      lines.push(`  ${ownerId} -->|owns #${b}| ${tid}`);
+      lines.push(`  ${ownerId} -->|owns #${num}| ${tid}`);
     }
   }
 
