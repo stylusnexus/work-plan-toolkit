@@ -115,6 +115,8 @@ flowchart TB
 
 > **`brief` and `orient` annotate blocked issues with `⊘ blocked by #N`** — read-only, surfaced from GitHub's native dependency edges, nothing is written back. Cross-repo blockers show as `owner/repo#N`; same-repo duplicates of manually-declared blockers are deduplicated.
 
+> **A manual `blockers:` entry can be a free-text note, not just an issue number.** Normally a blocker is an issue number (`- 5550` or `- "#5550"`), which the VS Code dependency graph draws as a `blocks` edge. But it can also be prose (e.g. `- "gated on the cost go/no-go verdict"`) for when the blocker isn't a single issue. Free-text blockers still mark the track blocked and render as prose in `brief`/`orient` and the detail panel — but they don't draw a graph edge, so prefer an issue number when there is one.
+
 > **GitHub access is read-only by default, with three explicit, opt-in write actions.** Issue *data* always comes from read-only `gh` calls (`gh issue list`, `gh issue view`), and every routine write (frontmatter, status table, session log) goes to your local markdown files only. The three GitHub-*mutating* actions are all opt-in and gated: `plan-status --issues` **creates** a GitHub issue per partial plan (`gh issue create`, prompts before opening); `close-issue` (#305) **closes** an issue via `gh issue close` — for the common case where a PR merged to `dev` left its issue OPEN (GitHub auto-closes only from the default branch), with the VS Code viewer firing a mandatory "Close on GitHub? — cannot be undone" modal on every close; and `in-progress` (#271) **adds or removes** the `work-plan:in-progress` label on an issue, public-repo gated via the confirm-token flow. Nothing else touches GitHub state.
 
 ## Shared tracks
