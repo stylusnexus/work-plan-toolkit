@@ -173,6 +173,16 @@ describe("trackHint", () => {
     const track = makeTrack({ blockers: [100], next_up: [200] });
     assert.equal(trackHint(track), "⛔ #100");
   });
+
+  test("a free-text-only blocker → bare '⛔ blocked' (no prose in the label)", () => {
+    const track = makeTrack({ blockers: ["gated on the cost go/no-go verdict"], next_up: [200] });
+    assert.equal(trackHint(track), "⛔ blocked");
+  });
+
+  test("skips a leading free-text blocker to show the first real issue ref", () => {
+    const track = makeTrack({ blockers: ["waiting on review", "#321"], next_up: [200] });
+    assert.equal(trackHint(track), "⛔ #321");
+  });
 });
 
 // ---------------------------------------------------------------------------

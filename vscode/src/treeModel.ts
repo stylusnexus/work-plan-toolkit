@@ -1,4 +1,5 @@
 import type { Export, Issue, Track, TierDuplicate } from "./model.ts";
+import { blockerIssue } from "./model.ts";
 import type { SuggestionEntry } from "./suggestions.ts";
 
 // ---------------------------------------------------------------------------
@@ -240,7 +241,11 @@ export function statusCategory(track: Track): StatusCategory {
  */
 export function trackHint(track: Track): string | null {
   if (track.blockers.length > 0) {
-    return `⛔ #${track.blockers[0]}`;
+    // Prefer the first blocker that's a real issue ref; a free-text blocker has
+    // no number to show, so fall back to a bare "⛔ blocked" rather than
+    // splicing a whole prose sentence into the sidebar label.
+    const firstIssue = track.blockers.map(blockerIssue).find(n => n !== null);
+    return firstIssue != null ? `⛔ #${firstIssue}` : "⛔ blocked";
   }
   if (track.next_up.length > 0) {
     return `→ #${track.next_up[0]}`;

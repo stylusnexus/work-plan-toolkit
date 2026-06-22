@@ -6,6 +6,7 @@ import {
   completionRatio,
   trackedIssueNumbers,
   collectMilestones,
+  blockerIssue,
   SCHEMA_VERSION,
 } from "./model.ts";
 import type { Issue, Track, Export } from "./model.ts";
@@ -138,6 +139,58 @@ describe("trackedIssueNumbers", () => {
     const t1 = makeTrack({ repo: "o/r", issues: [makeIssue({ number: 7 })], next_up: [7] });
     const t2 = makeTrack({ name: "b", repo: "o/r", blockers: [7] });
     assert.deepEqual(trackedIssueNumbers(exp([t1, t2]), "o/r"), [7]);
+  });
+
+  test("a free-text blocker contributes no issue number to the exclude set", () => {
+    // Otherwise the whole sentence lands in a Set<number> and pollutes the
+    // `gh --exclude` list; a pure "#5550" ref still counts.
+    const t = makeTrack({
+      repo: "o/r",
+      issues: [makeIssue({ number: 12 })],
+      blockers: ["#34", "gated on the cost go/no-go verdict (#5548 telemetry)"],
+    });
+    assert.deepEqual(trackedIssueNumbers(exp([t]), "o/r").sort((a, b) => a - b), [12, 34]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// blockerIssue — the issue-ref / free-text normalizer
+// ---------------------------------------------------------------------------
+
+describe("blockerIssue", () => {
+  test("a bare number is its own issue ref", () => {
+    assert.equal(blockerIssue(5550), 5550);
+  });
+
+  test('pure ID strings resolve — "5550" and "#5550", whitespace-tolerant', () => {
+    assert.equal(blockerIssue("5550"), 5550);
+    assert.equal(blockerIssue("#5550"), 5550);
+    assert.equal(blockerIssue("  #5550 "), 5550);
+  });
+
+  test("prose is free-text (null) — even when it embeds a #ref", () => {
+    // We must NOT extract 5550 here: it's an active next_up item the author is
+    // describing, not the blocker itself.
+    assert.equal(
+      blockerIssue("#5550 selective routing is gated on the verdict, needs #5548"),
+      null,
+    );
+    assert.equal(blockerIssue("waiting on design review"), null);
+  });
+
+  test("non-integer / empty edge cases are free-text", () => {
+    assert.equal(blockerIssue(""), null);
+    assert.equal(blockerIssue("#"), null);
+    assert.equal(blockerIssue(3.5), null);
+  });
+
+  test("leading-zero and overflow digit strings are free-text, not bogus refs", () => {
+    // "007" would Number()→7 (wrong issue); a 20-digit paste exceeds
+    // MAX_SAFE_INTEGER and rounds. Neither is a real GitHub issue number.
+    assert.equal(blockerIssue("007"), null);
+    assert.equal(blockerIssue("99999999999999999999"), null);
+    // …but a normal ref is unaffected.
+    assert.equal(blockerIssue("#5550"), 5550);
   });
 });
 
