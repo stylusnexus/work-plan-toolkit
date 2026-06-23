@@ -29,6 +29,9 @@ class ArchiveTest(unittest.TestCase):
         # run() now reads the batched paths_last_commit_dates map (#391); mock its
         # .get to return the stale date for every doc (path_last_commit_date is the
         # fallback path, mocked too).
+        #
+        # _archive_dead now routes through archive_lib.move_to_archive, so patch
+        # is_tracked + git_mv on lib.archive.git_state (not plan_status.git_state).
         stale = datetime(2026, 1, 1)
         batched = mock.MagicMock()
         batched.get.return_value = stale
@@ -37,7 +40,8 @@ class ArchiveTest(unittest.TestCase):
              mock.patch("commands.plan_status.git_state.paths_last_commit_dates",
                         return_value=batched), \
              mock.patch("commands.plan_status.Path.cwd", return_value=root), \
-             mock.patch("commands.plan_status.git_state.git_mv",
+             mock.patch("lib.archive.git_state.is_tracked", return_value=True), \
+             mock.patch("lib.archive.git_state.git_mv",
                         return_value=mv_ok) as mv, \
              mock.patch("commands.plan_status.prompt_yes_no", return_value=True):
             buf = io.StringIO()
