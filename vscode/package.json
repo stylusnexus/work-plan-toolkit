@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -738,6 +738,11 @@
     "viewsWelcome": [
       {
         "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed == no-cli",
+        "contents": "work-plan CLI not found.\n\nThe Work Plan viewer drives a separate command-line tool, `work-plan`, which isn't on this machine's PATH. Installing the extension does not install the CLI — they're separate.\n\nIf you opened this folder in WSL or a remote (the window shows e.g. “WSL: …” at bottom-left), install the CLI in THAT environment, not on the host:\n\n`npm install -g @stylusnexus/work-plan`\n\n[Install instructions](https://github.com/stylusnexus/work-plan-toolkit#install)\n\nAlready installed it? (reload the window if you just did)\n[Retry](command:workPlan.checkGitHubAuth)"
+      },
+      {
+        "view": "workPlan.tree",
         "when": "workPlanGitHubAuthed == no-gh",
         "contents": "GitHub CLI not found.\n\nWork Plan reads issue state through the GitHub CLI (gh), which isn't installed or isn't on your PATH.\n\n[Install the GitHub CLI](command:workPlan.openGhInstallDocs)\n\nAlready installed it?\n[Retry](command:workPlan.checkGitHubAuth)"
       },
@@ -748,7 +753,7 @@
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanHasRepos == false",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanHasRepos == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
       }
     ],

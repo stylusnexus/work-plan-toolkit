@@ -576,7 +576,7 @@ describe("checkAuth", () => {
       stdout: JSON.stringify({ gh_present: true, authenticated: true, user: "eve", error: null }),
       stderr: "",
     });
-    assert.deepEqual(await checkAuth(run), { authenticated: true, ghPresent: true, user: "eve" });
+    assert.deepEqual(await checkAuth(run), { authenticated: true, cliPresent: true, ghPresent: true, user: "eve" });
   });
 
   test("gh present but not signed in → authenticated:false, ghPresent:true", async () => {
@@ -585,7 +585,7 @@ describe("checkAuth", () => {
       stdout: JSON.stringify({ gh_present: true, authenticated: false, user: null, error: "x" }),
       stderr: "",
     });
-    assert.deepEqual(await checkAuth(run), { authenticated: false, ghPresent: true, user: null });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: true, user: null });
   });
 
   test("gh not installed → ghPresent:false", async () => {
@@ -594,17 +594,31 @@ describe("checkAuth", () => {
       stdout: JSON.stringify({ gh_present: false, authenticated: false, user: null, error: "x" }),
       stderr: "",
     });
-    assert.deepEqual(await checkAuth(run), { authenticated: false, ghPresent: false, user: null });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: false, user: null });
   });
 
   test("unparseable output → conservative not-authenticated, gh present", async () => {
     const run = fakeRunner({ code: 0, stdout: "not json{{", stderr: "" });
-    assert.deepEqual(await checkAuth(run), { authenticated: false, ghPresent: true, user: null });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: true, user: null });
   });
 
   test("never throws on spawn failure", async () => {
     assert.deepEqual(await checkAuth(throwingRunner()), {
-      authenticated: false, ghPresent: true, user: null,
+      authenticated: false, cliPresent: true, ghPresent: true, user: null,
+    });
+  });
+
+  test("CLI not found (ENOENT) → cliPresent:false (#402, NOT a sign-in problem)", async () => {
+    // The work-plan binary isn't on PATH — makeSpawnRunner rejects with a
+    // CliError{notFound:true}. This must read as a missing CLI, not "not signed
+    // in to GitHub" (the bug that confused the Remote-WSL user in #402).
+    const run: CliRunner = () =>
+      Promise.reject(new CliError({
+        message: 'work-plan CLI not found at "work-plan"',
+        args: ["auth-status", "--json"], code: -1, stdout: "", stderr: "ENOENT", notFound: true,
+      }));
+    assert.deepEqual(await checkAuth(run), {
+      authenticated: false, cliPresent: false, ghPresent: false, user: null,
     });
   });
 });
