@@ -753,8 +753,18 @@
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanHasRepos == false",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError != true && workPlanConfigured == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError != true && workPlanConfigured == true && workPlanHasTracks == false",
+        "contents": "No tracks yet.\n\n[Refresh](command:workPlan.refresh)\n\nAdd issues to a track from the terminal with `work-plan slot`, or create a new track with `work-plan init-repo`."
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError == true",
+        "contents": "Couldn't load work plan.\n\n[Retry](command:workPlan.checkGitHubAuth)"
       }
     ],
     "configuration": {

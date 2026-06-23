@@ -457,11 +457,17 @@ export async function checkVersion(
  *   - `ghPresent` false ⇒ `gh` not installed. Install gh.
  *   - both true, `authenticated` false ⇒ genuinely not signed in. Run sign-in.
  *  When `cliPresent` is false, `ghPresent` is unknown (we never reached gh) and
- *  reported false so callers don't show a misleading gh-specific message. */
+ *  reported false so callers don't show a misleading gh-specific message.
+ *
+ *  `probeOk` signals whether the auth probe itself ran and returned a parseable,
+ *  authoritative answer (`true`), or whether the probe errored / couldn't be
+ *  trusted (`false` — transient). When `probeOk` is false the caller should keep
+ *  the last-good tree rather than switching to an onboarding banner. */
 export type AuthState = {
   authenticated: boolean;
   cliPresent: boolean;
   ghPresent: boolean;
+  probeOk: boolean;
   user: string | null;
 };
 
@@ -483,16 +489,21 @@ export async function checkAuth(run: CliRunner): Promise<AuthState> {
       authenticated: Boolean(blob.authenticated),
       cliPresent: true,
       ghPresent: blob.gh_present !== false, // default true unless explicitly false
+      probeOk: true,
       user: blob.user ?? null,
     };
   } catch (err) {
     // The work-plan binary wasn't found on PATH — distinct from a gh/auth
     // failure. ghPresent is unknown (we never reached gh) → false, but cliPresent
-    // false is what drives the message.
+    // false is what drives the message. This IS authoritative (CLI truly absent),
+    // so probeOk stays false (we got no parseable answer) but cliPresent:false
+    // tells the caller to show the install-the-CLI banner, not keep last-good.
     if (err instanceof CliError && err.notFound) {
-      return { authenticated: false, cliPresent: false, ghPresent: false, user: null };
+      return { authenticated: false, cliPresent: false, ghPresent: false, probeOk: false, user: null };
     }
-    return { authenticated: false, cliPresent: true, ghPresent: true, user: null };
+    // Spawn or parse error — transient (network blip, process killed, etc.).
+    // Mark probeOk:false so the caller can keep the last-good tree.
+    return { authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null };
   }
 }
 
