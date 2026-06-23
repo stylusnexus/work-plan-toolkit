@@ -187,6 +187,38 @@ export function archivableSelection(
   return out;
 }
 
+/** A generic doc node target distilled from a tree selection (#396). */
+export interface DocTarget {
+  repoKey: string;
+  rel: string;
+  doc: PlanDoc;
+}
+
+/** Filter a Plans-tree selection to doc nodes matching a predicate (#396) —
+ *  the shared foundation for batch Acknowledge, Acknowledge & Save, and Stamp
+ *  Baseline. Non-doc nodes and nodes that fail the predicate are dropped, so a
+ *  sloppy multi-select is safe. Deduped by repoKey+rel. Structural (not
+ *  PlanNode-typed) to keep this module vscode-free and unit-testable. */
+export function selectedDocNodes(
+  nodes: Array<{ kind?: string; repoKey?: string; doc?: PlanDoc }> | undefined,
+  predicate: (doc: PlanDoc) => boolean,
+): DocTarget[] {
+  const seen = new Set<string>();
+  const out: DocTarget[] = [];
+  for (const n of nodes ?? []) {
+    if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel || !predicate(n.doc)) {
+      continue;
+    }
+    const key = `${n.repoKey} ${n.doc.rel}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push({ repoKey: n.repoKey, rel: n.doc.rel, doc: n.doc });
+  }
+  return out;
+}
+
 /**
  * GitHub slugs that tracks reference but that have NO `repos:` config entry
  * (#288 follow-up). The Plans view scans by config folder key — a track-only
