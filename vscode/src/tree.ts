@@ -241,6 +241,16 @@ export class WorkPlanTreeProvider
    * the Tracks view shows a native progress bar while the CLI is running.
    * Errors propagate out of withProgress → out of this method → through
    * SingleFlight → to the refresh() caller.
+   *
+   * Three-state gate (#398):
+   *  1. CLI missing (cliPresent false) — authoritative; clear tree, no-cli banner.
+   *  2. Not authenticated:
+   *     a. Transient probe error (probeOk false) + last-good tree exists → keep tree.
+   *     b. Authoritative logged-out (probeOk true) OR no last-good → clear tree.
+   *  3. Authenticated — run export; keep last-good on load failure.
+   *
+   * viewsWelcome is driven off CONFIG state (repos present) not tracks.length, so a
+   * configured-but-empty user never sees "No repos yet" onboarding (#398).
    */
   private async _doRefresh(): Promise<void> {
     await vscode.window.withProgress(
@@ -248,28 +258,74 @@ export class WorkPlanTreeProvider
       async () => {
         // Probe GitHub auth FIRST (#auth). Without it, the export below returns
         // tracks with zeroed issues and unknown visibility — a misleading
-        // "empty but working" tree. When unauthenticated we suppress that tree
-        // and let the gated viewsWelcome banner explain the real problem.
+        // "empty but working" tree.
         const auth = await this.checkAuth();
         this._lastAuth = auth;
         this._setAuthContext(auth);
-        if (!auth.authenticated) {
+
+        // 1. CLI missing — authoritative "install the CLI" state. Clear tree.
+        if (!auth.cliPresent) {
           this.roots = [];
+          void vscode.commands.executeCommand("setContext", "workPlanLoadError", false);
           this._onDidChangeTreeData.fire();
           return;
         }
 
-        this.cache = await this.load();
+        // 2. Not authenticated.
+        if (!auth.authenticated) {
+          if (!auth.probeOk && this.cache !== null) {
+            // Transient probe error AND we have a last-good tree — keep it.
+            // Surface a subtle load-error indicator so the user knows the tree
+            // may be stale, but don't wipe it with an onboarding banner.
+            void vscode.commands.executeCommand("setContext", "workPlanLoadError", true);
+            this._onDidChangeTreeData.fire();
+            return;
+          }
+          // Authoritative not-signed-in (probeOk true), or no last-good tree.
+          // Clear the tree so the connect banner renders.
+          this.roots = [];
+          void vscode.commands.executeCommand("setContext", "workPlanLoadError", false);
+          this._onDidChangeTreeData.fire();
+          return;
+        }
+
+        // 3. Authenticated — load export.
+        let loaded: import("./model.ts").Export;
+        try {
+          loaded = await this.load();
+        } catch {
+          // Load failed (CLI error, parse failure, etc.).
+          if (this.cache !== null) {
+            // Keep last-good tree; surface load-error indicator.
+            void vscode.commands.executeCommand("setContext", "workPlanLoadError", true);
+            this._onDidChangeTreeData.fire();
+          } else {
+            // No last-good tree — show empty view with error context.
+            this.roots = [];
+            void vscode.commands.executeCommand("setContext", "workPlanLoadError", true);
+            this._onDidChangeTreeData.fire();
+          }
+          return;
+        }
+
+        this.cache = loaded;
+        void vscode.commands.executeCommand("setContext", "workPlanLoadError", false);
         this._filteredCache = applyLens(this.cache, this._activeLens);
         this.roots = this._applySortToRepos(
           mergeFetchedUntracked(buildTree(this._filteredCache), this._fetchedUntracked),
         );
         this._onDidChangeTreeData.fire();
-        // Drive viewsWelcome off the RAW (unfiltered) data so an active lens
-        // that hides everything doesn't incorrectly show "No repos yet."
+
+        // Drive viewsWelcome off CONFIG state (repos present OR tracks present)
+        // so a configured-but-empty user never sees "No repos yet" onboarding.
+        // Use the RAW (unfiltered) data so an active lens that hides everything
+        // doesn't incorrectly flip these flags.
+        const configured =
+          (this.cache.repos?.length ?? 0) > 0 || this.cache.tracks.length > 0;
+        void vscode.commands.executeCommand("setContext", "workPlanConfigured", configured);
         void vscode.commands.executeCommand(
           "setContext",
-          "workPlanHasRepos",
+          "workPlanHasTracks",
           this.cache.tracks.length > 0,
         );
       },
