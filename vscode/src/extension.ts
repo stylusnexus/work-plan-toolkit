@@ -639,6 +639,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (auth?.authenticated) {
         const who = auth.user ? ` as @${auth.user}` : "";
         vscode.window.showInformationMessage(`Work Plan: Signed in${who} — loading your tracks.`);
+      } else if (auth && !auth.cliPresent) {
+        vscode.window.showWarningMessage(
+          "Work Plan: work-plan CLI still not found — install it in the environment VS Code runs in (e.g. inside WSL), then Retry.",
+        );
       } else if (auth && !auth.ghPresent) {
         vscode.window.showWarningMessage(
           "Work Plan: GitHub CLI (gh) not found — install it, then Retry.",
@@ -3631,7 +3635,21 @@ let authToastShown = false;
 function maybeShowAuthToast(auth: AuthState | null): void {
   if (authToastShown || !auth || auth.authenticated) return;
   authToastShown = true;
-  if (!auth.ghPresent) {
+  if (!auth.cliPresent) {
+    // #402: the work-plan CLI itself wasn't found on the extension host's PATH
+    // (commonly Remote-WSL, where the host runs in WSL but the CLI was installed
+    // on Windows). This is NOT a GitHub-auth problem — point at the CLI install.
+    vscode.window
+      .showWarningMessage(
+        "Work Plan: the work-plan CLI wasn't found on this machine's PATH — install it (in the same environment VS Code runs in, e.g. inside WSL) with: npm install -g @stylusnexus/work-plan",
+        "Install instructions",
+      )
+      .then((c) => {
+        if (c === "Install instructions") {
+          void vscode.env.openExternal(vscode.Uri.parse(TOOLKIT_URL));
+        }
+      }, () => { /* ignore */ });
+  } else if (!auth.ghPresent) {
     vscode.window
       .showWarningMessage(
         "Work Plan: GitHub CLI (gh) not found — issue data is unavailable.",
