@@ -58,6 +58,8 @@ A loading bar shows while the CLI fetch runs, and concurrent refreshes are coale
 2. **The CLI** (the extension drives it) — `npm install -g @stylusnexus/work-plan`, or any method in the [toolkit README](https://github.com/stylusnexus/work-plan-toolkit#install).
 3. If `work-plan` isn't on your editor's `PATH` (common when VS Code is opened from the Dock/Finder, not a terminal), set **`workPlan.cliPath`** to an absolute launcher path and reload the window.
 
+> **WSL / Remote-SSH / dev containers:** install the CLI **inside the remote**, not on your local machine. If the window shows **`WSL: <distro>`** (or a remote) at the bottom-left, the extension runs there and looks for `work-plan` / `gh` / `python3` / `yq` on the **remote** `PATH` — a Windows-native install is invisible to it. Run `npm install -g @stylusnexus/work-plan` in the WSL/remote terminal and reload the window. (`gh auth login` is also per-environment — sign in inside WSL so the WSL `gh` the extension reads is authenticated.)
+
 ## Requirements
 
 - The `work-plan` CLI must be on your `PATH` (or set `workPlan.cliPath`). The extension checks the CLI version at activation and points you at an update if it's too old to have the read/write surface it needs.

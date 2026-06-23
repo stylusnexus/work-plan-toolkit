@@ -28,6 +28,11 @@ export class CliError extends Error {
   readonly code: number;
   readonly stdout: string;
   readonly stderr: string;
+  /** True when the spawn failed with ENOENT — the `work-plan` binary itself
+   *  wasn't found on the extension host's PATH (a different fix than "not
+   *  signed in"; #402). Lets callers distinguish a missing CLI from a real
+   *  error without matching on the message string. */
+  readonly notFound: boolean;
 
   constructor(opts: {
     message: string;
@@ -35,6 +40,7 @@ export class CliError extends Error {
     code: number;
     stdout: string;
     stderr: string;
+    notFound?: boolean;
   }) {
     super(opts.message);
     this.name = "CliError";
@@ -42,6 +48,7 @@ export class CliError extends Error {
     this.code = opts.code;
     this.stdout = opts.stdout;
     this.stderr = opts.stderr;
+    this.notFound = opts.notFound ?? false;
   }
 }
 
@@ -106,6 +113,7 @@ export function makeSpawnRunner(cliPath: string): CliRunner {
               code: -1,
               stdout,
               stderr: err.message,
+              notFound: true,
             })
           );
         } else {
@@ -441,10 +449,18 @@ export async function checkVersion(
 // GitHub auth probe (#auth) — fast-fail instead of silent degradation
 // ---------------------------------------------------------------------------
 
-/** Parsed `auth-status --json` result. `ghPresent` false ⇒ gh not installed
- *  (a different fix than "not signed in"); both leave `authenticated` false. */
+/** Parsed `auth-status --json` result. Three distinct "not authenticated"
+ *  causes, each with its own fix:
+ *   - `cliPresent` false ⇒ the `work-plan` CLI itself wasn't found on the
+ *     extension host's PATH (#402 — common in Remote-WSL when the CLI was
+ *     installed on Windows but the host runs in WSL). Install the CLI.
+ *   - `ghPresent` false ⇒ `gh` not installed. Install gh.
+ *   - both true, `authenticated` false ⇒ genuinely not signed in. Run sign-in.
+ *  When `cliPresent` is false, `ghPresent` is unknown (we never reached gh) and
+ *  reported false so callers don't show a misleading gh-specific message. */
 export type AuthState = {
   authenticated: boolean;
+  cliPresent: boolean;
   ghPresent: boolean;
   user: string | null;
 };
@@ -452,9 +468,10 @@ export type AuthState = {
 /**
  * Runs `auth-status --json` and reports whether `gh` is installed + signed in.
  * Never throws — auth detection must degrade gracefully, not break activation.
- * A spawn failure or unparseable output is treated as "gh present, not
- * authenticated" (the conservative state that surfaces the sign-in path) UNLESS
- * the CLI itself couldn't be found, which the caller already reports separately.
+ * An unparseable output is treated as "CLI + gh present, not authenticated" (the
+ * conservative state that surfaces the sign-in path). A spawn ENOENT (the CLI
+ * binary not on PATH — #402) is reported as `cliPresent:false` so the caller can
+ * surface "install the CLI" instead of a misleading "not signed in to GitHub".
  */
 export async function checkAuth(run: CliRunner): Promise<AuthState> {
   try {
@@ -464,11 +481,18 @@ export async function checkAuth(run: CliRunner): Promise<AuthState> {
     }>;
     return {
       authenticated: Boolean(blob.authenticated),
+      cliPresent: true,
       ghPresent: blob.gh_present !== false, // default true unless explicitly false
       user: blob.user ?? null,
     };
-  } catch {
-    return { authenticated: false, ghPresent: true, user: null };
+  } catch (err) {
+    // The work-plan binary wasn't found on PATH — distinct from a gh/auth
+    // failure. ghPresent is unknown (we never reached gh) → false, but cliPresent
+    // false is what drives the message.
+    if (err instanceof CliError && err.notFound) {
+      return { authenticated: false, cliPresent: false, ghPresent: false, user: null };
+    }
+    return { authenticated: false, cliPresent: true, ghPresent: true, user: null };
   }
 }
 

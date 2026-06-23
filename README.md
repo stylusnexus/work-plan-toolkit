@@ -314,6 +314,8 @@ Install it from either registry:
 
 The extension **shells out to the `work-plan` CLI**, so install the CLI too (npm or any method above). If `work-plan` isn't on your editor's `PATH` — common when VS Code is launched from the Dock/Finder rather than a terminal — set **`workPlan.cliPath`** in Settings to an absolute launcher path (e.g. `/path/to/work-plan-toolkit/bin/work-plan`, or the npm global bin), then reload the window. Extensions auto-update from the registry.
 
+> **Windows + WSL (and Remote-SSH / dev containers): install the CLI where the extension *runs*, not where you clicked.** When you open a folder in WSL — e.g. `code .` from a WSL shell, or **Reopen in WSL** (the window shows **`WSL: <distro>`** at the bottom-left) — VS Code runs the extension *inside WSL*, so it looks for `work-plan`, `gh`, `python3`, and `yq` on the **WSL** `PATH`. A CLI installed on **Windows-native** is invisible to it, and you'll see a **"work-plan CLI not found"** banner (or, on older builds, a misleading "Not signed in to GitHub" one) even though `gh` is signed in. Fix: open the **WSL** terminal and run `npm install -g @stylusnexus/work-plan` (plus `gh`, `python3`, `yq`) there, then **reload the window**. The same rule applies to Remote-SSH and dev containers — the CLI must live in the remote, not on your local machine. (`gh auth` is likewise per-environment: `gh auth login` inside WSL authenticates the WSL `gh`, which is what the extension reads.)
+
 Useful settings:
 
 | Setting | Default | What it does |

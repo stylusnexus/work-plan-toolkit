@@ -276,15 +276,19 @@ export class WorkPlanTreeProvider
     );
   }
 
-  /** Sets the tri-state `workPlanGitHubAuthed` context key that gates the
-   *  Tracks viewsWelcome banners: `true` (signed in), `false` (gh present, not
-   *  signed in), or `"no-gh"` (gh not installed — a different fix). */
+  /** Sets the `workPlanGitHubAuthed` context key that gates the Tracks
+   *  viewsWelcome banners: `true` (signed in), `false` (gh present, not signed
+   *  in), `"no-gh"` (gh not installed), or `"no-cli"` (the work-plan CLI itself
+   *  wasn't found on PATH — #402; the most common Remote-WSL failure). Order
+   *  matters: a missing CLI means we never reached gh, so check it first. */
   private _setAuthContext(auth: AuthState): void {
     const value: boolean | string = auth.authenticated
       ? true
-      : auth.ghPresent
-        ? false
-        : "no-gh";
+      : !auth.cliPresent
+        ? "no-cli"
+        : auth.ghPresent
+          ? false
+          : "no-gh";
     void vscode.commands.executeCommand("setContext", "workPlanGitHubAuthed", value);
   }
 
