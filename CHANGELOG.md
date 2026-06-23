@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.23+6dce5e4 — 2026-06-23 (#404)
+
+fix(vscode): distinguish missing CLI from "not signed in" (#402)
+
+VS Code extension **0.17.2**. CLI unchanged (npm publish skipped).
+
+### Fixed
+- **Misleading "Not signed in to GitHub" banner (#402).** In a Remote-WSL window (`code .` from WSL), the extension host runs inside WSL and spawns the `work-plan` CLI there. A CLI installed only on Windows ENOENTs, and `checkAuth` was swallowing that into a false "not signed in" state even though `gh` was authenticated. The viewer now distinguishes three causes — **missing CLI** (new "work-plan CLI not found — install it" banner, calling out the WSL/remote "install it where the host runs" gotcha), **gh not installed**, and **not signed in** — each with its own banner + activation toast + Retry message.
+
+### Docs
+- README + vscode/README: WSL / Remote-SSH / dev-container install guidance — the CLI (and `gh auth`) must live in the same environment as the extension host.
+
+### Internals
+- `CliError.notFound` flag (set on the ENOENT branch only); `AuthState.cliPresent`; a 4th `workPlanGitHubAuthed` context state `"no-cli"` (checked before gh).
+
+### Verification
+751 tests pass, tsc clean, production build clean. Code-reviewed (PR #403) — 0 critical/important findings; the 4-state banner machine partitions cleanly (exactly one banner per state).
+
+Commits since last deploy: `4f506e3` (#402 fix, via #403), `d2e8cad` (release prep).
+
 ## 2026.06.22+f62c4cc — 2026-06-22 (#401)
 
 fix: free-text track blockers (graph bomb + brief relay)
