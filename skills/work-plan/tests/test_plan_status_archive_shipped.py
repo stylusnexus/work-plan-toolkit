@@ -107,7 +107,9 @@ class ArchiveShippedBatchTest(unittest.TestCase):
         # to "no" on non-TTY stdin) and archive, mirroring per-doc plan-archive.
         with tempfile.TemporaryDirectory() as d:
             root = _repo_batch(d)
-            with mock.patch("commands.plan_status.archive_lib.git_state.git_mv",
+            with mock.patch("commands.plan_status.archive_lib.git_state.is_tracked",
+                            return_value=True), \
+                 mock.patch("commands.plan_status.archive_lib.git_state.git_mv",
                             return_value=True) as mv:
                 rc, out = _run(root, ["--archive-shipped", "--yes"])
             self.assertEqual(rc, 0)

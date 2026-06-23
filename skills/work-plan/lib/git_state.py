@@ -358,6 +358,18 @@ def path_committed_since(rel_path: str, since: date, repo_path: Path) -> bool:
     return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
 
 
+def is_tracked(rel_path: str, repo_path: Path) -> bool:
+    """True iff `rel_path` is tracked by git (git ls-files --error-unmatch).
+
+    False for untracked/gitignored paths AND when repo_path isn't a git repo
+    or doesn't exist. Never raises.
+    """
+    if not repo_path or not Path(repo_path).exists():
+        return False
+    proc = _git(repo_path, "ls-files", "--error-unmatch", rel_path)
+    return proc is not None and proc.returncode == 0
+
+
 def git_mv(src_rel: str, dst_rel: str, repo_path: Path) -> bool:
     """git-mv `src_rel` -> `dst_rel` (both repo-relative), creating the dest
     directory first. Returns True on success. History-preserving."""

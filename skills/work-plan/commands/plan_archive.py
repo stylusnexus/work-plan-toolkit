@@ -76,11 +76,16 @@ def run(args: list) -> int:
 
     outcome = archive_lib.move_to_archive(rel, repo_root, "shipped")
     if outcome is None:
-        print(f"ERROR: git mv failed for {rel}", file=sys.stderr)
+        print(f"ERROR: archive move failed for {rel}", file=sys.stderr)
         return 1
     if outcome == "skipped_collision":
         _emit(as_json, rel, "skipped_collision", dest,
               f"destination already exists: {dest} — skipped")
         return 0
-    _emit(as_json, rel, "archived", dest, f"✓ archived {rel} -> {dest}")
+    if outcome == "archived_local":
+        _emit(as_json, rel, "archived_local", dest,
+              f"✓ archived {rel} -> {dest} (moved on disk; not git-tracked)")
+        return 0
+    _emit(as_json, rel, "archived", dest,
+          f"✓ archived {rel} -> {dest} (staged rename — commit & push to share)")
     return 0

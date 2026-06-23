@@ -43,7 +43,9 @@ class PlanArchiveTest(unittest.TestCase):
     def test_archives_shipped_with_yes_json(self):
         with tempfile.TemporaryDirectory() as d:
             root = _repo(d, SHIPPED_BODY)
-            with mock.patch("commands.plan_archive.archive_lib.git_state.git_mv",
+            with mock.patch("commands.plan_archive.archive_lib.git_state.is_tracked",
+                            return_value=True), \
+                 mock.patch("commands.plan_archive.archive_lib.git_state.git_mv",
                             return_value=True) as mv:
                 rc, out = _run(root, ["--repo=x", "--yes", "--json",
                                       "--", "docs/plans/p.md"])

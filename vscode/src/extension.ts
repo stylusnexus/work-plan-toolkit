@@ -3335,7 +3335,13 @@ export function activate(context: vscode.ExtensionContext): void {
             if (result === "archived") {
               plansProvider.refresh(t.repoKey);
               if (await vscode.window.showInformationMessage(
-                `Work Plan: archived ${filename} → archive/shipped/`, "Show") === "Show") {
+                `Work Plan: archived ${filename} → archive/shipped/ (staged — commit & push to share)`, "Show") === "Show") {
+                await vscode.commands.executeCommand("workPlan.plans.focus");
+              }
+            } else if (result === "archived_local") {
+              plansProvider.refresh(t.repoKey);
+              if (await vscode.window.showInformationMessage(
+                `Work Plan: archived ${filename} → archive/shipped/ (moved on disk; not git-tracked)`, "Show") === "Show") {
                 await vscode.commands.executeCommand("workPlan.plans.focus");
               }
             } else if (result === "skipped_collision") {
@@ -3362,7 +3368,7 @@ export function activate(context: vscode.ExtensionContext): void {
           await withWriteProgress(`Work Plan: archiving ${targets.length} plan(s)…`, async () => {
             for (const t of targets) {
               const r = await archiveOne(t);
-              if (r === "archived") { archived++; } else { skipped++; }
+              if (r === "archived" || r === "archived_local") { archived++; } else { skipped++; }
             }
           });
           for (const repoKey of new Set(targets.map((t) => t.repoKey))) {

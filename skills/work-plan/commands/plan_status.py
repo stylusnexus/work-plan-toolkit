@@ -356,11 +356,14 @@ def _archive_dead(docs, rows, repo_root, draft: bool) -> int:
     moved = 0
     for r in dead:
         dest = reconcile_actions.archive_dest(r["rel"])
-        if git_state.git_mv(r["rel"], dest, repo_root):
+        outcome = archive_lib.move_to_archive(r["rel"], repo_root, "abandoned")
+        if outcome in ("archived", "archived_local"):
             moved += 1
-            print(f"  ✓ {r['rel']}")
+            suffix = " (moved on disk; not git-tracked)" if outcome == "archived_local" else ""
+            print(f"  ✓ {r['rel']}{suffix}")
         else:
-            print(f"  ✗ {r['rel']} (git mv failed)")
+            reason = "already exists at destination" if outcome == "skipped_collision" else "move failed"
+            print(f"  ✗ {r['rel']} ({reason})")
     print(f"Archived {moved}/{len(dead)}.")
     return 0
 
@@ -379,8 +382,9 @@ def _archive_shipped(rows, repo_root, draft, as_json, include_lie_gap, yes=False
             for r in targets:
                 outcome = archive_lib.move_to_archive(r["rel"], repo_root, "shipped")
                 dest = reconcile_actions.archive_dest(r["rel"], "shipped")
-                if outcome == "archived":
-                    archived.append({"rel": r["rel"], "dest": dest})
+                if outcome in ("archived", "archived_local"):
+                    archived.append({"rel": r["rel"], "dest": dest,
+                                     "outcome": outcome})
                 elif outcome == "skipped_collision":
                     skipped.append({"rel": r["rel"], "reason": "collision"})
         print(json.dumps({
@@ -413,10 +417,13 @@ def _archive_shipped(rows, repo_root, draft, as_json, include_lie_gap, yes=False
         outcome = archive_lib.move_to_archive(r["rel"], repo_root, "shipped")
         if outcome == "archived":
             archived += 1
-            print(f"  ✓ {r['rel']}")
+            print(f"  ✓ {r['rel']} (staged rename — commit & push to share)")
+        elif outcome == "archived_local":
+            archived += 1
+            print(f"  ✓ {r['rel']} (moved on disk; not git-tracked)")
         else:
             skipped += 1
-            print(f"  ✗ {r['rel']} ({outcome or 'git mv failed'})")
+            print(f"  ✗ {r['rel']} ({outcome or 'move failed'})")
     print(f"Archived {archived}, skipped {skipped}.")
     return 0
 
