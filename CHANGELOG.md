@@ -55,20 +55,20 @@ perf(plan-status)+feat(viewer): batch git calls + multi-select archive
 
 Combined deploy: a perf hotfix for the Plans-view hang + multi-select batch archive.
 
-## Changes
+### Changes
 - **perf(plan-status): batch per-doc/per-path git calls (#391/#392)** — `plan-status` spawned ~1,800 `git` subprocesses on CritForge (one per doc + one per `Modify:` path) ≈ 40s, hanging the VS Code Plans view. Now one chunked `git log --name-only` walk (`paths_last_commit_dates`) serves the doc date, `committed_since`, and the staleness clock. **~40s → ~14s.** Verdicts unchanged; off-tree pathspecs filtered; back-compat fallback for direct callers.
 - **feat(viewer): multi-select batch archive (#393/#394)** — `canSelectMany` on the Plans tree; right-click a multi-selection → **Archive Plan…** archives every archivable (shipped/unverified) doc behind one confirm, one refresh per repo, summary toast. Single-select unchanged. New `archivableSelection()` helper.
 
-## Versions
+### Versions
 - VS Code extension: 0.16.0 → **0.17.0**.
 - npm: derives `2026.6.21` (already published today) → publish with `version_suffix=-1`.
 - MIN_CLI_VERSION unchanged (`2026.06.15`).
 
-## Tests
+### Tests
 - CLI 1,193 (9 new); viewer 732 (3 new); typecheck + production build clean.
 - Multi-select archive manually verified in a VSIX install.
 
-## Follow-ups filed
+### Follow-ups filed
 - #395 (docs freshness — done), #396 (batch Acknowledge/Baseline for non-shipped plans), #388 (un-archive), #386 (manifest).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -79,15 +79,15 @@ feat(plan-archive): archive a shipped plan — CLI + VS Code viewer
 
 Ships #387 — archive a plan/spec doc scored ✅ shipped into `archive/shipped/`, from the CLI and the VS Code viewer.
 
-## Changes
+### Changes
 - **CLI:** new `plan-archive --repo=<key> [--draft] [--yes] [--json] -- <rel>` (per-doc, history-preserving `git mv`; refuses non-shipped; skips collisions, never overwrites); `plan-status --archive-shipped [--include-lie-gap]` batch sweep; `plan-status --include-archived` read (tags archived docs in `--json`); new `lib/archive.py` move primitive; `reconcile_actions.archive_dest(kind=)` + `shipped_rows`; discovery `include_archived` pass; footer hint.
 - **VS Code viewer (extension 0.16.0):** right-click **Archive Plan…** (gated on a new `archivable` contextValue token so lie-gap + override-confirmed shipped docs qualify); repo **Archive shipped plans…** bulk action; collapsed **Archived (N)** folder per repo; repo "· N shipped" count; post-archive toast with **Show**; palette suppression.
 - **Docs:** README (both command tables + Plans view), SKILL.md, vscode/README.
 
-## Provenance
+### Provenance
 Spec → UX review → Codex spec-review → 13-task TDD build → defect-scan (clean) → code review (fixed a `--yes` no-op). CLI 1184 tests, viewer 729 tests, typecheck + build clean.
 
-## Notes
+### Notes
 - `MIN_CLI_VERSION` unchanged (`2026.06.15`); archive degrades gracefully on older CLIs.
 - ⚠️ Manual VS Code F5 E2E not run pre-deploy (shipped on explicit authorization).
 
@@ -99,7 +99,7 @@ fix(viewer): repo focus no longer hides other repos; repo-scope toggle + deps se
 
 Production deploy. VS Code extension **0.15.0**; npm CLI republished from the stamped VERSION.
 
-## Viewer: repo-focus regression fixed (#383)
+### Viewer: repo-focus regression fixed (#383)
 A repo lens (including the #357 auto-focus, previously on by default) filtered the track list but forwarded the full configured-repos list, so every *other* repo was seeded with zero tracks and rendered as **"No tracks yet — add one"** — indistinguishable from a deleted repo. Opening one repo's folder made every other repo's tracks look gone.
 
 - `applyLens` now scopes the forwarded repos to the active lens; the tree's empty-state renders only for a repo genuinely empty in the raw export.
@@ -108,15 +108,15 @@ A repo lens (including the #357 auto-focus, previously on by default) filtered t
 - The per-repo `Repo: X` lens enumeration is replaced by a single state-aware **Select View** toggle — **Focus current repo** ↔ **Display all repos** — which also writes `workPlan.autoFocusRepo` so the default scope follows your last choice.
 - The "fetch open issues" toast now says "untracked open issues" (it excludes already-tracked issues, so "no open issues" was false).
 
-## Dependency security (#384)
+### Dependency security (#384)
 Transitive bumps clearing 5 Dependabot alerts: `undici` 7.27.2→7.28.0 and `form-data` 4.0.5→4.0.6 (both build-time, via `@vscode/vsce`), `dompurify` 3.4.8→3.4.11 (bundled via mermaid into the shipped webview).
 
-## Verification
+### Verification
 - 721 viewer tests pass; `tsc --noEmit` clean; production build + VSIX package succeed.
 - Independent code-review pass on the full deploy diff: **SHIP, no blockers** (verified lens/source re-entrancy, `scopeReposToLens` correctness, empty-state guard).
 - `npm audit` → 0 vulnerabilities.
 
-## Deploy notes
+### Deploy notes
 - VS Code: `vscode/package.json` → 0.15.0, README Status line updated.
 - CLI floor unchanged.
 
@@ -136,16 +136,16 @@ fix: auto-slot UX hotfix — JSON early-exits, remove enable gate, drop 'heurist
 
 Hotfix for the v0.14.0 auto-slot feature shipped earlier today. One issue surfaced three UX problems; all fixed.
 
-## fix(auto-triage): --json early-exits emit JSON, not human text
+### fix(auto-triage): --json early-exits emit JSON, not human text
 **Suggest Tracks** crashed with `could not parse auto-triage JSON` on a repo with **no active tracks** — the CLI's `--json` scan took the "No active tracks found … run group first" early-exit, which printed a bare human line and returned 0, so the viewer's `JSON.parse(stdout)` threw. The "no untracked — full coverage" exit had the same hazard. Both now emit a parseable `{note: "no_active_tracks" | "full_coverage"}` in `--json` mode (human text kept for the terminal), and the viewer shows a "create a track first" / "full coverage" message instead of an error.
 
-## fix(vscode): remove the auto-slot enable gate
+### fix(vscode): remove the auto-slot enable gate
 `workPlan.autoSlotSuggestions` (default off) hid the Suggested bucket — so running Suggest Tracks produced suggestions the setting then hid, and the command looked like it did nothing. Removed: nothing generates suggestions in the background, so running the command IS the opt-in. Buckets render whenever a scan has produced them. (Kept `autoSlotConfidenceThreshold`.)
 
-## fix(vscode): drop "heuristic" jargon
+### fix(vscode): drop "heuristic" jargon
 The offline command is now **"Suggest Tracks for Untracked Issues (offline, no AI)…"**, the tree badge reads "· offline", and the offline toast reports the **real match count** — saying plainly when nothing matched ("all left untracked; try the AI variant") instead of pointing at an empty bucket.
 
-## Ships
+### Ships
 - VS Code extension **0.14.1**.
 - npm `@stylusnexus/work-plan` (CLI auto-triage `--json` early-exit fix) — same-day republish, needs `version_suffix`.
 - CLI floor unchanged (`2026.06.15`).
@@ -158,20 +158,20 @@ feat: proactive auto-slot offer + collision guard, offline heuristic, webview-ha
 
 Deploy of the auto-slot feature set plus a critical webview regression fix. Three issues.
 
-## feat: proactive auto-slot offer + collision guard (#241)
+### feat: proactive auto-slot offer + collision guard (#241)
 Offer to slot untracked GitHub issues into existing tracks, with an AI-suggested destination per issue, and the hard collision-prevention the issue requires. Built in 4 phases:
 - **CAS collision guard** — `slot`/`batch-slot` take `--expect=<fp>` (sha256 of the track's issue list); the write re-reads + merges onto fresh frontmatter and aborts `{stale}` instead of clobbering. Preserves concurrent body/other-field edits.
 - **Shared-tier rebase guard** — for a track on a `plan_branch`, fetch + `rebase --autostash` onto origin before writing; `{needs_rebase}` abort on un-rebasable divergence. `/security-review`'d.
 - **Suggestion engine** — `auto-triage --json` scan + `batch_id` + a v2 abstain-first answers schema (legacy v1 still applies).
 - **Viewer** (opt-in `workPlan.autoSlotSuggestions`) — Suggested (one-click Accept) / Needs-review sub-buckets under Untracked; Accept slots through the guard + public-repo modal, branching on stale/needsRebase. 5 commands, fs.watch, dismiss state.
 
-## feat: offline heuristic suggestion mode (#373)
+### feat: offline heuristic suggestion mode (#373)
 `auto-triage --heuristic` scores untracked issues against candidate tracks on local signals (milestone / track-label / title-scope keyword overlap), abstain-first, and writes the v2 answers file itself (`source: "heuristic"`) — so the Suggested bucket works with no Claude session (lower-trust, offline). New viewer command **Suggest Tracks (offline heuristic)**; heuristic suggestions are flagged lower-trust.
 
-## fix(vscode): webview handlers dead since 0.9.0 (#374)
+### fix(vscode): webview handlers dead since 0.9.0 (#374)
 Escaped quotes in an inline-script template literal collapsed to a `SyntaxError`, killing the entire messaging IIFE — every webview click handler (track select, focus toggle, the 0.12.0 graph zoom/pan/export controls) was silently dead from 0.9.0 onward. Fixed; added a parse-guard test that `new Function()`-checks every inline script so this class fails CI.
 
-## Ships
+### Ships
 - VS Code extension **0.14.0** (Marketplace + Open VSX) — 0.13.0 already shipped 2026-06-16.
 - npm `@stylusnexus/work-plan` (CLI: the guard, `auto-triage --json/--heuristic`, v2 answers).
 - CLI floor unchanged (`2026.06.15`).
@@ -184,7 +184,7 @@ feat: repo-scoping (brief auto-scope + viewer auto-focus), reconcile one-click a
 
 Deploy of the cwd-aware repo-scoping feature pair plus several CLI/viewer improvements bundled since the last release.
 
-## Highlights
+### Highlights
 
 **Repo scoping (cwd-aware) — #358 / #357**
 - `which-repo` resolver maps a directory to a configured repo (local clone path first, then git remote) — the shared substrate both surfaces use.
@@ -203,7 +203,7 @@ Deploy of the cwd-aware repo-scoping feature pair plus several CLI/viewer improv
 **Chore**
 - Removed a dead variable in drift detection and pinned the intentional CLOSED-broad / OPEN-narrow asymmetry with tests.
 
-## Surfaces published this deploy
+### Surfaces published this deploy
 - **npm** `@stylusnexus/work-plan` (CLI changed).
 - **VS Code** `stylusnexus.work-plan-viewer` **0.13.0** (Marketplace + Open VSX).
 - agent-plugins catalog repinned to the new tag.
@@ -216,7 +216,7 @@ feat: graph zoom/export, Plans auto-update, native auto-next picker, verdict leg
 
 VS Code extension **v0.12.0** + CLI. Five features (each reviewed, CI-green, merged to `dev` individually).
 
-## Features
+### Features
 
 - **Dependency graph: zoom / pan / fit-to-width + Export SVG/PNG (#216).** The graph is now a pan/zoom viewport — scroll-wheel zoom, drag-to-pan, header buttons (zoom ±, Fit, Reset), and Export as SVG or PNG. Vanilla JS, no new dependency, CSP-clean. Dense maps stay navigable.
 - **Plans view auto-updates on git activity (#287).** Committing a stalled plan's declared files clears its "stalled" verdict without a manual Refresh — a per-repo `.git`-refs watcher debounce-rescans only that repo; time-relative staleness re-evaluates on focus. New `workPlan.plansAutoRefresh` setting (default on).
@@ -224,15 +224,15 @@ VS Code extension **v0.12.0** + CLI. Five features (each reviewed, CI-green, mer
 - **Plan verdict-icon legend + plain labels (#348).** An ℹ️ title-bar button opens a self-demonstrating QuickPick decoding each Plans icon; the tooltip leads with a plain label (lie-gap→"Unverified", etc.); two sharpened shapes (stalled→clock, drift→issue-reopened). The #208 distinct-shape a11y invariant is now test-enforced.
 - **Settings gear (#352).** A `$(gear)` button (last nav icon in the Tracks title bar) opens the Settings UI scoped to this extension; also "Work Plan: Open Settings" in the palette.
 
-## CLI
+### CLI
 
 - `handoff --suggest-next` — read-only JSON suggestion feed for the native auto-next picker (no prompt, no write). Shares `_compute_auto_next` with the interactive `--auto-next`.
 
-## Compatibility
+### Compatibility
 
 - VS Code extension `0.11.1` → `0.12.0`. `MIN_CLI_VERSION` → `2026.06.15` (the native auto-next picker needs `handoff --suggest-next`).
 
-## Verification
+### Verification
 
 All merged with green CI (Tests matrix 3.9–3.12 × ubuntu/macos/windows + typecheck/build/lint). 1080 CLI tests + 661 vscode tests pass. Each feature reviewed by the code-reviewer agent; #216 and #287 had one Important finding each, both fixed before merge.
 
@@ -268,17 +268,17 @@ feat: toggle auto next-up per track (#338) — CLI --auto + viewer (0.11.0)
 
 Production deploy: completes #338 — turn auto next-up on/off per track.
 
-## #338
+### #338
 - **CLI:** `set-next-up --auto=on|off` toggles a track's `next_up_auto` flag (standalone or combined with a preset; public-repo confirm-gated). `export --json` `next_up_auto` field reflects the setting.
 - **VS Code (0.11.0):** an "Auto next-up: ON/OFF" toggle folded into the "Set Next-Up Order…" QuickPick (✓ current state), and the detail panel's "Next-up order:" row shows `flow · auto` when active.
 
-## Publishes (post-merge)
+### Publishes (post-merge)
 - CLI changed → **npm** republish (same-day → `2026.6.15-2`).
 - VS Code **0.11.0** → Marketplace + Open VSX.
 - `MIN_CLI_VERSION` unchanged (`2026.06.14` ≤ deploy VERSION; degrades gracefully).
 - Tag + repin the agent-plugins catalog.
 
-## Test plan
+### Test plan
 - [x] dev CI green; full Python suite 1075 OK; VS Code typecheck + 639 tests + build clean.
 
 ## 2026.06.15+a627bc9 — 2026-06-15 (#337)
@@ -289,12 +289,12 @@ CLI-only deploy: closes the #326 viewer gap.
 
 `build_export` now computes the auto next-up via `suggest_next_up` when a track has `next_up_auto: true` (mirroring `brief`/`orient`), so the VS Code viewer — which reads `next_up` straight from `export --json` — finally surfaces the ranked picks instead of just the preset name. Emits a `next_up_auto` flag per track.
 
-## Publishes
+### Publishes
 - CLI changed → **npm** republish (same-day → `2026.6.15-1`).
 - **VS Code NOT republished** (no extension change — the viewer already renders `next_up`).
 - Tag + repin the agent-plugins catalog.
 
-## Test plan
+### Test plan
 - [x] Full Python suite 1064 OK; brief-parity + raw-issues verified in review.
 - [x] Live: the track exports `next_up: [1099, 4185, 4228], next_up_auto: true`.
 
@@ -304,17 +304,17 @@ feat(vscode): Set Next-Up button in detail panel (0.10.1) + README refresh
 
 VS Code-only deploy.
 
-## What
+### What
 - **Set Next-Up button** in the track detail panel (#334) — sets next-up from where you're looking, reusing the `workPlan.setNext` command (no picker fallback; resolves the open track). Extension **0.10.0 → 0.10.1**.
 - **Docs:** root README VS Code section refreshed to note the viewer's next-up controls (Set Next-Up + the Set Next-Up Order… preset picker), the per-issue in-progress badge, and the blocked-by/blocking dependency surfacing.
 
-## Publishes (post-merge)
+### Publishes (post-merge)
 - **VS Code 0.10.1** → Marketplace + Open VSX.
 - **npm skipped** — the CLI is unchanged since the last deploy (delta is VS Code + docs only).
 - `MIN_CLI_VERSION` unchanged (`2026.06.14` ≤ deploy VERSION; the button needs no new CLI surface).
 - Tag the deploy + repin the agent-plugins catalog to the new tag.
 
-## Test plan
+### Test plan
 - [x] dev CI green; VS Code typecheck + 629 tests + build clean.
 - [x] No `skills/` changes in the delta (CLI untouched) → npm correctly skipped.
 
@@ -324,23 +324,23 @@ feat: configurable per-track next-up ordering (#326) + issue-link fix (0.10.0)
 
 Production deploy: the configurable auto next-up feature (#326, all 3 phases) plus the detail-panel issue-link fix.
 
-## #326 — configurable per-track next-up ordering
+### #326 — configurable per-track next-up ordering
 Replaces the hardcoded next-up ranking with a dependency-aware default + per-track presets.
 - **New default ranking:** in-progress-first → milestone → (blocked-by excluded, in-progress exempt) → unblocking fan-out → priority → recency → issue#. Uses #257's `blocked_by`/`blocking` edges (blocked = gate, fan-out = boost) and the in-progress signal.
 - **Presets** (`lib/next_up.py`): `flow` (default), `priority-driven`, `backlog` — per-track via `next_up_order: {preset}` frontmatter, with a global `next_up_default` in config.
 - **New CLI command** `set-next-up <track> --preset=<p>` (guarded, public-repo confirm-gated). `export --json` emits `next_up_preset` per track.
 - **VS Code (0.10.0):** a "Set Next-Up Order…" track-menu QuickPick (writes via the CLI confirm flow) + a detail-panel preset indicator (`workPlan.showNextUpPreset` setting). Degrades gracefully on older CLIs.
 
-## Issue-link fix (was 0.9.2 on dev, ships in 0.10.0)
+### Issue-link fix (was 0.9.2 on dev, ships in 0.10.0)
 Detail-panel + search issue-number links now carry a real `https://github.com/<repo>/issues/<n>` href, so clicking opens GitHub even if the webview script is blocked/stale (previously such a click silently scrolled to the top). Adds the missing `font-src` CSP directive.
 
-## Versions / publishes (post-merge)
+### Versions / publishes (post-merge)
 - CLI changed → **npm** republish (same-day → `2026.6.14-2`).
 - VS Code extension **0.9.1 → 0.10.0** (Marketplace + Open VSX).
 - `MIN_CLI_VERSION` stays `2026.06.14` (≤ deploy VERSION; the preset feature degrades gracefully).
 - Tag the deploy + **repin the agent-plugins catalog** (Codex + Claude indexes) to the new tag.
 
-## Test plan
+### Test plan
 - [x] dev CI green; full Python suite + VS Code typecheck/test/build all pass (1062 Python, 619 VS Code).
 - [x] Pre-deploy check: MIN_CLI_VERSION ≤ VERSION; export perf 9.9s at real scale (no regression); `next_up_preset` emitted.
 
@@ -354,7 +354,7 @@ Fix: one `git for-each-ref` (tip commit times) + in-memory recency filter, plus 
 
 CLI change → **npm republish** (`2026.6.14` already taken today → `version_suffix=-1`). VS Code extension unchanged → no Marketplace republish.
 
-## Test plan
+### Test plan
 - [x] dev CI green on the fix merge; full suite 1016 OK
 - [x] Verified live against the 261-branch CritForge clone
 
@@ -364,12 +364,12 @@ fix(vscode): hotfix MIN_CLI_VERSION gate — 0.9.1 (false CLI-incompatible warni
 
 Emergency hotfix deploy. v0.9.0 (deployed earlier today) gated `MIN_CLI_VERSION = "2026.06.15"` while the CLI shipped as `2026.06.14`, so every user who updated the extension saw a false **"CLI version may be incompatible"** warning that "Update" could not resolve.
 
-## #257 follow-up
+### #257 follow-up
 - `MIN_CLI_VERSION` → `2026.06.14` (the deploy that actually added the gated export fields).
 - Guard test: the gate can never be set ahead of the repo's own CLI `VERSION`.
 - VS Code extension **0.9.0 → 0.9.1**. CLI unchanged → **VS Code-only republish; npm skipped** (CLI `2026.6.14` already published and identical).
 
-## Test plan
+### Test plan
 - [x] dev CI green on the fix merge
 - [x] VS Code typecheck + 603 tests + production build clean
 
@@ -379,22 +379,22 @@ feat: GitHub-native blocked-by/blocking edges (read-only) + issue-level in-progr
 
 Production deploy bundling two features that have landed on `dev` since the `2026.06.13` release (main/Marketplace were at CLI `2026.06.13` / VS Code `0.7.1`).
 
-## #257 — surface GitHub-native blocked-by / blocking (read-only)
+### #257 — surface GitHub-native blocked-by / blocking (read-only)
 Reads GitHub's native issue `blockedBy`/`blocking` edges **live** (never cached) and surfaces them read-only — no ordering or status change.
 - **CLI:** Issue-only GraphQL fragment (`blockedBy`/`blocking` with connection `totalCount` for truncation), OPEN-filtered into `{number, repo, title}` edges, threaded onto issues; `brief`/`orient` annotate next-up / next-pick / behind-it rows with `⊘ blocked by #N` (cross-repo → `owner/repo#N`), repo-scoped dedupe against manual blockers.
 - **VS Code (0.9.0):** `IssueDep` type + `[]`-normalize at the export boundary + `MIN_CLI_VERSION` → `2026.06.15`; same-repo `--x` blocked-by edge in the focused dependency graph; `⛓` disclosure on detail-panel issue rows expanding to `⊘ blocked-by` / `⇒ blocking` chips.
 - Read-only: the GitHub-mutation inventory is unchanged. Live authenticated GraphQL gate passed (Issue arm resolves, PR arm doesn't reject, end-to-end parse verified, dependency torn down).
 
-## #271 — issue-level in-progress (the 0.8.0 work, not yet on main)
+### #271 — issue-level in-progress (the 0.8.0 work, not yet on main)
 - **CLI:** `in-progress <n> [--clear]` adds/removes the `work-plan:in-progress` label (public-repo gated); `brief`/`orient` also derive in-progress from a hot `feat/<n>-`/`fix/<n>-` branch.
 - **VS Code:** per-issue in-progress badge + Mark/Clear toggle in the detail panel; plus the 0.7.1→0.8.0 follow-up fixes (Close-on-GitHub button render, open-plan webview guard).
 
-## Versions / publishes (post-merge)
+### Versions / publishes (post-merge)
 - VS Code extension `0.7.1` → **0.9.0** (`vscode/package.json` + `vscode/README` Status already bumped on dev).
 - CLI npm: first `2026.6.14` publish (no same-day collision with `2026.6.13`).
 - `VERSION` / plugin manifests stamped automatically by `version-bump.yml` on merge.
 
-## Test plan
+### Test plan
 - [x] dev CI green on the merge commit (Tests + VS Code Extension matrices)
 - [x] Python `1014 OK`; VS Code typecheck clean + `602 pass` + esbuild production build clean
 - [x] Phase A authenticated GraphQL gate recorded in #318
@@ -407,18 +407,18 @@ fix+feat: dark-mode a11y contrast, progress bar (#220) + activity badge (#215), 
 
 Accessibility + polish follow-up to the 0.7.0 release. VS Code extension **0.7.0 → 0.7.1**.
 
-## Accessibility (dark-mode contrast)
+### Accessibility (dark-mode contrast)
 The reported "hard to see in dark mode" traced to `charts.*` ThemeColors (built for chart fills, muted on dark, missing WCAG 1.4.3 3:1 for icons). Swapped the tree's status/verdict icon colors to theme-tuned, list-semantic tokens — blocked/lie-gap → `list.errorForeground`, stalled/drift → `list.warningForeground`, shipped → `charts.green`, parked/dead/ack'd → `descriptionForeground`, plan "active" unified on `charts.blue`. Distinct icon **shapes** still carry the meaning, so nothing is colour-only. Webview: dropped compounding `opacity` on muted text, raised the detail-panel Move/Close action icons to legible-at-rest, extended the forced-colors override, bumped search closed-state weight.
 
-## Features
+### Features
 - **#220** — a labelled open/closed progress bar in the per-track detail card + a `N open · C/T` count in the tree description.
 - **#215** — an activity-bar badge: blocked-track count (fallback total open), host-themed.
 
-## Fixes (v0.7.0 regressions)
+### Fixes (v0.7.0 regressions)
 - **#303** — Fetch Open Issues now excludes already-tracked issues (a tracked issue no longer surfaces under Untracked), and the on-demand fetch cache no longer overrides a tracked repo's live untracked list.
 - **#305** — the detail-panel Close-on-GitHub button rendered as a gray box (font-fragile glyph + unstyled); now styled + a reliable glyph.
 
-## Docs
+### Docs
 README + vscode/README document the new surfaces; the agent-plugins catalog README was brought current to the 0.7.0 surface in a companion commit.
 
 CI green across the 3.9–3.12 × {ubuntu,macos,windows} matrix + lint + vscode build. CLI 959 tests, viewer 527.
@@ -431,25 +431,25 @@ feat: Plans-view plan-writes, GitHub issue-close + auth fast-fail, track↔plan 
 
 A large feature batch (9 PRs) making the VS Code Plans view *act* instead of only report, plus GitHub-path hardening and track-sharing.
 
-## Plan frontmatter writes (#286 — all confirm-gated, frontmatter-only)
+### Plan frontmatter writes (#286 — all confirm-gated, frontmatter-only)
 - **Confirm Verdict** (`plan-confirm`) — pin a human `verdict_override` to silence a false "shipped but boxes unchecked" lie-gap.
 - **Acknowledge & Save to Doc** (`plan-ack`) — a durable, shared `acknowledged` ack (vs the per-machine default).
 - **Stamp Baseline — Watch for Drift** (`plan-baseline`) — records the verdict; `plan-status` then flags **drift** when a once-shipped plan silently regresses (declared files deleted/moved).
 - Read-only **off-tree manifest** flag — surfaces declared paths that resolve outside the repo.
 - Shared, escape-guarded + public-repo-gated frontmatter writer (`lib/plan_fm`).
 
-## Track ↔ plan link (#285)
+### Track ↔ plan link (#285)
 - A track declares its plan via `plan:` frontmatter; `export` resolves an execution badge; the detail panel offers one-click **Plan** navigation. No fuzzy matching.
 
-## GitHub path
+### GitHub path
 - **Close Issue on GitHub** (`close-issue`, #305) — close an issue (optional comment) from the untracked-issue right-click or a detail-panel row, gated by a mandatory "cannot be undone" modal. Joins `plan-status --issues` (create) as the toolkit's second opt-in, gated GitHub write.
 - **Fast-fail auth** (`auth-status`, #307) — a "Not signed in to GitHub" / "GitHub CLI not found" banner + Sign-in path replaces the silently-empty tree.
 - **Fetch Open Issues** (#303) — pull a trackless registered repo's open issues on demand into its Untracked bucket.
 
-## Track sharing (#306)
+### Track sharing (#306)
 - **Push to Shared Tier** (`push-track`) — promote a private track into the repo's shared `.work-plan/` plan branch and push (public-repo exposure gated).
 
-## Docs/security
+### Docs/security
 - READMEs reframe the GitHub-write posture (two opt-in gated writes: create + close) and SECURITY.md documents the new write surfaces (frontmatter writers, close-issue, push-track).
 
 CI green across the 3.9–3.12 × {ubuntu,macos,windows} matrix + lint + vscode build on every PR; the full dev→main diff was code-reviewed clean (no blockers/highs). CLI 959 tests, viewer 516.
@@ -462,31 +462,31 @@ VS Code extension bumped 0.6.3 → **0.7.0**.
 
 feat(vscode): track-only repos show as a greyed "not registered" row in Plans (ext 0.6.3)
 
-## Summary
+### Summary
 
 Closes the other half of the Tracks/Plans asymmetry (companion to 0.6.2). A repo with **tracks but no `repos:` config entry** can't be scanned by the Plans view — it resolves a local clone by config *folder key*, which a track-only repo lacks — so it was silently absent from Plans while appearing in Tracks.
 
 Plans now lists such repos as a **greyed, non-expandable "not registered" leaf** after the real repo nodes: `circle-slash` icon, "not registered" description, a tooltip explaining why, and a click that launches **Add Repo** prefilled with the slug (and a key derived from it).
 
-## How
+### How
 
 - `unregisteredTrackRepos(export)` — a pure, vscode-free helper: distinct, sorted GitHub slugs that tracks reference but `exp.repos` doesn't contain (null/empty excluded).
 - New `PlanNode` variant `{ kind: "unregistered"; slug }`; roots render registered repos first, then unregistered leaves.
 - Sourced from the **raw** export and kept **separate from the scan list**, so Scan All / the stalled roll-up never try to scan a repo with no registered clone.
 - `workPlan.addRepo` gains an optional `{ github, key }` seed, guarded with `typeof seed?.github === "string"` so a menu/palette context can't masquerade as a prefill.
 
-## Tests (plain English)
+### Tests (plain English)
 
 New `unregisteredTrackRepos` suite: slug absent from repos → returned; slug present → excluded; duplicate track slugs → once; null/empty repo → excluded; missing `repos` field → all returned; all-registered → empty; result sorted.
 
-## Verification
+### Verification
 
 - `npm test` → 477 pass (+7 new)
 - `npm run typecheck` → clean
 - `vsce package` → clean (1.26 MB)
 - code-reviewer pass (scan-path isolation + seed guard confirmed; a README changelog dup it flagged is fixed)
 
-## Scope
+### Scope
 
 VS Code-only — Python CLI unchanged, so **npm publish is skipped**. Bumps extension to **0.6.3**; Marketplace + Open VSX publish via the GitHub Release after merge.
 
@@ -496,21 +496,21 @@ VS Code-only — Python CLI unchanged, so **npm publish is skipped**. Bumps exte
 
 fix(vscode): zero-track registered repos now show in the Tracks view (ext 0.6.2)
 
-## Summary
+### Summary
 
 A registered repo with **no tracks yet** (e.g. a just-added `agent-armor`) appeared in the **Plans** view but was missing from **Tracks**. Root cause: the Tracks view renders from the lens-filtered export, and `applyLens` rebuilt the `Export` forwarding only `tracks`/`untracked` — silently dropping the configured `repos` list (#288). So `buildTree`'s empty-repo seeding loop iterated `[]` and zero-track repos vanished under every lens, including "All". The Plans view reads the raw export, so it kept showing them. Same class of bug as the `#99` untracked-forwarding fix, one field over.
 
-## Changes
+### Changes
 
 - `applyLens` now forwards `repos` unchanged (alongside `untracked`).
 - Regression test block in `lenses.test.ts` (`#288`): forwards under `all`, forwards under a `repo` lens, undefined when absent.
 - VS Code extension bumped **0.6.1 → 0.6.2**; README `## Status` line updated.
 
-## Scope
+### Scope
 
 VS Code-only — the Python CLI is unchanged, so **npm publish is skipped** (same as the 0.5.1 precedent). Marketplace + Open VSX publish via the GitHub Release after merge.
 
-## Verification
+### Verification
 
 - `npm test` → 470 pass (incl. 3 new)
 - `npm run typecheck` → clean
@@ -540,9 +540,9 @@ feat: Plans view, registered-repo management, list-pickers, Open Track File
 
 Deploy of the 2026.06.13 release. Extension **0.6.0**; CLI floor **2026.06.13**.
 
-## Highlights
+### Highlights
 
-### Plans view (#164)
+#### Plans view (#164)
 A new read-only **"Plans"** tree in the VS Code extension surfacing plan/spec docs and their `plan-status` health, loud on the two states that matter to spec-driven work:
 - **stalled** — a `partial` plan whose *declared manifest files* have gone cold (no commit within the threshold) = "started executing, drifted off". Keyed off manifest-file git activity, not the (gitignored) plan doc's own date.
 - **lie-gap** — scored shipped but its own phase checkboxes aren't ticked.
@@ -559,7 +559,7 @@ Lazy per-repo scanning, a cross-repo **"Scan All"** stalled roll-up (bounded-con
 - `reconcile --all` now keys state by `(repo, path)` — no more cross-repo membership bleed on duplicate slugs.
 - `refresh-md` skips a track on an incomplete GitHub fetch instead of overwriting valid rows with `(not fetched)`.
 
-## Notes
+### Notes
 - `MIN_CLI_VERSION` → 2026.06.13 (the Plans view + repos[] listing need the new export/plan-status fields; older CLI shows a compat warning).
 - Deferred follow-ups: #285 (track↔plan nav), #286 (V2 plan writes), #287 (reactive staleness).
 
@@ -573,11 +573,11 @@ Small VS Code extension fix — **0.5.1**.
 
 - **fix(vscode): clearer Daily Brief icon + re-entrancy guard** — swap the Daily Brief title-bar `$(list-unordered)` (VS Code's hamburger/list glyph) for `$(checklist)`, and guard re-entrancy so repeat-clicks no longer spawn concurrent `brief` runs + stacked progress toasts.
 
-## Versions
+### Versions
 - VS Code extension hand-bumped **0.5.0 → 0.5.1** (`vscode/package.json` + `## Status`).
 - **CLI/npm is unchanged** (Python skill untouched) — no npm republish this deploy; only the VS Code extension publishes.
 
-## Verification
+### Verification
 - vscode: typecheck clean, 416 tests pass, build OK.
 
 ## 2026.06.11+60c2651 — 2026-06-11 (#276)
@@ -586,7 +586,7 @@ feat: VS Code extension 0.5.0 — issue search, daily-driver commands, lens/sort
 
 VS Code extension **0.5.0** — a daily-driver + discoverability release. Bundles four feature PRs plus a screenshot refresh.
 
-## Highlights
+### Highlights
 
 - **feat(vscode): keyword issue search (#272)** — new **Search Issues…** command (title-bar `$(search)` + palette) matches issue titles across every track and the Untracked bucket with a `%wildcard%` grammar: `%depends%` (contains), `fix%` (starts-with), `%audit` (ends-with), bare word = contains; case-insensitive. Matching is client-side. Results open in a dedicated, reusable **Issue Search** tab (grouped by repo, open issues first) — click a row to open on GitHub, or use the per-row reveal button to jump to the owning track in the tree. Strict-CSP, accessible, theme-adaptive; an "as of `<generated_at>`" line + Refresh & re-run.
 
@@ -598,11 +598,11 @@ VS Code extension **0.5.0** — a daily-driver + discoverability release. Bundle
 
 - **docs(vscode): refresh dependency-graph screenshot (#223)** — community contribution (@Hritik-Kumar-dev): neutral demo-data screenshot showing current 0.4.x/0.5.0 features.
 
-## Versions
+### Versions
 - VS Code extension hand-bumped **0.4.2 → 0.5.0** (`vscode/package.json`); `## Status` line + root README updated.
 - CLI VERSION (CalVer) + npm version are stamped automatically on this merge.
 
-## Verification
+### Verification
 - vscode: typecheck clean, **416** tests pass, production build OK.
 - Full Python + vscode CI matrix green on dev.
 
@@ -623,7 +623,7 @@ feat: canonical plan branch for the shared tier + visibility×tier badge (extens
 
 Production deploy. Extension bumped to **0.4.1**. Ships the #260 canonical-plan-branch feature (CLI) and the #259 visibility × tier badge (VS Code viewer).
 
-## CLI — shared-tier planning on one canonical branch (#260)
+### CLI — shared-tier planning on one canonical branch (#260)
 
 The shared (`.work-plan/`) tier can now be pinned to **one canonical `plan_branch`** per repo, read and written through a dedicated git worktree — so planning lives off your code branches and never pollutes feature PRs or the `dev → main` deploy diff, yet the CLI and viewer always show the canonical plan from any checkout.
 
@@ -631,11 +631,11 @@ The shared (`.work-plan/`) tier can now be pinned to **one canonical `plan_branc
 - Discovery, shared-track creation (`group`/`new-track`), and the dispatcher's auto-commit all route through the plan-branch worktree when one is configured; repos without a `plan_branch` keep the legacy working-tree `.work-plan/` behaviour unchanged.
 - Hardened to the notes-vcs data-safety bar across multiple adversarial review rounds: scoped commits (only the paths a command changed, NUL-delimited porcelain so spaced/non-ASCII filenames are safe), branch-verified worktree reuse, the public-repo exposure gate fails closed, and the whole path honours the never-raise contract.
 
-## VS Code viewer — visibility × tier badge (#259), extension 0.4.1
+### VS Code viewer — visibility × tier badge (#259), extension 0.4.1
 
 Every tree item now carries a **visibility × tier badge** (🔒 private / 🌐 public repo, ☁ shared tier) that flags the one **exposed** state — a plan committed to a *public* repo's shared tier is world-visible. Theme-adaptive, with a MarkdownString tooltip explaining the state.
 
-## Docs
+### Docs
 README gains a "Canonical plan branch" section (with the CI-exclude tip) and a `plan-branch` command-table row; the extension README documents the badge and the 0.4.1 status.
 
 Closes #259, #260.
@@ -742,38 +742,38 @@ README updates for the v0.3.2 feature set: move subcommand, depends_on chips, re
 
 Deploy: repo-scoped full map (v0.3.2)
 
-## Change
+### Change
 The 'Show full map' graph now only shows tracks in the **same repo** as the selected track. Cross-repo tracks share no edges, so showing them together produced noise without value.
 
 - Focus mode: unchanged (neighbourhood of selected track)
 - Full map: scoped to selected track's repo
 
-## Version
+### Version
 VSCode extension → 0.3.2
 
 ## 2026.06.09+a00489a — 2026-06-09 (#176)
 
 Deploy: Mermaid fix + move subcommand + depends_on surface (#172, #162, #102)
 
-## Changes in this deploy
+### Changes in this deploy
 
-### #172 — Mermaid label escaping fix
+#### #172 — Mermaid label escaping fix
 - Replaced HTML entities with safe literal characters in `mermaidLabel`
 - Mermaid 11.x's `entityDecode` was silently undoing all entity escaping, allowing `"]` sequences to break the parser
 - Fix: `"` → `'`, `[{` → `(`, `]}` → `)`, backtick → `'`
 
-### #173 — `move` subcommand + VSCode right-click
+#### #173 — `move` subcommand + VSCode right-click
 - CLI `move` subcommand (source-first: `work-plan move <issue> <from> <to>`)
 - VSCode context menu "Move Issue from Track" with QuickPick destination
 - Added to `WriteAction` type with full public-repo confirm gate
 - 13 CLI tests + 1 VSCode test
 
-### #175 — Surface `depends_on` in detail panel + README
+#### #175 — Surface `depends_on` in detail panel + README
 - New "Depends on:" section in VSCode detail panel with clickable amber chips
 - README documentation for cross-track dependencies
 - 2 new detail panel tests
 
-## Verification
+### Verification
 - 620 Python tests pass
 - 308 VSCode tests pass
 
@@ -795,7 +795,7 @@ Deploy: Mermaid fix + move subcommand + depends_on surface (#172, #162, #102)
 
 chore(vscode): bump extension to 0.2.1 for batch-slot publish
 
-## Deploy to production
+### Deploy to production
 
 **Commits in this deploy:**
 - 736bc40 chore(vscode): bump to 0.2.1 for batch-slot publish
@@ -808,7 +808,7 @@ Lands the version bump that was needed to publish the VS Code extension with bat
 
 feat(batch-slot,tracks,vscode): batch-slot command + archived-track dedup
 
-## Deploy to production
+### Deploy to production
 
 **Commits in this deploy:**
 - e2a14dd feat(batch-slot,tracks): batch-slot command + archived-track dedup (#131, #140) (#157)
@@ -828,13 +828,13 @@ feat(batch-slot,tracks,vscode): batch-slot command + archived-track dedup
 
 chore(npm): add version_suffix input for same-day republish
 
-## Summary
+### Summary
 
 - Adds optional `version_suffix` input to `npm-publish.yml` (e.g. `"-1"` → publishes `2026.6.9-1`)
 - Allows same-day npm republish when the CalVer semver is already taken, without changing the VERSION file
 - Used immediately after creation to publish `@stylusnexus/work-plan@2026.6.9-1` (CLI improvements from #151/#152 that landed after today's first npm publish)
 
-## Migrations
+### Migrations
 
 None.
 
@@ -844,20 +844,20 @@ None.
 
 feat(reconcile,hygiene): parallel gh fetches, per-call timeouts, progress indicators
 
-## Summary
+### Summary
 
 - **#151** `perf(reconcile,hygiene)`: parallel `gh` fetches in `reconcile --all` via `ThreadPoolExecutor` (4 workers); per-call 15s timeout per track; `--timeout=N` flag forwarded to `duplicates`; per-step timing in `hygiene`
 - **#152** `feat(hygiene,reconcile,refresh-md)`: `[N/total]` progress indicator during `--all` sweeps in all three subcommands; also fixes latent `NameError` in `hygiene.py` step-2 timing (referenced `t2` before assignment)
 - New test module: `test_reconcile_readonly.py` — timeout/skip behaviour for single-track and multi-track parallel paths
 
-## Commits
+### Commits
 
 ```
 8e8a29f feat(hygiene,reconcile): per-track progress indicator during --all sweep (#152) (#154)
 2332c49 perf(reconcile,hygiene): parallel gh fetches + per-call timeout (#151) (#153)
 ```
 
-## Migrations
+### Migrations
 
 None.
 
@@ -867,17 +867,17 @@ None.
 
 docs(readme,skill): clarify refresh-md and hygiene, add read-only callout, vscode README v0.2.0
 
-## Summary
+### Summary
 
 - **SKILL.md + README.md**: rewrote `refresh-md` guidance — removed "you usually don't need this" framing; it's the right tool to run after closing issues. Expanded `hygiene` description to enumerate all three steps (refresh-md + reconcile + duplicates).
 - **README.md + vscode/README.md**: added explicit GitHub read-only callout — the toolkit never writes to GitHub; all writes are local markdown files only.
 - **vscode/README.md**: added `workPlan.autoRefreshInterval` to the configuration table; bumped Status line from v0.1.0 → v0.2.0 with feature summary.
 
-## Commits
+### Commits
 
 - docs: clarify refresh-md vs hygiene, add read-only callout, vscode README v0.2.0 (#149)
 
-## Test plan
+### Test plan
 - [ ] README.md hygiene row enumerates all 3 steps
 - [ ] SKILL.md refresh-md row says "run after closing issues"
 - [ ] vscode/README.md config table includes autoRefreshInterval
@@ -890,7 +890,7 @@ docs(readme,skill): clarify refresh-md and hygiene, add read-only callout, vscod
 
 feat(viewer): auto-refresh, shared-track tier badge, welcome fix + README settings table
 
-## Summary
+### Summary
 - **#134 `workPlan.autoRefreshInterval`** — silent background poll on a user-configured interval (0=off, 30s/1m/5m/15m dropdown); timer restarts on config change
 - **#137 Tier badge** — shared tracks show `shared N open` in the tree description; tooltip clarifies shared vs private
 - **#118 Welcome state fix** — `viewsWelcome` now gated on `workPlanHasRepos` context key (driven from unfiltered data) so a lens that hides all tracks doesn't show "No repos yet"
@@ -898,7 +898,7 @@ feat(viewer): auto-refresh, shared-track tier badge, welcome fix + README settin
 
 Bumps VS Code extension to **v0.2.0**.
 
-## Commits
+### Commits
 - feat(viewer): auto-refresh interval setting (#134) (#145)
 - feat(viewer): tier badge on shared tracks + welcome state fix (#137, #118) (#146)
 - docs: VS Code settings table + tier badge note in README (#147)
@@ -910,9 +910,9 @@ Bumps VS Code extension to **v0.2.0**.
 
 feat(shared-notes,coverage,auto-triage): two-tier tracks, coverage report, AI triage, next_up fix
 
-## What's shipping
+### What's shipping
 
-### Major: shared-notes (two-tier track storage)
+#### Major: shared-notes (two-tier track storage)
 Track files can now live inside a repo clone (`.work-plan/<slug>.md`, git-synced) alongside the existing private `notes_root` tier. Register a local clone with `init-repo --local=<path>`; tracks route there automatically. Teammates share planning state via `git pull`/`git push`. `--private` opts out per-command.
 
 Phases A–D:
@@ -921,16 +921,16 @@ Phases A–D:
 - Phase C: write-surface routing (`group`, `new-track`, `close`, `init`)
 - Phase D: `init-repo` detects existing `.work-plan/` tracks; `new-track --commit`; `export` tier field
 
-### New: `coverage` command
+#### New: `coverage` command
 `/work-plan coverage [--repo=<key>] [--list]` — reports how many open issues are outside the track model. 42% orphan rate measured on a real production repo.
 
-### New: `auto-triage` command
+#### New: `auto-triage` command
 `/work-plan auto-triage [--repo=<key>] [--apply]` — two-step AI assignment of untracked issues to existing tracks. Complements `group` (which creates new tracks).
 
-### Fix: closed issues filtered from `next_up` in export
+#### Fix: closed issues filtered from `next_up` in export
 The VS Code viewer was showing closed issues as actionable next-up nodes. Export now cross-references `next_up` against the fetched issue states and removes confirmed-closed entries.
 
-### Docs
+#### Docs
 README, SKILL.md, npm description, and VS Code extension description updated with shared-notes setup, group/auto-triage callouts, and `@repo` disambiguation syntax.
 
 ---
@@ -945,17 +945,17 @@ feat: npm CLI distribution + launcher PATH fix + extension v0.1.1 (screenshots, 
 
 Production deploy bundling the post-launch polish: npm distribution for the CLI, the GUI-PATH launcher fix, expanded docs, and the assets/version bump for the extension's `0.1.1` listing refresh.
 
-## CLI — npm distribution
+### CLI — npm distribution
 - **`@stylusnexus/work-plan` npm package** (root `package.json` + `scripts/npm-check-deps.js`): ships the Python CLI + launcher so `npm install -g @stylusnexus/work-plan` works (no repo clone). `files`-whitelisted (488 kB, no leaks); pure Python still, no build step. Plus `.github/workflows/npm-publish.yml` (CalVer→semver, `--access public`, `NPM_TOKEN`).
 - **Launcher GUI-PATH fix** (`bin/work-plan`): GUI editors (VS Code from Finder/Dock) inherit a stripped PATH without Homebrew, so the CLI's `yq`/`gh` lookups failed and the viewer showed an empty tree. The launcher now prepends `/opt/homebrew/bin:/usr/local/bin`, and resolves symlinks (so the npm global-bin symlink finds its Python). Verified under a simulated minimal PATH.
 
-## Extension — v0.1.1 listing refresh
+### Extension — v0.1.1 listing refresh
 - **Six listing screenshots** (sidebar, dependency graph, public-repo modal, Untracked bucket, onboarding, command menu) + the README `Screenshots` section.
 - **Expanded docs**: a real **Commands & controls** section explaining every command plus **filtering** (Select View lenses) and **sorting**; an **Install** section; status → published.
 - **Independent per-registry publish jobs + `--skip-duplicate`** (the resilient `vscode-publish.yml`).
 - Version bumped to **0.1.1**.
 
-## Top-level README
+### Top-level README
 - `npm install -g` path in Quick install + the per-platform table; a **VS Code extension** section (Marketplace/Open VSX + cliPath); an **Updating** table; a hero screenshot.
 
 After merge: run **npm-publish** (first `@stylusnexus/work-plan` release) and **vscode-publish** (extension `0.1.1`, now with screenshots).
@@ -983,26 +983,26 @@ feat: ship the VS Code viewer (Phases 1–3) — see, write, and onboard work-pl
 
 First production ship of the **`work-plan` VS Code viewer** — the human face of the CLI. Everything below was merged to `dev` incrementally (each PR reviewed + tested); this deploy promotes the whole viewer (Phases 1–3) plus its CLI seam to `main`.
 
-## The viewer (`vscode/`)
+### The viewer (`vscode/`)
 **See** — a sidebar tree (repos → tracks: status dot, open count, blocked/next hints, ⚠ badge on public repos), a Mermaid dependency graph + per-track detail panel (focus toggle), **lenses** (filter by repo / milestone / blocked), **sort** (default / blocked / most-open / name), and an **Untracked bucket** per repo (open GitHub issues that no track references — click to open, right-click to slot).
 
 **Act** — edit fields, set-next, slot, close, refresh, reconcile (draft preview), hygiene, and new-track — every action shells to the CLI. A **public-repo confirm modal** ("Write anyway / Keep private") fires before any write into a public (or unknown-visibility) repo and re-invokes with a confirm token; private repos write straight through.
 
 **Onboard** — a cold-start a new user can drive without the CLI: an empty-state welcome with **Add a repo** and **Set notes location** buttons. Config is auto-seeded by the CLI on first run; a loading bar shows during fetches and concurrent refreshes are coalesced (single-flight).
 
-## The CLI seam (`skills/work-plan/`)
+### The CLI seam (`skills/work-plan/`)
 - **`export --json`** (schema 1) — the viewer's read surface: every frontmatter'd track + an additive `untracked` list of open-issues-in-no-track per repo; batched GraphQL issue fetch for speed.
 - Generic **`set <track> field=value`**, and a **non-interactive + confirm-token mode** for `slot` / `close` / `init` / `init-repo` (explicit flags instead of `input()` prompts), plus new one-shot **`new-track`** and **`set-notes-root`** commands — so the extension drives every write headlessly.
 - **`lib/write_guard`** confirm-token gate; `assume_private_when_unknown` config opt-out for all-private teams (public repos always prompt).
 
-## Notable fixes this cycle
+### Notable fixes this cycle
 - **#112** repo row read "private ⚠ public" (tier + visibility conflated) → fixed.
 - **#95** tree loading indicator + single-flight refresh.
 - **#99** Untracked bucket (CLI + viewer).
 - **#113** opt out of the confirm gate on *unknown* visibility (PUBLIC never suppressed).
 - An `applyLens` fix so additive export fields (like `untracked`) survive lens filtering.
 
-## Tests
+### Tests
 **448** offline Python (`unittest`) + **275** TS (`node --test`) green; build clean. The Python CI matrix (3.9–3.12 × ubuntu/macos/windows) runs on this PR. A dedicated `vscode/` CI job + Marketplace / Open VSX publishing are **Phase 4** (next).
 
 Issues shipped: #87 (Phases 1–3), #92, #93, #94, #95, #96, #99, #104, #105, #107, #108, #110, #112, #113.
@@ -1070,18 +1070,18 @@ feat(status-table): sync missing canonical rows and slot them in frontmatter ord
 
 Production deploy: dev → main. Ships two stacked changes to the canonical issue-table sync.
 
-## What's shipping
+### What's shipping
 
 - **#77 (#78)** — `refresh-md` and `handoff` now diff frontmatter `github.issues` against the status table and append a row for every newly-slotted issue (previously they only rewrote status cells of existing rows, so the body table drifted from frontmatter silently). Adds `render_issue_row`, `append_rows`, `sync_missing_rows`; live assignee fetch.
 - **#79 (#81)** — `sync_missing_rows` now slots each missing row into its frontmatter-order position instead of tacking it onto the end, so the rendered table matches frontmatter ordering (Option A). Existing rows are re-emitted verbatim (minimal diff).
 
-## Files (8)
+### Files (8)
 
 `commands/canonicalize.py`, `commands/handoff.py`, `commands/refresh_md.py`, `lib/github_state.py`, `lib/status_table.py`, `tests/test_handoff_append_rows.py`, `tests/test_refresh_md.py`, `tests/test_status_table.py`
 
 (The `main..dev` first-parent list shows ~40 commits — phantom diff from prior squash-merges. The genuine deploy is the 8 files above = #77 ∪ #79.)
 
-## Tests
+### Tests
 
 Full suite green (245). `cd skills/work-plan && python3 -m unittest discover tests`
 
@@ -1091,7 +1091,7 @@ Full suite green (245). `cd skills/work-plan && python3 -m unittest discover tes
 
 fix(ci): deploy automation — version-bump on PR-merge, auto-CHANGELOG, docs refresh
 
-## Deploy — fix the version-bump trigger + add auto-CHANGELOG
+### Deploy — fix the version-bump trigger + add auto-CHANGELOG
 
 - **CI fix:** `version-bump.yml` now fires on `pull_request: closed (merged)` (a `gh --admin` merge doesn't emit a `push` event, which is why VERSION stalled at 2026.04.30 since deploys #65/#67/#74) + a `workflow_dispatch` manual fallback.
 - **CHANGELOG:** the workflow now prepends an entry from each deploy PR's title/body; `CHANGELOG.md` seeded with the full 34-deploy backfilled history.
