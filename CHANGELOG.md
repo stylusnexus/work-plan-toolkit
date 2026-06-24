@@ -6,6 +6,28 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.06.24+b047035 — 2026-06-24 (#409)
+
+feat(viewer): Plans-view batch + onboarding states + archive correctness
+
+VS Code extension **0.18.0** + CLI. A Plans-view, onboarding, and archive-correctness batch.
+
+### Added
+- **Batch Acknowledge / Save-to-Doc / Stamp Baseline** (#396) — multi-select stalled/dead (or any) plans in the Plans view and apply behind one confirm, one refresh per repo, mirroring the multi-select archive. Confirm Verdict stays single-only.
+
+### Fixed
+- **Onboarding no longer shows for configured users** (#398) — the auth probe was a hard gate (any `gh` blip wiped the tree to "Connect to GitHub") and "No repos yet" keyed on track count. Now a last-good cache survives a transient probe/load error, and empty-states partition into truly-new (onboarding) / configured-but-no-tracks ("No tracks yet") / load-error ("Couldn't load — Retry"). Preserves the `no-cli` banner from #402.
+- **Archive: tracked-staged + gitignored plans handled honestly** (#399, P1) — a tracked plan archives as a staged `git mv` ("commit & push to share"); a gitignored/untracked plan as a plain filesystem move (`archived_local`) instead of a silent "git mv failed". The viewer toast + CLI wording say which.
+
+### Docs
+- Freshness pass (#395): README/SKILL/vscode-README cover archive staged-vs-local, batch ack/baseline, and the onboarding states.
+- Changelog readability: vscode/README Status restructured into a per-version bulleted list; CHANGELOG sub-heading hierarchy fixed.
+
+### Verification
+1202 Python + 758 VS Code tests, tsc + production build clean. Each issue PR-reviewed; the #396 stampBaseline predicate bug was caught + fixed in review.
+
+Commits since last deploy: `1920bf8` (#399), `29caada` (#398), `73af276` (#396), `d270f0d` (#395), plus release/changelog prep.
+
 ## 2026.06.23+6dce5e4 — 2026-06-23 (#404)
 
 fix(vscode): distinguish missing CLI from "not signed in" (#402)
