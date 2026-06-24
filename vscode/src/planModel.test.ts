@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { isStalledForDisplay, planBucket, planDescription, ackKey, unregisteredTrackRepos,
-         BUCKET_META, BUCKET_RANK, LEGEND, isArchivable, archivableSelection } from "./planModel.ts";
+         BUCKET_META, BUCKET_RANK, LEGEND, isArchivable, archivableSelection, selectedDocNodes } from "./planModel.ts";
 import type { PlanBucket } from "./planModel.ts";
 import type { Export, PlanDoc, Track } from "./model.ts";
 
@@ -286,5 +286,76 @@ describe("archivableSelection (#393)", () => {
   test("empty / undefined selection → []", () => {
     assert.deepStrictEqual(archivableSelection([]), []);
     assert.deepStrictEqual(archivableSelection(undefined), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectedDocNodes (#396)
+// ---------------------------------------------------------------------------
+
+describe("selectedDocNodes (#396)", () => {
+  const sdDoc = (over: Partial<PlanDoc>): PlanDoc =>
+    archDoc({ verdict: "partial", lie_gap: false, stalled: false, ...over });
+
+  const docNode = (repoKey: string, over: Partial<PlanDoc>) =>
+    ({ kind: "doc", repoKey, doc: sdDoc(over) });
+
+  const alwaysTrue = (_doc: PlanDoc) => true;
+  const alwaysFalse = (_doc: PlanDoc) => false;
+
+  test("filters out non-doc nodes", () => {
+    const result = selectedDocNodes([
+      docNode("r1", { rel: "a.md" }),
+      { kind: "repo", repoKey: "r1" },
+      { kind: "archived", repoKey: "r1" },
+    ], alwaysTrue);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].rel, "a.md");
+  });
+
+  test("filters out nodes that fail the predicate", () => {
+    const result = selectedDocNodes([
+      docNode("r1", { rel: "a.md" }),
+      docNode("r1", { rel: "b.md" }),
+    ], alwaysFalse);
+    assert.deepStrictEqual(result, []);
+  });
+
+  test("respects predicate selectively", () => {
+    const result = selectedDocNodes([
+      docNode("r1", { rel: "a.md", verdict: "dead" }),
+      docNode("r1", { rel: "b.md", verdict: "partial" }),
+    ], (d) => d.verdict === "dead");
+    assert.equal(result.length, 1);
+    assert.equal(result[0].rel, "a.md");
+  });
+
+  test("dedupes by repoKey+rel", () => {
+    const result = selectedDocNodes([
+      docNode("r1", { rel: "a.md" }),
+      docNode("r1", { rel: "a.md" }),  // dup
+      docNode("r2", { rel: "a.md" }),  // same rel, different repo
+    ], alwaysTrue);
+    assert.equal(result.length, 2);
+    assert.deepEqual(result.map((t) => t.repoKey), ["r1", "r2"]);
+  });
+
+  test("spans repos", () => {
+    const result = selectedDocNodes([
+      docNode("r1", { rel: "x.md" }),
+      docNode("r2", { rel: "y.md" }),
+    ], alwaysTrue);
+    assert.equal(result.length, 2);
+    assert.deepEqual(result.map((t) => t.repoKey), ["r1", "r2"]);
+  });
+
+  test("empty / undefined selection → []", () => {
+    assert.deepStrictEqual(selectedDocNodes([], alwaysTrue), []);
+    assert.deepStrictEqual(selectedDocNodes(undefined, alwaysTrue), []);
+  });
+
+  test("carries the full doc in each target", () => {
+    const result = selectedDocNodes([docNode("r1", { rel: "a.md", verdict: "dead" })], alwaysTrue);
+    assert.equal(result[0].doc.verdict, "dead");
   });
 });

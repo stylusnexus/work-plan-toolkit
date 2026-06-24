@@ -10,7 +10,7 @@ import type { NotesVcsStatus, AuthState } from "./cli.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
-import { ackKey, unregisteredTrackRepos, LEGEND, archivableSelection } from "./planModel.ts";
+import { ackKey, unregisteredTrackRepos, LEGEND, archivableSelection, selectedDocNodes, isStalledForDisplay } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode, SuggestedIssueNode, SuggestedGroupNode } from "./tree.ts";
 import type { Track, Issue, PlanDoc } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones } from "./model.ts";
@@ -3065,10 +3065,35 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "workPlan.plans.acknowledge",
-      (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) =>
-        n?.kind === "doc" && n.repoKey && n.doc?.rel
-          ? setAck(n.repoKey, n.doc.rel, true)
-          : undefined,
+      async (
+        n?: { kind?: string; repoKey?: string; doc?: PlanDoc },
+        selected?: Array<{ kind?: string; repoKey?: string; doc?: PlanDoc }>,
+      ) => {
+        // Mirrors archive's (clickedNode, fullSelection[]) shape (#396).
+        // Predicate mirrors when-clause: viewItem =~ /workPlanPlan-(stalled|dead)/
+        const nodes = Array.isArray(selected) && selected.length > 1 ? selected : (n ? [n] : []);
+        const ackPred = (doc: PlanDoc) =>
+          isStalledForDisplay(doc, stallDaysSetting(), Date.now()) || doc.verdict === "dead";
+        const targets = selectedDocNodes(nodes, ackPred);
+        if (targets.length === 0) {
+          // Single-node fallback for backwards compat (no PlanDoc in node)
+          if (n?.kind === "doc" && n.repoKey && n.doc?.rel) {
+            return setAck(n.repoKey, n.doc.rel, true);
+          }
+          return;
+        }
+        if (targets.length === 1) {
+          return setAck(targets[0].repoKey, targets[0].rel, true);
+        }
+        // Batch: acknowledge each target, one rerender covers all.
+        for (const t of targets) {
+          const k = ackKey(t.repoKey, t.rel);
+          ackedPlans.add(k);
+        }
+        await context.workspaceState.update(ACK_KEY, [...ackedPlans]);
+        plansProvider.rerender();
+        vscode.window.showInformationMessage(`Work Plan: acknowledged ${targets.length} plan(s).`);
+      },
     ),
     vscode.commands.registerCommand(
       "workPlan.plans.unacknowledge",
@@ -3100,6 +3125,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "workPlan.plans.confirmVerdict",
+      // Intentionally single-only (#396): picks one verdict via QuickPick; operates
+      // on the clicked node only, ignoring any multi-selection passed by VS Code.
       async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
         if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
         const { repoKey } = n;
@@ -3181,31 +3208,81 @@ export function activate(context: vscode.ExtensionContext): void {
     // Acknowledge above. Same file-naming + public-repo gates as Confirm Verdict.
     vscode.commands.registerCommand(
       "workPlan.plans.acknowledgePersist",
-      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
-        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
-        const { repoKey } = n;
-        const rel = n.doc.rel;
-        const filename = rel.split("/").pop() ?? rel;
-        if (!(await confirmFrontmatterWrite(rel, "Write acknowledged: true into the frontmatter of"))) {
+      async (
+        n?: { kind?: string; repoKey?: string; doc?: PlanDoc },
+        selected?: Array<{ kind?: string; repoKey?: string; doc?: PlanDoc }>,
+      ) => {
+        // Mirrors archive's (clickedNode, fullSelection[]) shape (#396).
+        // Predicate mirrors when-clause: viewItem =~ /workPlanPlan-(stalled|dead)/
+        const nodes = Array.isArray(selected) && selected.length > 1 ? selected : (n ? [n] : []);
+        const ackPred = (doc: PlanDoc) =>
+          isStalledForDisplay(doc, stallDaysSetting(), Date.now()) || doc.verdict === "dead";
+        const targets = selectedDocNodes(nodes, ackPred);
+
+        if (targets.length <= 1) {
+          // Single-doc path — use the clicked node (original behaviour).
+          const sn = targets.length === 1
+            ? { kind: "doc" as const, repoKey: targets[0].repoKey, doc: targets[0].doc }
+            : n;
+          if (sn?.kind !== "doc" || !sn.repoKey || !sn.doc?.rel) return;
+          const { repoKey } = sn;
+          const rel = sn.doc.rel;
+          const filename = rel.split("/").pop() ?? rel;
+          if (!(await confirmFrontmatterWrite(rel, "Write acknowledged: true into the frontmatter of"))) {
+            return;
+          }
+          try {
+            const outcome = await withWriteProgress(
+              "Work Plan: saving acknowledgment…",
+              () => executeWrite(runner, { kind: "planAck", repoKey, rel }, confirmPublicWrite),
+            );
+            if (outcome.status === "written") {
+              plansProvider.refresh(repoKey);
+              vscode.window.showInformationMessage(`Work Plan: ${filename} acknowledged (saved to doc).`);
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+          } catch (err: unknown) {
+            const msg = err instanceof CliError
+              ? `Work Plan: ${err.message}`
+              : `Work Plan: acknowledge failed — ${String(err)}`;
+            vscode.window.showErrorMessage(msg);
+          }
           return;
         }
+
+        // Batch (#396): N selected eligible docs → one set-level confirm, write each,
+        // one refresh per affected repo, summary toast.
+        const names = targets.slice(0, 3).map((t) => t.rel.split("/").pop());
+        const more = targets.length > 3 ? `, … and ${targets.length - 3} more` : "";
+        const ok = await vscode.window.showWarningMessage(
+          `Acknowledge & Save to Doc ${targets.length} selected plan(s)?`,
+          { modal: true, detail: `${names.join(", ")}${more}\n\nWrites acknowledged: true to each doc's YAML frontmatter only.` },
+          "Write frontmatter");
+        if (ok !== "Write frontmatter") { return; }
+        let written = 0;
+        let skipped = 0;
         try {
-          const outcome = await withWriteProgress(
-            "Work Plan: saving acknowledgment…",
-            () => executeWrite(runner, { kind: "planAck", repoKey, rel }, confirmPublicWrite),
-          );
-          if (outcome.status === "written") {
-            plansProvider.refresh(repoKey);
-            vscode.window.showInformationMessage(`Work Plan: ${filename} acknowledged (saved to doc).`);
-          } else {
-            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
-          }
+          await withWriteProgress(`Work Plan: saving acknowledgment on ${targets.length} plan(s)…`, async () => {
+            for (const t of targets) {
+              const outcome = await executeWrite(runner, { kind: "planAck", repoKey: t.repoKey, rel: t.rel }, confirmPublicWrite);
+              if (outcome.status === "written") { written++; } else { skipped++; }
+            }
+          });
         } catch (err: unknown) {
           const msg = err instanceof CliError
             ? `Work Plan: ${err.message}`
             : `Work Plan: acknowledge failed — ${String(err)}`;
           vscode.window.showErrorMessage(msg);
+          return;
         }
+        for (const repoKey of new Set(targets.map((t) => t.repoKey))) {
+          plansProvider.refresh(repoKey);
+        }
+        vscode.window.showInformationMessage(
+          skipped
+            ? `Work Plan: acknowledged ${written}, skipped ${skipped} (kept private).`
+            : `Work Plan: acknowledged ${written} plan(s) (saved to doc).`);
       },
     ),
     vscode.commands.registerCommand(
@@ -3242,31 +3319,82 @@ export function activate(context: vscode.ExtensionContext): void {
     // accept-the-new-reality path). Same file-naming + public-repo gates.
     vscode.commands.registerCommand(
       "workPlan.plans.stampBaseline",
-      async (n?: { kind?: string; repoKey?: string; doc?: { rel?: string } }) => {
-        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel) return;
-        const { repoKey } = n;
-        const rel = n.doc.rel;
-        const filename = rel.split("/").pop() ?? rel;
-        if (!(await confirmFrontmatterWrite(rel, "Stamp a verdict baseline (watch for drift) into the frontmatter of"))) {
+      async (
+        n?: { kind?: string; repoKey?: string; doc?: PlanDoc },
+        selected?: Array<{ kind?: string; repoKey?: string; doc?: PlanDoc }>,
+      ) => {
+        // Mirrors archive's (clickedNode, fullSelection[]) shape (#396).
+        // Predicate matches the menu when-clause (viewItem =~ /^workPlanPlan-/):
+        // baseline applies to ANY plan doc, and re-stamping a confirmed/acked plan
+        // is allowed (the single-doc path stamps any clicked node). So the batch
+        // must not silently drop override/acked docs — any doc node is eligible.
+        const nodes = Array.isArray(selected) && selected.length > 1 ? selected : (n ? [n] : []);
+        const targets = selectedDocNodes(nodes, () => true);
+
+        if (targets.length <= 1) {
+          // Single-doc path — use clicked node (original behaviour).
+          const sn = targets.length === 1
+            ? { kind: "doc" as const, repoKey: targets[0].repoKey, doc: targets[0].doc }
+            : n;
+          if (sn?.kind !== "doc" || !sn.repoKey || !sn.doc?.rel) return;
+          const { repoKey } = sn;
+          const rel = sn.doc.rel;
+          const filename = rel.split("/").pop() ?? rel;
+          if (!(await confirmFrontmatterWrite(rel, "Stamp a verdict baseline (watch for drift) into the frontmatter of"))) {
+            return;
+          }
+          try {
+            const outcome = await withWriteProgress(
+              "Work Plan: stamping baseline…",
+              () => executeWrite(runner, { kind: "planBaseline", repoKey, rel }, confirmPublicWrite),
+            );
+            if (outcome.status === "written") {
+              plansProvider.refresh(repoKey);
+              vscode.window.showInformationMessage(`Work Plan: baseline stamped on ${filename}.`);
+            } else {
+              vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+            }
+          } catch (err: unknown) {
+            const msg = err instanceof CliError
+              ? `Work Plan: ${err.message}`
+              : `Work Plan: stamp baseline failed — ${String(err)}`;
+            vscode.window.showErrorMessage(msg);
+          }
           return;
         }
+
+        // Batch (#396): N selected eligible docs → one set-level confirm, stamp each,
+        // one refresh per affected repo, summary toast.
+        const names = targets.slice(0, 3).map((t) => t.rel.split("/").pop());
+        const more = targets.length > 3 ? `, … and ${targets.length - 3} more` : "";
+        const ok = await vscode.window.showWarningMessage(
+          `Stamp baseline on ${targets.length} selected plan(s)?`,
+          { modal: true, detail: `${names.join(", ")}${more}\n\nWrites verdict_baseline to each doc's YAML frontmatter only.` },
+          "Write frontmatter");
+        if (ok !== "Write frontmatter") { return; }
+        let written = 0;
+        let skipped = 0;
         try {
-          const outcome = await withWriteProgress(
-            "Work Plan: stamping baseline…",
-            () => executeWrite(runner, { kind: "planBaseline", repoKey, rel }, confirmPublicWrite),
-          );
-          if (outcome.status === "written") {
-            plansProvider.refresh(repoKey);
-            vscode.window.showInformationMessage(`Work Plan: baseline stamped on ${filename}.`);
-          } else {
-            vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
-          }
+          await withWriteProgress(`Work Plan: stamping baseline on ${targets.length} plan(s)…`, async () => {
+            for (const t of targets) {
+              const outcome = await executeWrite(runner, { kind: "planBaseline", repoKey: t.repoKey, rel: t.rel }, confirmPublicWrite);
+              if (outcome.status === "written") { written++; } else { skipped++; }
+            }
+          });
         } catch (err: unknown) {
           const msg = err instanceof CliError
             ? `Work Plan: ${err.message}`
             : `Work Plan: stamp baseline failed — ${String(err)}`;
           vscode.window.showErrorMessage(msg);
+          return;
         }
+        for (const repoKey of new Set(targets.map((t) => t.repoKey))) {
+          plansProvider.refresh(repoKey);
+        }
+        vscode.window.showInformationMessage(
+          skipped
+            ? `Work Plan: stamped baseline on ${written}, skipped ${skipped} (kept private).`
+            : `Work Plan: stamped baseline on ${written} plan(s).`);
       },
     ),
     vscode.commands.registerCommand(
@@ -3335,7 +3463,13 @@ export function activate(context: vscode.ExtensionContext): void {
             if (result === "archived") {
               plansProvider.refresh(t.repoKey);
               if (await vscode.window.showInformationMessage(
-                `Work Plan: archived ${filename} → archive/shipped/`, "Show") === "Show") {
+                `Work Plan: archived ${filename} → archive/shipped/ (staged — commit & push to share)`, "Show") === "Show") {
+                await vscode.commands.executeCommand("workPlan.plans.focus");
+              }
+            } else if (result === "archived_local") {
+              plansProvider.refresh(t.repoKey);
+              if (await vscode.window.showInformationMessage(
+                `Work Plan: archived ${filename} → archive/shipped/ (moved on disk; not git-tracked)`, "Show") === "Show") {
                 await vscode.commands.executeCommand("workPlan.plans.focus");
               }
             } else if (result === "skipped_collision") {
@@ -3362,7 +3496,7 @@ export function activate(context: vscode.ExtensionContext): void {
           await withWriteProgress(`Work Plan: archiving ${targets.length} plan(s)…`, async () => {
             for (const t of targets) {
               const r = await archiveOne(t);
-              if (r === "archived") { archived++; } else { skipped++; }
+              if (r === "archived" || r === "archived_local") { archived++; } else { skipped++; }
             }
           });
           for (const repoKey of new Set(targets.map((t) => t.repoKey))) {
