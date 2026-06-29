@@ -34,6 +34,14 @@ _wp_missing=""
 _wp_have python3 || _wp_missing="$_wp_missing python3"
 case "${1:-}" in
   --version|-v|--help|-h|"") ;;
+  auth-status)
+    # The VS Code extension's activation probe. It shells out to `gh` only,
+    # never yq. Gating it behind yq means a missing yq makes the probe exit 1
+    # with empty stdout, which the extension can't tell apart from "not logged
+    # in" — so it shows "Not signed in to GitHub" and traps the user in a
+    # sign-in loop that can never satisfy a yq dependency. Require gh alone.
+    _wp_have gh || _wp_missing="$_wp_missing gh"
+    ;;
   *)
     _wp_have yq || _wp_missing="$_wp_missing yq"
     _wp_have gh || _wp_missing="$_wp_missing gh"
