@@ -753,17 +753,22 @@
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError != true && workPlanConfigured == false",
+        "when": "workPlanGitHubAuthed == probe-error",
+        "contents": "Couldn't verify GitHub sign-in.\n\nThe `work-plan` CLI ran but didn't return a result, so Work Plan can't tell whether you're signed in. This is usually a missing CLI dependency, not a GitHub problem — the CLI needs `gh`, `git`, and `yq` (the Go mikefarah/yq) on the same PATH the editor runs in.\n\nCheck dependencies, then:\n[Retry](command:workPlan.checkGitHubAuth)\n\n[Install instructions](https://github.com/stylusnexus/work-plan-toolkit#install)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanGitHubAuthed != probe-error && workPlanLoadError != true && workPlanConfigured == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError != true && workPlanConfigured == true && workPlanHasTracks == false",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanGitHubAuthed != probe-error && workPlanLoadError != true && workPlanConfigured == true && workPlanHasTracks == false",
         "contents": "No tracks yet.\n\n[Refresh](command:workPlan.refresh)\n\nAdd issues to a track from the terminal with `work-plan slot`, or create a new track with `work-plan init-repo`."
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError == true",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanGitHubAuthed != probe-error && workPlanLoadError == true",
         "contents": "Couldn't load work plan.\n\n[Retry](command:workPlan.checkGitHubAuth)"
       }
     ],
