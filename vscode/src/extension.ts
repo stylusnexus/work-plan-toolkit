@@ -647,6 +647,13 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showWarningMessage(
           "Work Plan: GitHub CLI (gh) not found — install it, then Retry.",
         );
+      } else if (auth && !auth.probeOk) {
+        // Probe ran but gave no trustworthy answer — a CLI dependency/runtime
+        // problem, not a sign-in state. Don't claim "still not signed in".
+        const detail = auth.error ? ` (${auth.error})` : "";
+        vscode.window.showWarningMessage(
+          `Work Plan: couldn't verify GitHub sign-in — the work-plan CLI didn't return a result${detail}. Check its dependencies (gh, git, yq), then Retry.`,
+        );
       } else {
         vscode.window.showInformationMessage(
           "Work Plan: Still not signed in — finish the flow in the terminal, then Retry.",
@@ -3791,6 +3798,20 @@ function maybeShowAuthToast(auth: AuthState | null): void {
       )
       .then((c) => {
         if (c === "Install gh") void vscode.commands.executeCommand("workPlan.openGhInstallDocs");
+      }, () => { /* ignore */ });
+  } else if (!auth.probeOk) {
+    // The probe ran but returned no trustworthy answer — a CLI runtime /
+    // dependency problem (e.g. an older launcher gating the probe behind a
+    // missing yq), NOT a sign-in state. Surface the launcher's own reason and
+    // offer Retry instead of sending the user into a futile sign-in loop.
+    const detail = auth.error ? ` (${auth.error})` : "";
+    vscode.window
+      .showWarningMessage(
+        `Work Plan: couldn't verify GitHub sign-in — the work-plan CLI didn't return a result${detail}. Check its dependencies (gh, git, yq), then Retry.`,
+        "Retry",
+      )
+      .then((c) => {
+        if (c === "Retry") void vscode.commands.executeCommand("workPlan.checkGitHubAuth");
       }, () => { /* ignore */ });
   } else {
     vscode.window

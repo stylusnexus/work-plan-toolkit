@@ -462,26 +462,54 @@ export async function checkVersion(
  *  `probeOk` signals whether the auth probe itself ran and returned a parseable,
  *  authoritative answer (`true`), or whether the probe errored / couldn't be
  *  trusted (`false` — transient). When `probeOk` is false the caller should keep
- *  the last-good tree rather than switching to an onboarding banner. */
+ *  the last-good tree rather than switching to an onboarding banner.
+ *
+ *  `error` is a short human reason set ONLY when the probe ran but produced no
+ *  trustworthy answer (`probeOk:false` with `cliPresent:true`) — typically the
+ *  launcher's own stderr, e.g. "work-plan: missing required tool(s) on PATH: yq".
+ *  It lets the caller say "the CLI couldn't run: <reason>" instead of the
+ *  misleading "not signed in to GitHub". Null whenever there's nothing to add. */
 export type AuthState = {
   authenticated: boolean;
   cliPresent: boolean;
   ghPresent: boolean;
   probeOk: boolean;
   user: string | null;
+  error: string | null;
 };
 
 /**
  * Runs `auth-status --json` and reports whether `gh` is installed + signed in.
  * Never throws — auth detection must degrade gracefully, not break activation.
- * An unparseable output is treated as "CLI + gh present, not authenticated" (the
- * conservative state that surfaces the sign-in path). A spawn ENOENT (the CLI
- * binary not on PATH — #402) is reported as `cliPresent:false` so the caller can
- * surface "install the CLI" instead of a misleading "not signed in to GitHub".
+ *
+ * Three failure shapes, kept distinct so the caller never mislabels one as
+ * "not signed in":
+ *  - spawn ENOENT (#402) → `cliPresent:false` ("install the CLI").
+ *  - the CLI ran but emitted no parseable JSON (older launcher gating the probe
+ *    behind a missing dependency like yq, a crash, a truncated pipe) →
+ *    `probeOk:false` with `error` carrying the launcher's stderr. This is a CLI
+ *    runtime problem, NOT a sign-in state.
+ *  - clean parse → `probeOk:true`; `authenticated`/`ghPresent` are authoritative.
  */
 export async function checkAuth(run: CliRunner): Promise<AuthState> {
+  let result: CliResult;
   try {
-    const result = await run(["auth-status", "--json"]);
+    result = await run(["auth-status", "--json"]);
+  } catch (err) {
+    // The work-plan binary wasn't found on PATH — distinct from a gh/auth
+    // failure. ghPresent is unknown (we never reached gh) → false, but cliPresent
+    // false is what drives the message. This IS authoritative (CLI truly absent),
+    // so probeOk stays false (we got no parseable answer) but cliPresent:false
+    // tells the caller to show the install-the-CLI banner, not keep last-good.
+    if (err instanceof CliError && err.notFound) {
+      return { authenticated: false, cliPresent: false, ghPresent: false, probeOk: false, user: null, error: null };
+    }
+    // A non-ENOENT spawn error (EPERM, signal abort) — transient.
+    const reason = err instanceof Error ? err.message : String(err);
+    return { authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null, error: reason || null };
+  }
+
+  try {
     const blob = JSON.parse(result.stdout) as Partial<{
       authenticated: boolean; gh_present: boolean; user: string | null;
     }>;
@@ -491,19 +519,21 @@ export async function checkAuth(run: CliRunner): Promise<AuthState> {
       ghPresent: blob.gh_present !== false, // default true unless explicitly false
       probeOk: true,
       user: blob.user ?? null,
+      error: null,
     };
-  } catch (err) {
-    // The work-plan binary wasn't found on PATH — distinct from a gh/auth
-    // failure. ghPresent is unknown (we never reached gh) → false, but cliPresent
-    // false is what drives the message. This IS authoritative (CLI truly absent),
-    // so probeOk stays false (we got no parseable answer) but cliPresent:false
-    // tells the caller to show the install-the-CLI banner, not keep last-good.
-    if (err instanceof CliError && err.notFound) {
-      return { authenticated: false, cliPresent: false, ghPresent: false, probeOk: false, user: null };
-    }
-    // Spawn or parse error — transient (network blip, process killed, etc.).
-    // Mark probeOk:false so the caller can keep the last-good tree.
-    return { authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null };
+  } catch {
+    // The CLI ran (we reached this binary) but returned nothing parseable. That
+    // is a runtime/dependency problem, NOT "not signed in". Surface the
+    // launcher's own diagnostics (first non-empty line of stderr — the launcher
+    // writes missing-tool messages there; unparseable stdout is the failure
+    // itself, not a human reason) so the caller can name the real fix instead of
+    // sending the user into a futile sign-in loop.
+    const reason =
+      result.stderr
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.length > 0) ?? null;
+    return { authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null, error: reason };
   }
 }
 

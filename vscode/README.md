@@ -24,7 +24,7 @@ The human face of the [`work-plan`](https://github.com/stylusnexus/work-plan-too
 
 **Get started from empty** — a cold-start a new user can drive without the CLI:
 
-- **Not signed in to GitHub?** Because all issue data comes through the GitHub CLI (`gh`), the view **fast-fails** instead of showing a misleadingly empty tree: a **"Not signed in to GitHub"** banner replaces the tracks, with a **Sign in to GitHub** button that opens `gh auth login` in a terminal and a **Retry** once you're done. A distinct **"GitHub CLI not found"** banner covers the case where `gh` isn't installed (with an install link). Signed-in users never see any of this.
+- **Not signed in to GitHub?** Because all issue data comes through the GitHub CLI (`gh`), the view **fast-fails** instead of showing a misleadingly empty tree: a **"Not signed in to GitHub"** banner replaces the tracks, with a **Sign in to GitHub** button that opens `gh auth login` in a terminal and a **Retry** once you're done. A distinct **"GitHub CLI not found"** banner covers the case where `gh` isn't installed (with an install link). A third **"Couldn't verify GitHub sign-in"** banner covers the case where the `work-plan` CLI ran but returned no usable result — a missing CLI dependency (`gh` / `git` / `yq`), not a GitHub problem — so a missing tool no longer masquerades as "not signed in" and sends you into a futile sign-in loop. Signed-in users never see any of this.
 - When you have no repos yet, the tree shows a welcome with **Add a repo** and **Set notes location** buttons.
 - **Add Repo** runs `init-repo`; **Set Notes Location** runs `set-notes-root` so your private track notes live wherever you choose (not just the hidden default). Config itself is auto-seeded by the CLI on first run.
 
