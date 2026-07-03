@@ -80,7 +80,11 @@ export type WriteAction =
   | { kind: "markCleanup"; track: string; repoKey?: string; reason?: string }
   // Clear the cleanup-candidate flag (#328/#329/#330) — the --clear inverse of
   // markCleanup. Same public-repo confirm-token flow.
-  | { kind: "unmarkCleanup"; track: string; repoKey?: string };
+  | { kind: "unmarkCleanup"; track: string; repoKey?: string }
+  // Archive a track (reversibly) into archive/parked/ (#328).
+  | { kind: "archiveTrack"; track: string; repoKey?: string }
+  // Restore an archived track back into the active set (#328).
+  | { kind: "unarchiveTrack"; track: string; repoKey?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -347,6 +351,22 @@ export function actionToArgs(action: WriteAction): string[] {
         "mark-cleanup",
         ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--clear",
+        "--",
+        action.track,
+      ];
+
+    case "archiveTrack":
+      return [
+        "archive-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "unarchiveTrack":
+      return [
+        "unarchive-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         action.track,
       ];

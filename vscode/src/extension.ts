@@ -43,10 +43,16 @@ export function activate(context: vscode.ExtensionContext): void {
   // Wire up the tree provider.
   // -------------------------------------------------------------------------
 
+  // Show-archived toggle (#328): when on, the tree export includes archived-tier
+  // tracks (greyed). Captured by the load closure so a toggle+refresh flips the
+  // `--include-archived` flag without reconstructing the provider.
+  let showArchivedTracks = false;
+
   const provider = new WorkPlanTreeProvider(
-    () => exportJson(runner),
+    () => exportJson(runner, showArchivedTracks),
     () => checkAuth(runner),
   );
+  void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
 
   const treeView = vscode.window.createTreeView("workPlan.tree", {
     treeDataProvider: provider,
@@ -2370,6 +2376,60 @@ export function activate(context: vscode.ExtensionContext): void {
           : `Work Plan: unmark-cleanup failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
       }
+    }),
+
+    // workPlan.archiveTrack / workPlan.unarchiveTrack — set a track aside into
+    // archive/parked/ (reversible), or restore it (#328). Distinct from Close.
+    vscode.commands.registerCommand("workPlan.archiveTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: archiving ${track}…`,
+          () => executeWrite(runner, { kind: "archiveTrack", track, repoKey }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: archived ${track} — restore via Unarchive Track (or Show archived).`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: archive-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    vscode.commands.registerCommand("workPlan.unarchiveTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: restoring ${track}…`,
+          () => executeWrite(runner, { kind: "unarchiveTrack", track, repoKey }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: restored ${track} to the active set.`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: unarchive-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    // workPlan.toggleShowArchived — flip whether archived tracks appear in the
+    // Tracks tree (greyed). Re-exports with/without --include-archived (#328).
+    vscode.commands.registerCommand("workPlan.toggleShowArchived", () => {
+      showArchivedTracks = !showArchivedTracks;
+      void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
+      void provider.refresh();
     }),
   );
 

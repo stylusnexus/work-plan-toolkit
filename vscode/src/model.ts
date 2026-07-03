@@ -105,6 +105,10 @@ export interface Track {
   /** "private" today; forward-compat for a future shared tier. */
   tier: string;
   status: string;
+  /** True for a track in the archive tier (#328) — present only when the export
+   *  ran with `--include-archived` (the Show-archived toggle). Optional on the
+   *  wire; an older CLI omits it. The viewer greys these + offers Unarchive. */
+  archived?: boolean;
   launch_priority: string | null;
   milestone_alignment: string | null;
   /** "PUBLIC" | "PRIVATE" | null (best-effort). */

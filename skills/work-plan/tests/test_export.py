@@ -38,7 +38,17 @@ class BuildExportTest(unittest.TestCase):
         # Phase 2: next_up_preset must be present in every track
         self.assertIn("next_up_preset", t)
         self.assertEqual(t["next_up_preset"], "flow")  # default when no next_up_order in meta
+        # archived defaults false (active tracks); #328.
+        self.assertFalse(t["archived"])
         json.dumps(out)  # must be serializable
+
+    def test_archived_flag_emitted_when_meta_set(self):
+        """A track tagged archived (the --include-archived union sets meta) exports
+        archived:true so the viewer can grey it (#328)."""
+        tr = _track("old", "o/r", [1])
+        tr.meta["archived"] = True
+        out = build_export([tr], {("o/r", "old"): []}, {"o/r": "PRIVATE"}, now="t")
+        self.assertTrue(out["tracks"][0]["archived"])
 
     def test_path_is_null_when_track_has_no_path(self):
         """A track object without a `path` attribute exports path=None, so the

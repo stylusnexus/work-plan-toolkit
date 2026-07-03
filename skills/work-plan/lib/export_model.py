@@ -139,6 +139,9 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "folder": getattr(t, "folder", None),
             "tier": getattr(t, "tier", "private") or "private",
             "status": t.meta.get("status"),
+            # True for a track in the archive tier (#328), surfaced only when
+            # export ran with --include-archived; the viewer greys these.
+            "archived": bool(t.meta.get("archived")),
             # Cleanup earmark (#328): a lightweight "candidate for retirement"
             # flag set via `mark-cleanup`, with an optional free-text reason
             # (null when unset). Surfaced by the viewer + hygiene callout.
