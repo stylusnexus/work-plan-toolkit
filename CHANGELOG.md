@@ -6,6 +6,24 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.03+7d98e1e — 2026-07-03 (#414)
+
+feat: track lifecycle (mark/archive/delete) + plan restore + yq auth fix
+
+VS Code extension **0.19.0** + CLI. Ships three merged pieces.
+
+### Added
+- **Track lifecycle — mark / archive / delete** (#329, #328, #330). `mark-cleanup` (reversible 🧹 frontmatter flag + hygiene callout); `archive-track`/`unarchive-track` (reversible set-aside into `archive/parked/`, git-aware, with a viewer **Show Archived Tracks** toggle); `delete-track` (removes the `.md` only — **never touches GitHub issues** — behind a hard modal, type-to-confirm on shared tracks, honest permanent-vs-recoverable messaging). New shared `restore_from_archive` + `git_rm` primitives.
+- **Un-archive (restore) a plan** (#388) — `plan-unarchive` + viewer **Restore to Live** on the 📦 Archived folder; the inverse of plan-archive, reusing the restore primitive.
+
+### Fixed
+- **A missing `yq` no longer masquerades as "Not signed in to GitHub"** (#410/#411) — the launcher preflight no longer gates `auth-status` behind `yq`, and the viewer distinguishes a failed auth probe from a real sign-out (builds on the #398 `probeOk` work).
+
+### Verification
+1242 Python + 759 VS Code tests, tsc + production build clean. The track cluster was code-reviewed (PR #412) — a borderline-critical false-recoverability promise on delete was caught + fixed (message now keys on whether the deletion was actually git-staged).
+
+Genuinely-new since #409: #412 (track lifecycle), #413 (plan-unarchive), plus the #410/#411 yq fix already on dev.
+
 ## 2026.06.24+b047035 — 2026-06-24 (#409)
 
 feat(viewer): Plans-view batch + onboarding states + archive correctness
