@@ -302,6 +302,11 @@
         "icon": "$(archive)"
       },
       {
+        "command": "workPlan.deleteTrack",
+        "title": "Delete Track…",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.newTrack",
         "title": "New Track",
         "category": "Work Plan"
@@ -593,6 +598,11 @@
           "command": "workPlan.unarchiveTrack",
           "when": "view == workPlan.tree && viewItem == workPlanTrackArchived",
           "group": "9_workPlanDanger@1"
+        },
+        {
+          "command": "workPlan.deleteTrack",
+          "when": "view == workPlan.tree && viewItem =~ /^workPlanTrack(Archived)?$/",
+          "group": "9_workPlanDanger@6"
         },
         {
           "command": "workPlan.slotUntracked",

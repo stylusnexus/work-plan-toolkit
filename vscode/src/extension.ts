@@ -2431,6 +2431,63 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
       void provider.refresh();
     }),
+
+    // workPlan.deleteTrack — DELETE a track's .md (#330). Destructive: a hard
+    // modal that names the track and states exactly what's removed and what
+    // isn't (GitHub issues are untouched); a shared-tier delete additionally
+    // requires typing the track name to confirm. Never deletes GitHub issues.
+    vscode.commands.registerCommand("workPlan.deleteTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        const exp = provider.rawExport ?? provider.currentExport;
+        const t = exp?.tracks.find(x => x.name === track);
+        const repoKey = t?.folder ?? undefined;
+        const shared = t?.tier === "shared";
+        const recovery = shared
+          ? "The deletion is staged in git — recoverable from history until you commit & push."
+          : "The deletion is an undoable notes-vcs commit — recoverable.";
+
+        const choice = await vscode.window.showWarningMessage(
+          `Delete track "${track}"?`,
+          {
+            modal: true,
+            detail:
+              `This removes the track's markdown file only.\n\n` +
+              `• GitHub issues are NOT touched — they outlive the track.\n` +
+              `• ${recovery}\n\n` +
+              (shared ? `This is a SHARED track — you'll be asked to type its name to confirm.` : `Prefer "Archive Track" if you might want it back.`),
+          },
+          { title: "Delete", isCloseAffordance: false },
+        );
+        if (!choice || choice.title !== "Delete") return;
+
+        // Shared-tier: type-to-confirm the exact track name (extra guard on the
+        // higher-blast-radius delete).
+        if (shared) {
+          const typed = await vscode.window.showInputBox({
+            prompt: `Type the track name to confirm deletion`,
+            placeHolder: track,
+            validateInput: (v) => v.trim() === track ? undefined : `Type "${track}" exactly to confirm.`,
+          });
+          if (typed?.trim() !== track) return;
+        }
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: deleting ${track}…`,
+          () => executeWrite(runner, { kind: "deleteTrack", track, repoKey }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: deleted ${track} — GitHub issues untouched. ${shared ? "Commit & push to remove it for teammates." : "Recoverable via notes-vcs undo."}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: delete-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
   );
 
   // -------------------------------------------------------------------------

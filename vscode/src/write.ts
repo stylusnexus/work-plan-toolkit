@@ -84,7 +84,9 @@ export type WriteAction =
   // Archive a track (reversibly) into archive/parked/ (#328).
   | { kind: "archiveTrack"; track: string; repoKey?: string }
   // Restore an archived track back into the active set (#328).
-  | { kind: "unarchiveTrack"; track: string; repoKey?: string };
+  | { kind: "unarchiveTrack"; track: string; repoKey?: string }
+  // Delete a track's .md (#330). DESTRUCTIVE; never touches GitHub issues.
+  | { kind: "deleteTrack"; track: string; repoKey?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -366,6 +368,14 @@ export function actionToArgs(action: WriteAction): string[] {
     case "unarchiveTrack":
       return [
         "unarchive-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "deleteTrack":
+      return [
+        "delete-track",
         ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         action.track,
