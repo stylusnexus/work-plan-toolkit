@@ -3641,6 +3641,46 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+    // workPlan.plans.unarchive — restore an archived plan doc back to the live
+    // set (#388): the inverse of plans.archive, on a node inside the 📦 Archived
+    // folder. Single-doc (no batch); confirm modal names source → destination.
+    vscode.commands.registerCommand(
+      "workPlan.plans.unarchive",
+      async (n?: { kind?: string; repoKey?: string; doc?: PlanDoc }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel || !n.doc.archived) { return; }
+        const repoKey = n.repoKey;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        // Destination strips the `archive/<kind>/` segments (mirrors the CLI).
+        const parts = rel.split("/");
+        const ai = parts.lastIndexOf("archive");
+        const dest = ai >= 0 ? [...parts.slice(0, ai), filename].join("/") : filename;
+        if (await vscode.window.showWarningMessage(
+          "Restore plan to live?", { modal: true, detail: `${rel}\n\nMoves back to ${dest}.` }, "Restore") !== "Restore") { return; }
+        try {
+          const outcome = await withWriteProgress("Work Plan: restoring…", () =>
+            executeWrite(runner, { kind: "planUnarchive", repoKey, rel }, confirmPublicWrite));
+          if (outcome.status !== "written") {
+            vscode.window.showInformationMessage("Work Plan: kept — no change written.");
+            return;
+          }
+          let result: string | null = null;
+          try { result = (JSON.parse(outcome.stdout) as { outcome?: string }).outcome ?? null; } catch { /* unparseable */ }
+          if (result === "restored" || result === "restored_local") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(
+              `Work Plan: restored ${filename} → ${dest}${result === "restored" ? " (staged — commit & push to share)" : " (moved on disk; not git-tracked)"}`);
+          } else if (result === "skipped_collision") {
+            vscode.window.showWarningMessage(`Work Plan: not restored — a live doc already exists at ${dest}.`);
+          } else {
+            vscode.window.showWarningMessage(`Work Plan: could not restore ${filename}.`);
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: plan-unarchive failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
     vscode.commands.registerCommand(
       "workPlan.plans.archive",
       async (

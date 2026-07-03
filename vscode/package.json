@@ -200,6 +200,11 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.plans.unarchive",
+        "title": "Restore to Live…",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.plans.archiveAllShipped",
         "title": "Archive shipped plans…",
         "category": "Work Plan"
@@ -710,6 +715,11 @@
           "group": "4_archive"
         },
         {
+          "command": "workPlan.plans.unarchive",
+          "when": "view == workPlan.plans && viewItem =~ /restorable/",
+          "group": "4_archive"
+        },
+        {
           "command": "workPlan.plans.archiveAllShipped",
           "when": "view == workPlan.plans && viewItem =~ /workPlanPlansRepo/",
           "group": "4_archive"
@@ -753,6 +763,7 @@
           "when": "false"
         },
         { "command": "workPlan.plans.archive", "when": "false" },
+        { "command": "workPlan.plans.unarchive", "when": "false" },
         { "command": "workPlan.plans.archiveAllShipped", "when": "false" },
         {
           "command": "workPlan.openTrackFile",
