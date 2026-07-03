@@ -2,7 +2,7 @@
 import json
 from datetime import datetime, date
 from lib.config import load_config, ConfigError, resolve_local_path_for_folder
-from lib.tracks import discover_tracks, find_tier_duplicates, issue_refs
+from lib.tracks import discover_tracks, discover_archived_tracks, find_tier_duplicates, issue_refs
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
 from lib.git_state import hot_issue_numbers
 from lib.export_model import build_export
@@ -48,14 +48,23 @@ def _plan_badge(track, cfg, today, dead_days, stall_days):
     }
 
 def run(args: list[str]) -> int:
-    flags, _ = parse_flags(args, {"--json"})
+    flags, _ = parse_flags(args, {"--json", "--include-archived"})
     if not flags.get("--json"):
-        print("usage: work-plan export --json"); return 2
+        print("usage: work-plan export --json [--include-archived]"); return 2
     try:
         cfg = load_config()
     except ConfigError as e:
         print(json.dumps({"error": str(e)})); return 1
     tracks = [t for t in discover_tracks(cfg) if t.has_frontmatter]
+
+    # --include-archived (#328): append archived-tier tracks, tagged so the
+    # viewer can render them greyed under a "Show archived" toggle. In-memory
+    # meta flag only (never written back). Excluded by default.
+    if flags.get("--include-archived"):
+        for t in discover_archived_tracks(cfg):
+            if t.has_frontmatter:
+                t.meta["archived"] = True
+                tracks.append(t)
 
     # Build repo_to_numbers: {repo: [number, ...]} deduped per repo, first-seen order.
     repo_to_numbers: dict[str, list[int]] = {}

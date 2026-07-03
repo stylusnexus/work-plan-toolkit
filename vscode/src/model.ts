@@ -105,6 +105,10 @@ export interface Track {
   /** "private" today; forward-compat for a future shared tier. */
   tier: string;
   status: string;
+  /** True for a track in the archive tier (#328) — present only when the export
+   *  ran with `--include-archived` (the Show-archived toggle). Optional on the
+   *  wire; an older CLI omits it. The viewer greys these + offers Unarchive. */
+  archived?: boolean;
   launch_priority: string | null;
   milestone_alignment: string | null;
   /** "PUBLIC" | "PRIVATE" | null (best-effort). */
@@ -135,6 +139,14 @@ export interface Track {
    *  when the track declares no `plan:`. Optional on the wire so an older CLI
    *  (no `plan` field) deserializes cleanly. */
   plan?: TrackPlan | null;
+  /**
+   * True when the track is flagged as a cleanup candidate (#328/#329/#330) — a
+   * reversible, non-destructive frontmatter flag (NOT deletion). Optional on the
+   * wire so an older CLI (no field) deserializes cleanly.
+   */
+  cleanup_candidate?: boolean;
+  /** Free-text reason for the cleanup flag, or null when none was given. */
+  cleanup_reason?: string | null;
 }
 
 /**

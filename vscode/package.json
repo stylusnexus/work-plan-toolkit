@@ -276,6 +276,37 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.markCleanup",
+        "title": "Mark for Cleanup",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.unmarkCleanup",
+        "title": "Unmark Cleanup",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.archiveTrack",
+        "title": "Archive Track",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.unarchiveTrack",
+        "title": "Unarchive Track",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.toggleShowArchived",
+        "title": "Show Archived Tracks",
+        "category": "Work Plan",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "workPlan.deleteTrack",
+        "title": "Delete Track…",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.newTrack",
         "title": "New Track",
         "category": "Work Plan"
@@ -390,6 +421,11 @@
           "command": "workPlan.sortTracks",
           "when": "view == workPlan.tree",
           "group": "navigation"
+        },
+        {
+          "command": "workPlan.toggleShowArchived",
+          "when": "view == workPlan.tree",
+          "group": "1_workPlanOverflow"
         },
         {
           "command": "workPlan.dailyBrief",
@@ -542,6 +578,31 @@
           "command": "workPlan.renameTrack",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "9_workPlanDanger@2"
+        },
+        {
+          "command": "workPlan.markCleanup",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@3"
+        },
+        {
+          "command": "workPlan.unmarkCleanup",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@4"
+        },
+        {
+          "command": "workPlan.archiveTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@5"
+        },
+        {
+          "command": "workPlan.unarchiveTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrackArchived",
+          "group": "9_workPlanDanger@1"
+        },
+        {
+          "command": "workPlan.deleteTrack",
+          "when": "view == workPlan.tree && viewItem =~ /^workPlanTrack(Archived)?$/",
+          "group": "9_workPlanDanger@6"
         },
         {
           "command": "workPlan.slotUntracked",

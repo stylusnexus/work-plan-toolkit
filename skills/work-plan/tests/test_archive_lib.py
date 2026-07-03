@@ -128,5 +128,57 @@ class MoveToArchiveTest(unittest.TestCase):
             mv.assert_not_called()
 
 
+class RestoreFromArchiveTest(unittest.TestCase):
+    def _archived_repo(self, d):
+        root = Path(d)
+        (root / "docs/plans/archive/shipped").mkdir(parents=True)
+        (root / "docs/plans/archive/shipped/x.md").write_text("# x")
+        return root
+
+    def test_tracked_restore_calls_git_mv_to_original_dir(self):
+        """Tracked archived file → staged git mv back out → 'restored'."""
+        with tempfile.TemporaryDirectory() as d:
+            root = self._archived_repo(d)
+            with mock.patch("lib.archive.git_state.is_tracked", return_value=True), \
+                 mock.patch("lib.archive.git_state.git_mv", return_value=True) as mv:
+                outcome = archive_lib.restore_from_archive(
+                    "docs/plans/archive/shipped/x.md", root)
+            self.assertEqual(outcome, "restored")
+            mv.assert_called_once_with(
+                "docs/plans/archive/shipped/x.md", "docs/plans/x.md", root)
+
+    def test_untracked_restore_local_via_filesystem(self):
+        """Untracked archived file → shutil.move back → 'restored_local'; moves on disk."""
+        with tempfile.TemporaryDirectory() as d:
+            root = self._archived_repo(d)
+            with mock.patch("lib.archive.git_state.is_tracked", return_value=False), \
+                 mock.patch("lib.archive.git_state.git_mv") as mv:
+                outcome = archive_lib.restore_from_archive(
+                    "docs/plans/archive/shipped/x.md", root)
+            self.assertEqual(outcome, "restored_local")
+            mv.assert_not_called()
+            self.assertFalse((root / "docs/plans/archive/shipped/x.md").exists())
+            self.assertTrue((root / "docs/plans/x.md").exists())
+
+    def test_collision_refuses_when_live_doc_exists(self):
+        """A live doc already at the destination → 'skipped_collision', no move."""
+        with tempfile.TemporaryDirectory() as d:
+            root = self._archived_repo(d)
+            (root / "docs/plans/x.md").write_text("# live already")
+            with mock.patch("lib.archive.git_state.is_tracked") as is_tracked, \
+                 mock.patch("lib.archive.git_state.git_mv") as mv:
+                outcome = archive_lib.restore_from_archive(
+                    "docs/plans/archive/shipped/x.md", root)
+            self.assertEqual(outcome, "skipped_collision")
+            is_tracked.assert_not_called()
+            mv.assert_not_called()
+
+    def test_not_under_archive_returns_none(self):
+        """A path not under archive/<kind>/ → None (nothing to restore)."""
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self.assertIsNone(archive_lib.restore_from_archive("docs/plans/x.md", root))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -156,8 +156,8 @@ export function normalizeExportIssue(raw: Omit<Issue, "blocked_by" | "blocking">
  * Runs `work-plan export --json` and returns the parsed Export object.
  * Throws CliError on non-zero exit or unparseable output.
  */
-export async function exportJson(run: CliRunner): Promise<Export> {
-  const args = ["export", "--json"];
+export async function exportJson(run: CliRunner, includeArchived = false): Promise<Export> {
+  const args = includeArchived ? ["export", "--json", "--include-archived"] : ["export", "--json"];
   const result = await run(args);
 
   if (result.code !== 0) {

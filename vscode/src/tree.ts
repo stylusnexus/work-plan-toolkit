@@ -611,18 +611,32 @@ export class WorkPlanTreeProvider
     const counts = total > 0
       ? `${node.open} open · ${node.closed}/${total}`
       : `${node.open} open`;
+    // 🧹 marks a track flagged as a cleanup candidate (#328/#329/#330) — a
+    // reversible frontmatter flag, surfaced alongside the visibility/tier badge.
+    const cleanup = node.track.cleanup_candidate ? " 🧹" : "";
+    // 📦 marks an archived-tier track (#328), shown only under the Show-archived
+    // toggle. It's greyed (muted icon) and offers Unarchive instead of the
+    // active-track actions.
+    const archivedMark = node.track.archived ? "📦 " : "";
     item.description = node.hint
-      ? `${badge.descriptionPrefix}  ${counts}  ${node.hint}`
-      : `${badge.descriptionPrefix}  ${counts}`;
+      ? `${archivedMark}${badge.descriptionPrefix}  ${counts}  ${node.hint}${cleanup}`
+      : `${archivedMark}${badge.descriptionPrefix}  ${counts}${cleanup}`;
 
     const { icon, color } = categoryIcon(node.category);
-    item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
+    // Archived tracks read as set-aside: an archive glyph in the muted token.
+    item.iconPath = node.track.archived
+      ? new vscode.ThemeIcon("archive", new vscode.ThemeColor("descriptionForeground"))
+      : new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
-    item.contextValue = "workPlanTrack";
+    item.contextValue = node.track.archived ? "workPlanTrackArchived" : "workPlanTrack";
     // MarkdownString (supportThemeIcons) so the $(icon) glyphs render in the tooltip.
     const tip = new vscode.MarkdownString(undefined, true);
     tip.appendMarkdown(`**${node.name}** — ${node.status} · ${node.open} open\n\n`);
     tip.appendMarkdown(badge.tooltipMarkdown);
+    if (node.track.cleanup_candidate) {
+      const reason = node.track.cleanup_reason;
+      tip.appendMarkdown(`\n\n🧹 Cleanup candidate${reason ? ` — ${reason}` : ""}`);
+    }
     item.tooltip = tip;
 
     item.command = {

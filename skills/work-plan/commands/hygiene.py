@@ -25,7 +25,28 @@ Pass --timeout=N to set the gh subprocess timeout for the duplicates step
 from commands import refresh_md, reconcile, duplicates, dedupe_tiers
 from lib.config import load_config, ConfigError
 from lib.prompts import parse_flags
+from lib.render import render_cleanup_callout
+from lib.tracks import discover_tracks
 import time
+
+
+def _print_cleanup_callout() -> None:
+    """Print the "marked for cleanup" section if any active track is earmarked
+    via `mark-cleanup` (#328). Best-effort: a config/discovery failure is
+    swallowed so it never derails the hygiene run."""
+    try:
+        cfg = load_config()
+        candidates = [
+            (t.name, t.meta.get("cleanup_reason"))
+            for t in discover_tracks(cfg)
+            if t.meta.get("cleanup_candidate")
+        ]
+    except Exception:
+        return
+    block = render_cleanup_callout(candidates)
+    if block:
+        print()
+        print(block)
 
 
 def _resolve_repo_folder(repo_key: str, cfg: dict):
@@ -99,6 +120,12 @@ def run(args: list[str]) -> int:
     if rc != 0:
         print(f"\n⚠ dedupe-tiers exited with code {rc}; continuing.")
     print(f"  (step 3/4 done in {time.time() - t_dt:.1f}s)")
+
+    # Cleanup earmarks (#328): surface tracks flagged via `mark-cleanup` so they
+    # don't get forgotten. Printed after the maintenance steps and before the
+    # (optional) duplicates scan, so it always shows regardless of the --repo /
+    # multi-repo early returns below.
+    _print_cleanup_callout()
 
     if skip_dups:
         print()
