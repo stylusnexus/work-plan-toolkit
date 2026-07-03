@@ -52,11 +52,22 @@ class DeleteTrackTest(unittest.TestCase):
         grm.assert_called_once()
         self.assertIn("commit & push", out)
 
-    def test_untracked_uses_filesystem_unlink(self):
+    def test_untracked_uses_filesystem_unlink_and_warns_permanent(self):
+        # notes-vcs off (untracked) → unlink → the message must say PERMANENT,
+        # NOT promise notes-vcs undo (the review's borderline-critical finding).
         rc, grm, unlink, out = _drive(["ph"], tracked=False)
         self.assertEqual(rc, 0)
         grm.assert_not_called()
         unlink.assert_called_once()
+        self.assertIn("PERMANENT", out)
+        self.assertNotIn("Recoverable via notes-vcs", out)
+
+    def test_private_tracked_message_is_recoverable_not_permanent(self):
+        # notes-vcs on (tracked) → git rm → recoverable, and NOT flagged permanent.
+        rc, grm, unlink, out = _drive(["ph"], tracked=True)
+        self.assertEqual(rc, 0)
+        self.assertIn("Recoverable via notes-vcs", out)
+        self.assertNotIn("PERMANENT", out)
 
     def test_git_rm_failure_returns_1(self):
         rc, grm, unlink, out = _drive(["ph"], git_rm_ok=False)

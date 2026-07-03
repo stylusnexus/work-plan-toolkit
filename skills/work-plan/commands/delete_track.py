@@ -60,20 +60,31 @@ def run(args: list[str]) -> int:
 
     base = track.path.parent
     rel = track.path.name
+    # `staged` records whether the deletion went through git (recoverable) or a
+    # bare filesystem unlink (PERMANENT). Recoverability messaging keys on THIS,
+    # not on tier — a private track is only recoverable when notes_root is under
+    # version control (notes-vcs, which is opt-in and OFF by default).
     if git_state.is_tracked(rel, base):
         if not git_state.git_rm(rel, base):
-            print(f"ERROR: could not delete {track.name!r} (git rm failed).")
+            print(f"ERROR: could not delete {track.name!r} (git rm failed — "
+                  "commit or discard any unsaved edits to it first).")
             return 1
+        staged = True
     else:
         try:
             track.path.unlink()
         except OSError as e:
             print(f"ERROR: could not delete {track.name!r} ({e}).")
             return 1
+        staged = False
 
     print(f"✓ deleted track {track.name!r} ({rel})")
     print("  GitHub issues are untouched — only the track's local .md was removed.")
-    if getattr(track, "tier", None) == "shared":
+    if not staged:
+        print("  ⚠ PERMANENT — this file isn't under version control (notes-vcs is "
+              "off), so the deletion CANNOT be undone. Enable it with "
+              "`work-plan notes-vcs init` for undoable deletes going forward.")
+    elif getattr(track, "tier", None) == "shared":
         print("  ↑ shared track — the deletion is staged; commit & push to remove it "
               "for teammates (recoverable from git history until you do).")
     else:

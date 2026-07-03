@@ -2444,9 +2444,14 @@ export function activate(context: vscode.ExtensionContext): void {
         const t = exp?.tracks.find(x => x.name === track);
         const repoKey = t?.folder ?? undefined;
         const shared = t?.tier === "shared";
+        // Recoverability is honest about the default: a shared track is always
+        // git-backed; a PRIVATE track is only recoverable when notes-vcs (opt-in,
+        // off by default) is on — otherwise the delete is permanent. We can't know
+        // notes-vcs state here, so the modal states the condition; the toast below
+        // reports what actually happened from the CLI output.
         const recovery = shared
           ? "The deletion is staged in git — recoverable from history until you commit & push."
-          : "The deletion is an undoable notes-vcs commit — recoverable.";
+          : "Recoverable ONLY if notes-vcs (local history) is enabled — otherwise the file is permanently removed.";
 
         const choice = await vscode.window.showWarningMessage(
           `Delete track "${track}"?`,
@@ -2479,7 +2484,15 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(`Work Plan: deleted ${track} — GitHub issues untouched. ${shared ? "Commit & push to remove it for teammates." : "Recoverable via notes-vcs undo."}`);
+          // The CLI prints "⚠ PERMANENT" when it fell back to a bare unlink
+          // (no notes-vcs) — report that honestly rather than a blanket "undo".
+          const permanent = outcome.stdout?.includes("PERMANENT");
+          const tail = shared
+            ? "Commit & push to remove it for teammates."
+            : permanent
+              ? "PERMANENT — notes-vcs is off, so this can't be undone."
+              : "Recoverable via notes-vcs undo.";
+          vscode.window.showInformationMessage(`Work Plan: deleted ${track} — GitHub issues untouched. ${tail}`);
         } else {
           vscode.window.showInformationMessage("Work Plan: kept — no change written.");
         }
