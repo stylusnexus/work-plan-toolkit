@@ -576,7 +576,7 @@ describe("checkAuth", () => {
       stdout: JSON.stringify({ gh_present: true, authenticated: true, user: "eve", error: null }),
       stderr: "",
     });
-    assert.deepEqual(await checkAuth(run), { authenticated: true, cliPresent: true, ghPresent: true, probeOk: true, user: "eve" });
+    assert.deepEqual(await checkAuth(run), { authenticated: true, cliPresent: true, ghPresent: true, probeOk: true, user: "eve", error: null });
   });
 
   test("gh present but not signed in → authenticated:false, ghPresent:true, probeOk:true", async () => {
@@ -585,7 +585,7 @@ describe("checkAuth", () => {
       stdout: JSON.stringify({ gh_present: true, authenticated: false, user: null, error: "x" }),
       stderr: "",
     });
-    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: true, probeOk: true, user: null });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: true, probeOk: true, user: null, error: null });
   });
 
   test("gh not installed → ghPresent:false, probeOk:true", async () => {
@@ -594,17 +594,33 @@ describe("checkAuth", () => {
       stdout: JSON.stringify({ gh_present: false, authenticated: false, user: null, error: "x" }),
       stderr: "",
     });
-    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: false, probeOk: true, user: null });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: false, probeOk: true, user: null, error: null });
   });
 
-  test("unparseable output → conservative not-authenticated, gh present, probeOk:false (transient)", async () => {
+  test("unparseable output (no stderr) → probeOk:false, error null", async () => {
     const run = fakeRunner({ code: 0, stdout: "not json{{", stderr: "" });
-    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null });
+    assert.deepEqual(await checkAuth(run), { authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null, error: null });
   });
 
-  test("never throws on spawn failure → probeOk:false (transient)", async () => {
-    assert.deepEqual(await checkAuth(throwingRunner()), {
+  test("unparseable output WITH a launcher error → probeOk:false, error carries the reason", async () => {
+    // The exact shape when an older launcher gates the auth probe behind a
+    // missing yq: empty stdout, the missing-tool message on stderr, exit 1. This
+    // is a CLI dependency problem, NOT "not signed in" — the reason must survive
+    // so the caller can name it instead of looping the user through sign-in.
+    const run = fakeRunner({
+      code: 1,
+      stdout: "",
+      stderr: "work-plan: missing required tool(s) on PATH: yq\n  yq — YAML config/frontmatter\n",
+    });
+    assert.deepEqual(await checkAuth(run), {
       authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null,
+      error: "work-plan: missing required tool(s) on PATH: yq",
+    });
+  });
+
+  test("never throws on spawn failure → probeOk:false (transient), error carries message", async () => {
+    assert.deepEqual(await checkAuth(throwingRunner()), {
+      authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null, error: "spawn fail",
     });
   });
 
@@ -618,7 +634,7 @@ describe("checkAuth", () => {
         args: ["auth-status", "--json"], code: -1, stdout: "", stderr: "ENOENT", notFound: true,
       }));
     assert.deepEqual(await checkAuth(run), {
-      authenticated: false, cliPresent: false, ghPresent: false, probeOk: false, user: null,
+      authenticated: false, cliPresent: false, ghPresent: false, probeOk: false, user: null, error: null,
     });
   });
 });

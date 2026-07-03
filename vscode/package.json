@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -200,6 +200,11 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.plans.unarchive",
+        "title": "Restore to Live…",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.plans.archiveAllShipped",
         "title": "Archive shipped plans…",
         "category": "Work Plan"
@@ -273,6 +278,37 @@
       {
         "command": "workPlan.renameTrack",
         "title": "Rename Track",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.markCleanup",
+        "title": "Mark for Cleanup",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.unmarkCleanup",
+        "title": "Unmark Cleanup",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.archiveTrack",
+        "title": "Archive Track",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.unarchiveTrack",
+        "title": "Unarchive Track",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.toggleShowArchived",
+        "title": "Show Archived Tracks",
+        "category": "Work Plan",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "workPlan.deleteTrack",
+        "title": "Delete Track…",
         "category": "Work Plan"
       },
       {
@@ -390,6 +426,11 @@
           "command": "workPlan.sortTracks",
           "when": "view == workPlan.tree",
           "group": "navigation"
+        },
+        {
+          "command": "workPlan.toggleShowArchived",
+          "when": "view == workPlan.tree",
+          "group": "1_workPlanOverflow"
         },
         {
           "command": "workPlan.dailyBrief",
@@ -544,6 +585,31 @@
           "group": "9_workPlanDanger@2"
         },
         {
+          "command": "workPlan.markCleanup",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@3"
+        },
+        {
+          "command": "workPlan.unmarkCleanup",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@4"
+        },
+        {
+          "command": "workPlan.archiveTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@5"
+        },
+        {
+          "command": "workPlan.unarchiveTrack",
+          "when": "view == workPlan.tree && viewItem == workPlanTrackArchived",
+          "group": "9_workPlanDanger@1"
+        },
+        {
+          "command": "workPlan.deleteTrack",
+          "when": "view == workPlan.tree && viewItem =~ /^workPlanTrack(Archived)?$/",
+          "group": "9_workPlanDanger@6"
+        },
+        {
           "command": "workPlan.slotUntracked",
           "when": "view == workPlan.tree && viewItem == workPlanUntrackedIssue",
           "group": "1_workPlanWrite@1"
@@ -649,6 +715,11 @@
           "group": "4_archive"
         },
         {
+          "command": "workPlan.plans.unarchive",
+          "when": "view == workPlan.plans && viewItem =~ /restorable/",
+          "group": "4_archive"
+        },
+        {
           "command": "workPlan.plans.archiveAllShipped",
           "when": "view == workPlan.plans && viewItem =~ /workPlanPlansRepo/",
           "group": "4_archive"
@@ -692,6 +763,7 @@
           "when": "false"
         },
         { "command": "workPlan.plans.archive", "when": "false" },
+        { "command": "workPlan.plans.unarchive", "when": "false" },
         { "command": "workPlan.plans.archiveAllShipped", "when": "false" },
         {
           "command": "workPlan.openTrackFile",
@@ -753,17 +825,22 @@
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError != true && workPlanConfigured == false",
+        "when": "workPlanGitHubAuthed == probe-error",
+        "contents": "Couldn't verify GitHub sign-in.\n\nThe `work-plan` CLI ran but didn't return a result, so Work Plan can't tell whether you're signed in. This is usually a missing CLI dependency, not a GitHub problem — the CLI needs `gh`, `git`, and `yq` (the Go mikefarah/yq) on the same PATH the editor runs in.\n\nCheck dependencies, then:\n[Retry](command:workPlan.checkGitHubAuth)\n\n[Install instructions](https://github.com/stylusnexus/work-plan-toolkit#install)"
+      },
+      {
+        "view": "workPlan.tree",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanGitHubAuthed != probe-error && workPlanLoadError != true && workPlanConfigured == false",
         "contents": "No work-plan repos yet.\n\n[Add a repo](command:workPlan.addRepo)\n\nNew here? Choose where your private track notes live first.\n[Set notes location](command:workPlan.setNotesLocation)"
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError != true && workPlanConfigured == true && workPlanHasTracks == false",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanGitHubAuthed != probe-error && workPlanLoadError != true && workPlanConfigured == true && workPlanHasTracks == false",
         "contents": "No tracks yet.\n\n[Refresh](command:workPlan.refresh)\n\nAdd issues to a track from the terminal with `work-plan slot`, or create a new track with `work-plan init-repo`."
       },
       {
         "view": "workPlan.tree",
-        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanLoadError == true",
+        "when": "workPlanGitHubAuthed != false && workPlanGitHubAuthed != no-gh && workPlanGitHubAuthed != no-cli && workPlanGitHubAuthed != probe-error && workPlanLoadError == true",
         "contents": "Couldn't load work plan.\n\n[Retry](command:workPlan.checkGitHubAuth)"
       }
     ],

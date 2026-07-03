@@ -43,10 +43,16 @@ export function activate(context: vscode.ExtensionContext): void {
   // Wire up the tree provider.
   // -------------------------------------------------------------------------
 
+  // Show-archived toggle (#328): when on, the tree export includes archived-tier
+  // tracks (greyed). Captured by the load closure so a toggle+refresh flips the
+  // `--include-archived` flag without reconstructing the provider.
+  let showArchivedTracks = false;
+
   const provider = new WorkPlanTreeProvider(
-    () => exportJson(runner),
+    () => exportJson(runner, showArchivedTracks),
     () => checkAuth(runner),
   );
+  void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
 
   const treeView = vscode.window.createTreeView("workPlan.tree", {
     treeDataProvider: provider,
@@ -646,6 +652,13 @@ export function activate(context: vscode.ExtensionContext): void {
       } else if (auth && !auth.ghPresent) {
         vscode.window.showWarningMessage(
           "Work Plan: GitHub CLI (gh) not found — install it, then Retry.",
+        );
+      } else if (auth && !auth.probeOk) {
+        // Probe ran but gave no trustworthy answer — a CLI dependency/runtime
+        // problem, not a sign-in state. Don't claim "still not signed in".
+        const detail = auth.error ? ` (${auth.error})` : "";
+        vscode.window.showWarningMessage(
+          `Work Plan: couldn't verify GitHub sign-in — the work-plan CLI didn't return a result${detail}. Check its dependencies (gh, git, yq), then Retry.`,
         );
       } else {
         vscode.window.showInformationMessage(
@@ -2289,6 +2302,208 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.markCleanup / workPlan.unmarkCleanup — flag/unflag a track as a
+  // cleanup candidate (#328/#329/#330). A reversible, non-destructive frontmatter
+  // flag (NOT deletion); public repos go through the CLI's confirm-token flow.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.markCleanup", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        // Resolve the full track object for the repo key (the `--repo=<key>` arg).
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+
+        const reasonRaw = await vscode.window.showInputBox({
+          prompt: `Flag "${track}" as a cleanup candidate`,
+          placeHolder: "Reason (optional)",
+        });
+        if (reasonRaw === undefined) return; // Esc = cancel
+        const reason = reasonRaw.trim() !== "" ? reasonRaw.trim() : undefined;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: flagging ${track} for cleanup…`,
+          () => executeWrite(
+            runner,
+            { kind: "markCleanup", track, repoKey, ...(reason ? { reason } : {}) },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: flagged ${track} for cleanup`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: mark-cleanup failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    vscode.commands.registerCommand("workPlan.unmarkCleanup", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: clearing cleanup flag on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "unmarkCleanup", track, repoKey },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: cleared cleanup flag on ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: unmark-cleanup failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    // workPlan.archiveTrack / workPlan.unarchiveTrack — set a track aside into
+    // archive/parked/ (reversible), or restore it (#328). Distinct from Close.
+    vscode.commands.registerCommand("workPlan.archiveTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: archiving ${track}…`,
+          () => executeWrite(runner, { kind: "archiveTrack", track, repoKey }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: archived ${track} — restore via Unarchive Track (or Show archived).`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: archive-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    vscode.commands.registerCommand("workPlan.unarchiveTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: restoring ${track}…`,
+          () => executeWrite(runner, { kind: "unarchiveTrack", track, repoKey }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: restored ${track} to the active set.`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: unarchive-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    // workPlan.toggleShowArchived — flip whether archived tracks appear in the
+    // Tracks tree (greyed). Re-exports with/without --include-archived (#328).
+    vscode.commands.registerCommand("workPlan.toggleShowArchived", () => {
+      showArchivedTracks = !showArchivedTracks;
+      void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
+      void provider.refresh();
+    }),
+
+    // workPlan.deleteTrack — DELETE a track's .md (#330). Destructive: a hard
+    // modal that names the track and states exactly what's removed and what
+    // isn't (GitHub issues are untouched); a shared-tier delete additionally
+    // requires typing the track name to confirm. Never deletes GitHub issues.
+    vscode.commands.registerCommand("workPlan.deleteTrack", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+        const exp = provider.rawExport ?? provider.currentExport;
+        const t = exp?.tracks.find(x => x.name === track);
+        const repoKey = t?.folder ?? undefined;
+        const shared = t?.tier === "shared";
+        // Recoverability is honest about the default: a shared track is always
+        // git-backed; a PRIVATE track is only recoverable when notes-vcs (opt-in,
+        // off by default) is on — otherwise the delete is permanent. We can't know
+        // notes-vcs state here, so the modal states the condition; the toast below
+        // reports what actually happened from the CLI output.
+        const recovery = shared
+          ? "The deletion is staged in git — recoverable from history until you commit & push."
+          : "Recoverable ONLY if notes-vcs (local history) is enabled — otherwise the file is permanently removed.";
+
+        const choice = await vscode.window.showWarningMessage(
+          `Delete track "${track}"?`,
+          {
+            modal: true,
+            detail:
+              `This removes the track's markdown file only.\n\n` +
+              `• GitHub issues are NOT touched — they outlive the track.\n` +
+              `• ${recovery}\n\n` +
+              (shared ? `This is a SHARED track — you'll be asked to type its name to confirm.` : `Prefer "Archive Track" if you might want it back.`),
+          },
+          { title: "Delete", isCloseAffordance: false },
+        );
+        if (!choice || choice.title !== "Delete") return;
+
+        // Shared-tier: type-to-confirm the exact track name (extra guard on the
+        // higher-blast-radius delete).
+        if (shared) {
+          const typed = await vscode.window.showInputBox({
+            prompt: `Type the track name to confirm deletion`,
+            placeHolder: track,
+            validateInput: (v) => v.trim() === track ? undefined : `Type "${track}" exactly to confirm.`,
+          });
+          if (typed?.trim() !== track) return;
+        }
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: deleting ${track}…`,
+          () => executeWrite(runner, { kind: "deleteTrack", track, repoKey }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          // The CLI prints "⚠ PERMANENT" when it fell back to a bare unlink
+          // (no notes-vcs) — report that honestly rather than a blanket "undo".
+          const permanent = outcome.stdout?.includes("PERMANENT");
+          const tail = shared
+            ? "Commit & push to remove it for teammates."
+            : permanent
+              ? "PERMANENT — notes-vcs is off, so this can't be undone."
+              : "Recoverable via notes-vcs undo.";
+          vscode.window.showInformationMessage(`Work Plan: deleted ${track} — GitHub issues untouched. ${tail}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: delete-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.newTrack — create a new track (view/title overflow + palette)
   // -------------------------------------------------------------------------
 
@@ -3426,6 +3641,46 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     ),
+    // workPlan.plans.unarchive — restore an archived plan doc back to the live
+    // set (#388): the inverse of plans.archive, on a node inside the 📦 Archived
+    // folder. Single-doc (no batch); confirm modal names source → destination.
+    vscode.commands.registerCommand(
+      "workPlan.plans.unarchive",
+      async (n?: { kind?: string; repoKey?: string; doc?: PlanDoc }) => {
+        if (n?.kind !== "doc" || !n.repoKey || !n.doc?.rel || !n.doc.archived) { return; }
+        const repoKey = n.repoKey;
+        const rel = n.doc.rel;
+        const filename = rel.split("/").pop() ?? rel;
+        // Destination strips the `archive/<kind>/` segments (mirrors the CLI).
+        const parts = rel.split("/");
+        const ai = parts.lastIndexOf("archive");
+        const dest = ai >= 0 ? [...parts.slice(0, ai), filename].join("/") : filename;
+        if (await vscode.window.showWarningMessage(
+          "Restore plan to live?", { modal: true, detail: `${rel}\n\nMoves back to ${dest}.` }, "Restore") !== "Restore") { return; }
+        try {
+          const outcome = await withWriteProgress("Work Plan: restoring…", () =>
+            executeWrite(runner, { kind: "planUnarchive", repoKey, rel }, confirmPublicWrite));
+          if (outcome.status !== "written") {
+            vscode.window.showInformationMessage("Work Plan: kept — no change written.");
+            return;
+          }
+          let result: string | null = null;
+          try { result = (JSON.parse(outcome.stdout) as { outcome?: string }).outcome ?? null; } catch { /* unparseable */ }
+          if (result === "restored" || result === "restored_local") {
+            plansProvider.refresh(repoKey);
+            vscode.window.showInformationMessage(
+              `Work Plan: restored ${filename} → ${dest}${result === "restored" ? " (staged — commit & push to share)" : " (moved on disk; not git-tracked)"}`);
+          } else if (result === "skipped_collision") {
+            vscode.window.showWarningMessage(`Work Plan: not restored — a live doc already exists at ${dest}.`);
+          } else {
+            vscode.window.showWarningMessage(`Work Plan: could not restore ${filename}.`);
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof CliError ? `Work Plan: ${err.message}` : `Work Plan: plan-unarchive failed — ${String(err)}`;
+          vscode.window.showErrorMessage(msg);
+        }
+      },
+    ),
     vscode.commands.registerCommand(
       "workPlan.plans.archive",
       async (
@@ -3791,6 +4046,20 @@ function maybeShowAuthToast(auth: AuthState | null): void {
       )
       .then((c) => {
         if (c === "Install gh") void vscode.commands.executeCommand("workPlan.openGhInstallDocs");
+      }, () => { /* ignore */ });
+  } else if (!auth.probeOk) {
+    // The probe ran but returned no trustworthy answer — a CLI runtime /
+    // dependency problem (e.g. an older launcher gating the probe behind a
+    // missing yq), NOT a sign-in state. Surface the launcher's own reason and
+    // offer Retry instead of sending the user into a futile sign-in loop.
+    const detail = auth.error ? ` (${auth.error})` : "";
+    vscode.window
+      .showWarningMessage(
+        `Work Plan: couldn't verify GitHub sign-in — the work-plan CLI didn't return a result${detail}. Check its dependencies (gh, git, yq), then Retry.`,
+        "Retry",
+      )
+      .then((c) => {
+        if (c === "Retry") void vscode.commands.executeCommand("workPlan.checkGitHubAuth");
       }, () => { /* ignore */ });
   } else {
     vscode.window

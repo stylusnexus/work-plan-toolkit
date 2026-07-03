@@ -378,3 +378,13 @@ def git_mv(src_rel: str, dst_rel: str, repo_path: Path) -> bool:
     (Path(repo_path) / dst_rel).parent.mkdir(parents=True, exist_ok=True)
     proc = _git(repo_path, "mv", src_rel, dst_rel)
     return proc is not None and proc.returncode == 0
+
+
+def git_rm(rel_path: str, repo_path: Path) -> bool:
+    """git-rm `rel_path` (repo-relative) — stage its deletion. Returns True on
+    success. The removal stays in the index (undoable from git history) until
+    the caller commits; #330 delete-track uses it for tracked tracks."""
+    if not repo_path or not Path(repo_path).exists():
+        return False
+    proc = _git(repo_path, "rm", rel_path)
+    return proc is not None and proc.returncode == 0

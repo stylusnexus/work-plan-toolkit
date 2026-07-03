@@ -48,6 +48,7 @@ export type WriteAction =
   // Non-interactive + structured for the viewer (--yes --json). repoKey is the
   // config folder key; rel is the repo-relative doc path.
   | { kind: "planArchive"; repoKey: string; rel: string }
+  | { kind: "planUnarchive"; repoKey: string; rel: string }
   // Batch-archive every clean shipped doc in a repo (#387). includeLieGap opts
   // unverified (lie-gap) shipped docs into the sweep.
   | { kind: "planArchiveAllShipped"; repoKey: string; includeLieGap?: boolean }
@@ -71,7 +72,22 @@ export type WriteAction =
   // when clear=true (which resets to the default "flow"). auto, when present,
   // toggles automatic next-up ranking (#338) — can be combined with preset or
   // used alone (no preset → no --preset/--clear flag emitted).
-  | { kind: "setNextUpPreset"; track: string; repoKey?: string; preset?: string; clear?: boolean; auto?: "on" | "off" };
+  | { kind: "setNextUpPreset"; track: string; repoKey?: string; preset?: string; clear?: boolean; auto?: "on" | "off" }
+  // Flag a track as a cleanup candidate (#328/#329/#330) — a reversible,
+  // non-destructive frontmatter flag (NOT deletion). repoKey is the config folder
+  // key (passed as --repo=<key>). reason is an optional free-text note (omitted
+  // entirely when blank). Public-repo gated by the CLI's needs_confirm, which
+  // executeWrite drives via the confirm-token round trip.
+  | { kind: "markCleanup"; track: string; repoKey?: string; reason?: string }
+  // Clear the cleanup-candidate flag (#328/#329/#330) — the --clear inverse of
+  // markCleanup. Same public-repo confirm-token flow.
+  | { kind: "unmarkCleanup"; track: string; repoKey?: string }
+  // Archive a track (reversibly) into archive/parked/ (#328).
+  | { kind: "archiveTrack"; track: string; repoKey?: string }
+  // Restore an archived track back into the active set (#328).
+  | { kind: "unarchiveTrack"; track: string; repoKey?: string }
+  // Delete a track's .md (#330). DESTRUCTIVE; never touches GitHub issues.
+  | { kind: "deleteTrack"; track: string; repoKey?: string };
 
 /** The user's decision from the public-repo confirm modal. */
 export type ConfirmDecision = "writeAnyway" | "cancel";
@@ -140,6 +156,8 @@ export type WriteOutcome =
                     (auto alone: ["set-next-up", ..."--repo=<key>", "--auto=on|off", "--", track])
  *   planArchive    → ["plan-archive", "--repo=<key>", "--yes", "--json", "--", rel]
  *   planArchiveAllShipped → ["plan-status", "--repo=<key>", "--archive-shipped", "--yes", "--json", ..."--include-lie-gap"]
+ *   markCleanup    → ["mark-cleanup", ..."--repo=<key>", ..."--reason=<text>", "--", track]
+ *   unmarkCleanup  → ["mark-cleanup", ..."--repo=<key>", "--clear", "--", track]
  */
 export function actionToArgs(action: WriteAction): string[] {
   switch (action.kind) {
@@ -275,6 +293,16 @@ export function actionToArgs(action: WriteAction): string[] {
         action.rel,
       ];
 
+    case "planUnarchive":
+      return [
+        "plan-unarchive",
+        `--repo=${action.repoKey}`,
+        "--yes",
+        "--json",
+        "--",
+        action.rel,
+      ];
+
     case "planArchiveAllShipped":
       return [
         "plan-status",
@@ -318,6 +346,48 @@ export function actionToArgs(action: WriteAction): string[] {
         ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         ...(action.clear ? ["--clear"] : action.preset ? [`--preset=${action.preset}`] : []),
         ...(action.auto ? [`--auto=${action.auto}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "markCleanup":
+      return [
+        "mark-cleanup",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        ...(action.reason ? [`--reason=${action.reason}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "unmarkCleanup":
+      return [
+        "mark-cleanup",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--clear",
+        "--",
+        action.track,
+      ];
+
+    case "archiveTrack":
+      return [
+        "archive-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "unarchiveTrack":
+      return [
+        "unarchive-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
+
+    case "deleteTrack":
+      return [
+        "delete-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         action.track,
       ];

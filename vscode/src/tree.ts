@@ -334,17 +334,23 @@ export class WorkPlanTreeProvider
 
   /** Sets the `workPlanGitHubAuthed` context key that gates the Tracks
    *  viewsWelcome banners: `true` (signed in), `false` (gh present, not signed
-   *  in), `"no-gh"` (gh not installed), or `"no-cli"` (the work-plan CLI itself
-   *  wasn't found on PATH — #402; the most common Remote-WSL failure). Order
-   *  matters: a missing CLI means we never reached gh, so check it first. */
+   *  in), `"no-gh"` (gh not installed), `"no-cli"` (the work-plan CLI itself
+   *  wasn't found on PATH — #402; the most common Remote-WSL failure), or
+   *  `"probe-error"` (the CLI ran but returned no trustworthy answer — a runtime
+   *  / dependency problem, NOT a sign-in state; e.g. an older launcher gating the
+   *  probe behind a missing yq). Order matters: a missing CLI means we never
+   *  reached gh; an untrustworthy probe means `ghPresent`/`false` are guesses, so
+   *  both are checked before the authoritative signed-out value. */
   private _setAuthContext(auth: AuthState): void {
     const value: boolean | string = auth.authenticated
       ? true
       : !auth.cliPresent
         ? "no-cli"
-        : auth.ghPresent
-          ? false
-          : "no-gh";
+        : !auth.probeOk
+          ? "probe-error"
+          : auth.ghPresent
+            ? false
+            : "no-gh";
     void vscode.commands.executeCommand("setContext", "workPlanGitHubAuthed", value);
   }
 
@@ -605,18 +611,32 @@ export class WorkPlanTreeProvider
     const counts = total > 0
       ? `${node.open} open · ${node.closed}/${total}`
       : `${node.open} open`;
+    // 🧹 marks a track flagged as a cleanup candidate (#328/#329/#330) — a
+    // reversible frontmatter flag, surfaced alongside the visibility/tier badge.
+    const cleanup = node.track.cleanup_candidate ? " 🧹" : "";
+    // 📦 marks an archived-tier track (#328), shown only under the Show-archived
+    // toggle. It's greyed (muted icon) and offers Unarchive instead of the
+    // active-track actions.
+    const archivedMark = node.track.archived ? "📦 " : "";
     item.description = node.hint
-      ? `${badge.descriptionPrefix}  ${counts}  ${node.hint}`
-      : `${badge.descriptionPrefix}  ${counts}`;
+      ? `${archivedMark}${badge.descriptionPrefix}  ${counts}  ${node.hint}${cleanup}`
+      : `${archivedMark}${badge.descriptionPrefix}  ${counts}${cleanup}`;
 
     const { icon, color } = categoryIcon(node.category);
-    item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
+    // Archived tracks read as set-aside: an archive glyph in the muted token.
+    item.iconPath = node.track.archived
+      ? new vscode.ThemeIcon("archive", new vscode.ThemeColor("descriptionForeground"))
+      : new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
 
-    item.contextValue = "workPlanTrack";
+    item.contextValue = node.track.archived ? "workPlanTrackArchived" : "workPlanTrack";
     // MarkdownString (supportThemeIcons) so the $(icon) glyphs render in the tooltip.
     const tip = new vscode.MarkdownString(undefined, true);
     tip.appendMarkdown(`**${node.name}** — ${node.status} · ${node.open} open\n\n`);
     tip.appendMarkdown(badge.tooltipMarkdown);
+    if (node.track.cleanup_candidate) {
+      const reason = node.track.cleanup_reason;
+      tip.appendMarkdown(`\n\n🧹 Cleanup candidate${reason ? ` — ${reason}` : ""}`);
+    }
     item.tooltip = tip;
 
     item.command = {
