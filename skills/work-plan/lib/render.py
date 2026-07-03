@@ -90,3 +90,19 @@ def render_track_row(t: dict) -> str:
 def render_archived_reopen(repo: str, slug: str, issue: dict) -> str:
     return (f"⚠  archive/{slug}.md (shipped) — new issue #{issue['number']} "
             f"matches this slug. Re-open or slot into a different track?")
+
+
+def render_cleanup_callout(candidates: list) -> str:
+    """Render the hygiene "marked for cleanup" section, or "" if none.
+
+    `candidates` is a list of (name, reason) tuples; reason may be None/empty.
+    Returns a multi-line block (header + one line per track) or an empty string
+    when nothing is marked, so the caller can skip printing entirely.
+    """
+    if not candidates:
+        return ""
+    lines = ["🧹 Marked for cleanup:"]
+    for name, reason in candidates:
+        suffix = f" — {reason}" if reason else ""
+        lines.append(f"    {name}{suffix}")
+    return "\n".join(lines)

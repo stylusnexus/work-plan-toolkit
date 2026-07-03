@@ -139,6 +139,11 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "folder": getattr(t, "folder", None),
             "tier": getattr(t, "tier", "private") or "private",
             "status": t.meta.get("status"),
+            # Cleanup earmark (#328): a lightweight "candidate for retirement"
+            # flag set via `mark-cleanup`, with an optional free-text reason
+            # (null when unset). Surfaced by the viewer + hygiene callout.
+            "cleanup_candidate": bool(t.meta.get("cleanup_candidate")),
+            "cleanup_reason": t.meta.get("cleanup_reason"),
             "launch_priority": t.meta.get("launch_priority"),
             "milestone_alignment": milestone_alignment,
             "visibility": visibility.get(t.repo),

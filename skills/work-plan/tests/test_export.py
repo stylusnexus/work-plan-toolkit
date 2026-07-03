@@ -381,6 +381,37 @@ class BuildExportPlanTest(unittest.TestCase):
         self.assertEqual(out["tracks"][0]["plan"], {"rel": "docs/plans/p.md", "resolved": False})
 
 
+class BuildExportCleanupCandidateTest(unittest.TestCase):
+    """cleanup_candidate / cleanup_reason surface in the export JSON (#328)."""
+
+    def test_cleanup_absent_defaults(self):
+        """A track with no cleanup marker → candidate False, reason None."""
+        tracks = [_track("alpha", "o/r", [1])]
+        out = build_export(tracks, {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t")
+        tr = out["tracks"][0]
+        self.assertFalse(tr["cleanup_candidate"])
+        self.assertIsNone(tr["cleanup_reason"])
+
+    def test_cleanup_candidate_and_reason_exported(self):
+        """cleanup_candidate: true + cleanup_reason → both surface in export."""
+        t = _track("alpha", "o/r", [1])
+        t.meta["cleanup_candidate"] = True
+        t.meta["cleanup_reason"] = "superseded by v2"
+        out = build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t")
+        tr = out["tracks"][0]
+        self.assertTrue(tr["cleanup_candidate"])
+        self.assertEqual(tr["cleanup_reason"], "superseded by v2")
+
+    def test_cleanup_candidate_without_reason(self):
+        """Marked but no reason → candidate True, reason None."""
+        t = _track("alpha", "o/r", [1])
+        t.meta["cleanup_candidate"] = True
+        out = build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t")
+        tr = out["tracks"][0]
+        self.assertTrue(tr["cleanup_candidate"])
+        self.assertIsNone(tr["cleanup_reason"])
+
+
 class BuildExportDependsOnTest(unittest.TestCase):
     """Tests that depends_on is surfaced in the export JSON (#102)."""
 

@@ -611,9 +611,12 @@ export class WorkPlanTreeProvider
     const counts = total > 0
       ? `${node.open} open · ${node.closed}/${total}`
       : `${node.open} open`;
+    // 🧹 marks a track flagged as a cleanup candidate (#328/#329/#330) — a
+    // reversible frontmatter flag, surfaced alongside the visibility/tier badge.
+    const cleanup = node.track.cleanup_candidate ? " 🧹" : "";
     item.description = node.hint
-      ? `${badge.descriptionPrefix}  ${counts}  ${node.hint}`
-      : `${badge.descriptionPrefix}  ${counts}`;
+      ? `${badge.descriptionPrefix}  ${counts}  ${node.hint}${cleanup}`
+      : `${badge.descriptionPrefix}  ${counts}${cleanup}`;
 
     const { icon, color } = categoryIcon(node.category);
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
@@ -623,6 +626,10 @@ export class WorkPlanTreeProvider
     const tip = new vscode.MarkdownString(undefined, true);
     tip.appendMarkdown(`**${node.name}** — ${node.status} · ${node.open} open\n\n`);
     tip.appendMarkdown(badge.tooltipMarkdown);
+    if (node.track.cleanup_candidate) {
+      const reason = node.track.cleanup_reason;
+      tip.appendMarkdown(`\n\n🧹 Cleanup candidate${reason ? ` — ${reason}` : ""}`);
+    }
     item.tooltip = tip;
 
     item.command = {

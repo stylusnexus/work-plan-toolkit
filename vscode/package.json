@@ -276,6 +276,16 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.markCleanup",
+        "title": "Mark for Cleanup",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.unmarkCleanup",
+        "title": "Unmark Cleanup",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.newTrack",
         "title": "New Track",
         "category": "Work Plan"
@@ -542,6 +552,16 @@
           "command": "workPlan.renameTrack",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "9_workPlanDanger@2"
+        },
+        {
+          "command": "workPlan.markCleanup",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@3"
+        },
+        {
+          "command": "workPlan.unmarkCleanup",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "9_workPlanDanger@4"
         },
         {
           "command": "workPlan.slotUntracked",

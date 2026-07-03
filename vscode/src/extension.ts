@@ -2296,6 +2296,84 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // workPlan.markCleanup / workPlan.unmarkCleanup — flag/unflag a track as a
+  // cleanup candidate (#328/#329/#330). A reversible, non-destructive frontmatter
+  // flag (NOT deletion); public repos go through the CLI's confirm-token flow.
+  // -------------------------------------------------------------------------
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.markCleanup", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        // Resolve the full track object for the repo key (the `--repo=<key>` arg).
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+
+        const reasonRaw = await vscode.window.showInputBox({
+          prompt: `Flag "${track}" as a cleanup candidate`,
+          placeHolder: "Reason (optional)",
+        });
+        if (reasonRaw === undefined) return; // Esc = cancel
+        const reason = reasonRaw.trim() !== "" ? reasonRaw.trim() : undefined;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: flagging ${track} for cleanup…`,
+          () => executeWrite(
+            runner,
+            { kind: "markCleanup", track, repoKey, ...(reason ? { reason } : {}) },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: flagged ${track} for cleanup`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: mark-cleanup failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+
+    vscode.commands.registerCommand("workPlan.unmarkCleanup", async (node?: TrackNode) => {
+      try {
+        const track = await resolveTrackName(node);
+        if (!track) return;
+
+        const exp = provider.rawExport ?? provider.currentExport;
+        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: clearing cleanup flag on ${track}…`,
+          () => executeWrite(
+            runner,
+            { kind: "unmarkCleanup", track, repoKey },
+            confirmPublicWrite,
+          ),
+        );
+
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: cleared cleanup flag on ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: unmark-cleanup failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // -------------------------------------------------------------------------
   // workPlan.newTrack — create a new track (view/title overflow + palette)
   // -------------------------------------------------------------------------
 
