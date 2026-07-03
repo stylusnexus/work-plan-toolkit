@@ -368,6 +368,12 @@ export class PlansProvider implements vscode.TreeDataProvider<PlanNode> {
     if (isArchivable(doc)) {
       item.contextValue = `${item.contextValue} archivable`;
     }
+    // Restore-eligibility token (#388): an archived doc (living under the
+    // "📦 Archived" folder) can be restored back to the live set. Matched by the
+    // "Restore to live" menu's regex when-clause.
+    if (doc.archived) {
+      item.contextValue = `${item.contextValue} restorable`;
+    }
     return item;
   }
 

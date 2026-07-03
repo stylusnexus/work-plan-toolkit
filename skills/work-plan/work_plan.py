@@ -54,6 +54,7 @@ SUBCOMMANDS = {
     "--plan-status": "commands.plan_status",  # flag-style alias
     "plan-confirm": "commands.plan_confirm",
     "plan-archive": "commands.plan_archive",
+    "plan-unarchive": "commands.plan_unarchive",
     "plan-ack": "commands.plan_ack",
     "plan-baseline": "commands.plan_baseline",
     "close-issue": "commands.close_issue",
@@ -218,6 +219,10 @@ DESCRIPTIONS = [
      "Archive ONE plan/spec doc whose effective verdict is shipped: history-preserving `git mv` into archive/shipped/. Refuses non-shipped docs; skips (never overwrites) a name collision. --draft previews; --yes skips the prompt for non-interactive callers (the VS Code viewer); --json emits a single {action,rel,outcome,dest} object. `<rel>` is the repo-relative doc path from `plan-status --json`.",
      "When a shipped plan clutters the active plans view and you want to move it to archive/shipped/ in one step — with full git history preserved.",
      "/work-plan plan-archive --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md"),
+    ("plan-unarchive", "--repo=<key> [--draft] [--yes] [--json] -- <rel>",
+     "Restore ONE archived plan/spec doc back OUT of archive/<kind>/ to its live location — the inverse of plan-archive (#388). Refuses (never overwrites) a collision with a live doc of the same name. Git-aware staged/local move. --draft previews; --yes / --json for non-interactive callers. `<rel>` is the archived doc's repo-relative path (from `plan-status --json --include-archived`).",
+     "When a plan was archived by mistake, or a shipped plan needs more work — pull it back into the live plans set without a hand-run git mv.",
+     "/work-plan plan-unarchive --repo=myproject -- docs/superpowers/plans/archive/shipped/2026-03-16-idea-mode-ui.md"),
     ("plan-ack", "--repo=<key> [--clear] [--confirm=<token>] -- <rel>",
      "Persist an acknowledgment into ONE plan/spec doc's YAML **frontmatter only** (`acknowledged: true`) — never the body/manifest/checkboxes/banner (#286). Unlike the VS Code viewer's default ack (per-machine, ephemeral `workspaceState`), this is durable + shared: it's committed with the repo, and `plan-status` reads it back to demote the doc. `<rel>` is the repo-relative doc path. Public-repo gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`). `--clear` removes it.",
      "When you want a 'stop flagging this plan' that sticks across machines and teammates, not just on your laptop.",

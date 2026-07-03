@@ -48,6 +48,7 @@ export type WriteAction =
   // Non-interactive + structured for the viewer (--yes --json). repoKey is the
   // config folder key; rel is the repo-relative doc path.
   | { kind: "planArchive"; repoKey: string; rel: string }
+  | { kind: "planUnarchive"; repoKey: string; rel: string }
   // Batch-archive every clean shipped doc in a repo (#387). includeLieGap opts
   // unverified (lie-gap) shipped docs into the sweep.
   | { kind: "planArchiveAllShipped"; repoKey: string; includeLieGap?: boolean }
@@ -285,6 +286,16 @@ export function actionToArgs(action: WriteAction): string[] {
     case "planArchive":
       return [
         "plan-archive",
+        `--repo=${action.repoKey}`,
+        "--yes",
+        "--json",
+        "--",
+        action.rel,
+      ];
+
+    case "planUnarchive":
+      return [
+        "plan-unarchive",
         `--repo=${action.repoKey}`,
         "--yes",
         "--json",
