@@ -150,3 +150,4 @@ For tools without a native skill system (Cursor, GitHub Copilot), the `shims/` d
 - `init-repo` writes to config via `yq -i` with JSON-encoded inputs to prevent YAML injection from `--github=` values.
 - Installers touch only user-owned dirs; no `sudo`, no privilege escalation.
 - Two-step AI subcommands send issue **titles only** to the model (not bodies, code, or PR contents).
+- Least-privilege agent tools: both skills declare `allowed-tools` frontmatter, so Claude Code scopes them to their own entrypoints (`work-plan`: `Bash(work-plan:*), Bash(python3:*), Write`; `repo-activity-summary`: `Bash(gh:*)`) rather than unrestricted Bash.
