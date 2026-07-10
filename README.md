@@ -503,6 +503,7 @@ The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key
 - **AI subcommands (`group`, `suggest-priorities`) send issue titles to Claude** via Claude Code's existing integration. Body content, code, and PR contents are NOT sent. If your repo is private and you're cautious about what reaches the model, skip these subcommands.
 - **`init-repo` writes to your config via `yq -i`.** Inputs are JSON-encoded before being passed to `yq`, so a maliciously crafted `--github=` value can't break out of the YAML edit.
 - **`install.sh` / `install.ps1` only touch user-owned dirs.** No `sudo`, no system-wide changes, no privilege escalation.
+- **Least-privilege tool access.** The `work-plan` and `repo-activity-summary` skills declare `allowed-tools` frontmatter, so Claude Code grants them a scoped allowlist — `work-plan` gets `Bash(work-plan:*)`, `Bash(python3:*)`, and `Write` (the two-step AI subcommands' JSON cache); `repo-activity-summary` gets `Bash(gh:*)` — rather than unrestricted shell.
 
 For vulnerability reporting, threat model, and past advisories, see [SECURITY.md](./SECURITY.md).
 

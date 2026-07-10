@@ -91,6 +91,10 @@ Every write verb supports flag-only invocation (no TTY prompts). The VS Code ext
 
 GitHub access reuses the user's `gh auth`. No tokens are read, stored, or proxied. All network calls go through `gh` subprocesses.
 
+### Least-privilege tool access (`allowed-tools`)
+
+Both skills declare `allowed-tools` frontmatter so Claude Code grants a scoped allowlist instead of unrestricted Bash: `skills/work-plan/SKILL.md` gets `Bash(work-plan:*), Bash(python3:*), Write` (Write covers the two-step AI subcommands' `~/.claude/work-plan/cache/` JSON files), and `skills/repo-activity-summary/SKILL.md` gets `Bash(gh:*)`. This narrows what a prompt-injection or misfiring agent step can invoke to the toolkit's own entrypoints — defense-in-depth atop the list-argv discipline and the public-repo gate.
+
 ## CLI internals
 
 ### Dispatcher (`work_plan.py`)

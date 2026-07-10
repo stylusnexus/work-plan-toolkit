@@ -33,6 +33,7 @@ The toolkit is a local CLI for a single user on a single workstation. The trust 
 - YAML / markdown frontmatter parsing edge cases routed through `yq`. Config-write expressions pass user values to `yq` as opaque `strenv()`/`env()` data, never interpolated into the expression, so a value containing `"` or yq operators cannot break out.
 - Frontmatter-supplied git revisions (`github.branches`) are rejected if dash-led and passed to `git` only in list form, so a hostile branch name cannot inject a `git` option (e.g. `--output=`).
 - **The VS Code extension** (`vscode/`) spawns the CLI as a subprocess. `workPlan.cliPath` is **machine-scoped** — a workspace `.vscode/settings.json` cannot redirect the spawned executable — the extension declares `untrustedWorkspaces: { supported: false }` and does not spawn in an untrusted workspace, and GitHub-derived positionals are passed after a `--` end-of-options separator.
+- **Least-privilege agent tool access** (#415). The `work-plan` and `repo-activity-summary` skills declare `allowed-tools` frontmatter, so Claude Code grants each a scoped allowlist — `work-plan`: `Bash(work-plan:*)`, `Bash(python3:*)`, `Write`; `repo-activity-summary`: `Bash(gh:*)` — instead of unrestricted Bash. This narrows the blast radius of a prompt-injection or a misfiring agent step to the toolkit's own entrypoints, defense-in-depth atop the list-argv discipline above.
 
 **Out of scope:**
 - Attackers who already control the user's shell, install path, or `gh` auth token. The toolkit is downstream of those trust roots.
