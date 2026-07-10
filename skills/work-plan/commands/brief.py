@@ -24,6 +24,20 @@ from lib.drift import detect_drift
 from lib.render import time_aware_framing, render_track_row, render_archived_reopen
 
 
+def _numeric_refs(*ref_lists) -> list:
+    """Union of the given ref lists, keeping only int issue numbers, sorted.
+
+    `next_up` legitimately holds non-issue string tokens (epic/track names like
+    `golden-path-v2`) alongside issue numbers. Those aren't fetchable GitHub
+    issues, and `sorted()` can't order a set that mixes str and int (#417), so
+    string tokens are dropped from the fetch set.
+    """
+    refs: set = set()
+    for lst in ref_lists:
+        refs |= set(lst or [])
+    return sorted(n for n in refs if isinstance(n, int))
+
+
 def run(args: list[str]) -> int:
     flags, _ = parse_flags(args, {"--repo"})
     repo_arg = flags.get("--repo")
@@ -137,7 +151,8 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     stored_next_up = meta.get("next_up") or []
     # Fetch state for stored next_up issues even if they're not in github.issues,
     # so stale closed entries surface as a clear signal rather than vanishing.
-    fetch_nums = sorted(set(issue_nums) | set(stored_next_up))
+    # Only numeric refs are fetchable; string tokens in next_up are dropped (#417).
+    fetch_nums = _numeric_refs(issue_nums, stored_next_up)
     issues = fetch_issues(repo, fetch_nums) if (repo and fetch_nums) else []
     issues_by_num = {i["number"]: i for i in issues}
 
