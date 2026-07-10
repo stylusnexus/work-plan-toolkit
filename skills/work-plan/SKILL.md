@@ -2,6 +2,7 @@
 name: work-plan
 description: Use when starting or ending a work session across many GitHub issues, switching between parallel agent sessions on different workstreams, re-orienting on what to do next, sweeping for stale tracking state, or bootstrapping a new repo into a daily-planning system.
 argument-hint: "[brief|handoff|orient|reconcile|hygiene|--help]"
+allowed-tools: Bash(work-plan:*), Bash(python3:*), Write
 ---
 
 # Work Plan

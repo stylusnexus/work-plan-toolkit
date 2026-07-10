@@ -1,6 +1,7 @@
 ---
 name: repo-activity-summary
 description: Use when the user asks to summarize repo activity, check project status, gauge progress, list open issues and PRs, or see CI health. Triggers on "activity summary", "what's open", "project status", "progress check", "CI status".
+allowed-tools: Bash(gh:*)
 ---
 
 # Repo Activity Summary
