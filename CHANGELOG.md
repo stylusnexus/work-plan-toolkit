@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.10+92f8eef — 2026-07-10 (#419)
+
+fix: brief no longer crashes on mixed next_up; least-privilege allowed-tools scoping (#415, #417)
+
+Release covering three merged PRs since v0.19.0.
+
+## Fixes
+- **`brief` crash on mixed `next_up` (#417).** `brief` / `brief --repo=<key>` raised `TypeError: '<' not supported between 'str' and 'int'` for any track whose `next_up` frontmatter mixed issue numbers with a non-issue token (e.g. an epic name like `golden-path-v2`). A new `_numeric_refs()` helper unions the ref lists, keeps only int issue numbers (string tokens aren't fetchable issues), and sorts. Regression test added; full suite 1246 green.
+
+## Hardening
+- **Least-privilege `allowed-tools` scoping (#415).** `work-plan` and `repo-activity-summary` now declare `allowed-tools` frontmatter, so Claude Code grants a scoped allowlist (`Bash(work-plan:*), Bash(python3:*), Write` and `Bash(gh:*)`) instead of unrestricted Bash. Documented in README, SECURITY.md, and the architecture security sections.
+
+## VS Code extension
+- **v0.19.1** — republished for version parity; extension code unchanged (this release is the CLI `brief` fix + the scoping). Status/changelog updated in `vscode/README.md`.
+
+## Chore
+- Slot design-issue #386 into the `cli-viewer-cross` track.
+
+Ships via: version-bump (main) → npm CLI publish → VS Code Marketplace/Open VSX (v0.19.1) → agent-plugins catalog repin.
+
 ## 2026.07.03+7d98e1e — 2026-07-03 (#414)
 
 feat: track lifecycle (mark/archive/delete) + plan restore + yq auth fix
