@@ -226,7 +226,7 @@ if (Test-Path $canonConfig) {
 Write-Host ""
 Bold "Smoke test"
 $workPlanPy = Join-Path $SkillsDir "work-plan\work_plan.py"
-& python $workPlanPy --help *> $null
+& python -X utf8 $workPlanPy --help *> $null
 $smokeExit = $LASTEXITCODE
 if ($smokeExit -eq 0) {
     Ok "work_plan.py --help runs"

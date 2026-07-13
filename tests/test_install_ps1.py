@@ -118,7 +118,7 @@ class InstallerPowerShellTest(unittest.TestCase):
         wrapper = toolbin / "python.cmd"
         wrapper.write_text(
             "@echo off\r\n"
-            "if \"%~2\"==\"--help\" exit /b 9\r\n"
+            "if \"%~4\"==\"--help\" exit /b 9\r\n"
             f'"{real_python}" %*\r\nexit /b %ERRORLEVEL%\r\n',
             encoding="utf-8",
         )
