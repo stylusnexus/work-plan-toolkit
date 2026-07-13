@@ -29,6 +29,7 @@ fi
 
 SKILLS_DIR="${BASE_DIR}/skills"
 COMMANDS_DIR="${BASE_DIR}/commands"
+LAUNCHER_MARKER_ID="stylusnexus/work-plan-toolkit launcher v1"
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }
 warn() { printf "\033[33m! %s\033[0m\n" "$1"; }
@@ -71,9 +72,34 @@ else
     ok "command already absent"
 fi
 
-# Remove the bin launcher(s) installed by install.sh
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+    elif command -v python3 >/dev/null 2>&1; then python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"
+    else return 1
+    fi
+}
+
+launcher_is_managed() {
+    local dst="$1" marker="${1}.installed-from" recorded current extra
+    [ -f "${dst}" ] && [ ! -L "${dst}" ] && [ -f "${marker}" ] && [ ! -L "${marker}" ] || return 1
+    [ "$(sed -n '1p' "${marker}")" = "${LAUNCHER_MARKER_ID}" ] || return 1
+    recorded="$(sed -n '2s/^sha256=//p' "${marker}")"
+    extra="$(sed -n '3p' "${marker}")"
+    [[ "${recorded}" =~ ^[0-9a-f]{64}$ ]] && [ -z "${extra}" ] || return 1
+    current="$(sha256_file "${dst}")" || return 1
+    [ "${current}" = "${recorded}" ]
+}
+
+# Remove only launchers whose marker and current content prove ownership.
 for f in "${BASE_DIR}/bin/work-plan" "${BASE_DIR}/bin/work-plan.cmd"; do
-    if [ -f "${f}" ]; then rm -f "${f}" && ok "removed $(basename "${f}") launcher"; fi
+    marker="${f}.installed-from"
+    if launcher_is_managed "${f}"; then
+        rm -f "${f}" "${marker}"
+        ok "removed $(basename "${f}") launcher"
+    elif [ -e "${f}" ] || [ -L "${f}" ] || [ -e "${marker}" ] || [ -L "${marker}" ]; then
+        warn "${f} is unmanaged or modified — leaving launcher and marker alone"
+    fi
 done
 
 echo
