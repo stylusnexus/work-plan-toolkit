@@ -3,18 +3,44 @@ import sys, json, unittest
 from pathlib import Path
 from types import SimpleNamespace
 SKILL_ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(SKILL_ROOT))
-from lib.export_model import build_export
+from lib.export_model import build_export, track_key
 import commands.export as export_cmd
 
 def _track(name, repo, issues, blockers=None, next_up=None, status="active", depends_on=None):
     return SimpleNamespace(name=name, repo=repo, tier="private",
-        path=Path(f"/tmp/notes/{name}.md"), folder="myrepo",
+        path=Path(f"/tmp/notes/{name}.md"), folder=repo,
         meta={"status": status, "launch_priority": "P2", "milestone_alignment": "v1",
               "blockers": blockers or [], "next_up": next_up or [],
               "depends_on": depends_on or [],
               "github": {"repo": repo, "issues": issues}})
 
 class BuildExportTest(unittest.TestCase):
+    def test_track_key_prefers_config_folder_over_repo_slug(self):
+        track = SimpleNamespace(name="alpha", repo="org/repo", folder="config-folder")
+        self.assertEqual(track_key(track), ("config-folder", "alpha"))
+
+    def test_track_key_falls_back_to_folder_without_repo(self):
+        track = SimpleNamespace(name="alpha", repo=None, folder="config-folder")
+        self.assertEqual(track_key(track), ("config-folder", "alpha"))
+
+    def test_folder_identity_is_shared_by_issue_hot_and_plan_maps(self):
+        track = _track("alpha", None, [7])
+        track.folder = "config-folder"
+        key = ("config-folder", "alpha")
+        badge = {"rel": "docs/plans/p.md", "resolved": False}
+        issues = [{"number": 7, "title": "folder-only", "state": "OPEN",
+                   "assignees": [], "labels": []}]
+
+        out = build_export(
+            [track], {key: issues}, {}, now="t",
+            plan_by_track={key: badge}, hot_by_track={key: {7}},
+        )
+
+        exported = out["tracks"][0]
+        self.assertEqual(exported["plan"], badge)
+        self.assertEqual(exported["issues"][0]["number"], 7)
+        self.assertTrue(exported["issues"][0]["in_progress"])
+
     def test_schema_and_shape(self):
         tracks = [_track("ph", "o/r", [1, 2], blockers=[9], next_up=[1])]
         issues_by_track = {("o/r", "ph"): [
@@ -31,7 +57,7 @@ class BuildExportTest(unittest.TestCase):
         # the platform — str(Path) yields backslashes on Windows.
         self.assertEqual(t["path"], str(Path("/tmp/notes/ph.md")))
         # Config repo key surfaces for the Plans view's --repo arg (#164).
-        self.assertEqual(t["folder"], "myrepo")
+        self.assertEqual(t["folder"], "o/r")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
         self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": []})
@@ -74,7 +100,7 @@ class BuildExportNextUpAutoTest(unittest.TestCase):
         if auto:
             meta["next_up_auto"] = True
         return SimpleNamespace(name="t", repo="o/r", tier="private",
-                               path=Path("/tmp/notes/t.md"), folder="myrepo", meta=meta)
+                               path=Path("/tmp/notes/t.md"), folder="o/r", meta=meta)
 
     def _issues(self):
         # P0 #3, P1 #2, P2 #1 — flow ranks by priority within the same milestone.
@@ -113,7 +139,7 @@ class BuildExportNextUpAutoTest(unittest.TestCase):
         from types import SimpleNamespace
         from pathlib import Path
         t = SimpleNamespace(name="t", repo="o/r", tier="private",
-                            path=Path("/tmp/notes/t.md"), folder="myrepo", meta=meta)
+                            path=Path("/tmp/notes/t.md"), folder="o/r", meta=meta)
         out = build_export([t],
                            {("o/r", "t"): []},           # zero issues fetched
                            {"o/r": "PRIVATE"}, now="t")
@@ -381,13 +407,13 @@ class BuildExportPlanTest(unittest.TestCase):
                  "checkboxes_done": 0, "checkboxes_total": 24, "lie_gap": False,
                  "stalled": False, "override": "shipped"}
         out = build_export(tracks, {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t",
-                           plan_by_track={"alpha": badge})
+                           plan_by_track={("o/r", "alpha"): badge})
         self.assertEqual(out["tracks"][0]["plan"], badge)
 
     def test_unresolved_badge_passed_through(self):
         tracks = [_track("alpha", "o/r", [1])]
         out = build_export(tracks, {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t",
-                           plan_by_track={"alpha": {"rel": "docs/plans/p.md", "resolved": False}})
+                           plan_by_track={("o/r", "alpha"): {"rel": "docs/plans/p.md", "resolved": False}})
         self.assertEqual(out["tracks"][0]["plan"], {"rel": "docs/plans/p.md", "resolved": False})
 
 
@@ -583,7 +609,7 @@ class BuildExportNextUpPresetTest(unittest.TestCase):
         if track_meta_override:
             meta.update(track_meta_override)
         t = SimpleNamespace(name="alpha", repo="o/r", tier="private",
-                            path=Path("/tmp/notes/alpha.md"), folder="myrepo",
+                            path=Path("/tmp/notes/alpha.md"), folder="o/r",
                             meta=meta)
         out = build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"},
                            now="2026-06-14T00:00", next_up_default=next_up_default)

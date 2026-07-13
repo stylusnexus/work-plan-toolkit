@@ -5,6 +5,18 @@ from lib.next_up import resolve_next_up_order, suggest_next_up
 SCHEMA = 1
 
 
+def track_key(track) -> tuple[str, str]:
+    """Return the canonical internal identity for a track.
+
+    The config folder key is the CLI repo qualifier and keeps separately
+    configured sources distinct even when they point at the same GitHub repo.
+    Older/minimal tracks without a folder fall back to the GitHub slug. The key
+    is internal to export assembly and does not change the schema-1 JSON surface.
+    """
+    scope = getattr(track, "folder", None) or getattr(track, "repo", None) or ""
+    return (scope, track.name)
+
+
 def milestone_sort_key(issue: dict, milestone_alignment=None):
     """Sort key for an issue dict (must have 'number' and 'milestone').
 
@@ -92,8 +104,9 @@ def build_export(tracks, issues_by_track, visibility, now: str,
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
         from lib.in_progress import issue_in_progress, IN_PROGRESS_LABEL
-        hot = hot_by_track.get((t.repo, t.name), set())
-        raw = issues_by_track.get((t.repo, t.name), [])
+        key = track_key(t)
+        hot = hot_by_track.get(key, set())
+        raw = issues_by_track.get(key, [])
         issues = [
             normalize_issue(
                 i,
@@ -158,7 +171,7 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             # The track's declared plan/spec doc + its execution badge (#285), or
             # null when the track declares no `plan:`. `{rel, resolved:false}` when
             # the link can't be resolved (no local clone / file absent).
-            "plan": plan_by_track.get(t.name),
+            "plan": plan_by_track.get(key),
             # Effective next_up ranking preset for this track (#326 Phase 2).
             "next_up_preset": next_up_preset_name,
             # True when the track has `next_up_auto: true` set in its frontmatter,

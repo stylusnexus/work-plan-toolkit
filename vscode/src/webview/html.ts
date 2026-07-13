@@ -242,7 +242,14 @@ ${afterRun}
       return;
     }
 
-    // data-track → selectTrack
+    // Repo-qualified dependency / graph selection (#430).
+    var keyedTrackBtn = target.closest("[data-track-key]");
+    if (keyedTrackBtn) {
+      post({ type: "selectTrack", key: keyedTrackBtn.getAttribute("data-track-key") });
+      return;
+    }
+
+    // Legacy name-only graph markup remains operable when the name is unique.
     var trackBtn = target.closest("[data-track]");
     if (trackBtn) {
       post({ type: "selectTrack", name: trackBtn.getAttribute("data-track") });

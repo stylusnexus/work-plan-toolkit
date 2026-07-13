@@ -11,7 +11,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { Export } from "../model.ts";
+import type { Export, Track } from "../model.ts";
+import { trackKey } from "../model.ts";
 import { toMermaid, __mermaidLabelForTest as mermaidLabel } from "./graph.ts";
 
 // ---------------------------------------------------------------------------
@@ -686,6 +687,227 @@ describe("toMermaid — track id collision disambiguation", () => {
 
   it("deterministic: identical collision input produces identical output", () => {
     assert.strictEqual(toMermaid(collisionExp), toMermaid(collisionExp));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-repo identity collisions (#430)
+// ---------------------------------------------------------------------------
+
+/**
+ * Deliberately adversarial fixture: both repos contain tracks named `same` and
+ * `dep`, and both repos reuse issue numbers #1 and #2 with different titles.
+ * The graph must keep the two structurally-identical repo subgraphs isolated.
+ */
+const crossRepoIdentityExp: Export = {
+  schema: 1,
+  generated_at: "2026-07-12T00:00:00Z",
+  tracks: [
+    {
+      name: "same",
+      repo: "org/a",
+      folder: "repo-a",
+      path: "/repos/a/.work-plan/same.md",
+      tier: "private",
+      status: "blocked",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: "PRIVATE",
+      blockers: [1],
+      next_up: [2],
+      depends_on: ["dep"],
+      rollup: { open: 2, closed: 0 },
+      issues: [
+        { number: 2, title: "A selected issue", state: "open", assignee: "@a", milestone: null },
+      ],
+    },
+    {
+      name: "dep",
+      repo: "org/a",
+      folder: "repo-a",
+      path: "/repos/a/.work-plan/dep.md",
+      tier: "private",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: "PRIVATE",
+      blockers: [],
+      next_up: [],
+      depends_on: [],
+      rollup: { open: 1, closed: 0 },
+      issues: [
+        { number: 1, title: "A prerequisite", state: "open", assignee: "@a", milestone: null },
+      ],
+    },
+    {
+      name: "same",
+      repo: "org/b",
+      folder: "repo-b",
+      path: "/repos/b/.work-plan/same.md",
+      tier: "shared",
+      status: "blocked",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: "PRIVATE",
+      blockers: [1],
+      next_up: [2],
+      depends_on: ["dep"],
+      rollup: { open: 2, closed: 0 },
+      issues: [
+        { number: 2, title: "B selected issue", state: "open", assignee: "@b", milestone: null },
+      ],
+    },
+    {
+      name: "dep",
+      repo: "org/b",
+      folder: "repo-b",
+      path: "/repos/b/.work-plan/dep.md",
+      tier: "shared",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: "PRIVATE",
+      blockers: [],
+      next_up: [],
+      depends_on: [],
+      rollup: { open: 1, closed: 0 },
+      issues: [
+        { number: 1, title: "B prerequisite", state: "open", assignee: "@b", milestone: null },
+      ],
+    },
+  ],
+};
+
+const repoBSameSelection = trackKey(crossRepoIdentityExp.tracks[2]);
+
+function trackNodeIds(mmd: string, label: string): string[] {
+  return mmd.split("\n").flatMap((line) => {
+    const match = /^\s+(\S+)\["(?:⛔ )?([^"]+)"\]$/.exec(line);
+    return match?.[2] === label ? [match[1]] : [];
+  });
+}
+
+function issueNodeId(mmd: string, number: number, title: string): string | undefined {
+  const suffix = `(["#${number} ${title}"])`;
+  const line = mmd.split("\n").find((candidate) => candidate.trimEnd().endsWith(suffix));
+  return line?.trim().split(/\s|\(/, 1)[0];
+}
+
+describe("toMermaid — cross-repo composite identity (#430)", () => {
+  it("renders repo-less tracks using folder/no-repo fallback scopes", () => {
+    const folderOnly: Track = {
+      ...crossRepoIdentityExp.tracks[0],
+      name: "folder-only",
+      repo: null,
+      folder: "local-folder",
+      status: "active",
+      blockers: [],
+      next_up: [2],
+      depends_on: [],
+    };
+    const unfiled: Track = {
+      ...folderOnly,
+      name: "unfiled",
+      folder: null,
+      next_up: [],
+      issues: [],
+    };
+    const out = toMermaid({ ...crossRepoIdentityExp, tracks: [folderOnly, unfiled] });
+    assert.ok(out.includes('t_folder_only["folder-only"]'), out);
+    assert.ok(out.includes('t_unfiled["unfiled"]'), out);
+    assert.ok(out.includes("#2 A selected issue"), out);
+  });
+
+  it("emits distinct nodes for exact same-name tracks in different repos", () => {
+    const out = toMermaid(crossRepoIdentityExp);
+    const sameIds = trackNodeIds(out, "same");
+    const depIds = trackNodeIds(out, "dep");
+
+    assert.equal(sameIds.length, 2, out);
+    assert.equal(depIds.length, 2, out);
+    assert.equal(new Set([...sameIds, ...depIds]).size, 4, out);
+  });
+
+  it("emits separate issue nodes and titles for the same number in each repo", () => {
+    const out = toMermaid(crossRepoIdentityExp);
+    const aOne = issueNodeId(out, 1, "A prerequisite");
+    const bOne = issueNodeId(out, 1, "B prerequisite");
+    const aTwo = issueNodeId(out, 2, "A selected issue");
+    const bTwo = issueNodeId(out, 2, "B selected issue");
+
+    assert.ok(aOne, out);
+    assert.ok(bOne, out);
+    assert.ok(aTwo, out);
+    assert.ok(bTwo, out);
+    assert.equal(new Set([aOne, bOne, aTwo, bTwo]).size, 4, out);
+  });
+
+  it("keeps blocker, owner, next-up, and depends-on edges inside each repo", () => {
+    const out = toMermaid(crossRepoIdentityExp);
+    const [aSame, bSame] = trackNodeIds(out, "same");
+    const [aDep, bDep] = trackNodeIds(out, "dep");
+    const aOne = issueNodeId(out, 1, "A prerequisite");
+    const bOne = issueNodeId(out, 1, "B prerequisite");
+    const aTwo = issueNodeId(out, 2, "A selected issue");
+    const bTwo = issueNodeId(out, 2, "B selected issue");
+
+    for (const id of [aSame, bSame, aDep, bDep, aOne, bOne, aTwo, bTwo]) {
+      assert.ok(id, out);
+    }
+    assert.ok(out.includes(`  ${aOne} -->|blocks| ${aSame}`), out);
+    assert.ok(out.includes(`  ${bOne} -->|blocks| ${bSame}`), out);
+    assert.ok(out.includes(`  ${aDep} -->|owns #1| ${aSame}`), out);
+    assert.ok(out.includes(`  ${bDep} -->|owns #1| ${bSame}`), out);
+    assert.ok(out.includes(`  ${aSame} -->|next_up| ${aTwo}`), out);
+    assert.ok(out.includes(`  ${bSame} -->|next_up| ${bTwo}`), out);
+    assert.ok(out.includes(`  ${aSame} ==>|depends on| ${aDep}`), out);
+    assert.ok(out.includes(`  ${bSame} ==>|depends on| ${bDep}`), out);
+
+    const lines = new Set(out.split("\n"));
+    assert.ok(!lines.has(`  ${aDep} -->|owns #1| ${bSame}`), out);
+    assert.ok(!lines.has(`  ${bDep} -->|owns #1| ${aSame}`), out);
+  });
+
+  it("focused repo-B selection contains no repo-A titles or ownership", () => {
+    const out = toMermaid(crossRepoIdentityExp, repoBSameSelection, { focus: true });
+
+    assert.ok(out.includes("B prerequisite"), out);
+    assert.ok(out.includes("B selected issue"), out);
+    assert.ok(!out.includes("A prerequisite"), out);
+    assert.ok(!out.includes("A selected issue"), out);
+    assert.equal(trackNodeIds(out, "same").length, 1, out);
+    assert.equal(trackNodeIds(out, "dep").length, 1, out);
+  });
+
+  it("produces deterministic composite ids for identical input", () => {
+    assert.equal(
+      toMermaid(crossRepoIdentityExp, repoBSameSelection, { focus: true }),
+      toMermaid(crossRepoIdentityExp, repoBSameSelection, { focus: true }),
+    );
+  });
+
+  it("keeps unresolved dependency IDs separate from crafted real track IDs", () => {
+    const source: Track = {
+      ...crossRepoIdentityExp.tracks[0],
+      name: "source",
+      repo: "org/a",
+      folder: "r",
+      status: "active",
+      blockers: [],
+      next_up: [],
+      depends_on: ["dep"],
+      issues: [],
+    };
+    const collidingReal: Track = {
+      ...source,
+      name: "missing_72__64_65_70",
+      repo: "org/b",
+      folder: "other",
+      depends_on: [],
+    };
+    const out = toMermaid({ ...crossRepoIdentityExp, tracks: [source, collidingReal] });
+    assert.ok(out.includes('t_missing_72__64_65_70["missing_72__64_65_70"]'), out);
+    assert.ok(out.includes("t_source ==>|depends on| t_missing_72__64_65_70_1"), out);
   });
 });
 

@@ -6,7 +6,7 @@ from lib.config import load_config, ConfigError, resolve_local_path_for_folder
 from lib.tracks import discover_tracks, discover_archived_tracks, find_tier_duplicates, issue_refs
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
 from lib.git_state import hot_issue_numbers
-from lib.export_model import build_export
+from lib.export_model import build_export, track_key
 from lib.prompts import parse_flags
 from lib import doc_discovery
 from lib import verdict as verdict_mod
@@ -88,19 +88,19 @@ def run(args: list[str]) -> int:
     issue_map = fetch_export_issues(repo_to_numbers)
 
     # Reassemble per-track lists, preserving each track's declared issue order.
-    # Keyed by (repo, name) so same-named tracks in different repos don't collide.
-    issues_by_track: dict[tuple, list] = {}
+    # Canonical track identity keeps same-named tracks in different repos apart.
+    issues_by_track: dict[tuple[str, str], list] = {}
     visibility: dict[str, object] = {}
     for t in tracks:
         nums = (t.meta.get("github", {}).get("issues")) or []
         if t.repo and nums:
-            issues_by_track[(t.repo, t.name)] = [
+            issues_by_track[track_key(t)] = [
                 issue_map[(t.repo, n)]
                 for n in nums
                 if (t.repo, n) in issue_map
             ]
         else:
-            issues_by_track[(t.repo, t.name)] = []
+            issues_by_track[track_key(t)] = []
         if t.repo and t.repo not in visibility:
             visibility[t.repo] = repo_visibility(t.repo)
 
@@ -143,14 +143,14 @@ def run(args: list[str]) -> int:
     today = date.today()
     cfg_stall = cfg.get("stall_days")
     stall_days = cfg_stall if isinstance(cfg_stall, int) else verdict_mod.STALL_DAYS
-    plan_by_track: dict[str, dict] = {}
+    plan_by_track: dict[tuple[str, str], dict] = {}
     for t in tracks:
         badge = _plan_badge(t, cfg, today, verdict_mod.DEAD_DAYS, stall_days)
         if badge is not None:
-            plan_by_track[t.name] = badge
+            plan_by_track[track_key(t)] = badge
 
-    # Per-track branch heat, keyed (repo, name) — track names collide across repos.
-    hot_by_track: dict = {}
+    # Per-track branch heat uses the same identity as issue rows and plan badges.
+    hot_by_track: dict[tuple[str, str], set] = {}
     for t in tracks:
         if not t.repo:
             continue
@@ -158,7 +158,7 @@ def run(args: list[str]) -> int:
         if local and local.exists():
             nums = hot_issue_numbers(local)
             if nums:
-                hot_by_track[(t.repo, t.name)] = nums
+                hot_by_track[track_key(t)] = nums
 
     # Shared/private tier duplicates (#361): the viewer is otherwise blind to
     # them — discover_tracks drops the private copy with a stderr-only WARN. We

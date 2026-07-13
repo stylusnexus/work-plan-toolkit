@@ -20,7 +20,14 @@ import { isWebviewMessage } from "./messages.ts";
 // ---------------------------------------------------------------------------
 
 describe("isWebviewMessage — valid messages", () => {
-  it("accepts a valid selectTrack message", () => {
+  it("accepts a repo-qualified selectTrack message", () => {
+    assert.equal(
+      isWebviewMessage({ type: "selectTrack", key: '["repo-key","api-core"]' }),
+      true,
+    );
+  });
+
+  it("accepts a legacy selectTrack name while it remains a compatibility path", () => {
     assert.equal(isWebviewMessage({ type: "selectTrack", name: "api-core" }), true);
   });
 
@@ -184,6 +191,28 @@ describe("isWebviewMessage — rejects malformed payloads", () => {
 
   it("rejects selectTrack with numeric name", () => {
     assert.equal(isWebviewMessage({ type: "selectTrack", name: 5 }), false);
+  });
+
+  it("rejects selectTrack with a malformed composite key", () => {
+    assert.equal(
+      isWebviewMessage({ type: "selectTrack", key: '["repo-key"]' }),
+      false,
+    );
+    assert.equal(
+      isWebviewMessage({ type: "selectTrack", key: '[ "repo-key", "api-core" ]' }),
+      false,
+    );
+  });
+
+  it("rejects selectTrack with both key and legacy name", () => {
+    assert.equal(
+      isWebviewMessage({
+        type: "selectTrack",
+        key: '["repo-key","api-core"]',
+        name: "api-core",
+      }),
+      false,
+    );
   });
 
   // openIssue — repo must match owner/repo slug pattern

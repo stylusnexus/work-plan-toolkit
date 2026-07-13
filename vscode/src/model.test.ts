@@ -7,9 +7,17 @@ import {
   trackedIssueNumbers,
   collectMilestones,
   blockerIssue,
+  trackRepoQualifier,
+  trackKey,
+  trackKeyFromParts,
+  issueKey,
+  parseTrackKey,
+  parseIssueKey,
+  resolveTrack,
   SCHEMA_VERSION,
 } from "./model.ts";
 import type { Issue, Track, Export } from "./model.ts";
+import { actionToArgs } from "./write.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -105,6 +113,84 @@ describe("completionRatio", () => {
 
 test("SCHEMA_VERSION is 1", () => {
   assert.equal(SCHEMA_VERSION, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Canonical repo-qualified identity (#430)
+// ---------------------------------------------------------------------------
+
+describe("canonical track and issue keys", () => {
+  test("track keys are deterministic JSON tuples of folder + name", () => {
+    const track = makeTrack({ folder: "local-key", repo: "o/r", name: "api" });
+    assert.equal(trackKey(track), '["local-key","api"]');
+    assert.equal(trackKey(track), trackKeyFromParts("local-key", "api"));
+    assert.deepEqual(parseTrackKey(trackKey(track)), ["local-key", "api"]);
+  });
+
+  test("track repo qualifier falls back from folder to the GitHub slug", () => {
+    const track = makeTrack({ folder: null, repo: "o/r", name: "api" });
+    assert.equal(trackRepoQualifier(track), "o/r");
+    assert.equal(trackKey(track), '["o/r","api"]');
+  });
+
+  test("unfiled tracks receive a stable no-repo identity instead of throwing", () => {
+    const track = makeTrack({ folder: null, repo: null, name: "scratch" });
+    assert.equal(trackRepoQualifier(track), "");
+    assert.equal(trackKey(track), '["","scratch"]');
+  });
+
+  test("unfiled identity cannot alias a literal '(no repo)' folder", () => {
+    const configured = makeTrack({ folder: "(no repo)", repo: "o/r", name: "same" });
+    const unfiled = makeTrack({ folder: null, repo: null, name: "same" });
+    assert.notEqual(trackKey(configured), trackKey(unfiled));
+    assert.equal(resolveTrack([configured, unfiled], trackKey(unfiled)), unfiled);
+  });
+
+  test("issue keys are deterministic repo + number JSON tuples", () => {
+    assert.equal(issueKey("o/r", 42), '["o/r",42]');
+    assert.equal(issueKey("o/r", 42), issueKey("o/r", 42));
+    assert.deepEqual(parseIssueKey(issueKey("o/r", 42)), ["o/r", 42]);
+  });
+
+  test("parsers reject malformed or non-canonical keys", () => {
+    assert.equal(parseTrackKey('["o/r"]'), null);
+    assert.equal(parseTrackKey('["o/r","api",true]'), null);
+    assert.equal(parseTrackKey('["o/r",42]'), null);
+    assert.equal(parseTrackKey('[ "o/r", "api" ]'), null);
+    assert.equal(parseIssueKey('["o/r","42"]'), null);
+    assert.equal(parseIssueKey('["o/r",0]'), null);
+  });
+});
+
+describe("resolveTrack", () => {
+  const first = makeTrack({ folder: "one", repo: "o/one", name: "shared" });
+  const second = makeTrack({ folder: "two", repo: "o/two", name: "shared" });
+  const unique = makeTrack({ folder: "one", repo: "o/one", name: "unique" });
+  const tracks = [first, second, unique];
+
+  test("resolves duplicate names by composite track key", () => {
+    assert.equal(resolveTrack(tracks, trackKey(second)), second);
+  });
+
+  test("selected repo-B duplicate routes destructive delete only to repo B", () => {
+    const selected = resolveTrack(tracks, trackKey(second));
+    assert.equal(selected, second);
+    const args = actionToArgs({
+      kind: "deleteTrack",
+      track: selected!.name,
+      repoKey: trackRepoQualifier(selected!),
+    });
+    assert.deepEqual(args, ["delete-track", "--repo=two", "--", "shared"]);
+    assert.ok(!args.includes("--repo=one"));
+  });
+
+  test("preserves legacy unique-name resolution", () => {
+    assert.equal(resolveTrack(tracks, "unique"), unique);
+  });
+
+  test("does not guess when a legacy name is ambiguous", () => {
+    assert.equal(resolveTrack(tracks, "shared"), undefined);
+  });
 });
 
 // ---------------------------------------------------------------------------
