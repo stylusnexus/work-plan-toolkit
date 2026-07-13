@@ -235,7 +235,7 @@ describe("renderDetail — empty blockers / next_up branches", () => {
 });
 
 describe("renderDetail — depends_on (#102)", () => {
-  it("renders depends_on chips with data-track attributes", () => {
+  it("renders depends_on chips with same-repo composite track keys", () => {
     const html = renderDetail(platformHealth);
     // platformHealth depends_on: ["idea-mode", "org-sharing"]
     assert.ok(
@@ -246,19 +246,28 @@ describe("renderDetail — depends_on (#102)", () => {
       html.includes("org-sharing"),
       `Expected 'org-sharing' depends_on chip:\n${html}`,
     );
-    // Chips should be clickable (data-track attribute for navigation)
+    // Chips navigate with the selected track's repo qualifier, not a globally
+    // ambiguous display name (#430).
     assert.ok(
-      html.includes('data-track="idea-mode"'),
-      `Expected data-track attribute on idea-mode chip:\n${html}`,
+      html.includes('data-track-key="[&quot;your-org/myproject&quot;,&quot;idea-mode&quot;]"'),
+      `Expected repo-qualified key on idea-mode chip:\n${html}`,
     );
     assert.ok(
-      html.includes('data-track="org-sharing"'),
-      `Expected data-track attribute on org-sharing chip:\n${html}`,
+      html.includes('data-track-key="[&quot;your-org/myproject&quot;,&quot;org-sharing&quot;]"'),
+      `Expected repo-qualified key on org-sharing chip:\n${html}`,
     );
     // Uses the depends-chip CSS class
     assert.ok(
       html.includes("depends-chip"),
       `Expected depends-chip class:\n${html}`,
+    );
+  });
+
+  it("uses the config folder as the dependency qualifier when present", () => {
+    const html = renderDetail({ ...platformHealth, folder: "my-local-key" });
+    assert.ok(
+      html.includes('data-track-key="[&quot;my-local-key&quot;,&quot;idea-mode&quot;]"'),
+      `Expected folder-qualified dependency key:\n${html}`,
     );
   });
 
@@ -689,7 +698,7 @@ describe("renderDetail — depends-chip + issue-cap a11y (#244)", () => {
   it("depends-on chips are keyboard-operable buttons", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('<button type="button" class="depends-chip" data-track="idea-mode"'),
+      html.includes('<button type="button" class="depends-chip" data-track-key="[&quot;your-org/myproject&quot;,&quot;idea-mode&quot;]"'),
       `depends-chip should be a <button>:\n${html}`,
     );
   });

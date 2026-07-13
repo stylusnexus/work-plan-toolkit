@@ -150,6 +150,9 @@ jobs:
           test -f "${target}/skills/work-plan/.installed-from"
           test -f "${target}/commands/work-plan.md"
 
+      - name: Run installer ownership regressions
+        run: python3 -m unittest tests.test_install_sh
+
       - name: install.sh --target override (Codex layout)
         run: |
           target="${RUNNER_TEMP}/agents"
@@ -159,3 +162,25 @@ jobs:
 
       - name: work_plan.py --help executes
         run: python3 skills/work-plan/work_plan.py --help
+
+  installer-windows:
+    name: installer ownership (windows)
+    needs: lint-py39
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mikefarah/yq
+        shell: pwsh
+        run: |
+          $url = "https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_windows_amd64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\yq.exe"
+          Add-Content $env:GITHUB_PATH $env:RUNNER_TEMP
+
+      - name: Run PowerShell installer ownership regressions
+        shell: pwsh
+        run: python -m unittest tests.test_install_ps1

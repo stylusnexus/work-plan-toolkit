@@ -25,6 +25,7 @@ if ($Target) {
 
 $SkillsDir   = Join-Path $BaseDir "skills"
 $CommandsDir = Join-Path $BaseDir "commands"
+$LauncherMarkerId = "stylusnexus/work-plan-toolkit launcher v1"
 
 function Bold($msg) { Write-Host $msg -ForegroundColor White }
 function Ok($msg)   { Write-Host "ok $msg" -ForegroundColor Green }
@@ -71,9 +72,32 @@ if (Test-Path $cmdDst) {
     Ok "command already absent"
 }
 
-# Remove the bin launcher(s) installed by install.ps1
+function Test-ManagedLauncher {
+    param([string]$Path)
+    $marker = "$Path.installed-from"
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $false }
+    $item = Get-Item -LiteralPath $Path -Force
+    $markerItem = Get-Item -LiteralPath $marker -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        ($markerItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $false }
+    $lines = [IO.File]::ReadAllLines($marker)
+    if ($lines.Count -ne 2 -or $lines[0] -ne $LauncherMarkerId -or
+        $lines[1] -notmatch '^sha256=[0-9a-f]{64}$') { return $false }
+    $recorded = $lines[1].Substring(7)
+    $current = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    return $current -eq $recorded
+}
+
+# Remove only launchers whose marker and current content prove ownership.
 foreach ($f in @((Join-Path $BaseDir "bin\work-plan.cmd"), (Join-Path $BaseDir "bin\work-plan"))) {
-    if (Test-Path $f) { Remove-Item $f -Force; Ok "removed $(Split-Path $f -Leaf) launcher" }
+    $marker = "$f.installed-from"
+    if (Test-ManagedLauncher $f) {
+        Remove-Item -LiteralPath $f, $marker -Force
+        Ok "removed $(Split-Path $f -Leaf) launcher"
+    } elseif ((Test-Path -LiteralPath $f) -or (Test-Path -LiteralPath $marker)) {
+        Warn "$f is unmanaged or modified — leaving launcher and marker alone"
+    }
 }
 
 Write-Host ""

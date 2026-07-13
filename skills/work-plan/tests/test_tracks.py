@@ -120,6 +120,23 @@ class SharedTrackDiscoveryTest(unittest.TestCase):
             shared = next(t for t in tracks if t.name == "feat-x")
             self.assertEqual(shared.tier, "shared")
 
+    def test_symlinked_shared_root_outside_repo_is_not_discovered(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            clone = _make_git_repo(base / "clone")
+            outside = base / "outside"
+            _write_track_md(outside / "escaped.md", "escaped", "org/myrepo")
+            try:
+                (clone / ".work-plan").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+            notes = base / "notes"
+            notes.mkdir()
+
+            tracks = discover_tracks(self._make_cfg(clone, notes))
+
+            self.assertNotIn("escaped", [track.name for track in tracks])
+
     def test_shared_track_repo_from_folder_config(self):
         """repo and local_path on a shared track come from folder config, not frontmatter."""
         with tempfile.TemporaryDirectory() as d:

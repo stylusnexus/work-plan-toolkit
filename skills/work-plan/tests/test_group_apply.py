@@ -77,6 +77,8 @@ def _drive_apply(args, *, cfg, batch, answers, vis="PRIVATE"):
              patch("commands.group.load_config", return_value=cfg), \
              patch("lib.write_guard.repo_visibility", return_value=vis), \
              patch("commands.group.is_valid_git_repo", return_value=True), \
+             patch("commands.group.shared_tier_dir",
+                   return_value=Path(cfg["repos"]["myrepo"]["local"]) / ".work-plan"), \
              patch("commands.group.write_file") as mw, \
              patch("commands.group.parse_file", return_value=({}, "")), \
              patch("commands.group.seed_readme") as mseed, \
@@ -193,6 +195,8 @@ class GroupApplyTierRoutingTest(unittest.TestCase):
                  patch("commands.group.load_config", return_value=cfg), \
                  patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
                  patch("commands.group.is_valid_git_repo", return_value=True), \
+                 patch("commands.group.shared_tier_dir",
+                       return_value=Path(cfg["repos"]["myrepo"]["local"]) / ".work-plan"), \
                  patch("commands.group.write_file"), \
                  patch("commands.group.parse_file", return_value=({}, "")), \
                  patch("commands.group.seed_readme") as mseed, \

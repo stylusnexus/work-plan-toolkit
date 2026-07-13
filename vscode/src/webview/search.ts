@@ -115,7 +115,7 @@ export function searchIssues(
 
   for (const t of exp.tracks) {
     for (const issue of t.issues) {
-      push(issue, t.repo, t.name);
+      push(issue, t.repo ?? t.folder ?? "(no repo)", t.name);
     }
   }
   for (const group of exp.untracked ?? []) {

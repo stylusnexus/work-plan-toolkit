@@ -1156,6 +1156,38 @@ describe("actionToArgs — slot/batchSlot --expect (#241)", () => {
   });
 });
 
+describe("actionToArgs — repo-qualified track writes (#430)", () => {
+  const actions: WriteAction[] = [
+    { kind: "editFields", track: "same", repoKey: "repo-b", fields: { status: "parked" } },
+    { kind: "setNext", track: "same", repoKey: "repo-b", issues: [42] },
+    { kind: "refresh", track: "same", repoKey: "repo-b" },
+    { kind: "reconcileDraft", track: "same", repoKey: "repo-b" },
+    { kind: "reconcileApply", track: "same", repoKey: "repo-b" },
+    { kind: "slot", track: "same", repoKey: "repo-b", issue: 42 },
+    { kind: "batchSlot", track: "same", repoKey: "repo-b", issues: [42, 43] },
+    { kind: "close", track: "same", repoKey: "repo-b", state: "parked" },
+    { kind: "renameTrack", track: "same", repoKey: "repo-b", newSlug: "same-new" },
+    { kind: "move", fromTrack: "same", toTrack: "dep", repoKey: "repo-b", issue: 42 },
+    { kind: "handoff", track: "same", repoKey: "repo-b" },
+  ];
+
+  for (const action of actions) {
+    test(`${action.kind} emits the selected repo qualifier before '--'`, () => {
+      const args = actionToArgs(action);
+      const separator = args.indexOf("--");
+      assert.ok(separator > 0);
+      assert.ok(args.slice(0, separator).includes("--repo=repo-b"));
+      assert.ok(!args.includes("--repo=repo-a"));
+    });
+  }
+
+  test("destructive delete of repo B cannot target same-named track in repo A", () => {
+    const args = actionToArgs({ kind: "deleteTrack", track: "same", repoKey: "repo-b" });
+    assert.deepEqual(args, ["delete-track", "--repo=repo-b", "--", "same"]);
+    assert.ok(!args.includes("--repo=repo-a"));
+  });
+});
+
 describe("executeWrite — #241 guard outcomes", () => {
   test("first-call {stale} (private repo, no confirm) → {status:'stale', current}", async () => {
     const action: WriteAction = { kind: "slot", track: "tabletop", issue: 30, expect: "stalefp00000000" };

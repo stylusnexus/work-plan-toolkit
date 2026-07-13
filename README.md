@@ -383,7 +383,10 @@ The installer:
 - **Copies** (not symlinks — for Windows compatibility) `skills/work-plan` and `skills/repo-activity-summary` into `~/.claude/skills/`
 - Installs the `work-plan` launcher (`bin/work-plan` + `bin/work-plan.cmd` on Windows) and copies the standalone dispatcher (`installer/work-plan.md`) into `~/.claude/commands/work-plan.md` (the per-verb suite is plugin-only)
 - **Self-seeds** `~/.claude/work-plan/config.yml` on first run if absent (one config home for every install mode), with `notes_root` at `~/.claude/work-plan/notes`
-- Drops a `.installed-from` marker so `uninstall` knows what's safe to remove
+- Drops `.installed-from` ownership markers. Skill copies retain their source
+  marker; launchers use a stable product marker plus a SHA-256 of the installed
+  bytes, so modified or unmanaged launchers are preserved by default on both
+  reinstall and uninstall
 
 External dependencies (verified by the installer): `gh`, `git`, `yq`, `python3`.
 
@@ -503,6 +506,9 @@ The bundled `notes/` folder stays empty until you run `/work-plan init-repo <key
 - **AI subcommands (`group`, `suggest-priorities`) send issue titles to Claude** via Claude Code's existing integration. Body content, code, and PR contents are NOT sent. If your repo is private and you're cautious about what reaches the model, skip these subcommands.
 - **`init-repo` writes to your config via `yq -i`.** Inputs are JSON-encoded before being passed to `yq`, so a maliciously crafted `--github=` value can't break out of the YAML edit.
 - **`install.sh` / `install.ps1` only touch user-owned dirs.** No `sudo`, no system-wide changes, no privilege escalation.
+- **Plan and shared-track paths are repository-contained.** Plan discovery, stamping, export badges, and the VS Code opener reject absolute, traversal, and symlink escapes; stamped docs are atomically replaced so a hard link cannot write through to an outside inode. Shared `.work-plan/` creation likewise refuses a symlinked or escaping tier root.
+- **Cross-repo identity stays explicit.** The export model and VS Code viewer qualify tracks and issues by repository, so same-named tracks and same-numbered issues in different repos cannot collide in graph state, selections, or write actions.
+- **Installer ownership is content-verified.** Script-installed launchers carry a stable product marker plus a SHA-256 of the installed bytes. Reinstall and uninstall preserve unmanaged or user-modified launchers by default, and an incomplete required-skill install or failed smoke test exits nonzero.
 - **Least-privilege tool access.** The `work-plan` and `repo-activity-summary` skills declare `allowed-tools` frontmatter, so Claude Code grants them a scoped allowlist — `work-plan` gets `Bash(work-plan:*)`, `Bash(python3:*)`, and `Write` (the two-step AI subcommands' JSON cache); `repo-activity-summary` gets `Bash(gh:*)` — rather than unrestricted shell.
 
 For vulnerability reporting, threat model, and past advisories, see [SECURITY.md](./SECURITY.md).

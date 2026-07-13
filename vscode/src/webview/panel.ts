@@ -11,7 +11,8 @@
  */
 
 import * as vscode from "vscode";
-import type { Export } from "../model.ts";
+import type { Export, Track, TrackKey } from "../model.ts";
+import { parseTrackKey, resolveTrack, trackKey, trackRepoQualifier } from "../model.ts";
 import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
 import { buildHtml, esc } from "./html.ts";
@@ -36,6 +37,7 @@ export type MoveHandler = (
   issue: number,
   fromTrack: string,
   toTrack: string,
+  repoQualifier: string,
 ) => Promise<void>;
 
 // ---------------------------------------------------------------------------
@@ -83,15 +85,20 @@ export class WorkPlanPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _currentExport: Export | null = null;
-  private _currentTrackName: string | null = null;
+  private _currentTrackKey: TrackKey | null = null;
   /** Whether the graph is in focused mode (show only selected track's neighbourhood). */
   private _focused = true;
   /** Theme-change subscription — re-renders so the graph follows the editor (#207). */
   private _themeSub: vscode.Disposable | undefined;
 
-  /** The track name most recently passed to render(), or null before first render. */
+  /** Canonical identity of the selected track, or null before a valid render. */
+  get currentTrackKey(): TrackKey | null {
+    return this._currentTrackKey;
+  }
+
+  /** Display-name compatibility accessor for existing extension callers. */
   get currentTrackName(): string | null {
-    return this._currentTrackName;
+    return this._currentTrack()?.name ?? null;
   }
 
   // ---------------------------------------------------------------------------
@@ -155,8 +162,8 @@ export class WorkPlanPanel {
     // Re-render when the editor's colour theme changes so the Mermaid graph
     // (which can't read CSS vars) follows light/dark instead of staying dark (#207).
     this._themeSub = vscode.window.onDidChangeActiveColorTheme(() => {
-      if (this._currentExport && this._currentTrackName) {
-        this.render(this._currentExport, this._currentTrackName);
+      if (this._currentExport && this._currentTrackKey) {
+        this.render(this._currentExport, this._currentTrackKey);
       }
     });
   }
@@ -169,25 +176,30 @@ export class WorkPlanPanel {
    * Renders the full graph + detail for the given export and selected track.
    *
    * @param exp              - Full work-plan export (all tracks for the graph).
-   * @param selectedTrackName - The track to highlight and show in the detail panel.
+   * @param selection        - Canonical key, or a unique legacy display name.
    */
-  render(exp: Export, selectedTrackName: string): void {
-    // Reset focus to true whenever a new track is selected.
-    if (selectedTrackName !== this._currentTrackName) {
-      this._focused = true;
-    }
-
+  render(exp: Export, selection: TrackKey | string): void {
+    const track = resolveTrack(exp.tracks, selection);
     this._currentExport = exp;
-    this._currentTrackName = selectedTrackName;
 
-    const track = exp.tracks.find(t => t.name === selectedTrackName);
     if (!track) {
-      // Track not found — show an empty state rather than crashing.
+      this._currentTrackKey = null;
+      const parts = parseTrackKey(selection);
+      const label = parts?.[1] ?? selection;
+      // Track not found (or a legacy name is ambiguous) — show an empty state
+      // rather than selecting an arbitrary same-named track from another repo.
       this._panel.webview.html = this._buildEmptyHtml(
-        `Track "${selectedTrackName}" not found in export.`,
+        `Track "${label}" not found uniquely in export.`,
       );
       return;
     }
+
+    const selectedTrackKey = trackKey(track);
+    // Reset focus to true whenever a new track is selected.
+    if (selectedTrackKey !== this._currentTrackKey) {
+      this._focused = true;
+    }
+    this._currentTrackKey = selectedTrackKey;
 
     const webview = this._panel.webview;
     const mermaidUri = webview
@@ -200,7 +212,7 @@ export class WorkPlanPanel {
       ? exp
       : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
     const isDark = isDarkTheme();
-    const graphDef = toMermaid(graphExp, selectedTrackName, { focus: this._focused, dark: isDark });
+    const graphDef = toMermaid(graphExp, selectedTrackKey, { focus: this._focused, dark: isDark });
     const showNextUpPreset = vscode.workspace
       .getConfiguration("workPlan")
       .get<boolean>("showNextUpPreset", true);
@@ -212,7 +224,7 @@ export class WorkPlanPanel {
       mermaidUri,
       graphDef,
       detailHtml,
-      trackName: selectedTrackName,
+      trackName: track.name,
       isModule: false, // UMD bundle → global mermaid
       focused: this._focused,
       isDark,
@@ -242,16 +254,16 @@ export class WorkPlanPanel {
     switch (raw.type) {
       case "selectTrack": {
         if (this._currentExport) {
-          this.render(this._currentExport, raw.name);
+          this.render(this._currentExport, "key" in raw ? raw.key : raw.name);
         }
         break;
       }
       case "setFocus": {
         this._focused = raw.focus;
-        if (this._currentExport && this._currentTrackName) {
+        if (this._currentExport && this._currentTrackKey) {
           // Re-render the current track. Safe to delegate: the track is
           // unchanged, so render()'s _focused reset guard does not fire.
-          this.render(this._currentExport, this._currentTrackName);
+          this.render(this._currentExport, this._currentTrackKey);
         }
         break;
       }
@@ -279,9 +291,7 @@ export class WorkPlanPanel {
         // Resolve the current track and delegate to the command so the stat /
         // reveal / preview open logic lives in exactly one place (#211). The
         // command reads node.track.path, so pass a node-shaped { track } arg.
-        const track = this._currentExport?.tracks.find(
-          t => t.name === this._currentTrackName,
-        );
+        const track = this._currentTrack();
         if (track) {
           void vscode.commands.executeCommand("workPlan.openTrackFile", { track });
         }
@@ -292,13 +302,13 @@ export class WorkPlanPanel {
         // delegate to the open command. The plan badge carries the repo-relative
         // `rel`; the repo's local checkout comes from the export's repos[] by the
         // track's folder key. Only resolved links have a file to open.
-        const track = this._currentExport?.tracks.find(
-          t => t.name === this._currentTrackName,
-        );
+        const track = this._currentTrack();
         const plan = track?.plan;
         if (track && plan?.resolved) {
-          const local = this._currentExport?.repos?.find(
-            r => r.folder === track.folder,
+          const local = this._currentExport?.repos?.find(r =>
+            track.folder !== null
+              ? r.folder === track.folder
+              : r.repo === track.repo,
           )?.local;
           if (local) {
             void vscode.commands.executeCommand(
@@ -311,9 +321,7 @@ export class WorkPlanPanel {
       case "closeIssue": {
         // Resolve the current track's repo + the issue's title, then delegate to
         // the command (which shows the mandatory GitHub-write modal) (#305).
-        const track = this._currentExport?.tracks.find(
-          t => t.name === this._currentTrackName,
-        );
+        const track = this._currentTrack();
         const issue = track?.issues.find(i => i.number === raw.number);
         if (track?.repo && issue) {
           void vscode.commands.executeCommand("workPlan.closeIssue", {
@@ -327,9 +335,7 @@ export class WorkPlanPanel {
       case "toggleInProgress": {
         // Resolve the current track's repo, then delegate to the command (#271 B4).
         // The command calls executeWrite so the public-repo confirm-token flow is reused.
-        const track = this._currentExport?.tracks.find(
-          t => t.name === this._currentTrackName,
-        );
+        const track = this._currentTrack();
         if (track?.repo) {
           void vscode.commands.executeCommand("workPlan.toggleInProgress", {
             repo: track.repo, number: raw.number, clear: raw.clear,
@@ -339,11 +345,12 @@ export class WorkPlanPanel {
       }
       case "setNextUp": {
         // Resolve the current track and delegate to workPlan.setNext.
-        // resolveTrackName() reads node?.name, so pass { name } — the minimal
-        // shape needed for it to resolve without falling back to a QuickPick.
-        if (this._currentTrackName) {
+        const track = this._currentTrack();
+        if (track) {
           void vscode.commands.executeCommand("workPlan.setNext", {
-            name: this._currentTrackName,
+            name: track.name,
+            repoQualifier: trackRepoQualifier(track),
+            track,
           });
         }
         break;
@@ -362,7 +369,7 @@ export class WorkPlanPanel {
    * its base64 data-URL payload.
    */
   private async _handleExportGraph(format: "svg" | "png", data: string): Promise<void> {
-    const trackSlug = (this._currentTrackName ?? "dependency-graph")
+    const trackSlug = (this.currentTrackName ?? "dependency-graph")
       .replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "dependency-graph";
     const defaultUri = vscode.Uri.file(`${trackSlug}.${format}`);
     const filters: Record<string, string[]> = format === "svg"
@@ -397,17 +404,20 @@ export class WorkPlanPanel {
   // Private helpers
   // ---------------------------------------------------------------------------
 
+  private _currentTrack(): Track | undefined {
+    if (!this._currentExport || !this._currentTrackKey) return undefined;
+    return resolveTrack(this._currentExport.tracks, this._currentTrackKey);
+  }
+
   private async _handleMoveIssue(issueNum: number): Promise<void> {
     const exp = this._currentExport;
-    const currentName = this._currentTrackName;
-    if (!exp || !currentName) return;
-
-    const currentTrack = exp.tracks.find(t => t.name === currentName);
+    const currentTrack = this._currentTrack();
+    if (!exp || !currentTrack) return;
     if (!currentTrack || !currentTrack.repo) return;
 
     // Find other active tracks in the same repo
     const others = exp.tracks.filter(
-      t => t.name !== currentName && t.repo === currentTrack.repo,
+      t => trackKey(t) !== this._currentTrackKey && t.repo === currentTrack.repo,
     );
     if (others.length === 0) {
       vscode.window.showInformationMessage(
@@ -435,7 +445,12 @@ export class WorkPlanPanel {
       );
       return;
     }
-    await handler(issueNum, currentName, picked.label);
+    await handler(
+      issueNum,
+      currentTrack.name,
+      picked.label,
+      trackRepoQualifier(currentTrack),
+    );
   }
 
   private _buildEmptyHtml(message: string): string {
@@ -474,4 +489,3 @@ function isDarkTheme(): boolean {
     kind === vscode.ColorThemeKind.HighContrast
   );
 }
-

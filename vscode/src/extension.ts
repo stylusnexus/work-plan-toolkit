@@ -13,7 +13,7 @@ import { PlansProvider } from "./plansTree.ts";
 import { ackKey, unregisteredTrackRepos, LEGEND, archivableSelection, selectedDocNodes, isStalledForDisplay } from "./planModel.ts";
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode, SuggestedIssueNode, SuggestedGroupNode } from "./tree.ts";
 import type { Track, Issue, PlanDoc } from "./model.ts";
-import { trackedIssueNumbers, collectMilestones } from "./model.ts";
+import { trackedIssueNumbers, collectMilestones, trackKey, trackRepoQualifier } from "./model.ts";
 import { badgeCounts } from "./treeModel.ts";
 import { readSuggestions } from "./suggestions.ts";
 import { issuesFingerprint } from "./fingerprint.ts";
@@ -25,6 +25,7 @@ import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
 import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
+import { resolveContainedFile } from "./pathSafety.ts";
 
 // URL shown in "Update" notification and in CLI-not-found errors.
 const TOOLKIT_URL = "https://github.com/stylusnexus/work-plan-toolkit";
@@ -175,7 +176,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const panel = WorkPlanPanel.getCurrent();
     const exp = provider.currentExport;
     if (panel && exp && exp.tracks.length > 0) {
-      panel.render(exp, panel.currentTrackName ?? exp.tracks[0].name);
+      panel.render(exp, panel.currentTrackKey ?? trackKey(exp.tracks[0]));
     }
   };
 
@@ -369,14 +370,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const panel = WorkPlanPanel.getCurrent();
       const filteredExp = provider.currentExport;
       if (panel && filteredExp) {
-        const currentTrack = panel.currentTrackName;
+        const currentTrack = panel.currentTrackKey;
         // If the current track was filtered out, fall back to the first visible one.
         const trackStillVisible =
           currentTrack !== null &&
-          filteredExp.tracks.some(t => t.name === currentTrack);
+          filteredExp.tracks.some(t => trackKey(t) === currentTrack);
         const trackToRender = trackStillVisible
           ? currentTrack!
-          : filteredExp.tracks[0]?.name ?? null;
+          : filteredExp.tracks[0] ? trackKey(filteredExp.tracks[0]) : null;
         if (trackToRender) {
           panel.render(filteredExp, trackToRender);
         } else {
@@ -469,9 +470,11 @@ export function activate(context: vscode.ExtensionContext): void {
               return;
             }
             const panel = WorkPlanPanel.createOrShow(context.extensionUri);
-            const trackName = track?.name ?? (freshExp.tracks[0]?.name ?? "");
-            if (trackName) {
-              panel.render(freshExp, trackName);
+            const selection = track
+              ? trackKey(track)
+              : freshExp.tracks[0] ? trackKey(freshExp.tracks[0]) : null;
+            if (selection) {
+              panel.render(freshExp, selection);
             }
           }).catch((err: unknown) => {
             const msg =
@@ -484,9 +487,11 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         const panel = WorkPlanPanel.createOrShow(context.extensionUri);
-        const trackName = track?.name ?? (exp.tracks[0]?.name ?? "");
-        if (trackName) {
-          panel.render(exp, trackName);
+        const selection = track
+          ? trackKey(track)
+          : exp.tracks[0] ? trackKey(exp.tracks[0]) : null;
+        if (selection) {
+          panel.render(exp, selection);
         } else {
           vscode.window.showInformationMessage(
             "Work Plan: No tracks found in export.",
@@ -569,7 +574,14 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           return;
         }
-        const uri = vscode.Uri.joinPath(vscode.Uri.file(arg.local), arg.rel);
+        const safePath = await resolveContainedFile(arg.local, arg.rel);
+        if (!safePath) {
+          vscode.window.showWarningMessage(
+            "Work Plan: refusing to open a plan path outside its configured repository.",
+          );
+          return;
+        }
+        const uri = vscode.Uri.file(safePath);
         await revealFileInEditor(
           uri,
           `Work Plan: plan doc not found at ${uri.fsPath} — has it moved, ` +
@@ -856,13 +868,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Webview drag-move goes through the same audited write path as workPlan.move:
   // executeWrite + the public-repo confirm modal (#197). No ad-hoc spawn in the panel.
-  WorkPlanPanel.setMoveHandler(async (issue, fromTrack, toTrack) => {
+  WorkPlanPanel.setMoveHandler(async (issue, fromTrack, toTrack, repoKey) => {
     try {
       const outcome: WriteOutcome = await withWriteProgress(
         `Work Plan: moving #${issue} to ${toTrack}…`,
         () => executeWrite(
           runner,
-          { kind: "move", fromTrack, toTrack, issue },
+          { kind: "move", fromTrack, toTrack, repoKey, issue },
           confirmPublicWrite,
         ),
       );
@@ -892,10 +904,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const panel = WorkPlanPanel.getCurrent();
     const exp = provider.currentExport;
     if (!panel || !exp) return;
-    const currentTrack = panel.currentTrackName;
+    const currentTrack = panel.currentTrackKey;
     const trackStillVisible =
-      currentTrack !== null && exp.tracks.some(t => t.name === currentTrack);
-    const trackToRender = trackStillVisible ? currentTrack! : exp.tracks[0]?.name ?? null;
+      currentTrack !== null && exp.tracks.some(t => trackKey(t) === currentTrack);
+    const trackToRender = trackStillVisible
+      ? currentTrack!
+      : exp.tracks[0] ? trackKey(exp.tracks[0]) : null;
     if (trackToRender) {
       panel.render(exp, trackToRender);
     } else {
@@ -923,20 +937,31 @@ export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("Work Plan");
   context.subscriptions.push(outputChannel);
 
-  // Resolve a track name: use the node (context-menu) or fall back to a QuickPick.
-  const resolveTrackName = async (node?: TrackNode): Promise<string | undefined> => {
-    if (node?.name) {
-      return node.name;
+  const repoKeyForTrack = (track: Track): string | undefined =>
+    track.folder ?? track.repo ?? undefined;
+
+  // Resolve the complete track identity: use the context-menu node's raw Track
+  // or retain it on a palette QuickPick item. A name alone is not unique across
+  // configured repos (#430).
+  const resolveTrack = async (node?: TrackNode): Promise<Track | undefined> => {
+    if (node?.track) {
+      return node.track;
     }
     const exp = provider.currentExport;
     if (!exp || exp.tracks.length === 0) {
       vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
       return undefined;
     }
-    return vscode.window.showQuickPick(
-      exp.tracks.map(t => t.name),
-      { placeHolder: "Select a track" },
+    type TrackItem = vscode.QuickPickItem & { track: Track };
+    const picked = await vscode.window.showQuickPick<TrackItem>(
+      exp.tracks.map(track => ({
+        label: track.name,
+        description: repoKeyForTrack(track),
+        track,
+      })),
+      { placeHolder: "Select a track", matchOnDescription: true },
     );
+    return picked?.track;
   };
 
   // -------------------------------------------------------------------------
@@ -946,8 +971,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.editFields", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         type FieldItem = vscode.QuickPickItem & { field: string };
         const fieldPick = await vscode.window.showQuickPick<FieldItem>(
@@ -1022,7 +1049,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: setting ${field} on ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "editFields", track, fields: { [field]: value } },
+            { kind: "editFields", track, repoKey, fields: { [field]: value } },
             confirmPublicWrite,
           ),
         );
@@ -1052,8 +1079,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.setNext", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         // Pick next-up from the track's OPEN issues in priority order. Order is
         // captured by ITERATIVE single-selects: a multi-select QuickPick returns
@@ -1063,11 +1092,6 @@ export function activate(context: vscode.ExtensionContext): void {
         const exp = provider.rawExport ?? provider.currentExport;
         if (!exp || exp.tracks.length === 0) {
           vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
-          return;
-        }
-        const trackObj = exp.tracks.find(t => t.name === track);
-        if (!trackObj) {
-          vscode.window.showErrorMessage(`Work Plan: Track "${track}" not found.`);
           return;
         }
         const openItems = buildIssuePickItems(trackObj.issues, { includeClosed: false });
@@ -1105,7 +1129,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: setting next-up on ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "setNext", track, issues },
+            { kind: "setNext", track, repoKey, issues },
             confirmPublicWrite,
           ),
         );
@@ -1137,12 +1161,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.autoNext", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const suggestion = await withWriteProgress(
           `Work Plan: computing next-up suggestion for ${track}…`,
-          () => suggestNextUp(runner, track),
+          () => suggestNextUp(runner, track, repoKey),
         );
 
         if (suggestion.suggested.length === 0) {
@@ -1185,7 +1211,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: setting next-up on ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "setNext", track, issues },
+            { kind: "setNext", track, repoKey, issues },
             confirmPublicWrite,
           ),
         );
@@ -1212,15 +1238,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.setNextUpPreset", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         // Resolve the full track object so we can surface the current preset and auto state.
-        const exp = provider.rawExport ?? provider.currentExport;
-        const trackObj = exp?.tracks.find(t => t.name === track);
-        const currentPreset = trackObj?.next_up_preset;
-        const currentAuto = trackObj?.next_up_auto ?? false;
-        const repoKey = trackObj?.folder ?? undefined;
+        const currentPreset = trackObj.next_up_preset;
+        const currentAuto = trackObj.next_up_auto ?? false;
 
         type PresetItem = vscode.QuickPickItem & {
           preset?: string;
@@ -1352,8 +1377,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.refreshMd", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         await vscode.window.withProgress(
           {
@@ -1364,7 +1391,7 @@ export function activate(context: vscode.ExtensionContext): void {
           async () => {
             const outcome: WriteOutcome = await executeWrite(
               runner,
-              { kind: "refresh", track },
+              { kind: "refresh", track, repoKey },
               confirmPublicWrite,
             );
 
@@ -1392,12 +1419,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.reconcile", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: reconciling ${track} (draft)…`,
-          () => executeWrite(runner, { kind: "reconcileDraft", track }, confirmPublicWrite),
+          () => executeWrite(runner, { kind: "reconcileDraft", track, repoKey }, confirmPublicWrite),
         );
 
         if (outcome.status !== "written") {
@@ -1422,7 +1451,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
         const applied: WriteOutcome = await withWriteProgress(
           `Work Plan: applying reconcile to ${track}…`,
-          () => executeWrite(runner, { kind: "reconcileApply", track }, confirmPublicWrite),
+          () => executeWrite(runner, { kind: "reconcileApply", track, repoKey }, confirmPublicWrite),
         );
 
         if (applied.status === "written") {
@@ -1452,14 +1481,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.slot", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         // Resolve the track's repo + current issues so we can offer the repo's
         // OPEN issues as a pick-list, excluding ones already in the track (#282).
-        const exp = provider.rawExport ?? provider.currentExport;
-        const trackObj = exp?.tracks.find(t => t.name === track);
-        const repo = trackObj?.repo;
+        const repo = trackObj.repo;
 
         let issue: number | undefined;
         if (repo) {
@@ -1510,7 +1539,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: adding #${issue} to ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "slot", track, issue },
+            { kind: "slot", track, repoKey, issue },
             confirmPublicWrite,
           ),
         );
@@ -1537,21 +1566,16 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.move", async (node?: TrackNode) => {
       try {
-        const fromTrack = await resolveTrackName(node);
-        if (!fromTrack) return;
+        const srcTrack = await resolveTrack(node);
+        if (!srcTrack) return;
+        const fromTrack = srcTrack.name;
+        const repoKey = repoKeyForTrack(srcTrack);
 
         // Load the export FIRST so we can offer the source track's issues as a
         // pick-list instead of asking the user to retype a number (#212).
         const exp = provider.rawExport ?? provider.currentExport;
         if (!exp || exp.tracks.length === 0) {
           vscode.window.showErrorMessage("Work Plan: No tracks loaded — run Refresh first.");
-          return;
-        }
-
-        // Find the source track object — for its issues and its repo.
-        const srcTrack = exp.tracks.find(t => t.name === fromTrack);
-        if (!srcTrack) {
-          vscode.window.showErrorMessage(`Work Plan: Track "${fromTrack}" not found.`);
           return;
         }
 
@@ -1593,7 +1617,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: moving #${issue} from ${fromTrack} to ${toTrack}…`,
           () => executeWrite(
             runner,
-            { kind: "move", fromTrack, toTrack, issue },
+            { kind: "move", fromTrack, toTrack, repoKey, issue },
             confirmPublicWrite,
           ),
         );
@@ -1640,17 +1664,24 @@ export function activate(context: vscode.ExtensionContext): void {
         const sameRepoTracks = exp.tracks.filter(t => t.repo === node.repo);
         const candidateTracks = sameRepoTracks.length > 0 ? sameRepoTracks : exp.tracks;
 
-        const track = await vscode.window.showQuickPick(
-          candidateTracks.map(t => t.name),
-          { placeHolder: `Slot #${issue} into a track` },
+        type TrackItem = vscode.QuickPickItem & { track: Track };
+        const pickedTrack = await vscode.window.showQuickPick<TrackItem>(
+          candidateTracks.map(track => ({
+            label: track.name,
+            description: repoKeyForTrack(track),
+            track,
+          })),
+          { placeHolder: `Slot #${issue} into a track`, matchOnDescription: true },
         );
-        if (!track) return; // cancelled
+        if (!pickedTrack) return; // cancelled
+        const track = pickedTrack.track.name;
+        const repoKey = repoKeyForTrack(pickedTrack.track);
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: adding #${issue} to ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "slot", track, issue },
+            { kind: "slot", track, repoKey, issue },
             confirmPublicWrite,
           ),
         );
@@ -1706,17 +1737,27 @@ export function activate(context: vscode.ExtensionContext): void {
         const sameRepoTracks = exp.tracks.filter(t => t.repo === node.repo);
         const candidateTracks = sameRepoTracks.length > 0 ? sameRepoTracks : exp.tracks;
 
-        const track = await vscode.window.showQuickPick(
-          candidateTracks.map(t => t.name),
-          { placeHolder: `Slot ${issueNumbers.length} issue(s) into a track` },
+        type TrackItem = vscode.QuickPickItem & { track: Track };
+        const pickedTrack = await vscode.window.showQuickPick<TrackItem>(
+          candidateTracks.map(track => ({
+            label: track.name,
+            description: repoKeyForTrack(track),
+            track,
+          })),
+          {
+            placeHolder: `Slot ${issueNumbers.length} issue(s) into a track`,
+            matchOnDescription: true,
+          },
         );
-        if (!track) return; // cancelled
+        if (!pickedTrack) return; // cancelled
+        const track = pickedTrack.track.name;
+        const repoKey = repoKeyForTrack(pickedTrack.track);
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: adding ${issueNumbers.length} issue(s) to ${track}…`,
           () => executeWrite(
             runner,
-            { kind: "batchSlot", track, issues: issueNumbers },
+            { kind: "batchSlot", track, repoKey, issues: issueNumbers },
             confirmPublicWrite,
           ),
         );
@@ -1965,18 +2006,27 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Build the candidate-track QuickPick for accept: the suggested track pre-listed
   // first, then a separator + the rest (same same-repo-first logic as slotUntracked).
-  type AcceptTrackItem = vscode.QuickPickItem & { track?: string };
+  type AcceptTrackItem = vscode.QuickPickItem & { track?: Track };
   const buildAcceptTrackItems = (repo: string, suggestedTrack: string): AcceptTrackItem[] => {
     const exp = provider.rawExport ?? provider.currentExport;
     const all = exp?.tracks ?? [];
-    const sameRepo = all.filter(t => t.repo === repo).map(t => t.name);
-    const candidates = sameRepo.length > 0 ? sameRepo : all.map(t => t.name);
-    const others = candidates.filter(t => t !== suggestedTrack);
+    const sameRepo = all.filter(t => t.repo === repo);
+    const candidates = sameRepo.length > 0 ? sameRepo : all;
+    const suggested = candidates.find(t => t.name === suggestedTrack);
+    const others = candidates.filter(t => t !== suggested);
     const items: AcceptTrackItem[] = [];
-    items.push({ label: suggestedTrack, description: "suggested", track: suggestedTrack });
+    if (suggested) {
+      items.push({
+        label: suggested.name,
+        description: `suggested · ${repoKeyForTrack(suggested) ?? suggested.repo}`,
+        track: suggested,
+      });
+    }
     if (others.length > 0) {
       items.push({ label: "Other tracks", kind: vscode.QuickPickItemKind.Separator });
-      for (const t of others) items.push({ label: t, track: t });
+      for (const track of others) {
+        items.push({ label: track.name, description: repoKeyForTrack(track), track });
+      }
     }
     return items;
   };
@@ -1984,12 +2034,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // Compute the CAS fingerprint (#241) of a target track's CURRENT issue list, as
   // the viewer last saw it, so --expect can detect an on-disk change. Returns
   // undefined when the track isn't in the export (then we slot unguarded).
-  const expectFor = (trackName: string): string | undefined => {
-    const exp = provider.rawExport ?? provider.currentExport;
-    const t = exp?.tracks.find(tr => tr.name === trackName);
-    if (!t) return undefined;
-    return issuesFingerprint(t.issues.map(i => i.number));
-  };
+  const expectFor = (track: Track): string =>
+    issuesFingerprint(track.issues.map(i => i.number));
 
   // workPlan.acceptSuggestion — slot one suggested issue, picking/confirming the
   // track. Branches on the CAS outcome (stale/needsRebase).
@@ -2008,13 +2054,15 @@ export function activate(context: vscode.ExtensionContext): void {
             },
           );
           if (!pick || !pick.track) return;
-          const track = pick.track;
+          const trackObj = pick.track;
+          const track = trackObj.name;
+          const repoKey = repoKeyForTrack(trackObj);
 
           const outcome = await withWriteProgress(
             `Work Plan: adding #${issue} to ${track}…`,
             () => executeWrite(
               runner,
-              { kind: "slot", track, issue, expect: expectFor(track) },
+              { kind: "slot", track, repoKey, issue, expect: expectFor(trackObj) },
               confirmPublicWrite,
             ),
           );
@@ -2087,12 +2135,16 @@ export function activate(context: vscode.ExtensionContext): void {
           let accepted = 0;
           let staleTracks = 0;
           let rebaseTracks = 0;
+          const exp = provider.rawExport ?? provider.currentExport;
           for (const [track, issues] of byTrack) {
+            const trackObj = exp?.tracks.find(t => t.repo === node.repo && t.name === track);
+            if (!trackObj) continue;
+            const repoKey = repoKeyForTrack(trackObj);
             const outcome = await withWriteProgress(
               `Work Plan: adding ${issues.length} issue(s) to ${track}…`,
               () => executeWrite(
                 runner,
-                { kind: "batchSlot", track, issues, expect: expectFor(track) },
+                { kind: "batchSlot", track, repoKey, issues, expect: expectFor(trackObj) },
                 confirmPublicWrite,
               ),
             );
@@ -2150,8 +2202,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.close", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const state = await vscode.window.showQuickPick(
           ["shipped", "parked", "abandoned"],
@@ -2181,7 +2235,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: closing ${track} as ${state}…`,
           () => executeWrite(
             runner,
-            { kind: "close", track, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
+            { kind: "close", track, repoKey, state: state as "shipped" | "parked" | "abandoned", ...(note ? { note } : {}) },
             confirmPublicWrite,
           ),
         );
@@ -2208,8 +2262,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.renameTrack", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const newSlug = await vscode.window.showInputBox({
           prompt: `New slug for "${track}"`,
@@ -2237,7 +2293,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: renaming ${track} → ${newSlug}…`,
           () => executeWrite(
             runner,
-            { kind: "renameTrack", track, newSlug },
+            { kind: "renameTrack", track, repoKey, newSlug },
             confirmPublicWrite,
           ),
         );
@@ -2282,7 +2338,7 @@ export function activate(context: vscode.ExtensionContext): void {
           `Work Plan: promoting ${track.name} to shared tier…`,
           () => executeWrite(
             runner,
-            { kind: "pushTrack", track: track.name, repoKey: track.folder ?? undefined },
+            { kind: "pushTrack", track: track.name, repoKey: repoKeyForTrack(track) },
             confirmPublicWrite,
           ),
         );
@@ -2310,12 +2366,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.markCleanup", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
-
-        // Resolve the full track object for the repo key (the `--repo=<key>` arg).
-        const exp = provider.rawExport ?? provider.currentExport;
-        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const reasonRaw = await vscode.window.showInputBox({
           prompt: `Flag "${track}" as a cleanup candidate`,
@@ -2349,11 +2403,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("workPlan.unmarkCleanup", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
-
-        const exp = provider.rawExport ?? provider.currentExport;
-        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: clearing cleanup flag on ${track}…`,
@@ -2382,10 +2435,10 @@ export function activate(context: vscode.ExtensionContext): void {
     // archive/parked/ (reversible), or restore it (#328). Distinct from Close.
     vscode.commands.registerCommand("workPlan.archiveTrack", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
-        const exp = provider.rawExport ?? provider.currentExport;
-        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: archiving ${track}…`,
           () => executeWrite(runner, { kind: "archiveTrack", track, repoKey }, confirmPublicWrite),
@@ -2404,10 +2457,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("workPlan.unarchiveTrack", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
-        const exp = provider.rawExport ?? provider.currentExport;
-        const repoKey = exp?.tracks.find(t => t.name === track)?.folder ?? undefined;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: restoring ${track}…`,
           () => executeWrite(runner, { kind: "unarchiveTrack", track, repoKey }, confirmPublicWrite),
@@ -2438,12 +2491,11 @@ export function activate(context: vscode.ExtensionContext): void {
     // requires typing the track name to confirm. Never deletes GitHub issues.
     vscode.commands.registerCommand("workPlan.deleteTrack", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
-        const exp = provider.rawExport ?? provider.currentExport;
-        const t = exp?.tracks.find(x => x.name === track);
-        const repoKey = t?.folder ?? undefined;
-        const shared = t?.tier === "shared";
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
+        const shared = trackObj.tier === "shared";
         // Recoverability is honest about the default: a shared track is always
         // git-backed; a PRIVATE track is only recoverable when notes-vcs (opt-in,
         // off by default) is on — otherwise the delete is permanent. We can't know
@@ -2994,15 +3046,22 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.orient", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
             title: `Work Plan: re-orienting on ${track}…`,
             cancellable: false,
           },
-          () => runRelay(["where-was-i", "--", track], "where-was-i"),
+          () => runRelay([
+            "where-was-i",
+            ...(repoKey ? [`--repo=${repoKey}`] : []),
+            "--",
+            track,
+          ], "where-was-i"),
         );
       } catch (err: unknown) {
         const msg = err instanceof CliError
@@ -3019,8 +3078,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.handoff", async (node?: TrackNode) => {
       try {
-        const track = await resolveTrackName(node);
-        if (!track) return;
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
 
         const outcome: WriteOutcome = await vscode.window.withProgress(
           {
@@ -3028,7 +3089,7 @@ export function activate(context: vscode.ExtensionContext): void {
             title: `Work Plan: wrapping up ${track}…`,
             cancellable: false,
           },
-          () => executeWrite(runner, { kind: "handoff", track }, confirmPublicWrite),
+          () => executeWrite(runner, { kind: "handoff", track, repoKey }, confirmPublicWrite),
         );
 
         if (outcome.status === "written") {

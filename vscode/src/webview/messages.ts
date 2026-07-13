@@ -11,14 +11,16 @@
  * that was the root cause of #305 (closeIssue) and #285 (openPlan) shipping broken.
  */
 
+import type { TrackKey } from "../model.ts";
+import { isTrackKey } from "../model.ts";
+
 // ---------------------------------------------------------------------------
 // Message interfaces (webview → extension)
 // ---------------------------------------------------------------------------
 
-export interface SelectTrackMessage {
-  type: "selectTrack";
-  name: string;
-}
+export type SelectTrackMessage =
+  | { type: "selectTrack"; key: TrackKey }
+  | { type: "selectTrack"; name: string };
 
 export interface OpenIssueMessage {
   type: "openIssue";
@@ -122,7 +124,14 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
   }
   switch (msg["type"]) {
     case "selectTrack":
-      return typeof msg["name"] === "string";
+      return (
+        isTrackKey(msg["key"])
+        && msg["name"] === undefined
+      ) || (
+        typeof msg["name"] === "string"
+        && (msg["name"] as string).length > 0
+        && msg["key"] === undefined
+      );
     case "openIssue":
       return typeof msg["repo"] === "string"
         && /^[\w.-]+\/[\w.-]+$/.test(msg["repo"] as string)

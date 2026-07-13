@@ -1,6 +1,15 @@
 /** Schema version for the work-plan export JSON surface. */
 export const SCHEMA_VERSION = 1;
 
+declare const trackKeyBrand: unique symbol;
+declare const issueKeyBrand: unique symbol;
+
+/** Canonical identity for a track: JSON `[folder ?? repo ?? "", name]`. */
+export type TrackKey = string & { readonly [trackKeyBrand]: "TrackKey" };
+
+/** Canonical identity for an issue: JSON `[repo, number]`. */
+export type IssueKey = string & { readonly [issueKeyBrand]: "IssueKey" };
+
 /** A dependency edge from `blocked_by` / `blocking` arrays on an Issue (#257). */
 export interface IssueDep { number: number; repo: string; title: string; }
 
@@ -90,7 +99,7 @@ export function blockerIssue(b: Blocker): number | null {
 
 export interface Track {
   name: string;
-  repo: string;
+  repo: string | null;
   /**
    * Absolute path to the track's `.md` on disk, or null when the track has no
    * backing file (#211). Assumes the CLI and extension share a filesystem view
@@ -264,6 +273,116 @@ export interface PlanStatus {
 // ---------------------------------------------------------------------------
 // Pure helpers (vscode-free — safe to import in tests)
 // ---------------------------------------------------------------------------
+
+/**
+ * Repo qualifier used for track identity and repo-scoped CLI operations.
+ * Configured repos are addressed by their folder key; older/minimal exports
+ * without one fall back to the GitHub slug.
+ */
+export function trackRepoQualifier(
+  track: Pick<Track, "folder" | "repo">,
+): string {
+  // Empty string is reserved for an unfiled track. Config keys and GitHub
+  // slugs are non-empty, so it cannot alias a real repo qualifier.
+  return track.folder ?? track.repo ?? "";
+}
+
+/** Builds a canonical track key from an already-resolved repo qualifier. */
+export function trackKeyFromParts(repoQualifier: string, name: string): TrackKey {
+  if (name.length === 0) {
+    throw new TypeError("Track keys require a non-empty name");
+  }
+  return JSON.stringify([repoQualifier, name]) as TrackKey;
+}
+
+/** Builds the canonical identity for a track. */
+export function trackKey(
+  track: Pick<Track, "folder" | "repo" | "name">,
+): TrackKey {
+  return trackKeyFromParts(trackRepoQualifier(track), track.name);
+}
+
+/** Builds the canonical identity for an issue. */
+export function issueKey(repo: string, number: number): IssueKey {
+  if (!Number.isSafeInteger(number) || number <= 0) {
+    throw new TypeError("Issue keys require a positive safe integer");
+  }
+  return JSON.stringify([repo, number]) as IssueKey;
+}
+
+/** Parses a canonical track key, rejecting alternate JSON spellings/shapes. */
+export function parseTrackKey(value: unknown): readonly [string, string] | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      !Array.isArray(parsed)
+      || parsed.length !== 2
+      || typeof parsed[0] !== "string"
+      || typeof parsed[1] !== "string"
+      || parsed[1].length === 0
+      || JSON.stringify(parsed) !== value
+    ) {
+      return null;
+    }
+    return [parsed[0], parsed[1]];
+  } catch {
+    return null;
+  }
+}
+
+/** Parses a canonical issue key, rejecting alternate JSON spellings/shapes. */
+export function parseIssueKey(value: unknown): readonly [string, number] | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      !Array.isArray(parsed)
+      || parsed.length !== 2
+      || typeof parsed[0] !== "string"
+      || typeof parsed[1] !== "number"
+      || !Number.isSafeInteger(parsed[1])
+      || parsed[1] <= 0
+      || JSON.stringify(parsed) !== value
+    ) {
+      return null;
+    }
+    return [parsed[0], parsed[1]];
+  } catch {
+    return null;
+  }
+}
+
+/** Runtime validator for untrusted track-key payloads. */
+export function isTrackKey(value: unknown): value is TrackKey {
+  return parseTrackKey(value) !== null;
+}
+
+/** Runtime validator for untrusted issue-key payloads. */
+export function isIssueKey(value: unknown): value is IssueKey {
+  return parseIssueKey(value) !== null;
+}
+
+/**
+ * Resolves a track by canonical key. A raw display name remains supported only
+ * when unique, preventing compatibility callers from silently choosing the
+ * wrong repo when duplicate names exist.
+ */
+export function resolveTrack(
+  tracks: readonly Track[],
+  selection: TrackKey | string,
+): Track | undefined {
+  const parts = parseTrackKey(selection);
+  if (parts) {
+    const [repoQualifier, name] = parts;
+    return tracks.find(
+      track => track.name === name && trackRepoQualifier(track) === repoQualifier,
+    );
+  }
+
+  const matches = tracks.filter(track => track.name === selection);
+  return matches.length === 1 ? matches[0] : undefined;
+}
 
 /** Returns true when the issue is closed. */
 export function isClosed(issue: Issue): boolean {
