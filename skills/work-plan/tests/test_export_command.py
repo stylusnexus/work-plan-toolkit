@@ -263,6 +263,53 @@ class ExportRunJsonTest(unittest.TestCase):
         # repoB: issue 1 — once
         self.assertEqual(repo_to_numbers[repo_b], [1])
 
+    def test_same_name_tracks_in_different_repos_keep_distinct_plan_badges(self):
+        """Plan badges must follow track identity, not collide on track name."""
+        repo_a = "org/repoA"
+        repo_b = "org/repoB"
+        track_a = _track("shared-name", repo_a, [])
+        track_b = _track("shared-name", repo_b, [])
+        track_a.folder = "repo-a"
+        track_b.folder = "repo-b"
+        track_a.meta["plan"] = "docs/plans/a.md"
+        track_b.meta["plan"] = "docs/plans/b.md"
+
+        def _badge(track, *_args):
+            return {"rel": track.meta["plan"], "resolved": False}
+
+        with patch("commands.export._plan_badge", side_effect=_badge):
+            rc, out, _ = self._run_with_mocks(
+                [track_a, track_b], {}, vis={repo_a: "PUBLIC", repo_b: "PRIVATE"}
+            )
+
+        self.assertEqual(rc, 0)
+        by_repo = {track["repo"]: track for track in out["tracks"]}
+        self.assertEqual(by_repo[repo_a]["plan"]["rel"], "docs/plans/a.md")
+        self.assertEqual(by_repo[repo_b]["plan"]["rel"], "docs/plans/b.md")
+
+    def test_same_repo_alias_folders_keep_distinct_plan_badges(self):
+        """Folder keys remain distinct even when aliases share a GitHub slug."""
+        repo = "org/shared"
+        track_a = _track("shared-name", repo, [])
+        track_b = _track("shared-name", repo, [])
+        track_a.folder = "alias-a"
+        track_b.folder = "alias-b"
+        track_a.meta["plan"] = "docs/plans/a.md"
+        track_b.meta["plan"] = "docs/plans/b.md"
+
+        def _badge(track, *_args):
+            return {"rel": track.meta["plan"], "resolved": False}
+
+        with patch("commands.export._plan_badge", side_effect=_badge):
+            rc, out, _ = self._run_with_mocks(
+                [track_a, track_b], {}, vis={repo: "PRIVATE"}
+            )
+
+        self.assertEqual(rc, 0)
+        by_folder = {track["folder"]: track for track in out["tracks"]}
+        self.assertEqual(by_folder["alias-a"]["plan"]["rel"], "docs/plans/a.md")
+        self.assertEqual(by_folder["alias-b"]["plan"]["rel"], "docs/plans/b.md")
+
 
 class ExportCommandUntrackedTest(unittest.TestCase):
     """Verify export.run computes untracked = open issues minus tracked ones."""

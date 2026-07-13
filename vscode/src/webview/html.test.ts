@@ -363,6 +363,13 @@ describe("buildHtml — postMessage protocol", () => {
     assert.ok(html.includes("selectTrack"), "Expected selectTrack in messaging script");
   });
 
+  it("posts composite data-track-key selections without degrading to a name", () => {
+    const html = buildHtml(BASE);
+    assert.ok(html.includes('target.closest("[data-track-key]")'));
+    assert.ok(html.includes('type: "selectTrack", key:'));
+    assert.ok(html.includes('getAttribute("data-track-key")'));
+  });
+
   it("contains postMessage call for openIssue", () => {
     const html = buildHtml(BASE);
     assert.ok(html.includes("openIssue"), "Expected openIssue in messaging script");

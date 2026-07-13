@@ -7,30 +7,30 @@ import { runWrite } from "./cli.ts";
 
 /** A write action the viewer can request. Pure data — no vscode. */
 export type WriteAction =
-  | { kind: "editFields"; track: string; fields: Record<string, string> }
-  | { kind: "setNext"; track: string; issues: number[] }
-  | { kind: "refresh"; track: string }
-  | { kind: "reconcileDraft"; track: string }
+  | { kind: "editFields"; track: string; repoKey?: string; fields: Record<string, string> }
+  | { kind: "setNext"; track: string; repoKey?: string; issues: number[] }
+  | { kind: "refresh"; track: string; repoKey?: string }
+  | { kind: "reconcileDraft"; track: string; repoKey?: string }
   // Non-draft reconcile (#221) — applies the label-drift ADDs/MOVEs the draft
   // previewed. `--yes` runs it non-interactively; writes are local frontmatter
   // only (the read-only-GitHub contract holds), and the CLI self-skips MOVEs into
   // PUBLIC destination tracks. Routed through executeWrite for a uniform path.
-  | { kind: "reconcileApply"; track: string }
+  | { kind: "reconcileApply"; track: string; repoKey?: string }
   | { kind: "hygiene" }
   // `expect` (#241) opts into the CLI's compare-and-swap staleness guard: the
   // fingerprint of the target track's issue list as the viewer last saw it. If
   // the on-disk list changed since, the CLI aborts with {stale} and the caller
   // re-offers instead of clobbering. Omitted → today's unguarded behaviour.
-  | { kind: "slot"; track: string; issue: number; expect?: string }
-  | { kind: "batchSlot"; track: string; issues: number[]; expect?: string }
-  | { kind: "close"; track: string; state: "shipped" | "parked" | "abandoned"; note?: string }
+  | { kind: "slot"; track: string; repoKey?: string; issue: number; expect?: string }
+  | { kind: "batchSlot"; track: string; repoKey?: string; issues: number[]; expect?: string }
+  | { kind: "close"; track: string; repoKey?: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
-  | { kind: "renameTrack"; track: string; newSlug: string }
+  | { kind: "renameTrack"; track: string; repoKey?: string; newSlug: string }
   | { kind: "addRepo"; key: string; github: string; local?: string; update?: boolean; clearLocal?: boolean }
   | { kind: "removeRepo"; key: string }
   | { kind: "setNotesRoot"; path: string }
-  | { kind: "move"; fromTrack: string; toTrack: string; issue: number }
-  | { kind: "handoff"; track: string }
+  | { kind: "move"; fromTrack: string; toTrack: string; repoKey?: string; issue: number }
+  | { kind: "handoff"; track: string; repoKey?: string }
   // Plan verdict-override (#286) — frontmatter-only write to a plan/spec doc.
   // repoKey is the config folder key (the `plan-status --repo=<key>` arg); rel is
   // the repo-relative doc path. clear=true removes the override instead of setting.
@@ -127,6 +127,8 @@ export type WriteOutcome =
  * no separator.
  *
  * Mappings:
+ *   Every track-scoped action below accepts an optional `--repo=<key>` flag
+ *   before `--`; it is omitted for legacy callers that do not provide repoKey.
  *   editFields      → ["set", ...entries.map(k=v), "--", track]
  *   setNext         → ["handoff", "--set-next=<csv>", "--", track]   (equals form)
  *   refresh         → ["refresh-md", "--yes", "--", track]
@@ -165,6 +167,7 @@ export function actionToArgs(action: WriteAction): string[] {
       return [
         "set",
         ...Object.entries(action.fields).map(([k, v]) => `${k}=${v}`),
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         action.track,
       ];
@@ -173,18 +176,37 @@ export function actionToArgs(action: WriteAction): string[] {
       return [
         "handoff",
         `--set-next=${action.issues.join(",")}`,
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         action.track,
       ];
 
     case "refresh":
-      return ["refresh-md", "--yes", "--", action.track];
+      return [
+        "refresh-md",
+        "--yes",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
 
     case "reconcileDraft":
-      return ["reconcile", "--draft", "--", action.track];
+      return [
+        "reconcile",
+        "--draft",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
 
     case "reconcileApply":
-      return ["reconcile", "--yes", "--", action.track];
+      return [
+        "reconcile",
+        "--yes",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
 
     case "hygiene":
       return ["hygiene", "--yes"];
@@ -194,6 +216,7 @@ export function actionToArgs(action: WriteAction): string[] {
         "slot",
         "--no-move",
         ...(action.expect ? [`--expect=${action.expect}`] : []),
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         String(action.issue),
         action.track,
@@ -204,6 +227,7 @@ export function actionToArgs(action: WriteAction): string[] {
         "batch-slot",
         "--no-move",
         ...(action.expect ? [`--expect=${action.expect}`] : []),
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         ...action.issues.map(String),
         action.track,
@@ -214,6 +238,7 @@ export function actionToArgs(action: WriteAction): string[] {
         "close",
         `--state=${action.state}`,
         ...(action.note ? [`--note=${action.note}`] : []),
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         action.track,
       ];
@@ -229,7 +254,13 @@ export function actionToArgs(action: WriteAction): string[] {
       ];
 
     case "renameTrack":
-      return ["rename-track", "--", action.track, action.newSlug];
+      return [
+        "rename-track",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+        action.newSlug,
+      ];
 
     case "addRepo":
       return [
@@ -251,13 +282,25 @@ export function actionToArgs(action: WriteAction): string[] {
       return ["set-notes-root", "--", action.path];
 
     case "move":
-      return ["move", "--", String(action.issue), action.fromTrack, action.toTrack];
+      return [
+        "move",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        String(action.issue),
+        action.fromTrack,
+        action.toTrack,
+      ];
 
     case "handoff":
       // Derived (non-interactive) handoff. The CLI's prompt helpers fall back to
       // their defaults under non-TTY stdin (#183), so this never blocks; --auto-next
       // and -i are deliberately omitted (they'd need a native picker — separate work).
-      return ["handoff", "--", action.track];
+      return [
+        "handoff",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        action.track,
+      ];
 
     case "planConfirm":
       return [

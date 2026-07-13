@@ -5,7 +5,7 @@
  */
 
 import type { Track, Issue, TrackPlan, IssueDep } from "../model.ts";
-import { blockerIssue } from "../model.ts";
+import { blockerIssue, trackKeyFromParts, trackRepoQualifier } from "../model.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -182,9 +182,17 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }
   if (track.depends_on.length === 0) {
     parts.push("None.");
   } else {
-    const depChips = track.depends_on.map(name =>
-      `<button type="button" class="depends-chip" data-track="${esc(name)}">${esc(name)}</button>`,
-    );
+    const qualifier = trackRepoQualifier(track);
+    const depChips = track.depends_on.map(name => {
+      // A hand-crafted/legacy payload can still have no repo despite the schema
+      // type. Keep its unique-name navigation alive instead of throwing while
+      // canonical exports always take the qualified path.
+      if (!qualifier) {
+        return `<button type="button" class="depends-chip" data-track="${esc(name)}">${esc(name)}</button>`;
+      }
+      const key = trackKeyFromParts(qualifier, name);
+      return `<button type="button" class="depends-chip" data-track-key="${esc(key)}">${esc(name)}</button>`;
+    });
     parts.push(depChips.join(" "));
   }
 
