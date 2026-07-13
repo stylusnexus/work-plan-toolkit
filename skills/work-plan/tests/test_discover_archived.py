@@ -42,6 +42,21 @@ class DiscoverArchivedTest(unittest.TestCase):
                 by_rel["docs/plans/archive/abandoned/dead.md"].archive_kind, "abandoned")
             self.assertFalse(by_rel["docs/plans/live.md"].archived)
 
+    def test_include_archived_skips_symlinked_doc_outside_repo(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = _repo(d)
+            victim = Path(d) / "outside.md"
+            victim.write_text("# outside\n")
+            link = root / "docs/plans/archive/shipped/linked.md"
+            link.symlink_to(victim)
+
+            docs = doc_discovery.discover_docs(root, include_archived=True)
+
+            self.assertNotIn(
+                "docs/plans/archive/shipped/linked.md",
+                {doc.rel for doc in docs},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

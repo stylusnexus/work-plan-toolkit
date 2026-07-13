@@ -25,6 +25,7 @@ import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
 import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
+import { resolveContainedFile } from "./pathSafety.ts";
 
 // URL shown in "Update" notification and in CLI-not-found errors.
 const TOOLKIT_URL = "https://github.com/stylusnexus/work-plan-toolkit";
@@ -573,7 +574,14 @@ export function activate(context: vscode.ExtensionContext): void {
           );
           return;
         }
-        const uri = vscode.Uri.joinPath(vscode.Uri.file(arg.local), arg.rel);
+        const safePath = await resolveContainedFile(arg.local, arg.rel);
+        if (!safePath) {
+          vscode.window.showWarningMessage(
+            "Work Plan: refusing to open a plan path outside its configured repository.",
+          );
+          return;
+        }
+        const uri = vscode.Uri.file(safePath);
         await revealFileInEditor(
           uri,
           `Work Plan: plan doc not found at ${uri.fsPath} — has it moved, ` +
