@@ -247,9 +247,12 @@ def _render(rows, repo_root) -> None:
         print()
 
 
-def _stamp_docs(docs, rows, draft: bool) -> None:
+def _stamp_docs(docs, rows, repo_root, draft: bool) -> None:
     changed = []
     for doc, row in zip(docs, rows):
+        if not doc_discovery.is_safe_doc_path(doc.path, repo_root):
+            print(f"WARN: refusing to stamp unsafe path: {doc.rel}")
+            continue
         text = doc.path.read_text(encoding="utf-8", errors="replace")
         new = status_header.stamp(text, row)
         if new != text:
@@ -336,7 +339,7 @@ def _llm_apply(docs, rows, repo_root, stamp: bool, draft: bool) -> int:
 
     _render(rows, repo_root)
     if stamp:
-        _stamp_docs(docs, rows, draft=draft)
+        _stamp_docs(docs, rows, repo_root=repo_root, draft=draft)
     return 0
 
 
@@ -551,5 +554,5 @@ def run(args: list) -> int:
     if flags.get("--stamp"):
         live_docs = [d for d in docs if not d.archived]
         _stamp_docs(live_docs, [r for r in rows if not r.get("archived")],
-                    draft=bool(flags.get("--draft")))
+                    repo_root=repo_root, draft=bool(flags.get("--draft")))
     return 0

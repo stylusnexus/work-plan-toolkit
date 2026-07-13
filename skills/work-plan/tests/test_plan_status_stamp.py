@@ -11,6 +11,7 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
 from commands import plan_status
+from lib.doc_discovery import Doc
 from lib.status_header import BEGIN
 
 PLAN = (
@@ -20,6 +21,14 @@ PLAN = (
     "- Create: `src/missing.ts`\n"
     "- [ ] Step 1\n"
 )
+
+ROW = {
+    "glyph": "✅",
+    "verdict": "shipped",
+    "files_present": 1,
+    "files_declared": 1,
+    "last_touched": "2026-07-12",
+}
 
 
 class StampBehaviourTest(unittest.TestCase):
@@ -64,6 +73,41 @@ class StampBehaviourTest(unittest.TestCase):
             first = self.plan_path.read_text()
             self._run(root, ["--stamp"])
             self.assertEqual(first, self.plan_path.read_text())
+
+    def test_stamp_rechecks_symlink_before_write(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            plans = root / "docs/plans"
+            plans.mkdir(parents=True)
+            victim = Path(d) / "victim.md"
+            victim.write_text("# outside\n")
+            link = plans / "evil.md"
+            link.symlink_to(victim)
+            doc = Doc(path=link, rel="docs/plans/evil.md", kind="plan")
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                plan_status._stamp_docs([doc], [ROW], repo_root=root, draft=False)
+
+            self.assertEqual(victim.read_text(), "# outside\n")
+            self.assertIn("refusing to stamp unsafe path", buf.getvalue())
+
+    def test_stamp_cli_does_not_modify_outside_symlink_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            plans = root / "docs/superpowers/plans"
+            plans.mkdir(parents=True)
+            victim = Path(d) / "victim.md"
+            victim.write_text(PLAN)
+            before = victim.read_bytes()
+            (plans / "evil.md").symlink_to(victim)
+
+            rc, out = self._run(root, ["--stamp"])
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(victim.read_bytes(), before)
+            self.assertNotIn(BEGIN, victim.read_text())
+            self.assertIn("stamped 0 doc(s)", out)
 
 
 if __name__ == "__main__":
