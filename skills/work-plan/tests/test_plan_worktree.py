@@ -97,6 +97,20 @@ class SharedTierDirTest(unittest.TestCase):
             got = pw.shared_tier_dir({"local": d})
             self.assertEqual(got, Path(d).expanduser() / ".work-plan")
 
+    def test_no_plan_branch_refuses_symlinked_work_plan_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            clone = base / "clone"
+            outside = base / "outside"
+            clone.mkdir()
+            outside.mkdir()
+            try:
+                (clone / ".work-plan").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+
+            self.assertIsNone(pw.shared_tier_dir({"local": str(clone)}))
+
     def test_plan_branch_uses_worktree_when_present(self):
         with tempfile.TemporaryDirectory() as d:
             dest = Path(d) / "wt"
@@ -106,6 +120,23 @@ class SharedTierDirTest(unittest.TestCase):
                  patch.object(pw, "_git", _FakeGit()):
                 got = pw.shared_tier_dir({"local": d, "plan_branch": "plan"})
             self.assertEqual(got, dest / ".work-plan")
+
+    def test_plan_branch_refuses_symlinked_work_plan_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            dest = base / "wt"
+            outside = base / "outside"
+            dest.mkdir()
+            outside.mkdir()
+            (dest / ".git").write_text("gitdir: ...\n")
+            try:
+                (dest / ".work-plan").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+            with patch.object(pw, "_worktree_dir", return_value=dest), \
+                 patch.object(pw, "_git", _FakeGit()):
+                got = pw.shared_tier_dir({"local": d, "plan_branch": "plan"})
+            self.assertIsNone(got)
 
     def test_plan_branch_none_when_branch_missing(self):
         with tempfile.TemporaryDirectory() as d:

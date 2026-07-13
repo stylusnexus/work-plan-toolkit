@@ -435,6 +435,60 @@ class ExportPlanBadgeTest(unittest.TestCase):
             badge = self._badge(self._track_with_plan(rel="docs/plans/missing.md"), root)
             self.assertEqual(badge, {"rel": "docs/plans/missing.md", "resolved": False})
 
+    def test_unresolved_when_plan_traverses_outside_repo(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            root.mkdir()
+            outside = Path(d) / "outside.md"
+            outside.write_text(self.BODY)
+            rel = "../outside.md"
+
+            badge = self._badge(self._track_with_plan(rel=rel), root)
+
+            self.assertEqual(badge, {"rel": rel, "resolved": False})
+
+    def test_unresolved_when_plan_is_absolute_path(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            root.mkdir()
+            outside = Path(d) / "outside.md"
+            outside.write_text(self.BODY)
+            rel = str(outside)
+
+            badge = self._badge(self._track_with_plan(rel=rel), root)
+
+            self.assertEqual(badge, {"rel": rel, "resolved": False})
+
+    def test_unresolved_when_plan_is_absolute_path_inside_repo(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo_with_plan(d, self.BODY)
+            rel = str(root / "docs/plans/p.md")
+
+            badge = self._badge(self._track_with_plan(rel=rel), root)
+
+            self.assertEqual(badge, {"rel": rel, "resolved": False})
+
+    def test_unresolved_when_plan_symlink_resolves_outside_repo(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            plans = root / "docs/plans"
+            plans.mkdir(parents=True)
+            outside = Path(d) / "outside.md"
+            outside.write_text(self.BODY)
+            link = plans / "p.md"
+            link.symlink_to(outside)
+
+            badge = self._badge(self._track_with_plan(), root)
+
+            self.assertEqual(
+                badge,
+                {"rel": "docs/plans/p.md", "resolved": False},
+            )
+
     def test_no_folder_is_unresolved(self):
         t = self._track_with_plan(folder=None)
         from datetime import date

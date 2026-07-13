@@ -1,5 +1,6 @@
 """Stamp / draft behaviour for plan-status (offline)."""
 import io
+import os
 import unittest
 import sys
 import tempfile
@@ -108,6 +109,29 @@ class StampBehaviourTest(unittest.TestCase):
             self.assertEqual(victim.read_bytes(), before)
             self.assertNotIn(BEGIN, victim.read_text())
             self.assertIn("stamped 0 doc(s)", out)
+
+    def test_stamp_replaces_hard_link_without_modifying_outside_inode(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            plans = root / "docs/superpowers/plans"
+            plans.mkdir(parents=True)
+            victim = Path(d) / "victim.md"
+            victim.write_text(PLAN)
+            linked_plan = plans / "linked.md"
+            try:
+                os.link(str(victim), str(linked_plan))
+            except OSError as exc:
+                self.skipTest(f"hard links unavailable: {exc}")
+            original_inode = victim.stat().st_ino
+
+            rc, out = self._run(root, ["--stamp"])
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(victim.read_text(), PLAN)
+            self.assertEqual(victim.stat().st_ino, original_inode)
+            self.assertNotEqual(linked_plan.stat().st_ino, original_inode)
+            self.assertIn(BEGIN, linked_plan.read_text())
+            self.assertIn("stamped 1 doc(s)", out)
 
 
 if __name__ == "__main__":

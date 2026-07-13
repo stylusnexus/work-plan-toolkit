@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from lib.config import load_config, ConfigError, is_valid_git_repo
-from lib.plan_worktree import shared_tier_dir
+from lib.plan_worktree import resolve_shared_tier
 from lib.frontmatter import write_file
 from lib.prompts import parse_flags
 from lib.write_guard import needs_confirm, make_token, valid_token
@@ -158,7 +158,10 @@ def run(args: list[str]) -> int:
             if is_valid_git_repo(local_path):
                 # Worktree-aware (#260): plan_branch repos write into the
                 # worktree's .work-plan/; None → fall back to the private tier.
-                sd = shared_tier_dir(repo_entry)
+                sd, unsafe_reason = resolve_shared_tier(repo_entry)
+                if unsafe_reason:
+                    print(f"ERROR: {unsafe_reason}")
+                    return 1
                 if sd is not None:
                     shared_path = sd / f"{slug}.md"
 
@@ -197,7 +200,23 @@ def run(args: list[str]) -> int:
     # ------------------------------------------------------------------
     # Create folder if missing, then write the track file
     # ------------------------------------------------------------------
+    if is_shared:
+        # Re-resolve at the mutation boundary.  Discovery and confirmation can
+        # take time, during which an attacker could replace `.work-plan` with a
+        # symlink.  Refuse if the selected root changed or became unavailable.
+        current_shared, unsafe_reason = resolve_shared_tier(repo_entry)
+        if unsafe_reason or current_shared is None or current_shared != path.parent:
+            print(f"ERROR: {unsafe_reason or 'shared track directory changed before write'}")
+            return 1
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if is_shared:
+        # mkdir may have created the tier; validate that concrete directory once
+        # more before handing the file path to the frontmatter writer.
+        current_shared, unsafe_reason = resolve_shared_tier(repo_entry)
+        if unsafe_reason or current_shared is None or current_shared != path.parent:
+            print(f"ERROR: {unsafe_reason or 'shared track directory changed before write'}")
+            return 1
 
     now = datetime.now().strftime("%Y-%m-%dT%H:%M")
     meta = {
