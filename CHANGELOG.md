@@ -6,6 +6,30 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.13+6341563 — 2026-07-13 (#438)
+
+fix: harden plan paths, repo identity, and installers
+
+## Security and correctness
+
+- contain plan/spec discovery, stamping, exported plan links, and shared-track creation within their configured repository roots; atomic stamp replacement prevents hard-link write-through (#195)
+- preserve repository-qualified track and issue identity throughout the VS Code graph, detail selection, and write actions (#430)
+- preserve unmanaged or user-modified launchers using content-verified ownership markers, abort incomplete installs, and add native Windows installer coverage (#431)
+
+## Distribution updates
+
+- document the new guarantees in the npm-facing root README
+- bump the VS Code extension to v0.19.2 and update its Marketplace README
+- publish the CLI to npm, publish v0.19.2 to VS Code Marketplace/Open VSX, then repin and refresh the agent-plugins catalog README after tagging
+
+## Verification
+
+- Python unit suite: 1,260 passed
+- VS Code: typecheck, 797 tests, production build, and VSIX package passed
+- native installer regressions: Unix passed locally; Windows passed in CI
+- npm package dry run and Python 3.9 syntax lint passed
+- compromised-package catalog scan and npm audit reported zero findings
+
 ## 2026.07.10+92f8eef — 2026-07-10 (#419)
 
 fix: brief no longer crashes on mixed next_up; least-privilege allowed-tools scoping (#415, #417)
