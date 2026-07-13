@@ -30,6 +30,26 @@ def classify_kind(rel: str) -> str:
     return "adhoc"
 
 
+def is_safe_doc_path(path: Path, repo_root: Path) -> bool:
+    """Return whether an existing doc resolves to a regular file inside the repo.
+
+    ``Path.is_file()`` follows symlinks, so it is not sufficient for paths that
+    may later be stamped.  Reject a symlink at the final component and require
+    the fully-resolved target to remain beneath the resolved repository root.
+    The write path calls this again to avoid trusting discovery-time state.
+    """
+    path = Path(path)
+    try:
+        if path.is_symlink():
+            return False
+        resolved_root = Path(repo_root).resolve(strict=True)
+        resolved_path = path.resolve(strict=True)
+        resolved_path.relative_to(resolved_root)
+        return resolved_path.is_file()
+    except (OSError, ValueError):
+        return False
+
+
 def discover_docs(repo_root: Path, globs: Optional[list] = None,
                   include_archived: bool = False) -> list:
     globs = globs or DEFAULT_GLOBS
@@ -38,7 +58,7 @@ def discover_docs(repo_root: Path, globs: Optional[list] = None,
     seen = set()
     for g in globs:
         for p in sorted(repo_root.glob(g)):
-            if not p.is_file() or p in seen:
+            if not is_safe_doc_path(p, repo_root) or p in seen:
                 continue
             seen.add(p)
             rel = p.relative_to(repo_root).as_posix()
@@ -48,7 +68,7 @@ def discover_docs(repo_root: Path, globs: Optional[list] = None,
             parent = g.rsplit("/", 1)[0]            # "docs/plans/*.md" -> "docs/plans"
             for sub, kind in ARCHIVE_SUBDIRS:
                 for p in sorted(repo_root.glob(f"{parent}/{sub}/*.md")):
-                    if not p.is_file() or p in seen:
+                    if not is_safe_doc_path(p, repo_root) or p in seen:
                         continue
                     seen.add(p)
                     rel = p.relative_to(repo_root).as_posix()

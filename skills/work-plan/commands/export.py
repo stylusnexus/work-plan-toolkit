@@ -1,6 +1,7 @@
 """export subcommand — emit the viewer-ready JSON read surface."""
 import json
 from datetime import datetime, date
+from pathlib import Path
 from lib.config import load_config, ConfigError, resolve_local_path_for_folder
 from lib.tracks import discover_tracks, discover_archived_tracks, find_tier_duplicates, issue_refs
 from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
@@ -25,11 +26,13 @@ def _plan_badge(track, cfg, today, dead_days, stall_days):
     if not isinstance(rel, str) or not rel.strip():
         return None
     rel = rel.strip()
+    if Path(rel).is_absolute():
+        return {"rel": rel, "resolved": False}
     local = resolve_local_path_for_folder(track.folder, cfg) if track.folder else None
     if not local or not local.exists():
         return {"rel": rel, "resolved": False}
     doc_path = local / rel
-    if not doc_path.is_file():
+    if not doc_discovery.is_safe_doc_path(doc_path, local):
         return {"rel": rel, "resolved": False}
     doc = doc_discovery.Doc(path=doc_path, rel=rel, kind=doc_discovery.classify_kind(rel))
     row = evaluate_doc(doc, local, today, dead_days, stall_days)

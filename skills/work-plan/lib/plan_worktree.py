@@ -190,6 +190,51 @@ def commit_shared_tier(worktree: Path, message: str, paths) -> Optional[str]:
     return head.stdout.strip() or None
 
 
+def _contained_shared_tier(root: Path) -> tuple:
+    """Return ``(<root>/.work-plan, None)`` when the tier is safely contained.
+
+    The shared-tier directory itself is never allowed to be a symlink, even if
+    it currently points back inside ``root``.  Refusing the indirection keeps a
+    later retarget from changing the write destination after validation.
+    ``resolve(strict=False)`` also catches symlinked ancestors and proves that
+    the resulting directory remains below the resolved repository/worktree.
+    """
+    candidate = root / ".work-plan"
+    try:
+        resolved_root = root.resolve(strict=True)
+        if not resolved_root.is_dir():
+            return None, f"shared track root is not a directory: {root}"
+        if candidate.is_symlink():
+            return None, f"unsafe shared track directory is a symlink: {candidate}"
+        if candidate.exists() and not candidate.is_dir():
+            return None, f"unsafe shared track path is not a directory: {candidate}"
+        resolved_candidate = candidate.resolve(strict=False)
+        resolved_candidate.relative_to(resolved_root)
+    except (OSError, RuntimeError, ValueError):
+        return None, f"unsafe shared track directory escapes its root: {candidate}"
+    return candidate, None
+
+
+def resolve_shared_tier(entry: dict) -> tuple:
+    """Resolve a repo's shared tier as ``(path, unsafe_reason)``.
+
+    ``unsafe_reason`` is populated only when a candidate root exists but fails
+    containment validation.  Operational absence (no local path, unavailable
+    plan branch) remains ``(None, None)`` so read-only callers retain the
+    existing graceful-degradation behaviour.
+    """
+    if not entry or not entry.get("local"):
+        return None, None
+    local_path = Path(entry["local"]).expanduser()
+    branch = entry.get("plan_branch")
+    if branch:
+        worktree = ensure_worktree(local_path, branch)
+        if worktree is None:
+            return None, None
+        return _contained_shared_tier(worktree)
+    return _contained_shared_tier(local_path)
+
+
 def shared_tier_dir(entry: dict) -> Optional[Path]:
     """The `.work-plan/` directory to read/write for a repo config `entry`.
 
@@ -199,14 +244,8 @@ def shared_tier_dir(entry: dict) -> Optional[Path]:
 
     Returns None when the entry has no `local` path. Never raises.
     """
-    if not entry or not entry.get("local"):
-        return None
-    local_path = Path(entry["local"]).expanduser()
-    branch = entry.get("plan_branch")
-    if branch:
-        worktree = ensure_worktree(local_path, branch)
-        return (worktree / ".work-plan") if worktree else None
-    return local_path / ".work-plan"
+    path, _unsafe_reason = resolve_shared_tier(entry)
+    return path
 
 
 # ---------------------------------------------------------------------------

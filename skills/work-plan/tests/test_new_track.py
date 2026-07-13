@@ -20,6 +20,7 @@ import io
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -441,6 +442,82 @@ class NewTrackCommandTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         mw.assert_called_once()
 
+    def test_refuses_shared_track_when_work_plan_root_is_symlinked_outside_repo(self):
+        """A repo-controlled shared root must not redirect creation elsewhere."""
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            clone = base / "clone"
+            outside = base / "outside"
+            notes = base / "notes"
+            (clone / ".git").mkdir(parents=True)
+            outside.mkdir()
+            notes.mkdir()
+            try:
+                (clone / ".work-plan").symlink_to(outside, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks unavailable: {exc}")
+            cfg = {
+                "notes_root": str(notes),
+                "repos": {
+                    "myrepo": {"github": "org/myrepo", "local": str(clone)},
+                },
+            }
+
+            with patch("commands.new_track.load_config", return_value=cfg), \
+                 patch("lib.write_guard.repo_visibility", return_value="PRIVATE"):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = new_track.run(["myrepo", "escaped"])
+
+            self.assertEqual(rc, 1)
+            self.assertFalse((outside / "escaped.md").exists())
+            self.assertIn("unsafe shared track directory", buf.getvalue())
+
+    def test_rechecks_shared_root_after_directory_creation_before_write(self):
+        """A root swapped after mkdir is rejected before write_file opens it."""
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            clone = base / "clone"
+            outside = base / "outside"
+            notes = base / "notes"
+            (clone / ".git").mkdir(parents=True)
+            outside.mkdir()
+            notes.mkdir()
+            cfg = {
+                "notes_root": str(notes),
+                "repos": {
+                    "myrepo": {"github": "org/myrepo", "local": str(clone)},
+                },
+            }
+            real_resolve = new_track.resolve_shared_tier
+            calls = 0
+
+            def _swap_after_mkdir(entry):
+                nonlocal calls
+                calls += 1
+                if calls == 3:
+                    shared = clone / ".work-plan"
+                    shared.rmdir()
+                    try:
+                        shared.symlink_to(outside, target_is_directory=True)
+                    except OSError as exc:
+                        self.skipTest(f"directory symlinks unavailable: {exc}")
+                return real_resolve(entry)
+
+            with patch("commands.new_track.load_config", return_value=cfg), \
+                 patch("commands.new_track.resolve_shared_tier",
+                       side_effect=_swap_after_mkdir), \
+                 patch("commands.new_track.write_file") as write, \
+                 patch("lib.write_guard.repo_visibility", return_value="PRIVATE"):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = new_track.run(["myrepo", "escaped"])
+
+            self.assertEqual(rc, 1)
+            write.assert_not_called()
+            self.assertFalse((outside / "escaped.md").exists())
+            self.assertIn("unsafe shared track directory", buf.getvalue())
+
 
 # ---------------------------------------------------------------------------
 # Phase D: --commit flag tests
@@ -504,6 +581,8 @@ class NewTrackCommitFlagTest(unittest.TestCase):
 
         with patch("commands.new_track.load_config", return_value=cfg), \
              patch("commands.new_track.write_file") as mw, \
+             patch("commands.new_track.resolve_shared_tier",
+                   return_value=(Path(CLONE_ROOT) / ".work-plan", None)), \
              patch("lib.write_guard.repo_visibility", return_value="PRIVATE"), \
              patch("pathlib.Path.exists", _path_exists), \
              patch("pathlib.Path.is_dir", _is_dir), \

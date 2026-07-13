@@ -5,7 +5,10 @@ Phase 1: read-only. Reports a human table or --json. Never mutates a doc.
 Manifest-less (prose) docs are flagged 👻 for the Phase 1b LLM pass.
 """
 import json
+import os
+import stat
 import sys
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -247,19 +250,58 @@ def _render(rows, repo_root) -> None:
         print()
 
 
-def _stamp_docs(docs, rows, draft: bool) -> None:
+def _stamp_docs(docs, rows, repo_root, draft: bool) -> None:
     changed = []
     for doc, row in zip(docs, rows):
+        if not doc_discovery.is_safe_doc_path(doc.path, repo_root):
+            print(f"WARN: refusing to stamp unsafe path: {doc.rel}")
+            continue
         text = doc.path.read_text(encoding="utf-8", errors="replace")
         new = status_header.stamp(text, row)
         if new != text:
-            changed.append(doc.rel)
-            if not draft:
-                doc.path.write_text(new, encoding="utf-8")
+            if draft:
+                changed.append(doc.rel)
+            elif _replace_doc_text(doc.path, new, repo_root):
+                changed.append(doc.rel)
+            else:
+                print(f"WARN: refusing to stamp unsafe path: {doc.rel}")
     verb = "would stamp" if draft else "stamped"
     print(f"\n{verb} {len(changed)} doc(s):")
     for rel in changed:
         print(f"  {rel}")
+
+
+def _replace_doc_text(path: Path, text: str, repo_root: Path) -> bool:
+    """Atomically replace a validated doc without writing through hard links."""
+    path = Path(path)
+    tmp_path = None
+    try:
+        original_mode = stat.S_IMODE(path.stat().st_mode)
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=str(path.parent),
+                prefix=f".{path.name}.", suffix=".tmp", delete=False) as tmp:
+            tmp.write(text)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp_path = Path(tmp.name)
+        os.chmod(str(tmp_path), original_mode)
+
+        # Recheck immediately before replacement.  os.replace swaps the directory
+        # entry instead of following a final-component symlink and also breaks any
+        # hard-link relationship held by the original inode.
+        if not doc_discovery.is_safe_doc_path(path, repo_root):
+            return False
+        os.replace(str(tmp_path), str(path))
+        tmp_path = None
+        return True
+    except OSError:
+        return False
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
 
 _LLM_VERDICTS = {"shipped", "partial", "dead"}
@@ -336,7 +378,7 @@ def _llm_apply(docs, rows, repo_root, stamp: bool, draft: bool) -> int:
 
     _render(rows, repo_root)
     if stamp:
-        _stamp_docs(docs, rows, draft=draft)
+        _stamp_docs(docs, rows, repo_root=repo_root, draft=draft)
     return 0
 
 
@@ -551,5 +593,5 @@ def run(args: list) -> int:
     if flags.get("--stamp"):
         live_docs = [d for d in docs if not d.archived]
         _stamp_docs(live_docs, [r for r in rows if not r.get("archived")],
-                    draft=bool(flags.get("--draft")))
+                    repo_root=repo_root, draft=bool(flags.get("--draft")))
     return 0

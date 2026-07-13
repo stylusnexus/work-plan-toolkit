@@ -46,6 +46,17 @@ class DiscoverDocsTest(unittest.TestCase):
             self.assertEqual(kinds["docs/superpowers/plans/2026-03-16-a.md"], "plan")
             self.assertEqual(kinds["docs/plans/2026-02-17-b-design.md"], "spec")
 
+    def test_skips_symlinked_doc_that_resolves_outside_repo(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "repo"
+            plans = root / "docs/plans"
+            plans.mkdir(parents=True)
+            victim = Path(d) / "victim.md"
+            victim.write_text("# outside\n")
+            (plans / "evil.md").symlink_to(victim)
+
+            self.assertEqual(discover_docs(root), [])
+
 
 if __name__ == "__main__":
     unittest.main()
