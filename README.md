@@ -383,7 +383,10 @@ The installer:
 - **Copies** (not symlinks — for Windows compatibility) `skills/work-plan` and `skills/repo-activity-summary` into `~/.claude/skills/`
 - Installs the `work-plan` launcher (`bin/work-plan` + `bin/work-plan.cmd` on Windows) and copies the standalone dispatcher (`installer/work-plan.md`) into `~/.claude/commands/work-plan.md` (the per-verb suite is plugin-only)
 - **Self-seeds** `~/.claude/work-plan/config.yml` on first run if absent (one config home for every install mode), with `notes_root` at `~/.claude/work-plan/notes`
-- Drops a `.installed-from` marker so `uninstall` knows what's safe to remove
+- Drops `.installed-from` ownership markers. Skill copies retain their source
+  marker; launchers use a stable product marker plus a SHA-256 of the installed
+  bytes, so modified or unmanaged launchers are preserved by default on both
+  reinstall and uninstall
 
 External dependencies (verified by the installer): `gh`, `git`, `yq`, `python3`.
 

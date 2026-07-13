@@ -49,6 +49,7 @@ SKILLS_DIR="${BASE_DIR}/skills"
 COMMANDS_DIR="${BASE_DIR}/commands"
 CONFIG_DIR="${BASE_DIR}/work-plan"
 CONFIG_FILE="${CONFIG_DIR}/config.yml"
+LAUNCHER_MARKER_ID="stylusnexus/work-plan-toolkit launcher v1"
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }
 warn() { printf "\033[33m! %s\033[0m\n" "$1"; }
@@ -101,7 +102,8 @@ copy_skill() {
             read -r ans
             if [ "${ans}" != "y" ] && [ "${ans}" != "Y" ]; then
                 warn "skipped ${name}"
-                return
+                COPY_SKILL_STATUS="skipped"
+                return 0
             fi
             rm -rf "${dst}"
         fi
@@ -109,10 +111,16 @@ copy_skill() {
     cp -R "${src}" "${dst}"
     # Drop a marker so uninstall knows this copy is ours
     printf "%s\n" "${TOOLKIT_DIR}" > "${dst}/.installed-from"
+    COPY_SKILL_STATUS="installed"
     ok "copied ${name}"
 }
 
+COPY_SKILL_STATUS=""
 copy_skill "work-plan"
+if [ "${COPY_SKILL_STATUS}" != "installed" ]; then
+    err "work-plan is required; installation stopped without writing dependent files."
+    exit 1
+fi
 copy_skill "repo-activity-summary"
 
 # 3.5 Copy VERSION file alongside work_plan.py so --version can read it.
@@ -128,12 +136,52 @@ fi
 # 3.6 Install the bin/work-plan launcher (resolves the CLI relative to itself).
 # Plugin installs get bin/ on PATH automatically; for install.sh we drop the
 # launcher next to the skills tree and (best-effort) into the target's bin/.
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+    else python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"
+    fi
+}
+
+launcher_is_managed() {
+    local dst="$1" marker="${1}.installed-from" recorded current extra
+    [ -f "${dst}" ] && [ ! -L "${dst}" ] && [ -f "${marker}" ] && [ ! -L "${marker}" ] || return 1
+    [ "$(sed -n '1p' "${marker}")" = "${LAUNCHER_MARKER_ID}" ] || return 1
+    recorded="$(sed -n '2s/^sha256=//p' "${marker}")"
+    extra="$(sed -n '3p' "${marker}")"
+    [[ "${recorded}" =~ ^[0-9a-f]{64}$ ]] && [ -z "${extra}" ] || return 1
+    current="$(sha256_file "${dst}")" || return 1
+    [ "${current}" = "${recorded}" ]
+}
+
+install_launcher() {
+    local src="$1" dst="$2" marker="${2}.installed-from" ans tmp hash marker_tmp
+    if [ -e "${dst}" ] || [ -L "${dst}" ] || [ -e "${marker}" ] || [ -L "${marker}" ]; then
+        if ! launcher_is_managed "${dst}"; then
+            warn "${dst} is unmanaged or has been modified."
+            printf "    Overwrite? [y/N] "
+            read -r ans
+            if [ "${ans}" != "y" ] && [ "${ans}" != "Y" ]; then
+                warn "skipped $(basename "${dst}") launcher"
+                return 0
+            fi
+        fi
+    fi
+    mkdir -p "$(dirname "${dst}")"
+    tmp="${dst}.tmp.$$"
+    marker_tmp="${marker}.tmp.$$"
+    rm -f "${tmp}" "${marker_tmp}"
+    install -m 0755 "${src}" "${tmp}"
+    mv -f "${tmp}" "${dst}"
+    hash="$(sha256_file "${dst}")"
+    printf '%s\nsha256=%s\n' "${LAUNCHER_MARKER_ID}" "${hash}" > "${marker_tmp}"
+    mv -f "${marker_tmp}" "${marker}"
+    ok "installed $(basename "${dst}") launcher ($(dirname "${dst}"))"
+}
+
 if [ -f "${TOOLKIT_DIR}/bin/work-plan" ]; then
     install -m 0755 "${TOOLKIT_DIR}/bin/work-plan" "${SKILLS_DIR}/work-plan/work-plan" 2>/dev/null || true
-    mkdir -p "${BASE_DIR}/bin"
-    install -m 0755 "${TOOLKIT_DIR}/bin/work-plan" "${BASE_DIR}/bin/work-plan" \
-        && ok "installed bin/work-plan launcher (${BASE_DIR}/bin)" \
-        || warn "could not install bin/work-plan launcher"
+    install_launcher "${TOOLKIT_DIR}/bin/work-plan" "${BASE_DIR}/bin/work-plan"
 fi
 
 # 4. Copy the standalone dispatcher command (bare /work-plan). NOTE: only the
@@ -180,7 +228,8 @@ bold "Smoke test"
 if python3 "${SKILLS_DIR}/work-plan/work_plan.py" --help >/dev/null 2>&1; then
     ok "work_plan.py --help runs"
 else
-    warn "work_plan.py --help failed — investigate manually"
+    err "work_plan.py --help failed — installation is incomplete"
+    exit 1
 fi
 
 echo

@@ -45,6 +45,7 @@ $SkillsDir   = Join-Path $BaseDir "skills"
 $CommandsDir = Join-Path $BaseDir "commands"
 $ConfigDir   = Join-Path $BaseDir "work-plan"
 $ConfigFile  = Join-Path $ConfigDir "config.yml"
+$LauncherMarkerId = "stylusnexus/work-plan-toolkit launcher v1"
 
 function Bold($msg) { Write-Host $msg -ForegroundColor White }
 function Ok($msg)   { Write-Host "ok $msg" -ForegroundColor Green }
@@ -96,7 +97,7 @@ function Copy-Skill {
             $ans = Read-Host "    Overwrite? [y/N]"
             if ($ans -ne "y" -and $ans -ne "Y") {
                 Warn "skipped $Name"
-                return
+                return "skipped"
             }
             Remove-Item $dst -Recurse -Force
         }
@@ -104,10 +105,15 @@ function Copy-Skill {
     Copy-Item $src $dst -Recurse
     Set-Content -Path $marker -Value $ToolkitDir -NoNewline
     Ok "copied $Name"
+    return "installed"
 }
 
-Copy-Skill "work-plan"
-Copy-Skill "repo-activity-summary"
+$workPlanStatus = Copy-Skill "work-plan"
+if ($workPlanStatus -ne "installed") {
+    Err "work-plan is required; installation stopped without writing dependent files."
+    exit 1
+}
+$null = Copy-Skill "repo-activity-summary"
 
 # 3.5 Copy VERSION file alongside work_plan.py so --version can read it.
 # VERSION lives at the repo root (auto-bumped on each main push by
@@ -128,11 +134,54 @@ if (Test-Path $versionSrc) {
 $binSrcCmd = Join-Path $ToolkitDir "bin\work-plan.cmd"
 $binSrcSh  = Join-Path $ToolkitDir "bin\work-plan"
 $binDstDir = Join-Path $BaseDir "bin"
+
+function Test-ManagedLauncher {
+    param([string]$Path)
+    $marker = "$Path.installed-from"
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $false }
+    $item = Get-Item -LiteralPath $Path -Force
+    $markerItem = Get-Item -LiteralPath $marker -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        ($markerItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $false }
+    $lines = [IO.File]::ReadAllLines($marker)
+    if ($lines.Count -ne 2 -or $lines[0] -ne $LauncherMarkerId -or
+        $lines[1] -notmatch '^sha256=[0-9a-f]{64}$') { return $false }
+    $recorded = $lines[1].Substring(7)
+    $current = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    return $current -eq $recorded
+}
+
+function Install-Launcher {
+    param([string]$Source, [string]$Destination)
+    $marker = "$Destination.installed-from"
+    if ((Test-Path -LiteralPath $Destination) -or (Test-Path -LiteralPath $marker)) {
+        if (-not (Test-ManagedLauncher $Destination)) {
+            Warn "$Destination is unmanaged or has been modified."
+            $ans = Read-Host "    Overwrite? [y/N]"
+            if ($ans -ne "y" -and $ans -ne "Y") {
+                Warn "skipped $(Split-Path $Destination -Leaf) launcher"
+                return
+            }
+        }
+    }
+    $parent = Split-Path -Parent $Destination
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    $tmp = "$Destination.tmp.$PID"
+    $markerTmp = "$marker.tmp.$PID"
+    Remove-Item -LiteralPath $tmp, $markerTmp -Force -ErrorAction SilentlyContinue
+    Copy-Item -LiteralPath $Source -Destination $tmp -Force
+    Move-Item -LiteralPath $tmp -Destination $Destination -Force
+    $hash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $utf8NoBom = New-Object Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($markerTmp, "$LauncherMarkerId`nsha256=$hash`n", $utf8NoBom)
+    Move-Item -LiteralPath $markerTmp -Destination $marker -Force
+    Ok "installed $(Split-Path $Destination -Leaf) launcher ($parent)"
+}
+
 if (Test-Path $binSrcCmd) {
-    New-Item -ItemType Directory -Force -Path $binDstDir | Out-Null
-    Copy-Item $binSrcCmd (Join-Path $binDstDir "work-plan.cmd") -Force
-    if (Test-Path $binSrcSh) { Copy-Item $binSrcSh (Join-Path $binDstDir "work-plan") -Force }
-    Ok "installed work-plan launcher ($binDstDir)"
+    Install-Launcher $binSrcCmd (Join-Path $binDstDir "work-plan.cmd")
+    if (Test-Path $binSrcSh) { Install-Launcher $binSrcSh (Join-Path $binDstDir "work-plan") }
 }
 
 # 4. Copy the standalone dispatcher command (bare /work-plan). Only the single
@@ -177,12 +226,14 @@ if (Test-Path $canonConfig) {
 Write-Host ""
 Bold "Smoke test"
 $workPlanPy = Join-Path $SkillsDir "work-plan\work_plan.py"
-$smokeOk = $false
-try {
-    python $workPlanPy --help | Out-Null
-    $smokeOk = $true
-} catch {}
-if ($smokeOk) { Ok "work_plan.py --help runs" } else { Warn "work_plan.py --help failed — investigate manually" }
+& python $workPlanPy --help *> $null
+$smokeExit = $LASTEXITCODE
+if ($smokeExit -eq 0) {
+    Ok "work_plan.py --help runs"
+} else {
+    Err "work_plan.py --help failed — installation is incomplete"
+    exit 1
+}
 
 Write-Host ""
 Bold "Done."

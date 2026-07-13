@@ -138,7 +138,7 @@ The body is freeform markdown, but `commands/` care about two specific structure
 
 ## Cross-platform / cross-tool surface
 
-Two parallel installer pairs (`install.sh` ↔ `install.ps1`, `uninstall.sh` ↔ `uninstall.ps1`) must stay in lockstep — they implement the same auto-detection (`~/.claude` for Claude Code, `~/.agents` for Codex), the same dependency check (`gh`, `git`, `yq`, `python3`), the same config seeding, and the same `.installed-from` marker semantics for safe overwrites.
+Two parallel installer pairs (`install.sh` ↔ `install.ps1`, `uninstall.sh` ↔ `uninstall.ps1`) must stay in lockstep — they implement the same auto-detection (`~/.claude` for Claude Code, `~/.agents` for Codex), the same dependency check (`gh`, `git`, `yq`, `python3`), the same config seeding, and the same `.installed-from` marker semantics for safe overwrites. Launcher ownership additionally requires a stable product marker whose recorded SHA-256 matches the current launcher bytes; an unmanaged or user-modified launcher is preserved by default.
 
 For tools without a native skill system (Cursor, GitHub Copilot), the `shims/` directory contains drop-in instruction files (`.cursorrules`, `copilot-instructions.md`) that approximate what `SKILL.md` provides on Claude Code — condensed CLI usage, verbatim-relay rules, and the two-step AI subcommand pattern.
 
@@ -146,7 +146,7 @@ For tools without a native skill system (Cursor, GitHub Copilot), the `shims/` d
 
 - No tokens stored. All GitHub access is through the user's existing `gh auth` session.
 - No telemetry. No HTTP calls outside `gh`.
-- Local-only writes: the skills dirs (`~/.claude/skills/…` for the script path, or the plugin cache for plugin installs), the `bin/work-plan` launcher, `~/.claude/commands/work-plan.md` (script path only), `~/.claude/work-plan/config.yml` (one config home, self-seeded), and the configured `notes_root`.
+- Local-only writes: the skills dirs (`~/.claude/skills/…` for the script path, or the plugin cache for plugin installs), the ownership-verified `bin/work-plan` launcher, `~/.claude/commands/work-plan.md` (script path only), `~/.claude/work-plan/config.yml` (one config home, self-seeded), and the configured `notes_root`.
 - `init-repo` writes to config via `yq -i` with JSON-encoded inputs to prevent YAML injection from `--github=` values.
 - Installers touch only user-owned dirs; no `sudo`, no privilege escalation.
 - Two-step AI subcommands send issue **titles only** to the model (not bodies, code, or PR contents).
