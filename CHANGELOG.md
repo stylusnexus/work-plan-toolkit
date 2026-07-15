@@ -6,6 +6,19 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.15+cc41310 — 2026-07-15 (#443)
+
+feat: doctor subcommand — config-drift detection + VS Code status-bar hook
+
+### Added
+- `work-plan doctor [--json] [--fix]` — detects drift between `config.yml`, local git clones, GitHub, and `notes_root/` track frontmatter (a renamed local folder or GitHub repo config.yml no longer matches, a non-git local path, duplicate entries, an invalid/missing notes_root, an orphaned notes folder, or a stale per-track `github.repo`). `--fix` corrects the two mechanically-safe cases (a GitHub-confirmed rename, a stale track slug) and always re-scans afterward.
+- VS Code: a quiet status-bar indicator runs the same scan at activation and shows nothing when config is clean; click it to see the report in the "Work Plan" output channel.
+
+### Fixed
+- The exact failure mode that silently broke Auto Focus Repo for a renamed project earlier this session (`musical-family-trees` → `soundstellation-trees` locally and on GitHub, with `config.yml` never updated) — `doctor` catches and can auto-correct this class of drift.
+
+Closes #439
+
 ## 2026.07.13+6341563 — 2026-07-13 (#438)
 
 fix: harden plan paths, repo identity, and installers
