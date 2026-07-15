@@ -279,6 +279,31 @@ class TestStep2LocalPathChecks(unittest.TestCase):
         mismatch = _finding(findings, "local_remote_mismatch")
         self.assertEqual(len(mismatch), 1)
         self.assertIn("non-github", mismatch[0]["message"].lower())
+        self.assertFalse(mismatch[0]["fixable"])
+
+    def test_remote_host_with_explicit_port_still_recognized_as_github(self):
+        # https://github.com:8080/org/foo.git — an explicit port on a genuine
+        # github.com remote must not be misclassified as a non-GitHub host.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
+            repos = {"foo": {"github": "org/foo", "local": tmp}}
+            fake = mock.Mock(returncode=0, stdout="https://github.com:8080/org/foo.git\n")
+            with mock.patch("commands.doctor._git", return_value=fake):
+                findings = doctor._step2_findings(repos, canonical={"foo": {"canonical": "org/foo", "unverified": False}})
+        self.assertEqual(_finding(findings, "local_remote_mismatch"), [])
+
+    def test_happy_path_no_findings(self):
+        # Valid absolute local path, valid git repo, origin matching the
+        # canonical slug — Step 2 should report nothing.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
+            repos = {"foo": {"github": "org/foo", "local": tmp}}
+            fake = mock.Mock(returncode=0, stdout="git@github.com:org/foo.git\n")
+            with mock.patch("commands.doctor._git", return_value=fake):
+                findings = doctor._step2_findings(repos, canonical={"foo": {"canonical": "org/foo", "unverified": False}})
+        self.assertEqual(findings, [])
 
 
 class TestStep3WholeConfigChecks(unittest.TestCase):

@@ -40,13 +40,19 @@ def _remote_host(url: str) -> "str | None":
     """Extract the host from a git remote URL, preserving it (unlike
     `_normalize_remote_url`, which discards the host on purpose for its own
     slug-comparison use case). Handles the same two forms `_normalize_remote_url`
-    does: scp-like and scheme://. Returns None if unparseable."""
+    does: scp-like and scheme://. An explicit `:<port>` on the scheme form
+    (e.g. `https://github.com:8080/org/repo.git`) is stripped so a genuine
+    github.com remote isn't misreported as non-GitHub just because it names a
+    port; the scp-like form's captured group can never contain a colon (its
+    own colon is the path separator, outside the capture), so the split is a
+    no-op there. Returns None if unparseable."""
     if not url:
         return None
     m = _HOST_RE.match(url.strip())
     if not m:
         return None
-    return (m.group(1) or m.group(2) or "").lower() or None
+    host = (m.group(1) or m.group(2) or "").lower()
+    return host.split(":", 1)[0] or None
 
 
 def _finding(type_, *, key=None, folder=None, track=None, message,
@@ -232,7 +238,7 @@ def _notes_root_status(cfg: dict):
         return False, _finding("notes_root_invalid",
                                 message=f"notes_root ('{raw}') is not an absolute path")
     resolved = p.resolve()
-    if resolved == resolved.anchor or str(resolved) == resolved.anchor:
+    if str(resolved) == resolved.anchor:
         return False, _finding("notes_root_invalid",
                                 message=f"notes_root ('{raw}') resolves to a bare filesystem root")
     if not resolved.is_dir():
