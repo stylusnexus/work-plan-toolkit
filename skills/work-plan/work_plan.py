@@ -61,6 +61,7 @@ SUBCOMMANDS = {
     "in-progress": "commands.in_progress",
     "export": "commands.export",
     "which-repo": "commands.which_repo",
+    "doctor": "commands.doctor",
     "auth-status": "commands.auth_status",
     "list-open-issues": "commands.list_open_issues",
     "set": "commands.set_field",
@@ -259,6 +260,17 @@ DESCRIPTIONS = [
      "Resolve the current directory to one configured repo — by local clone path first, then the git `origin` remote. Prints the matched config key + GitHub slug, or reports no match. Read-only. Underlies `brief` cwd auto-scope and the VS Code viewer's repo auto-focus.",
      "Rarely run by hand — it's the shared resolver the viewer and `brief` call. Useful to confirm which repo a checkout maps to.",
      "/work-plan which-repo --json"),
+    ("doctor", "[--json] [--fix]",
+     "Detect drift between config.yml, local git clones, GitHub, and notes_root track "
+     "frontmatter — a renamed local folder or GitHub repo that config.yml no longer "
+     "matches, a non-git local path, duplicate entries, an invalid/missing notes_root, "
+     "an orphaned notes folder, or a stale per-track github.repo. --fix corrects only "
+     "the two mechanically-safe cases (a GitHub-confirmed rename, a stale track slug) "
+     "and always re-scans afterward before deciding success.",
+     "Run right after renaming a project's local folder or its GitHub repo — this is "
+     "exactly the class of bug that silently breaks the VS Code viewer's Auto Focus "
+     "Repo setting with zero visible signal.",
+     "/work-plan doctor --fix"),
 ]
 
 
@@ -352,6 +364,14 @@ _READONLY_SUBCOMMANDS = frozenset({
     # plan-branch manages its OWN commits on the plan branch (init seeds +
     # commits the skeleton itself); the auto-commit hooks must not also fire.
     "plan-branch",
+    # doctor writes config.yml (unversioned, outside any repo) and private
+    # notes_root/ frontmatter under --fix, but never a repo's shared
+    # .work-plan/ tier — so it's read-only from the dispatcher's perspective
+    # too, sidestepping _shared_precommit_state's plan_worktree.ensure_worktree
+    # side effect. doctor --fix manages its own notes-vcs commit directly
+    # (see commands/doctor.py's dirty-file policy), same self-managed-commit
+    # precedent as plan-branch.
+    "doctor",
 })
 
 

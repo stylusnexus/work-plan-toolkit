@@ -188,6 +188,36 @@ class RemoteAndOwnershipTest(unittest.TestCase):
                 self.assertTrue(notes_vcs.is_owned(Path(d)))
 
 
+class DirtyPathsCheckedTest(unittest.TestCase):
+    def test_ok_true_on_clean_tree(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(notes_vcs, "_git", _FakeGit(porcelain="")):
+                ok, paths = notes_vcs.dirty_paths_checked(Path(d))
+        self.assertTrue(ok)
+        self.assertEqual(paths, set())
+
+    def test_ok_true_with_dirty_paths(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(notes_vcs, "_git",
+                                _FakeGit(porcelain=" M foo.md\n?? bar.md\n")):
+                ok, paths = notes_vcs.dirty_paths_checked(Path(d))
+        self.assertTrue(ok)
+        self.assertEqual(paths, {"foo.md", "bar.md"})
+
+    def test_ok_false_on_git_call_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(notes_vcs, "_git", _FakeGit(missing=True)):
+                ok, paths = notes_vcs.dirty_paths_checked(Path(d))
+        self.assertFalse(ok)
+        self.assertEqual(paths, set())
+
+    def test_dirty_paths_thin_wrapper_matches_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(notes_vcs, "_git",
+                                _FakeGit(porcelain=" M foo.md\n")):
+                self.assertEqual(notes_vcs.dirty_paths(Path(d)), {"foo.md"})
+
+
 class DirtyPathsTest(unittest.TestCase):
     def test_parses_porcelain_into_path_set(self):
         body = " M alpha.md\n?? beta.md\n D gone.md\n"

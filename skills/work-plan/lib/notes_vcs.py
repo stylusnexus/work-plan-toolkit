@@ -132,6 +132,30 @@ def head_parent_sha(notes_root: Path) -> Optional[str]:
     return proc.stdout.strip()
 
 
+def dirty_paths_checked(notes_root: Path) -> tuple:
+    """Like `dirty_paths`, but distinguishes "clean tree" from "the git status
+    call itself failed" (timeout, spawn error, not a repo) — both of which
+    `dirty_paths` alone reports as an empty set. Returns (call_succeeded, paths).
+
+    Callers that need to know WHETHER they can trust an empty result (e.g.
+    doctor's dirty-file safety check, which must not treat "couldn't check" as
+    "definitely clean") should call this instead of `dirty_paths`.
+    """
+    proc = _git(notes_root, "-c", "core.quotepath=false", "status", "--porcelain")
+    if proc is None or proc.returncode != 0:
+        return (False, set())
+    paths = set()
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path:
+            paths.add(path)
+    return (True, paths)
+
+
 def dirty_paths(notes_root: Path) -> set:
     """Set of work-tree paths with staged/unstaged changes (raw, quotepath off).
 
@@ -139,19 +163,7 @@ def dirty_paths(notes_root: Path) -> set:
     the dispatcher to commit ONLY what a command changed, leaving pre-existing
     dirty files untouched.
     """
-    proc = _git(notes_root, "-c", "core.quotepath=false", "status", "--porcelain")
-    if proc is None or proc.returncode != 0:
-        return set()
-    paths = set()
-    for line in proc.stdout.splitlines():
-        if len(line) < 4:
-            continue
-        path = line[3:]
-        if " -> " in path:  # rename / copy → the destination path
-            path = path.split(" -> ", 1)[1]
-        if path:
-            paths.add(path)
-    return paths
+    return dirty_paths_checked(notes_root)[1]
 
 
 def last_commit_summary(notes_root: Path) -> Optional[str]:
