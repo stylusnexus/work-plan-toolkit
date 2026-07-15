@@ -2,6 +2,7 @@
 import unittest
 import tempfile
 import sys
+import subprocess
 from pathlib import Path
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +11,7 @@ sys.path.insert(0, str(SKILL_ROOT))
 from lib.config import (
     load_config, ConfigError,
     resolve_github_for_folder, resolve_local_path_for_folder,
+    write_repo_field,
 )
 
 
@@ -79,6 +81,63 @@ class ResolveTest(unittest.TestCase):
     def test_resolve_local_path(self):
         self.assertEqual(resolve_local_path_for_folder("myproject", self.cfg), Path("/path/to/myproject"))
         self.assertIsNone(resolve_local_path_for_folder("unknown", self.cfg))
+
+
+class BaseConfigWriteTest(unittest.TestCase):
+    """Base class for tests that need to write and read config files."""
+    def _write_config(self, content):
+        """Write content to a temporary config file and return its path."""
+        d = tempfile.mkdtemp()
+        path = Path(d) / "config.yml"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+
+class TestScalarShapeKeys(BaseConfigWriteTest):
+    def test_scalar_entry_is_tracked(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes\n"
+            "repos:\n"
+            "  foo: org/foo\n"
+            "  bar:\n"
+            "    github: org/bar\n"
+        )
+        cfg = load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
+        self.assertEqual(cfg["_scalar_shape_keys"], {"foo"})
+
+    def test_no_scalar_entries_is_empty_set(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes\n"
+            "repos:\n"
+            "  bar:\n"
+            "    github: org/bar\n"
+        )
+        cfg = load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
+        self.assertEqual(cfg["_scalar_shape_keys"], set())
+
+
+class TestWriteRepoField(BaseConfigWriteTest):
+    def test_writes_only_the_given_fields(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes\n"
+            "repos:\n"
+            "  bar:\n"
+            "    github: org/bar\n"
+            "    local: /code/bar\n"
+        )
+        write_repo_field("bar", {"github": "org/bar-renamed"}, path=cfg_path)
+        cfg = load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
+        self.assertEqual(cfg["repos"]["bar"]["github"], "org/bar-renamed")
+        self.assertEqual(cfg["repos"]["bar"]["local"], "/code/bar")
+
+    def test_raises_on_scalar_entry(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes\n"
+            "repos:\n"
+            "  foo: org/foo\n"
+        )
+        with self.assertRaises(subprocess.CalledProcessError):
+            write_repo_field("foo", {"github": "org/foo-renamed"}, path=cfg_path)
 
 
 if __name__ == "__main__":

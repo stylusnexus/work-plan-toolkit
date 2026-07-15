@@ -61,6 +61,8 @@ def _update_existing(key: str, github: str, local: "str | None", clear_local: bo
     while keeping github + every other field. Mutually exclusive with `local`
     (enforced in run() before this is called).
     """
+    from lib.config import write_repo_field
+
     updates = {}
     if clear_local:
         # JSON null → YAML null; the * merge overwrites local with null, leaving
@@ -77,13 +79,8 @@ def _update_existing(key: str, github: str, local: "str | None", clear_local: bo
     # `key` is validated against ^[a-z][a-z0-9-]*$ in run() before this is called,
     # so it's safe in the yq path. Field values travel as an OPAQUE env value via
     # env() (parsed as JSON), never interpolated — uniform with the add path.
-    env = {**os.environ, "WP_REPO_UPDATES": json.dumps(updates)}
-    yq_expr = f".repos.{key} = (.repos.{key} // {{}}) * env(WP_REPO_UPDATES)"
     try:
-        subprocess.run(
-            ["yq", "-i", yq_expr, str(DEFAULT_CONFIG_PATH)],
-            check=True, capture_output=True, text=True, env=env,
-        )
+        write_repo_field(key, updates)
     except subprocess.CalledProcessError as e:
         print(f"ERROR: yq failed to update config: {e.stderr}")
         return 1
