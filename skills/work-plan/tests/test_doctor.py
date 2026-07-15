@@ -408,6 +408,19 @@ class TestStep4NotesRootWalk(unittest.TestCase):
             findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
         self.assertEqual(len(_finding(findings, "track_unreadable")), 1)
 
+    def test_track_unreadable_non_mapping_root(self):
+        # Valid YAML but the frontmatter root itself is a list, not a mapping
+        # (e.g. a stray leading '-' turns the whole block into a YAML
+        # sequence) — a distinct trigger from a parse exception.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/bad.md", "---\n- a\n- b\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/known", "local": None}}
+            canonical = {"known": {"canonical": "org/known", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        self.assertEqual(len(_finding(findings, "track_unreadable")), 1)
+
     def test_track_unreadable_non_mapping_github(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
