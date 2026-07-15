@@ -14,10 +14,14 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 
-from lib.config import load_config, ConfigError, is_valid_git_repo
+from lib.config import (
+    load_config, ConfigError, is_valid_git_repo,
+    DEFAULT_CONFIG_PATH, write_repo_field, notes_vcs_auto_commit,
+)
 from lib.cwd_repo import _git, _normalize_remote_url
-from lib.frontmatter import parse_file
+from lib.frontmatter import parse_file, write_file
 from lib.github_state import repo_full_name
+from lib.notes_vcs import dirty_paths_checked, auto_commit
 from lib.prompts import parse_flags
 from lib.tracks import iter_private_track_paths
 
@@ -359,7 +363,8 @@ def _step4_findings(cfg: dict, repos: dict, canonical: dict, walkable: bool) -> 
 
 
 def _scan(cfg, repos):
-    """Steps 1-4 — the full scan pipeline. --fix wiring lands in Task 9."""
+    """Steps 1-4 — the full scan pipeline. Re-run verbatim after --fix applies
+    corrections (see `run()`), so a fixed finding must actually disappear."""
     canonical = _resolve_canonical_slugs(repos)
     findings = _step1_findings(repos, canonical, cfg.get("_scalar_shape_keys"))
     findings += _step2_findings(repos, canonical)
@@ -367,6 +372,82 @@ def _scan(cfg, repos):
     walkable, _ = _notes_root_status(cfg)
     findings += _step4_findings(cfg, repos, canonical, walkable)
     return findings
+
+
+def _apply_config_fixes(findings: list) -> list:
+    """Applies every fixable github_rename_detected finding to config.yml.
+    Returns the attempt ledger (one entry per attempt, in the order given)."""
+    ledger = []
+    for f in findings:
+        if f["type"] != "github_rename_detected" or not f["fixable"]:
+            continue
+        entry = {"type": f["type"], "key": f["key"], "folder": None, "track": None,
+                  "old": f["old"], "new": f["new"], "fixed": False, "error": None}
+        try:
+            write_repo_field(f["key"], {"github": f["new"]}, path=DEFAULT_CONFIG_PATH)
+            entry["fixed"] = True
+        except subprocess.CalledProcessError as e:
+            entry["error"] = (e.stderr or str(e)).strip()
+        ledger.append(entry)
+    return ledger
+
+
+def _apply_frontmatter_fixes(notes_root: Path, findings: list, auto_commit_enabled: bool):
+    """Applies every fixable stale_frontmatter finding, subject to the
+    dirty-file policy. Returns (ledger, skipped_due_to_unknown_dirty_state).
+    """
+    ok_before, dirty_before = dirty_paths_checked(notes_root)
+    if not ok_before:
+        return [], True  # fail closed: no writes at all this run
+
+    ledger = []
+    changed_paths = []
+    for f in findings:
+        if f["type"] != "stale_frontmatter" or not f["fixable"]:
+            continue
+        rel = f"{f['folder']}/{f['track']}"
+        entry = {"type": f["type"], "key": None, "folder": f["folder"], "track": f["track"],
+                  "old": f["old"], "new": f["new"], "fixed": False, "error": None}
+        if rel in dirty_before:
+            entry["error"] = "file has uncommitted changes; commit/stash first or fix by hand"
+            ledger.append(entry)
+            continue
+        md_path = notes_root / f["folder"] / f["track"]
+        try:
+            meta, body = parse_file(md_path)
+            # Defensive re-check: `folder`/`track` on a finding lose any
+            # intermediate path segment (e.g. `known/archive/old.md` reports
+            # folder="known", track="old.md"), so a same-named file elsewhere
+            # under `folder` (archived vs. not) could otherwise collide here.
+            # Confirm the file we resolved still carries the OLD value this
+            # finding was raised against before writing — a mismatch means
+            # we resolved the wrong file, not that the finding is stale.
+            current = meta.get("github") if isinstance(meta, dict) else None
+            current_repo = current.get("repo") if isinstance(current, dict) else None
+            if current_repo != f["old"]:
+                entry["error"] = (
+                    f"resolved path {md_path} does not carry the expected old "
+                    f"value ({f['old']!r}, found {current_repo!r}) — refusing "
+                    "to write; likely a nested/archived track name collision"
+                )
+                ledger.append(entry)
+                continue
+            meta["github"]["repo"] = f["new"]
+            write_file(md_path, meta, body)
+            entry["fixed"] = True
+            changed_paths.append(rel)
+        except Exception as e:
+            entry["error"] = str(e)
+        ledger.append(entry)
+
+    if auto_commit_enabled and changed_paths:
+        ok_after, dirty_after = dirty_paths_checked(notes_root)
+        if ok_after:
+            delta = sorted(set(dirty_after) - dirty_before)
+            if delta:
+                auto_commit(notes_root, "doctor: fix stale repo identity in track frontmatter",
+                            paths=delta)
+    return ledger, False
 
 
 def _print_json(payload):
@@ -388,16 +469,52 @@ def run(args: list) -> int:
 
     repos, shape_findings = _validate_repo_field_shapes(cfg)
     findings = list(shape_findings) + _scan(cfg, repos)
-    attempts = []  # --fix wiring lands in Task 9
+    attempts = []
+
+    if want_fix:
+        attempts += _apply_config_fixes(findings)
+        notes_root_raw = cfg.get("notes_root")
+        walkable, _ = _notes_root_status(cfg)
+        if walkable:
+            notes_root = Path(notes_root_raw).expanduser()
+            auto_enabled = notes_vcs_auto_commit(cfg)
+            fm_ledger, snapshot_failed = _apply_frontmatter_fixes(notes_root, findings, auto_enabled)
+            attempts += fm_ledger
+            if snapshot_failed:
+                print("WARN: notes-vcs status check failed — cannot safely determine "
+                      "which files are already dirty; no frontmatter fixes applied this run.",
+                      file=sys.stderr)
+
+        # Mandatory post-fix rescan, from disk.
+        cfg2, fatal2 = _load_config_safely()
+        if fatal2 is not None:
+            if want_json:
+                _print_json({"fatal": f"{fatal2} (residual state indeterminate after --fix)",
+                              "attempts": attempts, "findings": []})
+                return 0
+            print(f"ERROR: post-fix rescan failed ({fatal2}) — residual state indeterminate.")
+            return 1
+        repos2, shape_findings2 = _validate_repo_field_shapes(cfg2)
+        findings = list(shape_findings2) + _scan(cfg2, repos2)
 
     if want_json:
         _print_json({"attempts": attempts, "findings": findings})
         return 0
 
+    for a in attempts:
+        thing = a["key"] or f"{a['folder']}/{a['track']}"
+        if a["fixed"]:
+            print(f"FIXED: {thing}: {a['old']} -> {a['new']}")
+        else:
+            print(f"ERROR fixing {thing}: {a['error']}")
     if not findings:
-        print("No drift found.")
+        if attempts:
+            print(f"{sum(1 for a in attempts if a['fixed'])} fixed, all clear.")
+        else:
+            print("No drift found.")
         return 0
     for f in findings:
-        print(f"WARN: {f['message']}")
+        prefix = "WARN (unfixed)" if attempts else "WARN"
+        print(f"{prefix}: {f['message']}")
     print(f"{len(findings)} issue(s) found.")
     return 1

@@ -481,5 +481,192 @@ class TestStep4NotesRootWalk(unittest.TestCase):
         self.assertEqual(findings, [])
 
 
+class TestApplyFixesConfigRename(unittest.TestCase):
+    def test_fixable_rename_writes_config_and_ledger_entry(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.yml"
+            cfg_path.write_text("notes_root: /tmp/notes\nrepos:\n  foo:\n    github: org/old\n")
+            finding = doctor._finding(
+                "github_rename_detected", key="foo", fixable=True,
+                message="renamed", old="org/old", new="org/new",
+            )
+            with mock.patch("commands.doctor.DEFAULT_CONFIG_PATH", cfg_path):
+                ledger = doctor._apply_config_fixes([finding])
+            self.assertEqual(len(ledger), 1)
+            self.assertTrue(ledger[0]["fixed"])
+            self.assertIsNone(ledger[0]["error"])
+            text = cfg_path.read_text()
+            self.assertIn("org/new", text)
+
+    def test_yq_failure_recorded_as_ledger_error(self):
+        finding = doctor._finding(
+            "github_rename_detected", key="foo", fixable=True,
+            message="renamed", old="org/old", new="org/new",
+        )
+        exc = subprocess.CalledProcessError(1, ["yq"], stderr="boom")
+        with mock.patch("commands.doctor.write_repo_field", side_effect=exc):
+            ledger = doctor._apply_config_fixes([finding])
+        self.assertFalse(ledger[0]["fixed"])
+        self.assertIn("boom", ledger[0]["error"])
+
+    def test_unfixable_findings_are_never_attempted(self):
+        finding = doctor._finding(
+            "github_rename_detected", key="foo", fixable=False,
+            message="unsafe key", old="org/old", new="org/new",
+        )
+        with mock.patch("commands.doctor.write_repo_field") as m:
+            ledger = doctor._apply_config_fixes([finding])
+        m.assert_not_called()
+        self.assertEqual(ledger, [])
+
+
+class TestDirtyFilePolicy(unittest.TestCase):
+    def test_pre_snapshot_failure_skips_all_frontmatter_writes(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            track = Path(tmp) / "known" / "track.md"
+            track.parent.mkdir()
+            track.write_text("---\ngithub:\n  repo: org/old\n---\nbody")
+            finding = doctor._finding(
+                "stale_frontmatter", folder="known", track="track.md", fixable=True,
+                message="stale", old="org/old", new="org/new",
+            )
+            with mock.patch("commands.doctor.dirty_paths_checked", return_value=(False, set())):
+                ledger, skipped_write = doctor._apply_frontmatter_fixes(
+                    Path(tmp), [finding], auto_commit_enabled=True,
+                )
+            self.assertEqual(ledger, [])
+            self.assertIn("org/old", track.read_text())  # untouched
+            self.assertTrue(skipped_write)
+
+    def test_already_dirty_file_is_skipped_others_still_fixed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            dirty = Path(tmp) / "known" / "dirty.md"
+            clean = Path(tmp) / "known" / "clean.md"
+            dirty.parent.mkdir()
+            dirty.write_text("---\ngithub:\n  repo: org/old\n---\nbody")
+            clean.write_text("---\ngithub:\n  repo: org/old\n---\nbody")
+            findings = [
+                doctor._finding("stale_frontmatter", folder="known", track="dirty.md",
+                                 fixable=True, old="org/old", new="org/new", message="m"),
+                doctor._finding("stale_frontmatter", folder="known", track="clean.md",
+                                 fixable=True, old="org/old", new="org/new", message="m"),
+            ]
+            with mock.patch("commands.doctor.dirty_paths_checked",
+                            return_value=(True, {"known/dirty.md"})):
+                ledger, _ = doctor._apply_frontmatter_fixes(Path(tmp), findings, auto_commit_enabled=False)
+            fixed_tracks = {a["track"] for a in ledger if a["fixed"]}
+            self.assertEqual(fixed_tracks, {"clean.md"})
+            self.assertIn("org/old", dirty.read_text())
+            self.assertIn("org/new", clean.read_text())
+
+    def test_write_failure_recorded_in_ledger_and_residual(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            track = Path(tmp) / "known" / "track.md"
+            track.parent.mkdir()
+            track.write_text("---\ngithub:\n  repo: org/old\n---\nbody")
+            finding = doctor._finding(
+                "stale_frontmatter", folder="known", track="track.md", fixable=True,
+                message="stale", old="org/old", new="org/new",
+            )
+            with mock.patch("commands.doctor.dirty_paths_checked", return_value=(True, set())):
+                with mock.patch("commands.doctor.write_file", side_effect=ValueError("symlink")):
+                    ledger, _ = doctor._apply_frontmatter_fixes(Path(tmp), [finding], auto_commit_enabled=False)
+            self.assertFalse(ledger[0]["fixed"])
+            self.assertIn("symlink", ledger[0]["error"])
+
+    def test_auto_commit_gated_on_notes_vcs_setting(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            track = Path(tmp) / "known" / "track.md"
+            track.parent.mkdir()
+            track.write_text("---\ngithub:\n  repo: org/old\n---\nbody")
+            finding = doctor._finding(
+                "stale_frontmatter", folder="known", track="track.md", fixable=True,
+                message="stale", old="org/old", new="org/new",
+            )
+            with mock.patch("commands.doctor.dirty_paths_checked", return_value=(True, set())):
+                with mock.patch("commands.doctor.auto_commit") as m:
+                    doctor._apply_frontmatter_fixes(Path(tmp), [finding], auto_commit_enabled=False)
+            m.assert_not_called()
+
+    def test_archived_name_collision_is_not_blindly_overwritten(self):
+        # A finding's folder/track fields lose any intermediate path segment
+        # (see _step4_findings: folder=rel.parts[0], track=md_path.name), so a
+        # finding raised against a nested/archived file (e.g.
+        # 'known/archive/old.md') collides on-disk with 'known/old.md' if one
+        # exists. _apply_frontmatter_fixes must refuse to write when the
+        # resolved path's current value doesn't match the finding's `old`
+        # value, rather than blindly overwriting whatever file it lands on.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            # The path _apply_frontmatter_fixes actually resolves to
+            # ('known/old.md') is a DIFFERENT, unrelated track — not the
+            # archived file the finding was really raised against.
+            unrelated = Path(tmp) / "known" / "old.md"
+            unrelated.parent.mkdir()
+            unrelated.write_text("---\ngithub:\n  repo: org/unrelated\n---\nbody")
+            finding = doctor._finding(
+                "stale_frontmatter", folder="known", track="old.md", fixable=True,
+                message="stale", old="org/old", new="org/new",
+            )
+            with mock.patch("commands.doctor.dirty_paths_checked", return_value=(True, set())):
+                ledger, _ = doctor._apply_frontmatter_fixes(Path(tmp), [finding], auto_commit_enabled=False)
+            self.assertFalse(ledger[0]["fixed"])
+            self.assertIsNotNone(ledger[0]["error"])
+            # The unrelated file must be completely untouched.
+            self.assertIn("org/unrelated", unrelated.read_text())
+
+
+class TestFixThenRescan(unittest.TestCase):
+    def test_fixable_only_fixture_converges_to_clean_on_second_run(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_path = Path(tmp) / "config.yml"
+            notes_root = Path(tmp) / "notes"
+            (notes_root / "known").mkdir(parents=True)
+            (notes_root / "known" / "track.md").write_text(
+                "---\ngithub:\n  repo: org/old\n---\nbody"
+            )
+            cfg_path.write_text(
+                f"notes_root: {notes_root}\nrepos:\n  known:\n    github: org/old\n"
+            )
+            # The dirty-file safety check (dirty_paths_checked) requires
+            # notes_root to actually be a git repo to report ok_before=True —
+            # this mirrors a real user who has opted into notes-vcs. Without
+            # this, the pre-fix snapshot call fails closed (see
+            # TestDirtyFilePolicy) and the frontmatter fix would be
+            # (correctly) skipped, which isn't what this test is exercising.
+            for git_args in (
+                ["init"],
+                ["add", "-A"],
+                ["-c", "user.email=doctor-test@example.com",
+                 "-c", "user.name=doctor-test", "commit", "-m", "init"],
+            ):
+                subprocess.run(["git", "-C", str(notes_root), *git_args],
+                                capture_output=True, text=True, check=True)
+
+            def _load(*_a, **_kw):
+                from lib.config import load_config as real_load
+                return real_load(path=cfg_path, notes_root=notes_root)
+
+            with mock.patch("commands.doctor.DEFAULT_CONFIG_PATH", cfg_path):
+                with mock.patch("commands.doctor.load_config", side_effect=_load):
+                    with mock.patch("commands.doctor.repo_full_name", return_value="org/new"):
+                        with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out1:
+                            code1 = doctor.run(["--json", "--fix"])
+                        with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out2:
+                            code2 = doctor.run(["--json"])
+            self.assertEqual(code1, 0)
+            blob1 = json.loads(out1.getvalue())
+            self.assertTrue(any(a["fixed"] for a in blob1["attempts"]))
+            self.assertEqual(code2, 0)
+            blob2 = json.loads(out2.getvalue())
+            self.assertEqual(blob2["findings"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
