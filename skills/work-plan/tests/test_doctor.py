@@ -64,8 +64,13 @@ class TestStep0FatalLoad(unittest.TestCase):
 
     def test_human_mode_exits_1_on_fatal(self):
         with mock.patch("commands.doctor.load_config", side_effect=ConfigError("bad")):
-            code = doctor.run([])
+            with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+                code = doctor.run([])
         self.assertEqual(code, 1)
+        printed = out.getvalue()
+        self.assertIn("ERROR:", printed)
+        self.assertIn("bad", printed)
+        self.assertNotIn("{", printed)  # no JSON fallback shape leaked into human mode
 
 
 class TestFieldShapeValidation(unittest.TestCase):
@@ -115,6 +120,20 @@ class TestCleanConfigNoDrift(unittest.TestCase):
             blob = json.loads(out.getvalue())
             self.assertEqual(blob["attempts"], [])
             self.assertEqual(blob["findings"], [])
+
+    def test_empty_repos_no_notes_root_findings_yields_clean_human_mode(self):
+        # Same clean-config scenario as test_empty_repos_no_notes_root_findings_yields_clean_json,
+        # but exercising human mode (no --json flag) to ensure the success path
+        # prints "No drift found." and exits with code 0.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"notes_root": tmp, "repos": {}, "_scalar_shape_keys": set()}
+            with mock.patch("commands.doctor.load_config", return_value=cfg):
+                with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+                    code = doctor.run([])
+            self.assertEqual(code, 0)
+            printed = out.getvalue()
+            self.assertIn("No drift found.", printed)
 
 
 if __name__ == "__main__":
