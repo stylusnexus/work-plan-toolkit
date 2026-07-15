@@ -4,9 +4,10 @@ import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
-  autoTriageScan,
+  autoTriageScan, doctorScan,
 } from "./cli.ts";
-import type { NotesVcsStatus, AuthState } from "./cli.ts";
+import type { NotesVcsStatus, AuthState, DoctorFinding } from "./cli.ts";
+import { buildDoctorStatus } from "./doctor.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
@@ -936,6 +937,30 @@ export function activate(context: vscode.ExtensionContext): void {
   // Output channel for reconcile draft output (created once; disposed via subscriptions).
   const outputChannel = vscode.window.createOutputChannel("Work Plan");
   context.subscriptions.push(outputChannel);
+
+  // -------------------------------------------------------------------------
+  // Doctor config-drift status bar (#439): a status-bar item surfaces config
+  // findings (e.g. renamed/redirected GitHub repos) found by `doctor --json`.
+  // Convenience signal only — hidden whenever there's nothing to report or
+  // the scan itself fails for any reason (see doctorScan's null-on-failure
+  // contract in cli.ts). Populated by the activation-time scan below.
+  // -------------------------------------------------------------------------
+
+  const doctorStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+  doctorStatusItem.command = "workPlan.showDoctorReport";
+  context.subscriptions.push(doctorStatusItem);
+  let lastDoctorFindings: DoctorFinding[] = [];
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.showDoctorReport", () => {
+      outputChannel.clear();
+      outputChannel.appendLine("Work Plan: config-drift report");
+      for (const f of lastDoctorFindings) {
+        outputChannel.appendLine(`  • ${f.message}`);
+      }
+      outputChannel.show();
+    }),
+  );
 
   const repoKeyForTrack = (track: Track): string | undefined =>
     track.folder ?? track.repo ?? undefined;
@@ -4019,6 +4044,24 @@ export function activate(context: vscode.ExtensionContext): void {
   // commit against the real prior HEAD (not null), avoiding a false Undo offer
   // on a no-op write. Best-effort; never blocks activation.
   notesVcsStatus(runner).then((st) => { notesState = st; }, () => { /* ignore */ });
+
+  // Config-drift check (#439: doctor). Deliberately independent of the main
+  // data load below — a failed initial CLI load must never suppress this
+  // signal for an unrelated reason. Silently does nothing on any CLI failure
+  // (missing binary, non-zero exit, unparseable output — doctorScan already
+  // returns null for all of those), exactly like the notesVcsStatus seed and
+  // autoFocusRepo elsewhere in this file.
+  doctorScan(runner).then((findings) => {
+    lastDoctorFindings = findings ?? [];
+    const status = buildDoctorStatus(lastDoctorFindings);
+    if (status) {
+      doctorStatusItem.text = status.text;
+      doctorStatusItem.tooltip = status.tooltip;
+      doctorStatusItem.show();
+    } else {
+      doctorStatusItem.hide();
+    }
+  }, () => { /* ignore — convenience signal only */ });
 
   // Initial data load. On success, surface the one-time GitHub-auth nudge off
   // the SAME refresh (which already probed auth + set the context key driving

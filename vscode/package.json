@@ -91,6 +91,11 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.showDoctorReport",
+        "title": "Show Config Health Report",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.openSettings",
         "title": "Open Settings",
         "category": "Work Plan",
