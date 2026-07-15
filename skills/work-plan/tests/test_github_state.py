@@ -1,6 +1,5 @@
 """Tests for GitHub state — uses mocks (gh requires auth)."""
 import json
-import subprocess as _subprocess
 import unittest
 from unittest.mock import patch, MagicMock, call
 import sys
@@ -14,6 +13,7 @@ from lib.github_state import (
     fetch_repo_issues_graphql, fetch_export_issues, _normalize_gql_node,
     extract_priority, fetch_recent_issues, short_milestone,
     repo_visibility, _VIS_CACHE, fetch_open_issues, repo_full_name,
+    gh_auth_status,
     _GQL_FIELDS_LEAN, _GQL_FIELDS_FULL,
     _gql_query, _GQL_ISSUE_DEPS,
 )
@@ -632,21 +632,18 @@ class TestRepoFullName(unittest.TestCase):
 
 
 def _gh_authenticated():
-    try:
-        proc = _subprocess.run(["gh", "auth", "status"], capture_output=True, timeout=10)
-        return proc.returncode == 0
-    except Exception:
-        return False
+    return gh_auth_status()["authenticated"]
 
 
 class TestRepoFullNameLiveRedirect(unittest.TestCase):
-    @unittest.skipUnless(_gh_authenticated(), "gh not authenticated — skipping live network check")
     def test_musical_family_trees_redirect_is_still_live(self):
         # The actual repo this whole design's incident was about. If this ever
         # stops returning the renamed slug, the redirect has lapsed and the
         # design's core "gh api repos/<slug> follows GitHub's own rename
         # redirect" assumption needs re-verifying before trusting doctor's
         # output on real data.
+        if not _gh_authenticated():
+            self.skipTest("gh not authenticated — skipping live network check")
         result = repo_full_name("evemcgivern/musical-family-trees")
         self.assertEqual(result, "evemcgivern/soundstellation")
 
