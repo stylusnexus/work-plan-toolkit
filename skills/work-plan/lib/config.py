@@ -1,5 +1,6 @@
 """Load + validate ~/.claude/work-plan/config.yml."""
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -57,9 +58,11 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH,
     if "notes_root" not in cfg:
         raise ConfigError("config.yml missing required key 'notes_root'.")
     cfg.setdefault("repos", {})
+    scalar_shape_keys = set()
     # Normalize string-shape entries to dict shape
     for folder, val in list(cfg["repos"].items()):
         if isinstance(val, str):
+            scalar_shape_keys.add(folder)
             cfg["repos"][folder] = {"github": val, "local": None}
         elif isinstance(val, dict):
             val.setdefault("local", None)
@@ -67,6 +70,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH,
                 raise ConfigError(f"repo '{folder}' missing 'github' key")
         else:
             raise ConfigError(f"repo '{folder}' must be string or dict, got {type(val).__name__}")
+    cfg["_scalar_shape_keys"] = scalar_shape_keys
     return cfg
 
 
@@ -97,3 +101,28 @@ def resolve_local_path_for_folder(folder_name: str, cfg: dict) -> Optional[Path]
     if not entry or not entry.get("local"):
         return None
     return Path(entry["local"]).expanduser()
+
+
+def write_repo_field(key: str, updates: dict, path: Path = DEFAULT_CONFIG_PATH) -> None:
+    """Merge `updates` into `repos.<key>` in config.yml via an opaque-env `yq`
+    merge — the same mechanic `init_repo.py::_update_existing` already used
+    (extracted here so `doctor` and `init-repo` share one implementation).
+
+    `updates` values travel as JSON through an env var, never interpolated
+    into the yq expression, so they can't break out of the merge. `key` is
+    interpolated directly into the yq path — callers MUST validate it against
+    a safe-key pattern (e.g. `^[a-z][a-z0-9-]*$`) before calling this; this
+    function does not re-validate, matching `_update_existing`'s existing
+    contract (its caller already validates via `init-repo`'s own regex check).
+
+    Raises `subprocess.CalledProcessError` on any yq failure — including the
+    known case of `repos.<key>` being a scalar string on disk (yq cannot
+    multiply a string with a map). Callers must catch this and treat it as
+    "entry not fixable this way", not crash the whole command.
+    """
+    env = {**os.environ, "WP_REPO_UPDATES": json.dumps(updates)}
+    yq_expr = f".repos.{key} = (.repos.{key} // {{}}) * env(WP_REPO_UPDATES)"
+    subprocess.run(
+        ["yq", "-i", yq_expr, str(path)],
+        check=True, capture_output=True, text=True, env=env,
+    )
