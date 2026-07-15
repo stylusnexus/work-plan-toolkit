@@ -19,6 +19,7 @@ import {
   notesVcsUndo,
   normalizeExportIssue,
   suggestNextUp,
+  doctorScan,
 } from "./cli.ts";
 import type { Export } from "./model.ts";
 
@@ -684,5 +685,71 @@ describe("suggestNextUp", () => {
   test("unparseable stdout throws CliError", async () => {
     const run = fakeRunner({ code: 0, stdout: "not-json{{", stderr: "" });
     await assert.rejects(() => suggestNextUp(run, "api-core"), CliError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// doctorScan (#439)
+// ---------------------------------------------------------------------------
+
+describe("doctorScan", () => {
+  const SAMPLE_FINDING = {
+    type: "github_rename_detected", key: "foo", folder: null, track: null,
+    message: "renamed", fixable: true, unverified: false,
+    old: "org/old", new: "org/new",
+  };
+
+  test("returns findings on a clean 0-exit JSON result", async () => {
+    const run = fakeRunner({
+      code: 0,
+      stdout: JSON.stringify({ attempts: [], findings: [SAMPLE_FINDING] }),
+      stderr: "",
+    });
+    const result = await doctorScan(run);
+    assert.deepEqual(result, [SAMPLE_FINDING]);
+  });
+
+  test("uses exact argv [\"doctor\", \"--json\"]", async () => {
+    const calls: string[][] = [];
+    const run: CliRunner = (args: string[]) => {
+      calls.push(args);
+      return Promise.resolve({ code: 0, stdout: JSON.stringify({ attempts: [], findings: [] }), stderr: "" });
+    };
+    await doctorScan(run);
+    assert.deepEqual(calls[0], ["doctor", "--json"]);
+  });
+
+  test("nonzero exit returns null", async () => {
+    const run = fakeRunner({ code: 1, stdout: "", stderr: "unknown subcommand" });
+    assert.equal(await doctorScan(run), null);
+  });
+
+  test("spawn rejection returns null", async () => {
+    const run: CliRunner = () => Promise.reject(new Error("ENOENT"));
+    assert.equal(await doctorScan(run), null);
+  });
+
+  test("malformed JSON returns null", async () => {
+    const run = fakeRunner({ code: 0, stdout: "not json{{", stderr: "" });
+    assert.equal(await doctorScan(run), null);
+  });
+
+  test("valid JSON, findings missing, returns null", async () => {
+    const run = fakeRunner({ code: 0, stdout: JSON.stringify({ attempts: [] }), stderr: "" });
+    assert.equal(await doctorScan(run), null);
+  });
+
+  test("valid JSON, findings not an array, returns null", async () => {
+    const run = fakeRunner({ code: 0, stdout: JSON.stringify({ attempts: [], findings: "nope" }), stderr: "" });
+    assert.equal(await doctorScan(run), null);
+  });
+
+  test("a fatal key present returns null, never treated as clean", async () => {
+    const run = fakeRunner({
+      code: 0,
+      stdout: JSON.stringify({ fatal: "config could not be loaded", attempts: [], findings: [] }),
+      stderr: "",
+    });
+    assert.equal(await doctorScan(run), null);
   });
 });

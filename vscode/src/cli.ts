@@ -563,6 +563,49 @@ export async function whichRepo(run: CliRunner, cwd: string): Promise<ResolvedRe
 }
 
 // ---------------------------------------------------------------------------
+// doctor — config-drift scan (#: doctor)
+// ---------------------------------------------------------------------------
+
+/** One `doctor --json` finding. Mirrors commands/doctor.py's finding dict. */
+export type DoctorFinding = {
+  type: string;
+  key: string | null;
+  folder: string | null;
+  track: string | null;
+  message: string;
+  fixable: boolean;
+  unverified: boolean;
+  old: string | null;
+  new: string | null;
+};
+
+/**
+ * Runs `doctor --json` and returns its findings, or null on anything that
+ * makes the result untrustworthy: a nonzero exit, a spawn rejection, JSON
+ * that doesn't parse, JSON with a "findings" field missing or not an array,
+ * or JSON carrying a "fatal" key (doctor's own Step 0 failure shape — this
+ * must NEVER be read as "0 findings = clean"). Never throws — this is a
+ * convenience signal, exactly like whichRepo/checkVersion.
+ */
+export async function doctorScan(run: CliRunner): Promise<DoctorFinding[] | null> {
+  try {
+    const result = await run(["doctor", "--json"]);
+    if (result.code !== 0) return null;
+    const blob = JSON.parse(result.stdout) as Partial<{
+      fatal: string;
+      attempts: unknown;
+      findings: unknown;
+    }>;
+    if (!blob || typeof blob !== "object") return null;
+    if ("fatal" in blob) return null;
+    if (!Array.isArray(blob.findings)) return null;
+    return blob.findings as DoctorFinding[];
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // auto-triage scan (#241) — fetch untracked issues + the AI prompt for the viewer
 // ---------------------------------------------------------------------------
 
