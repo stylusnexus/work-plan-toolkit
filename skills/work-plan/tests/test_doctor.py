@@ -136,5 +136,74 @@ class TestCleanConfigNoDrift(unittest.TestCase):
             self.assertIn("No drift found.", printed)
 
 
+class TestStep1CanonicalSlugs(unittest.TestCase):
+    def test_matching_slug_no_finding(self):
+        repos = {"foo": {"github": "org/foo", "local": None}}
+        with mock.patch("commands.doctor.repo_full_name", return_value="org/foo"):
+            canonical = doctor._resolve_canonical_slugs(repos)
+            findings = doctor._step1_findings(repos, canonical)
+        self.assertEqual(canonical["foo"], {"canonical": "org/foo", "unverified": False})
+        self.assertEqual(findings, [])
+
+    def test_matching_slug_is_case_insensitive(self):
+        repos = {"foo": {"github": "Org/Foo", "local": None}}
+        with mock.patch("commands.doctor.repo_full_name", return_value="org/foo"):
+            canonical = doctor._resolve_canonical_slugs(repos)
+            findings = doctor._step1_findings(repos, canonical)
+        self.assertEqual(findings, [])
+
+    def test_renamed_slug_is_fixable_finding(self):
+        repos = {"foo": {"github": "org/old-name", "local": None}}
+        with mock.patch("commands.doctor.repo_full_name", return_value="org/new-name"):
+            canonical = doctor._resolve_canonical_slugs(repos)
+            findings = doctor._step1_findings(repos, canonical)
+        self.assertEqual(canonical["foo"]["canonical"], "org/new-name")
+        renamed = _finding(findings, "github_rename_detected")
+        self.assertEqual(len(renamed), 1)
+        self.assertTrue(renamed[0]["fixable"])
+        self.assertEqual(renamed[0]["old"], "org/old-name")
+        self.assertEqual(renamed[0]["new"], "org/new-name")
+
+    def test_renamed_slug_unsafe_key_not_fixable(self):
+        repos = {"a.b": {"github": "org/old-name", "local": None}}
+        with mock.patch("commands.doctor.repo_full_name", return_value="org/new-name"):
+            canonical = doctor._resolve_canonical_slugs(repos)
+            findings = doctor._step1_findings(repos, canonical)
+        renamed = _finding(findings, "github_rename_detected")
+        self.assertFalse(renamed[0]["fixable"])
+        self.assertIn("unsafe", renamed[0]["message"].lower())
+
+    def test_renamed_slug_scalar_shaped_not_fixable(self):
+        repos = {"foo": {"github": "org/old-name", "local": None}}
+        with mock.patch("commands.doctor.repo_full_name", return_value="org/new-name"):
+            canonical = doctor._resolve_canonical_slugs(repos)
+            findings = doctor._step1_findings(repos, canonical, scalar_shape_keys={"foo"})
+        renamed = _finding(findings, "github_rename_detected")
+        self.assertFalse(renamed[0]["fixable"])
+        self.assertIn("scalar", renamed[0]["message"].lower())
+
+    def test_unreachable_repo(self):
+        repos = {"foo": {"github": "org/gone", "local": None}}
+        with mock.patch("commands.doctor.repo_full_name", return_value=None):
+            canonical = doctor._resolve_canonical_slugs(repos)
+            findings = doctor._step1_findings(repos, canonical)
+        self.assertEqual(canonical["foo"], {"canonical": "org/gone", "unverified": True})
+        unreachable = _finding(findings, "github_repo_unreachable")
+        self.assertEqual(len(unreachable), 1)
+        self.assertFalse(unreachable[0]["fixable"])
+
+    def test_aggregate_deadline_marks_unresolved_as_unreachable(self):
+        import time
+        def _slow(slug):
+            time.sleep(0.3)
+            return "org/foo"
+        repos = {f"repo{i}": {"github": f"org/repo{i}", "local": None} for i in range(3)}
+        with mock.patch("commands.doctor.repo_full_name", side_effect=_slow):
+            with mock.patch("commands.doctor.SCAN_DEADLINE", 0.05):
+                canonical = doctor._resolve_canonical_slugs(repos)
+        # With a near-zero deadline every repo should be marked unreachable/unverified.
+        self.assertTrue(all(v["unverified"] for v in canonical.values()))
+
+
 if __name__ == "__main__":
     unittest.main()

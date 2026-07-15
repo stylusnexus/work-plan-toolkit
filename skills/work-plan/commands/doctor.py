@@ -8,10 +8,13 @@ Read-only by default; --fix applies the two mechanically-safe corrections
 re-scans from disk afterward before deciding the exit code.
 """
 import json
+import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from lib.config import load_config, ConfigError
+from lib.github_state import repo_full_name
 from lib.prompts import parse_flags
 
 _FATAL_EXCEPTIONS = (
@@ -23,6 +26,10 @@ _FATAL_EXCEPTIONS = (
     AttributeError,
     UnicodeDecodeError,
 )
+
+SAFE_KEY_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+SCAN_DEADLINE = 60  # seconds, wall-clock budget for Step 1 regardless of repo count
+MAX_GH_WORKERS = 4
 
 
 def _finding(type_, *, key=None, folder=None, track=None, message,
@@ -68,10 +75,74 @@ def _validate_repo_field_shapes(cfg):
     return valid, findings
 
 
+def _resolve_canonical_slugs(repos: dict) -> dict:
+    """Step 1: one gh-confirmed canonical slug per repo, resolved concurrently
+    with an overall wall-clock deadline so a large repo count can't stall the
+    whole scan (or the VS Code extension's activation call, which has no
+    process-level timeout of its own).
+    """
+    result = {}
+    if not repos:
+        return result
+    with ThreadPoolExecutor(max_workers=min(MAX_GH_WORKERS, len(repos))) as pool:
+        futures = {pool.submit(repo_full_name, entry["github"]): key
+                   for key, entry in repos.items()}
+        done, not_done = wait(futures, timeout=SCAN_DEADLINE)
+        for fut in done:
+            key = futures[fut]
+            full_name = fut.result()
+            configured = repos[key]["github"]
+            if full_name is None:
+                result[key] = {"canonical": configured, "unverified": True}
+            else:
+                result[key] = {"canonical": full_name, "unverified": False}
+        for fut in not_done:
+            key = futures[fut]
+            result[key] = {"canonical": repos[key]["github"], "unverified": True}
+    return result
+
+
+def _step1_findings(repos: dict, canonical: dict, scalar_shape_keys=None) -> list:
+    scalar_shape_keys = scalar_shape_keys or set()
+    findings = []
+    for key, entry in repos.items():
+        configured = entry["github"]
+        info = canonical[key]
+        if info["unverified"]:
+            findings.append(_finding(
+                "github_repo_unreachable", key=key, unverified=True,
+                message=f"could not confirm GitHub identity for '{configured}' "
+                        "(404, no access, rate-limited, offline, or scan timed out)",
+            ))
+            continue
+        if info["canonical"].lower() == configured.lower():
+            continue
+        fixable = True
+        reason = None
+        if not SAFE_KEY_RE.match(key):
+            fixable = False
+            reason = "config key contains characters unsafe for automatic YAML updates"
+        elif key in scalar_shape_keys:
+            fixable = False
+            reason = (f"repo entry '{key}' uses the scalar shorthand form — convert "
+                       f"'{key}: \"{configured}\"' to '{key}: {{github: \"{configured}\"}}' "
+                       "by hand in config.yml, then re-run doctor --fix")
+        message = (f"'{key}' GitHub repo renamed: configured as '{configured}', "
+                   f"GitHub now reports '{info['canonical']}'")
+        if reason:
+            message += f" — {reason}"
+        findings.append(_finding(
+            "github_rename_detected", key=key, message=message, fixable=fixable,
+            old=configured, new=info["canonical"],
+        ))
+    return findings
+
+
 def _scan(cfg, repos):
-    """Steps 1-4. Stubbed in this task — returns no additional findings.
-    Filled in by Tasks 6-8; this task only wires Step 0 through to output."""
-    return []
+    """Steps 1-4. Steps 2-4 are stubbed until Tasks 7-8 land."""
+    canonical = _resolve_canonical_slugs(repos)
+    findings = _step1_findings(repos, canonical, cfg.get("_scalar_shape_keys"))
+    return findings
 
 
 def _print_json(payload):
