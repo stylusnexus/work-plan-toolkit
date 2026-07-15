@@ -1,5 +1,6 @@
 """Tests for GitHub state — uses mocks (gh requires auth)."""
 import json
+import subprocess as _subprocess
 import unittest
 from unittest.mock import patch, MagicMock, call
 import sys
@@ -12,7 +13,7 @@ from lib.github_state import (
     fetch_issues, fetch_issue, fetch_issues_concurrent,
     fetch_repo_issues_graphql, fetch_export_issues, _normalize_gql_node,
     extract_priority, fetch_recent_issues, short_milestone,
-    repo_visibility, _VIS_CACHE, fetch_open_issues,
+    repo_visibility, _VIS_CACHE, fetch_open_issues, repo_full_name,
     _GQL_FIELDS_LEAN, _GQL_FIELDS_FULL,
     _gql_query, _GQL_ISSUE_DEPS,
 )
@@ -606,6 +607,48 @@ class NormalizeDepsTest(unittest.TestCase):
         self.assertEqual(out["blocked_by"], [])
         self.assertEqual(out["blocking"], [])
         self.assertFalse(out["deps_truncated"])
+
+
+class TestRepoFullName(unittest.TestCase):
+    def test_returns_full_name_on_success(self):
+        fake = MagicMock(returncode=0, stdout="org/repo-renamed\n", stderr="")
+        with patch("lib.github_state.subprocess.run", return_value=fake) as m:
+            result = repo_full_name("org/repo-old")
+        self.assertEqual(result, "org/repo-renamed")
+        args = m.call_args[0][0]
+        self.assertEqual(args, ["gh", "api", "repos/org/repo-old", "--jq", ".full_name"])
+
+    def test_none_on_nonzero_exit(self):
+        fake = MagicMock(returncode=1, stdout="", stderr="not found")
+        with patch("lib.github_state.subprocess.run", return_value=fake):
+            self.assertIsNone(repo_full_name("org/gone"))
+
+    def test_none_on_invalid_slug(self):
+        self.assertIsNone(repo_full_name("not-a-slug"))
+
+    def test_none_on_subprocess_exception(self):
+        with patch("lib.github_state.subprocess.run", side_effect=OSError("boom")):
+            self.assertIsNone(repo_full_name("org/repo"))
+
+
+def _gh_authenticated():
+    try:
+        proc = _subprocess.run(["gh", "auth", "status"], capture_output=True, timeout=10)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+class TestRepoFullNameLiveRedirect(unittest.TestCase):
+    @unittest.skipUnless(_gh_authenticated(), "gh not authenticated — skipping live network check")
+    def test_musical_family_trees_redirect_is_still_live(self):
+        # The actual repo this whole design's incident was about. If this ever
+        # stops returning the renamed slug, the redirect has lapsed and the
+        # design's core "gh api repos/<slug> follows GitHub's own rename
+        # redirect" assumption needs re-verifying before trusting doctor's
+        # output on real data.
+        result = repo_full_name("evemcgivern/musical-family-trees")
+        self.assertEqual(result, "evemcgivern/soundstellation")
 
 
 if __name__ == "__main__":

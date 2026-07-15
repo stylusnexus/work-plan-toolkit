@@ -433,6 +433,31 @@ def repo_visibility(repo: str) -> Optional[str]:
     return vis
 
 
+def repo_full_name(slug: str) -> Optional[str]:
+    """Live GitHub identity check via `gh api repos/<slug> --jq .full_name`.
+
+    Returns the repo's current canonical `owner/repo` — following GitHub's own
+    rename redirect if `slug` was renamed and the redirect is still live — or
+    None on any failure (404, no access, rate-limited, offline, bad slug
+    shape). Never raises. Used by `doctor` to detect a GitHub-confirmed rename;
+    NOT a stable identity check (see doctor's own docs) — a slug that was
+    reused by an unrelated repo after the redirect lapses is indistinguishable
+    from a genuine rename here.
+    """
+    if not _valid_repo(slug):
+        return None
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{slug}", "--jq", ".full_name"],
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
 def extract_priority(labels: list[dict]) -> str:
     label_names = {lbl["name"] for lbl in labels}
     for p in PRIORITY_LABELS:
