@@ -593,6 +593,47 @@ class TestDirtyFilePolicy(unittest.TestCase):
                     doctor._apply_frontmatter_fixes(Path(tmp), [finding], auto_commit_enabled=False)
             m.assert_not_called()
 
+    def test_auto_commit_invoked_on_successful_fix_with_correct_delta(self):
+        # Positive path: auto_commit_enabled=True AND the fix genuinely
+        # succeeds against a real git repo (not mocked dirty_paths_checked)
+        # so the delta computation (dirty_after - dirty_before) is exercised
+        # for real, not just gated off by auto_commit_enabled=False or a
+        # pre-snapshot failure like the other tests in this class.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_root = Path(tmp)
+            (notes_root / "known").mkdir()
+            track = notes_root / "known" / "track.md"
+            track.write_text("---\ngithub:\n  repo: org/old\n---\nbody")
+            for git_args in (
+                ["init"],
+                ["add", "-A"],
+                ["-c", "user.email=doctor-test@example.com",
+                 "-c", "user.name=doctor-test", "commit", "-m", "init"],
+            ):
+                subprocess.run(["git", "-C", str(notes_root), *git_args],
+                                capture_output=True, text=True, check=True)
+
+            finding = doctor._finding(
+                "stale_frontmatter", folder="known", track="track.md", fixable=True,
+                message="stale", old="org/old", new="org/new",
+            )
+            with mock.patch("commands.doctor.auto_commit") as mock_commit:
+                ledger, skipped = doctor._apply_frontmatter_fixes(
+                    notes_root, [finding], auto_commit_enabled=True,
+                )
+
+            self.assertFalse(skipped)
+            self.assertTrue(ledger[0]["fixed"])
+            self.assertIn("org/new", track.read_text())
+            mock_commit.assert_called_once()
+            call = mock_commit.call_args
+            self.assertEqual(call.args[0], notes_root)
+            self.assertEqual(
+                call.args[1], "doctor: fix stale repo identity in track frontmatter",
+            )
+            self.assertEqual(call.kwargs.get("paths"), ["known/track.md"])
+
     def test_archived_name_collision_is_not_blindly_overwritten(self):
         # A finding's folder/track fields lose any intermediate path segment
         # (see _step4_findings: folder=rel.parts[0], track=md_path.name), so a

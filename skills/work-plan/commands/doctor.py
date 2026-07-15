@@ -395,6 +395,15 @@ def _apply_config_fixes(findings: list) -> list:
 def _apply_frontmatter_fixes(notes_root: Path, findings: list, auto_commit_enabled: bool):
     """Applies every fixable stale_frontmatter finding, subject to the
     dirty-file policy. Returns (ledger, skipped_due_to_unknown_dirty_state).
+
+    NOTE: a stale_frontmatter finding's `fixable=True` (set in
+    _step4_findings, at scan time) is an optimistic classification — that
+    scan has no way to know whether the track file is currently dirty. This
+    function is the authoritative, fix-time gate: it re-checks dirty state
+    via dirty_paths_checked() below before ever writing, and skips (fixable
+    in practice: false) anything already dirty or anything it can't verify.
+    A scan can therefore report a finding as "fixable" that a subsequent
+    --fix safely declines to touch. This is deliberate, not a bug.
     """
     ok_before, dirty_before = dirty_paths_checked(notes_root)
     if not ok_before:
