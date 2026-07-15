@@ -357,11 +357,11 @@ describe("parseVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkVersion", () => {
-  test("returns {ok:true, version:'2026.06.15'} for a current version", async () => {
-    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.06.15+abc", stderr: "" });
+  test("returns {ok:true, version:'2026.07.15'} for a current version", async () => {
+    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.07.15+abc", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.06.15");
+    assert.equal(result.version, "2026.07.15");
   });
 
   test("returns {ok:false} for an older version", async () => {
@@ -386,10 +386,10 @@ describe("checkVersion", () => {
   });
 
   test("returns {ok:true} for a version newer than minimum", async () => {
-    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.07.01+future", stderr: "" });
+    const run = fakeRunner({ code: 0, stdout: "work-plan 2026.08.01+future", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.07.01");
+    assert.equal(result.version, "2026.08.01");
   });
 
   test("never throws even when runner throws (spawn failure simulation)", async () => {
