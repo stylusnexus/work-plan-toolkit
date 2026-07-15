@@ -12,8 +12,10 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, wait
+from pathlib import Path
 
-from lib.config import load_config, ConfigError
+from lib.config import load_config, ConfigError, is_valid_git_repo
+from lib.cwd_repo import _git, _normalize_remote_url
 from lib.github_state import repo_full_name
 from lib.prompts import parse_flags
 
@@ -30,6 +32,21 @@ _FATAL_EXCEPTIONS = (
 SAFE_KEY_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SCAN_DEADLINE = 60  # seconds, wall-clock budget for Step 1 regardless of repo count
 MAX_GH_WORKERS = 4
+
+_HOST_RE = re.compile(r"^[\w.+-]+@([\w.-]+):|^[\w.+-]+://(?:[^/@]+@)?([^/]+)/")
+
+
+def _remote_host(url: str) -> "str | None":
+    """Extract the host from a git remote URL, preserving it (unlike
+    `_normalize_remote_url`, which discards the host on purpose for its own
+    slug-comparison use case). Handles the same two forms `_normalize_remote_url`
+    does: scp-like and scheme://. Returns None if unparseable."""
+    if not url:
+        return None
+    m = _HOST_RE.match(url.strip())
+    if not m:
+        return None
+    return (m.group(1) or m.group(2) or "").lower() or None
 
 
 def _finding(type_, *, key=None, folder=None, track=None, message,
@@ -146,10 +163,122 @@ def _step1_findings(repos: dict, canonical: dict, scalar_shape_keys=None) -> lis
     return findings
 
 
+def _step2_findings(repos: dict, canonical: "dict | None" = None) -> list:
+    canonical = canonical or {}
+    findings = []
+    for key, entry in repos.items():
+        local = entry.get("local")
+        if not local:
+            continue
+        p = Path(local).expanduser()
+        if not p.is_absolute():
+            findings.append(_finding(
+                "local_path_relative", key=key,
+                message=f"'{key}'.local is a relative path ('{local}') — "
+                        "results would depend on the current working directory; "
+                        "use an absolute path",
+            ))
+            continue
+        if not p.exists():
+            findings.append(_finding(
+                "missing_local", key=key,
+                message=f"'{key}'.local ('{local}') does not exist on disk",
+            ))
+            continue
+        if not is_valid_git_repo(p):
+            findings.append(_finding(
+                "local_not_git", key=key,
+                message=f"'{key}'.local ('{local}') has no .git entry",
+            ))
+            continue
+        proc = _git(p, "remote", "get-url", "origin")
+        if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+            findings.append(_finding(
+                "local_remote_missing", key=key,
+                message=f"'{key}'.local ('{local}') has no resolvable 'origin' remote",
+            ))
+            continue
+        raw_url = proc.stdout.strip()
+        host = _remote_host(raw_url)
+        if host != "github.com":
+            findings.append(_finding(
+                "local_remote_mismatch", key=key,
+                message=f"'{key}'.local's origin ('{raw_url}') is a non-GitHub host "
+                        f"({host or 'unrecognized'}) — not compared to a slug",
+            ))
+            continue
+        slug = _normalize_remote_url(raw_url)
+        info = canonical.get(key)
+        expected = info["canonical"] if info else entry["github"]
+        if slug and slug != expected.lower():
+            findings.append(_finding(
+                "local_remote_mismatch", key=key, fixable=False,
+                message=f"'{key}'.local's origin ('{slug}') differs from the "
+                        f"configured/canonical slug ('{expected}') — could be a "
+                        "legitimate fork or mirror",
+            ))
+    return findings
+
+
+def _notes_root_status(cfg: dict):
+    """Returns (walkable: bool, finding_or_None). walkable is False when either
+    notes_root_invalid or notes_root_missing fired — Step 4 must not walk."""
+    raw = cfg.get("notes_root")
+    if not isinstance(raw, str) or not raw.strip():
+        return False, _finding("notes_root_invalid",
+                                message="notes_root is blank or not a string")
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        return False, _finding("notes_root_invalid",
+                                message=f"notes_root ('{raw}') is not an absolute path")
+    resolved = p.resolve()
+    if resolved == resolved.anchor or str(resolved) == resolved.anchor:
+        return False, _finding("notes_root_invalid",
+                                message=f"notes_root ('{raw}') resolves to a bare filesystem root")
+    if not resolved.is_dir():
+        return False, _finding("notes_root_missing",
+                                message=f"notes_root ('{raw}') does not exist or is not a directory")
+    return True, None
+
+
+def _step3_findings(repos: dict, canonical: dict, cfg: dict) -> list:
+    findings = []
+    by_local = {}
+    by_slug = {}
+    for key, entry in repos.items():
+        local = entry.get("local")
+        if local:
+            resolved = str(Path(local).expanduser().resolve())
+            by_local.setdefault(resolved, []).append(key)
+        info = canonical.get(key)
+        slug = (info["canonical"] if info else entry["github"]).lower()
+        by_slug.setdefault(slug, []).append(key)
+    for resolved, keys in by_local.items():
+        if len(keys) > 1:
+            for key in keys:
+                findings.append(_finding(
+                    "duplicate_local", key=key,
+                    message=f"'{key}' shares local path '{resolved}' with {[k for k in keys if k != key]}",
+                ))
+    for slug, keys in by_slug.items():
+        if len(keys) > 1:
+            for key in keys:
+                findings.append(_finding(
+                    "duplicate_github", key=key,
+                    message=f"'{key}' shares canonical slug '{slug}' with {[k for k in keys if k != key]}",
+                ))
+    walkable, notes_finding = _notes_root_status(cfg)
+    if notes_finding:
+        findings.append(notes_finding)
+    return findings
+
+
 def _scan(cfg, repos):
-    """Steps 1-4. Steps 2-4 are stubbed until Tasks 7-8 land."""
+    """Steps 1-4. Step 4 is stubbed until Task 8 lands."""
     canonical = _resolve_canonical_slugs(repos)
     findings = _step1_findings(repos, canonical, cfg.get("_scalar_shape_keys"))
+    findings += _step2_findings(repos, canonical)
+    findings += _step3_findings(repos, canonical, cfg)
     return findings
 
 

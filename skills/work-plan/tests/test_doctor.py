@@ -223,5 +223,113 @@ class TestStep1CanonicalSlugs(unittest.TestCase):
         self.assertTrue(all(v["unverified"] for v in canonical.values()))
 
 
+class TestStep2LocalPathChecks(unittest.TestCase):
+    def test_relative_local_path(self):
+        repos = {"foo": {"github": "org/foo", "local": "relative/path"}}
+        findings = doctor._step2_findings(repos)
+        self.assertEqual(len(_finding(findings, "local_path_relative")), 1)
+        # Downstream checks should not ALSO fire for this entry.
+        self.assertEqual(_finding(findings, "missing_local"), [])
+
+    def test_missing_local_path(self):
+        repos = {"foo": {"github": "org/foo", "local": "/definitely/not/here/xyz"}}
+        findings = doctor._step2_findings(repos)
+        self.assertEqual(len(_finding(findings, "missing_local")), 1)
+
+    def test_local_not_git(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            repos = {"foo": {"github": "org/foo", "local": tmp}}
+            findings = doctor._step2_findings(repos)
+        self.assertEqual(len(_finding(findings, "local_not_git")), 1)
+
+    def test_no_finding_when_local_absent(self):
+        repos = {"foo": {"github": "org/foo", "local": None}}
+        self.assertEqual(doctor._step2_findings(repos), [])
+
+    def test_remote_missing(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
+            repos = {"foo": {"github": "org/foo", "local": tmp}}
+            with mock.patch("commands.doctor._git", return_value=None):
+                findings = doctor._step2_findings(repos)
+        self.assertEqual(len(_finding(findings, "local_remote_missing")), 1)
+
+    def test_remote_mismatch_github_fork(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
+            repos = {"foo": {"github": "org/foo", "local": tmp}}
+            fake = mock.Mock(returncode=0, stdout="git@github.com:someone/fork.git\n")
+            with mock.patch("commands.doctor._git", return_value=fake):
+                findings = doctor._step2_findings(repos, canonical={"foo": {"canonical": "org/foo", "unverified": False}})
+        mismatch = _finding(findings, "local_remote_mismatch")
+        self.assertEqual(len(mismatch), 1)
+        self.assertFalse(mismatch[0]["fixable"])
+
+    def test_remote_non_github_host(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".git").mkdir()
+            repos = {"foo": {"github": "org/foo", "local": tmp}}
+            fake = mock.Mock(returncode=0, stdout="git@gitlab.com:org/foo.git\n")
+            with mock.patch("commands.doctor._git", return_value=fake):
+                findings = doctor._step2_findings(repos, canonical={"foo": {"canonical": "org/foo", "unverified": False}})
+        mismatch = _finding(findings, "local_remote_mismatch")
+        self.assertEqual(len(mismatch), 1)
+        self.assertIn("non-github", mismatch[0]["message"].lower())
+
+
+class TestStep3WholeConfigChecks(unittest.TestCase):
+    def test_duplicate_local(self):
+        repos = {
+            "a": {"github": "org/a", "local": "/code/dup"},
+            "b": {"github": "org/b", "local": "/code/dup"},
+        }
+        cfg = {"notes_root": "/tmp/notes"}
+        findings = doctor._step3_findings(repos, canonical={}, cfg=cfg)
+        self.assertEqual(len(_finding(findings, "duplicate_local")), 2)
+
+    def test_duplicate_github(self):
+        repos = {
+            "a": {"github": "org/x", "local": None},
+            "b": {"github": "org/x", "local": None},
+        }
+        canonical = {"a": {"canonical": "org/x", "unverified": False},
+                     "b": {"canonical": "org/x", "unverified": False}}
+        cfg = {"notes_root": "/tmp/notes"}
+        findings = doctor._step3_findings(repos, canonical, cfg)
+        self.assertEqual(len(_finding(findings, "duplicate_github")), 2)
+
+    def test_notes_root_invalid_blank(self):
+        cfg = {"notes_root": ""}
+        findings = doctor._step3_findings({}, {}, cfg)
+        self.assertEqual(len(_finding(findings, "notes_root_invalid")), 1)
+
+    def test_notes_root_invalid_relative(self):
+        cfg = {"notes_root": "."}
+        findings = doctor._step3_findings({}, {}, cfg)
+        self.assertEqual(len(_finding(findings, "notes_root_invalid")), 1)
+
+    def test_notes_root_invalid_bare_root(self):
+        cfg = {"notes_root": "/"}
+        findings = doctor._step3_findings({}, {}, cfg)
+        self.assertEqual(len(_finding(findings, "notes_root_invalid")), 1)
+
+    def test_notes_root_missing(self):
+        cfg = {"notes_root": "/definitely/not/here/xyz"}
+        findings = doctor._step3_findings({}, {}, cfg)
+        self.assertEqual(len(_finding(findings, "notes_root_missing")), 1)
+
+    def test_notes_root_ok_no_finding(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"notes_root": tmp}
+            findings = doctor._step3_findings({}, {}, cfg)
+        self.assertEqual(_finding(findings, "notes_root_invalid"), [])
+        self.assertEqual(_finding(findings, "notes_root_missing"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
