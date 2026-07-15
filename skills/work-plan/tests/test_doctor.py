@@ -709,5 +709,132 @@ class TestFixThenRescan(unittest.TestCase):
             self.assertEqual(blob2["findings"], [])
 
 
+class TestMixedFixtureResidualSet(unittest.TestCase):
+    def test_after_fix_residual_is_exactly_report_only_types(self):
+        # One instance of every finding type EXCEPT the mutually-exclusive
+        # notes_root_invalid/notes_root_missing pair (covered in
+        # TestStep3WholeConfigChecks). --fix is applied once, and the
+        # assertion that matters is that the post-fix residual finding-type
+        # set is EXACTLY the report-only types: neither empty (something in
+        # the fixture is genuinely unfixable) nor equal to the pre-fix set
+        # (the two fixable types must actually have disappeared).
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_root = Path(tmp) / "notes"
+            missing_local_dir = str(Path(tmp) / "does-not-exist")
+            dup_local_dir = Path(tmp) / "dup-local"
+            dup_local_dir.mkdir()
+            remote_missing_dir = Path(tmp) / "remote-missing-repo"
+            remote_missing_dir.mkdir()
+            remote_mismatch_dir = Path(tmp) / "remote-mismatch-repo"
+            remote_mismatch_dir.mkdir()
+
+            for d in (remote_missing_dir, remote_mismatch_dir):
+                subprocess.run(["git", "-C", str(d), "init"],
+                                capture_output=True, text=True, check=True)
+            subprocess.run(
+                ["git", "-C", str(remote_mismatch_dir), "remote", "add", "origin",
+                 "git@github.com:someone/other.git"],
+                capture_output=True, text=True, check=True,
+            )
+
+            (notes_root / "orphan").mkdir(parents=True)
+            (notes_root / "orphan" / "t.md").write_text("---\n---\nbody")
+            (notes_root / "renaming").mkdir()
+            (notes_root / "renaming" / "t.md").write_text(
+                "---\ngithub:\n  repo: org/old\n---\nbody"
+            )
+            (notes_root / "badyaml").mkdir()
+            (notes_root / "badyaml" / "t.md").write_text(
+                "---\ngithub: not-a-mapping\n---\nbody"
+            )
+
+            # Dirty-file policy (Task 9) requires notes_root to be a REAL git
+            # repo for dirty_paths_checked() to report ok_before=True — a plain
+            # directory fails closed and the stale_frontmatter fix would be
+            # (correctly) skipped, defeating the point of this fixture.
+            for git_args in (
+                ["init"],
+                ["add", "-A"],
+                ["-c", "user.email=doctor-test@example.com",
+                 "-c", "user.name=doctor-test", "commit", "-m", "init"],
+            ):
+                subprocess.run(["git", "-C", str(notes_root), *git_args],
+                                capture_output=True, text=True, check=True)
+
+            cfg_path = Path(tmp) / "config.yml"
+            cfg_path.write_text(
+                f"notes_root: {notes_root}\n"
+                "repos:\n"
+                "  malformed:\n"
+                "    github: 12345\n"
+                "  renaming:\n"
+                "    github: org/old\n"
+                "  unreachable:\n"
+                "    github: org/gone\n"
+                "  relpath:\n"
+                "    github: org/relpath\n"
+                "    local: relative/path\n"
+                f"  broken:\n    github: org/broken\n    local: {missing_local_dir}\n"
+                f"  duplocal1:\n    github: org/duplocal1\n    local: {dup_local_dir}\n"
+                f"  duplocal2:\n    github: org/duplocal2\n    local: {dup_local_dir}\n"
+                "  dup1:\n    github: org/samedupe\n"
+                "  dup2:\n    github: org/samedupe\n"
+                f"  remotemissing:\n    github: org/remotemissing\n    local: {remote_missing_dir}\n"
+                f"  remotemismatch:\n    github: org/remotemismatch\n    local: {remote_mismatch_dir}\n"
+                "  badyaml:\n    github: org/badyaml\n"
+            )
+
+            def _resolve(slug):
+                # Only 'renaming' (org/old) and 'unreachable' (org/gone) get
+                # special treatment; every other repo resolves to itself so
+                # it does NOT spuriously fire github_rename_detected.
+                if slug == "org/old":
+                    return "org/new"
+                if slug == "org/gone":
+                    return None
+                return slug
+
+            def _load(*_a, **_kw):
+                from lib.config import load_config as real_load
+                return real_load(path=cfg_path, notes_root=notes_root)
+
+            fixable_types = {"github_rename_detected", "stale_frontmatter"}
+            report_only_expected = {
+                "repo_entry_malformed", "github_repo_unreachable",
+                "local_path_relative", "missing_local", "local_not_git",
+                "local_remote_missing", "local_remote_mismatch",
+                "duplicate_local", "duplicate_github", "orphaned_folder",
+                "track_unreadable",
+            }
+
+            with mock.patch("commands.doctor.DEFAULT_CONFIG_PATH", cfg_path), \
+                 mock.patch("commands.doctor.load_config", side_effect=_load), \
+                 mock.patch("commands.doctor.repo_full_name", side_effect=_resolve):
+
+                with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out_before:
+                    doctor.run(["--json"])
+                pre_blob = json.loads(out_before.getvalue())
+                pre_types = {f["type"] for f in pre_blob["findings"]}
+
+                with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out_after:
+                    doctor.run(["--json", "--fix"])
+                post_blob = json.loads(out_after.getvalue())
+                residual_types = {f["type"] for f in post_blob["findings"]}
+
+            # Sanity check on the fixture itself: the pre-fix scan must have
+            # surfaced every finding type exactly once, including both
+            # fixable ones — otherwise this test isn't exercising the whole
+            # surface, just a subset of it.
+            self.assertEqual(pre_types, report_only_expected | fixable_types)
+
+            # The non-negotiable assertion: after --fix, the residual
+            # finding-type set is EXACTLY the report-only types — not empty,
+            # and not the pre-fix set either.
+            self.assertEqual(residual_types, report_only_expected)
+            self.assertNotIn("github_rename_detected", residual_types)
+            self.assertNotIn("stale_frontmatter", residual_types)
+
+
 if __name__ == "__main__":
     unittest.main()
