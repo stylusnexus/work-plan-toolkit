@@ -356,5 +356,117 @@ class TestStep3WholeConfigChecks(unittest.TestCase):
         self.assertEqual(_finding(findings, "notes_root_missing"), [])
 
 
+class TestStep4NotesRootWalk(unittest.TestCase):
+    def _mk(self, tmp, subpath, content):
+        p = Path(tmp) / subpath
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+        return p
+
+    def test_orphaned_folder(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "unknown-project/track.md", "---\n---\nbody")
+            cfg = {"notes_root": tmp}
+            findings = doctor._step4_findings(cfg, repos={}, canonical={}, walkable=True)
+        self.assertEqual(len(_finding(findings, "orphaned_folder")), 1)
+
+    def test_not_orphaned_when_folder_matches_repo_key(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/track.md", "---\ngithub:\n  repo: org/known\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/known", "local": None}}
+            canonical = {"known": {"canonical": "org/known", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        self.assertEqual(_finding(findings, "orphaned_folder"), [])
+
+    def test_dotdir_never_orphaned(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, ".git/config", "junk")
+            self._mk(tmp, ".obsidian/workspace.json", "{}")
+            cfg = {"notes_root": tmp}
+            findings = doctor._step4_findings(cfg, repos={}, canonical={}, walkable=True)
+        self.assertEqual(_finding(findings, "orphaned_folder"), [])
+
+    def test_empty_folder_never_orphaned(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "empty-dir").mkdir()
+            cfg = {"notes_root": tmp}
+            findings = doctor._step4_findings(cfg, repos={}, canonical={}, walkable=True)
+        self.assertEqual(_finding(findings, "orphaned_folder"), [])
+
+    def test_track_unreadable_bad_yaml(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/bad.md", "---\ngithub: [this is not a mapping\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/known", "local": None}}
+            canonical = {"known": {"canonical": "org/known", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        self.assertEqual(len(_finding(findings, "track_unreadable")), 1)
+
+    def test_track_unreadable_non_mapping_github(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/bad.md", "---\ngithub: not-a-mapping\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/known", "local": None}}
+            canonical = {"known": {"canonical": "org/known", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        self.assertEqual(len(_finding(findings, "track_unreadable")), 1)
+
+    def test_track_unreadable_non_string_repo(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/bad.md", "---\ngithub:\n  repo: 12345\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/known", "local": None}}
+            canonical = {"known": {"canonical": "org/known", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        self.assertEqual(len(_finding(findings, "track_unreadable")), 1)
+
+    def test_stale_frontmatter(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/track.md", "---\ngithub:\n  repo: org/old\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/old", "local": None}}
+            canonical = {"known": {"canonical": "org/new", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        stale = _finding(findings, "stale_frontmatter")
+        self.assertEqual(len(stale), 1)
+        self.assertTrue(stale[0]["fixable"])
+        self.assertEqual(stale[0]["old"], "org/old")
+        self.assertEqual(stale[0]["new"], "org/new")
+
+    def test_stale_frontmatter_unverified_never_fixable(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/track.md", "---\ngithub:\n  repo: org/old\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/old", "local": None}}
+            canonical = {"known": {"canonical": "org/old", "unverified": True}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        stale = _finding(findings, "stale_frontmatter")
+        self.assertEqual(stale, [])  # matches configured value, and unverified — no finding either way here
+
+    def test_archived_track_is_scanned(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._mk(tmp, "known/archive/old.md", "---\ngithub:\n  repo: org/old\n---\nbody")
+            cfg = {"notes_root": tmp}
+            repos = {"known": {"github": "org/old", "local": None}}
+            canonical = {"known": {"canonical": "org/new", "unverified": False}}
+            findings = doctor._step4_findings(cfg, repos, canonical, walkable=True)
+        self.assertEqual(len(_finding(findings, "stale_frontmatter")), 1)
+
+    def test_not_walkable_returns_no_findings(self):
+        findings = doctor._step4_findings({"notes_root": "/nope"}, {}, {}, walkable=False)
+        self.assertEqual(findings, [])
+
+
 if __name__ == "__main__":
     unittest.main()

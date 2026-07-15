@@ -16,8 +16,10 @@ from pathlib import Path
 
 from lib.config import load_config, ConfigError, is_valid_git_repo
 from lib.cwd_repo import _git, _normalize_remote_url
+from lib.frontmatter import parse_file
 from lib.github_state import repo_full_name
 from lib.prompts import parse_flags
+from lib.tracks import iter_private_track_paths
 
 _FATAL_EXCEPTIONS = (
     ConfigError,
@@ -279,12 +281,91 @@ def _step3_findings(repos: dict, canonical: dict, cfg: dict) -> list:
     return findings
 
 
+def _step4_findings(cfg: dict, repos: dict, canonical: dict, walkable: bool) -> list:
+    if not walkable:
+        return []
+    notes_root = Path(cfg["notes_root"]).expanduser()
+    findings = []
+
+    # Walk once; reuse for both the orphaned-folder pass and the per-track pass.
+    track_paths = iter_private_track_paths(notes_root, include_archive=True)
+    folders_with_tracks = {
+        p.relative_to(notes_root).parts[0]
+        for p in track_paths
+        if len(p.relative_to(notes_root).parts) > 1
+    }
+
+    for child in sorted(notes_root.iterdir()):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        if child.name not in folders_with_tracks:
+            continue
+        if child.name not in repos:
+            findings.append(_finding(
+                "orphaned_folder", folder=child.name,
+                message=f"notes_root folder '{child.name}' has no matching repos.<key>",
+            ))
+
+    for md_path in track_paths:
+        rel = md_path.relative_to(notes_root)
+        folder = rel.parts[0] if len(rel.parts) > 1 else None
+        track_name = md_path.name
+        try:
+            meta, _body = parse_file(md_path)
+        except Exception as e:
+            findings.append(_finding(
+                "track_unreadable", folder=folder, track=track_name,
+                message=f"could not parse frontmatter: {e}",
+            ))
+            continue
+        if not isinstance(meta, dict):
+            findings.append(_finding(
+                "track_unreadable", folder=folder, track=track_name,
+                message="frontmatter root is not a mapping",
+            ))
+            continue
+        github_block = meta.get("github")
+        if github_block is None:
+            continue
+        if not isinstance(github_block, dict):
+            findings.append(_finding(
+                "track_unreadable", folder=folder, track=track_name,
+                message="frontmatter 'github' is not a mapping",
+            ))
+            continue
+        repo_value = github_block.get("repo")
+        if repo_value is None:
+            continue
+        if not isinstance(repo_value, str):
+            findings.append(_finding(
+                "track_unreadable", folder=folder, track=track_name,
+                message="frontmatter 'github.repo' is not a string",
+            ))
+            continue
+        if folder is None or folder not in repos:
+            continue
+        info = canonical.get(folder)
+        if info is None or info["unverified"]:
+            continue
+        expected = info["canonical"]
+        if repo_value.lower() != expected.lower():
+            findings.append(_finding(
+                "stale_frontmatter", folder=folder, track=track_name, fixable=True,
+                message=f"track '{track_name}' frontmatter github.repo is '{repo_value}', "
+                        f"folder '{folder}' canonical slug is '{expected}'",
+                old=repo_value, new=expected,
+            ))
+    return findings
+
+
 def _scan(cfg, repos):
-    """Steps 1-4. Step 4 is stubbed until Task 8 lands."""
+    """Steps 1-4 — the full scan pipeline. --fix wiring lands in Task 9."""
     canonical = _resolve_canonical_slugs(repos)
     findings = _step1_findings(repos, canonical, cfg.get("_scalar_shape_keys"))
     findings += _step2_findings(repos, canonical)
     findings += _step3_findings(repos, canonical, cfg)
+    walkable, _ = _notes_root_status(cfg)
+    findings += _step4_findings(cfg, repos, canonical, walkable)
     return findings
 
 
