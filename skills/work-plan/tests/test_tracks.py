@@ -9,7 +9,7 @@ from unittest.mock import patch
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
-from lib.tracks import discover_tracks, discover_archived_tracks
+from lib.tracks import discover_tracks, discover_archived_tracks, iter_private_track_paths
 
 FIXTURES = Path(__file__).parent / "fixtures" / "notes_root"
 
@@ -461,6 +461,43 @@ class DiscoverArchivedSharedTest(unittest.TestCase):
             self.assertIn("shared-archived", names)
             self.assertIn("private-archived", names)
             self.assertNotIn("WARN:", stderr_buf.getvalue())
+
+
+class TestIterPrivateTrackPaths(unittest.TestCase):
+    def _make_tree(self, root: Path):
+        (root / "proj-a").mkdir(parents=True)
+        (root / "proj-a" / "track-one.md").write_text("---\n---\nbody")
+        (root / "proj-a" / "_draft.md").write_text("---\n---\nbody")
+        (root / "proj-a" / "archive").mkdir()
+        (root / "proj-a" / "archive" / "old-track.md").write_text("---\n---\nbody")
+        (root / "proj-a" / ".hidden.md").write_text("---\n---\nbody")
+
+    def test_excludes_archive_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._make_tree(root)
+            paths = iter_private_track_paths(root, include_archive=False)
+            names = {p.name for p in paths}
+            self.assertEqual(names, {"track-one.md"})
+
+    def test_includes_archive_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._make_tree(root)
+            paths = iter_private_track_paths(root, include_archive=True)
+            names = {p.name for p in paths}
+            self.assertEqual(names, {"track-one.md", "old-track.md"})
+
+    def test_skips_dotfile_underscore_dash_prefixed_names_in_both_modes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._make_tree(root)
+            (root / "proj-a" / "-dash.md").write_text("---\n---\nbody")
+            for include_archive in (False, True):
+                names = {p.name for p in iter_private_track_paths(root, include_archive)}
+                self.assertNotIn("_draft.md", names)
+                self.assertNotIn(".hidden.md", names)
+                self.assertNotIn("-dash.md", names)
 
 
 if __name__ == "__main__":

@@ -327,15 +327,29 @@ def _build_shared_track(md_path: Path, folder_key: str,
     )
 
 
-def _walk(notes_root: Path, cfg: dict, include_archive: bool) -> list[Track]:
+def iter_private_track_paths(notes_root: Path, include_archive: bool) -> list:
+    """Eligible track markdown paths under `notes_root`, in sorted order.
+
+    Recursive. Skips `archive/` subtrees unless `include_archive` is True.
+    Skips filenames starting with '.', '_', or '-' (dotfiles, drafts, and
+    dash-led names that would otherwise misparse as a CLI flag, #194). This is
+    the single shared definition of "which private track files count" — both
+    `_walk` (track discovery) and `doctor` (drift scanning) call this, so they
+    cannot diverge on which files are in scope.
+    """
     out = []
     for md_path in sorted(notes_root.rglob("*.md")):
         if not include_archive and "archive" in md_path.parts:
             continue
-        # '-' prefix rejected so a `--repo.md` file can't become a `--repo`
-        # track that the CLI misparses as a flag (#194).
         if md_path.name.startswith((".", "_", "-")):
             continue
+        out.append(md_path)
+    return out
+
+
+def _walk(notes_root: Path, cfg: dict, include_archive: bool) -> list[Track]:
+    out = []
+    for md_path in iter_private_track_paths(notes_root, include_archive):
         out.append(_build_track(md_path, notes_root, cfg))
     return out
 
