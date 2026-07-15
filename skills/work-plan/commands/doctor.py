@@ -79,12 +79,17 @@ def _resolve_canonical_slugs(repos: dict) -> dict:
     """Step 1: one gh-confirmed canonical slug per repo, resolved concurrently
     with an overall wall-clock deadline so a large repo count can't stall the
     whole scan (or the VS Code extension's activation call, which has no
-    process-level timeout of its own).
+    process-level timeout of its own). Not-yet-started jobs are cancelled at
+    the deadline so this function's own return time stays bounded by roughly
+    SCAN_DEADLINE + GH_TIMEOUT regardless of repo count — already-running
+    calls (up to MAX_GH_WORKERS of them) can't be cancelled mid-subprocess,
+    but that residual is count-independent, not the defect this fixes.
     """
     result = {}
     if not repos:
         return result
-    with ThreadPoolExecutor(max_workers=min(MAX_GH_WORKERS, len(repos))) as pool:
+    pool = ThreadPoolExecutor(max_workers=min(MAX_GH_WORKERS, len(repos)))
+    try:
         futures = {pool.submit(repo_full_name, entry["github"]): key
                    for key, entry in repos.items()}
         done, not_done = wait(futures, timeout=SCAN_DEADLINE)
@@ -98,7 +103,10 @@ def _resolve_canonical_slugs(repos: dict) -> dict:
                 result[key] = {"canonical": full_name, "unverified": False}
         for fut in not_done:
             key = futures[fut]
+            fut.cancel()
             result[key] = {"canonical": repos[key]["github"], "unverified": True}
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     return result
 
 

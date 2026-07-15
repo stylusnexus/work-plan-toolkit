@@ -204,6 +204,24 @@ class TestStep1CanonicalSlugs(unittest.TestCase):
         # With a near-zero deadline every repo should be marked unreachable/unverified.
         self.assertTrue(all(v["unverified"] for v in canonical.values()))
 
+    def test_deadline_bounds_actual_return_time_regardless_of_repo_count(self):
+        import time
+        def _slow(slug):
+            time.sleep(1)  # long enough to still be "not done" at the deadline
+            return "org/foo"
+        # More repos than MAX_GH_WORKERS (4), so most are queued, never started.
+        repos = {f"repo{i}": {"github": f"org/repo{i}", "local": None} for i in range(12)}
+        with mock.patch("commands.doctor.repo_full_name", side_effect=_slow):
+            with mock.patch("commands.doctor.SCAN_DEADLINE", 0.05):
+                start = time.monotonic()
+                canonical = doctor._resolve_canonical_slugs(repos)
+                elapsed = time.monotonic() - start
+        # Must return close to the deadline, NOT scale with repo count — 12
+        # repos / MAX_GH_WORKERS=4 workers * 1s sleep would be ~3s+ if queued
+        # jobs ran to completion instead of being cancelled at the deadline.
+        self.assertLess(elapsed, 1.0)
+        self.assertTrue(all(v["unverified"] for v in canonical.values()))
+
 
 if __name__ == "__main__":
     unittest.main()
