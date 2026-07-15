@@ -166,6 +166,10 @@ Before any write into a **public** (or unknown-visibility) repo, a **"Write anyw
 | `workPlan.autoFocusRepo` | `false` | When the open workspace folder is a configured repo, default the Tracks lens to that repo (resolved by clone path, then git remote) so you don't read another repo's issues by accident. **Off by default — the Tracks view shows every repo.** A manual lens choice always wins, and the **Select View → Focus current repo / Display all repos** toggle flips scoping any time — and rewrites this setting to match, so your last choice becomes the default. |
 | `workPlan.autoRefreshInterval` | `0` (off) | Re-poll the CLI silently in the background. Options: 0 (off), 30 s, 60 s, 5 min, 15 min. Useful when teammates are pushing shared-track changes and you want the tree to stay current without manual refreshes. |
 
+### Config-drift indicator
+
+On activation, the extension silently checks for config drift (a renamed local folder or GitHub repo that `config.yml` no longer matches, an invalid `notes_root`, a stale per-track repo slug, etc.). If it finds anything, a `⚠ Work Plan: N config issues` item appears in the status bar — click it to see the details in the "Work Plan" output channel. Nothing appears when everything's clean. Run `work-plan doctor --fix` from a terminal to correct the safe subset automatically, then reload the window.
+
 ## Build & run
 
 ```bash
