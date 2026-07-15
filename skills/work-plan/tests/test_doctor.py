@@ -232,7 +232,13 @@ class TestStep2LocalPathChecks(unittest.TestCase):
         self.assertEqual(_finding(findings, "missing_local"), [])
 
     def test_missing_local_path(self):
-        repos = {"foo": {"github": "org/foo", "local": "/definitely/not/here/xyz"}}
+        import tempfile
+        # Cross-platform absolute-but-nonexistent path. A hardcoded POSIX
+        # string like "/definitely/not/here/xyz" is NOT absolute on Windows
+        # (no drive letter), so it would hit local_path_relative first
+        # instead of missing_local — build it from a real absolute base.
+        missing = str(Path(tempfile.gettempdir()) / "wp-doctor-test-missing-xyz")
+        repos = {"foo": {"github": "org/foo", "local": missing}}
         findings = doctor._step2_findings(repos)
         self.assertEqual(len(_finding(findings, "missing_local")), 1)
 
@@ -343,7 +349,13 @@ class TestStep3WholeConfigChecks(unittest.TestCase):
         self.assertEqual(len(_finding(findings, "notes_root_invalid")), 1)
 
     def test_notes_root_missing(self):
-        cfg = {"notes_root": "/definitely/not/here/xyz"}
+        import tempfile
+        # Cross-platform absolute-but-nonexistent path — see
+        # test_missing_local_path for why a hardcoded POSIX string breaks
+        # on Windows (not absolute there, so notes_root_invalid fires
+        # instead of notes_root_missing).
+        missing = str(Path(tempfile.gettempdir()) / "wp-doctor-test-notes-root-xyz")
+        cfg = {"notes_root": missing}
         findings = doctor._step3_findings({}, {}, cfg)
         self.assertEqual(len(_finding(findings, "notes_root_missing")), 1)
 
