@@ -4,7 +4,9 @@ from datetime import datetime, date
 from pathlib import Path
 from lib.config import load_config, ConfigError, resolve_local_path_for_folder
 from lib.tracks import discover_tracks, discover_archived_tracks, find_tier_duplicates, issue_refs
-from lib.github_state import fetch_export_issues, fetch_open_issues, repo_visibility
+from lib.github_state import (
+    fetch_export_issues, fetch_open_issues_concurrent, fetch_visibility_concurrent,
+)
 from lib.git_state import hot_issue_numbers
 from lib.export_model import build_export, track_key
 from lib.prompts import parse_flags
@@ -87,10 +89,29 @@ def run(args: list[str]) -> int:
     # Bulk-fetch per repo (one gh call per repo) with per-issue fallback for misses.
     issue_map = fetch_export_issues(repo_to_numbers)
 
+    # First-seen order (not a set): out["untracked"] below iterates this
+    # directly to build JSON output, and Python's hash randomization makes set
+    # iteration order vary run-to-run — a real, silent nondeterminism bug in
+    # the emitted `untracked` array ordering.
+    tracked_repos = list(dict.fromkeys(t.repo for t in tracks if t.repo))
+    config_repo_slugs = [
+        block.get("github") for block in (cfg.get("repos") or {}).values()
+        if isinstance(block, dict) and block.get("github")
+    ]
+
+    # Bounded per-repo metadata phase (#424): visibility and open-issue reads
+    # were each a serial gh call per unique repo (viewer refresh latency grew
+    # linearly with repo count). Compute the full repo sets up front and fetch
+    # both concurrently — same shape as fetch_export_issues above — instead of
+    # blocking on one repo's network round-trip before starting the next.
+    visibility = fetch_visibility_concurrent(
+        list(dict.fromkeys(tracked_repos + config_repo_slugs))
+    )
+    open_issues_by_repo = fetch_open_issues_concurrent(tracked_repos)
+
     # Reassemble per-track lists, preserving each track's declared issue order.
     # Canonical track identity keeps same-named tracks in different repos apart.
     issues_by_track: dict[tuple[str, str], list] = {}
-    visibility: dict[str, object] = {}
     for t in tracks:
         nums = (t.meta.get("github", {}).get("issues")) or []
         if t.repo and nums:
@@ -101,8 +122,6 @@ def run(args: list[str]) -> int:
             ]
         else:
             issues_by_track[track_key(t)] = []
-        if t.repo and t.repo not in visibility:
-            visibility[t.repo] = repo_visibility(t.repo)
 
     # Compute untracked: open issues not referenced by any track, per repo.
     # Iterate over every repo that has ANY track — NOT just repos in
@@ -112,28 +131,19 @@ def run(args: list[str]) -> int:
     # previously-trackless repo makes its open issues vanish — neither in the
     # (empty) track nor in untracked, and the viewer's trackless fallback
     # (treeModel.mergeFetchedUntracked) shuts off the moment a track exists (#342).
-    # One `gh issue list` call per repo — bounded by the number of tracked repos
-    # (typically a handful), not by issue count, so a serial loop is fine.
-    # First-seen order (not a set): out["untracked"] below iterates this
-    # directly to build JSON output, and Python's hash randomization makes set
-    # iteration order vary run-to-run — a real, silent nondeterminism bug in
-    # the emitted `untracked` array ordering.
-    tracked_repos = list(dict.fromkeys(t.repo for t in tracks if t.repo))
     untracked_by_repo: dict[str, list] = {}
     for repo in tracked_repos:
         tracked = set(repo_to_numbers.get(repo, []))
-        open_rows = fetch_open_issues(repo)
+        open_rows = open_issues_by_repo.get(repo, [])
         untracked_by_repo[repo] = [r for r in open_rows if r.get("number") not in tracked]
 
     # Every CONFIGURED repo, regardless of whether any track references it (#288).
     # Lets the viewer show a registered-but-empty repo so the user can start
-    # adding tracks to it. visibility is filled here for repos no track covered.
+    # adding tracks to it.
     config_repos = []
     for folder, block in (cfg.get("repos") or {}).items():
         slug = block.get("github") if isinstance(block, dict) else None
         local = resolve_local_path_for_folder(folder, cfg)
-        if slug and slug not in visibility:
-            visibility[slug] = repo_visibility(slug)
         config_repos.append({
             "folder": folder,
             "repo": slug,

@@ -13,6 +13,7 @@ from lib.github_state import (
     fetch_repo_issues_graphql, fetch_export_issues, _normalize_gql_node,
     extract_priority, fetch_recent_issues, short_milestone,
     repo_visibility, _VIS_CACHE, fetch_open_issues, repo_full_name,
+    fetch_visibility_concurrent, fetch_open_issues_concurrent,
     gh_auth_status,
     _GQL_FIELDS_LEAN, _GQL_FIELDS_FULL,
     _gql_query, _GQL_ISSUE_DEPS,
@@ -103,6 +104,75 @@ class RepoVisibilityTest(unittest.TestCase):
         repo_visibility("o/r")
         repo_visibility("o/r")
         self.assertEqual(m.call_count, 1)
+
+
+class FetchVisibilityConcurrentTest(unittest.TestCase):
+    """Unit tests for the per-repo concurrent batch fetch_visibility_concurrent() (#424)."""
+
+    @patch("lib.github_state.repo_visibility")
+    def test_returns_keyed_dict_per_repo(self, mock_rv):
+        mock_rv.side_effect = lambda r: {"org/a": "PUBLIC", "org/b": "PRIVATE"}.get(r)
+        result = fetch_visibility_concurrent(["org/a", "org/b"])
+        self.assertEqual(result, {"org/a": "PUBLIC", "org/b": "PRIVATE"})
+
+    @patch("lib.github_state.repo_visibility")
+    def test_dedupes_repeated_repos(self, mock_rv):
+        mock_rv.return_value = "PUBLIC"
+        fetch_visibility_concurrent(["org/a", "org/a", "org/a"])
+        self.assertEqual(mock_rv.call_count, 1)
+
+    @patch("lib.github_state.repo_visibility")
+    def test_falsy_repos_filtered(self, mock_rv):
+        mock_rv.return_value = "PUBLIC"
+        result = fetch_visibility_concurrent(["org/a", None, "", "org/a"])
+        self.assertEqual(list(result.keys()), ["org/a"])
+
+    def test_empty_input_returns_empty_dict_no_gh_call(self):
+        with patch("lib.github_state.repo_visibility") as mock_rv:
+            self.assertEqual(fetch_visibility_concurrent([]), {})
+            mock_rv.assert_not_called()
+
+    @patch("lib.github_state.repo_visibility")
+    def test_runs_concurrently_not_serially(self, mock_rv):
+        """Delayed-fake proof (#424 acceptance criteria): N repos each taking
+        DELAY seconds complete in well under N*DELAY wall time when fetched
+        concurrently, instead of serially one after another."""
+        import time
+        DELAY = 0.2
+
+        def _slow(repo):
+            time.sleep(DELAY)
+            return "PUBLIC"
+        mock_rv.side_effect = _slow
+        repos = [f"org/repo{i}" for i in range(6)]
+        start = time.monotonic()
+        result = fetch_visibility_concurrent(repos, max_workers=6)
+        elapsed = time.monotonic() - start
+        self.assertEqual(len(result), 6)
+        self.assertLess(elapsed, DELAY * 3)
+
+    @patch("lib.github_state.repo_visibility")
+    def test_concurrency_bound_is_respected(self, mock_rv):
+        """Peak simultaneous in-flight calls never exceeds max_workers, and
+        does exceed 1 — proving work is genuinely bounded-concurrent, not
+        serial (#424 acceptance criteria)."""
+        import threading, time
+        lock = threading.Lock()
+        state = {"current": 0, "peak": 0}
+
+        def _tracked(repo):
+            with lock:
+                state["current"] += 1
+                state["peak"] = max(state["peak"], state["current"])
+            time.sleep(0.05)
+            with lock:
+                state["current"] -= 1
+            return "PUBLIC"
+        mock_rv.side_effect = _tracked
+        repos = [f"org/repo{i}" for i in range(10)]
+        fetch_visibility_concurrent(repos, max_workers=3)
+        self.assertLessEqual(state["peak"], 3)
+        self.assertGreater(state["peak"], 1)
 
 
 _ISSUE_JSON = '{"number": 1, "state": "OPEN", "labels": [], "title": "t", "milestone": null, "url": "u", "closedAt": null, "body": "", "updatedAt": "2026-01-01T00:00:00Z", "assignees": []}'
@@ -543,6 +613,78 @@ class FetchOpenIssuesTest(unittest.TestCase):
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(self._OPEN_ROWS))
         result = fetch_open_issues("o/r")
         self.assertIsInstance(result, list)
+
+
+class FetchOpenIssuesConcurrentTest(unittest.TestCase):
+    """Unit tests for the per-repo concurrent batch fetch_open_issues_concurrent() (#424)."""
+
+    @patch("lib.github_state.fetch_open_issues")
+    def test_returns_keyed_dict_per_repo(self, mock_foi):
+        mock_foi.side_effect = lambda repo: [{"number": 1, "repo": repo}]
+        result = fetch_open_issues_concurrent(["org/a", "org/b"])
+        self.assertEqual(result["org/a"], [{"number": 1, "repo": "org/a"}])
+        self.assertEqual(result["org/b"], [{"number": 1, "repo": "org/b"}])
+
+    @patch("lib.github_state.fetch_open_issues")
+    def test_dedupes_repeated_repos(self, mock_foi):
+        mock_foi.return_value = []
+        fetch_open_issues_concurrent(["org/a", "org/a", "org/a"])
+        self.assertEqual(mock_foi.call_count, 1)
+
+    @patch("lib.github_state.fetch_open_issues")
+    def test_falsy_repos_filtered(self, mock_foi):
+        mock_foi.return_value = []
+        result = fetch_open_issues_concurrent(["org/a", None, "", "org/a"])
+        self.assertEqual(list(result.keys()), ["org/a"])
+
+    def test_empty_input_returns_empty_dict_no_gh_call(self):
+        with patch("lib.github_state.fetch_open_issues") as mock_foi:
+            self.assertEqual(fetch_open_issues_concurrent([]), {})
+            mock_foi.assert_not_called()
+
+    @patch("lib.github_state.fetch_open_issues")
+    def test_runs_concurrently_not_serially(self, mock_foi):
+        """Delayed-fake proof (#424 acceptance criteria): N repos each taking
+        DELAY seconds complete in well under N*DELAY wall time when fetched
+        concurrently, instead of serially one after another."""
+        import time
+        DELAY = 0.2
+
+        def _slow(repo):
+            time.sleep(DELAY)
+            return []
+        mock_foi.side_effect = _slow
+        repos = [f"org/repo{i}" for i in range(6)]
+        start = time.monotonic()
+        result = fetch_open_issues_concurrent(repos, max_workers=6)
+        elapsed = time.monotonic() - start
+        self.assertEqual(len(result), 6)
+        # Serial would take 6*0.2=1.2s; concurrent (6 workers) should be close
+        # to one DELAY. Generous slack for scheduling jitter in CI.
+        self.assertLess(elapsed, DELAY * 3)
+
+    @patch("lib.github_state.fetch_open_issues")
+    def test_concurrency_bound_is_respected(self, mock_foi):
+        """Peak simultaneous in-flight calls never exceeds max_workers, and
+        does exceed 1 — proving work is genuinely bounded-concurrent, not
+        serial (#424 acceptance criteria)."""
+        import threading, time
+        lock = threading.Lock()
+        state = {"current": 0, "peak": 0}
+
+        def _tracked(repo):
+            with lock:
+                state["current"] += 1
+                state["peak"] = max(state["peak"], state["current"])
+            time.sleep(0.05)
+            with lock:
+                state["current"] -= 1
+            return []
+        mock_foi.side_effect = _tracked
+        repos = [f"org/repo{i}" for i in range(10)]
+        fetch_open_issues_concurrent(repos, max_workers=3)
+        self.assertLessEqual(state["peak"], 3)
+        self.assertGreater(state["peak"], 1)
 
 
 class GqlFieldSetsTest(unittest.TestCase):

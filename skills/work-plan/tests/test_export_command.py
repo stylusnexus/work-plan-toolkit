@@ -59,7 +59,8 @@ class ExportRunJsonTest(unittest.TestCase):
         with patch("commands.export.load_config", return_value={}), \
              patch("commands.export.discover_tracks", return_value=tracks), \
              patch("commands.export.fetch_export_issues", return_value=export_map) as mock_fei, \
-             patch("commands.export.repo_visibility", side_effect=lambda r: vis.get(r)), \
+             patch("commands.export.fetch_visibility_concurrent",
+                   side_effect=lambda repos: {r: vis.get(r) for r in repos}), \
              patch("commands.export.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
             buf = io.StringIO()
@@ -320,14 +321,13 @@ class ExportCommandUntrackedTest(unittest.TestCase):
 
         vis = vis or {_SHARED_REPO: "PUBLIC"}
 
-        def _fake_open_issues(repo, limit=1000):
-            return open_rows_by_repo.get(repo, [])
-
         with patch("commands.export.load_config", return_value={}), \
              patch("commands.export.discover_tracks", return_value=tracks), \
              patch("commands.export.fetch_export_issues", return_value=export_map), \
-             patch("commands.export.fetch_open_issues", side_effect=_fake_open_issues), \
-             patch("commands.export.repo_visibility", side_effect=lambda r: vis.get(r)), \
+             patch("commands.export.fetch_open_issues_concurrent",
+                   side_effect=lambda repos: {r: open_rows_by_repo.get(r, []) for r in repos}), \
+             patch("commands.export.fetch_visibility_concurrent",
+                   side_effect=lambda repos: {r: vis.get(r) for r in repos}), \
              patch("commands.export.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
             buf = io.StringIO()
@@ -575,8 +575,9 @@ class ExportHotByTrackTest(unittest.TestCase):
              patch("commands.export.discover_tracks", return_value=[track]), \
              patch("commands.export.fetch_export_issues",
                    return_value={("o/r", 1): issue}), \
-             patch("commands.export.fetch_open_issues", return_value=[]), \
-             patch("commands.export.repo_visibility", return_value="PRIVATE"), \
+             patch("commands.export.fetch_open_issues_concurrent", return_value={}), \
+             patch("commands.export.fetch_visibility_concurrent",
+                   side_effect=lambda repos: {r: "PRIVATE" for r in repos}), \
              patch("commands.export.resolve_local_path_for_folder",
                    return_value=Path("/repo")), \
              patch("commands.export.hot_issue_numbers", return_value={1}), \
