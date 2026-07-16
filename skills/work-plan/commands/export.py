@@ -7,23 +7,30 @@ from lib.tracks import discover_tracks, discover_archived_tracks, find_tier_dupl
 from lib.github_state import (
     fetch_export_issues, fetch_open_issues_concurrent, fetch_visibility_concurrent,
 )
-from lib.git_state import hot_issue_numbers
+from lib.git_state import hot_issue_numbers, paths_last_commit_dates
 from lib.export_model import build_export, track_key
 from lib.prompts import parse_flags
-from lib import doc_discovery
+from lib import doc_discovery, manifest
 from lib import verdict as verdict_mod
 from commands.plan_status import evaluate_doc
 
 
-def _plan_badge(track, cfg, today, dead_days, stall_days):
-    """Resolve a track's declared `plan:` link into an execution badge (#285).
+def _read_plan_text(path) -> str:
+    """Read a plan doc's text. Indirected so tests can patch it (mirrors
+    commands.plan_status._read)."""
+    return path.read_text(encoding="utf-8", errors="replace")
 
-    Returns None when the track declares no plan, `{rel, resolved: false}` when
-    the link can't be resolved (no local clone, or the file is absent), and the
-    full badge — verdict/glyph/files/phases/lie_gap/stalled/override — when it
-    resolves. The verdict is computed by the SAME evaluator plan-status uses, so a
-    badge never disagrees with the Plans view. Only the declared link is trusted;
-    there is no name-matching fallback (#285 acceptance criteria)."""
+
+def _resolve_plan_doc(track, cfg):
+    """Resolve a track's declared `plan:` link to (local, doc), ready for
+    scoring — or a final answer when resolution can't reach that point.
+
+    Returns None (no plan declared), `{rel, resolved: false}` (unresolvable —
+    absolute path, no local clone, file absent, or unsafe path), or the tuple
+    `(local: Path, doc: doc_discovery.Doc)`. Split out from the old _plan_badge
+    (#422) so run()'s batching pre-pass can discover which local clone each
+    track's plan doc lives in — grouping by clone, not just calling
+    _plan_badge fresh per track — without duplicating this resolution logic."""
     rel = track.meta.get("plan")
     if not isinstance(rel, str) or not rel.strip():
         return None
@@ -37,9 +44,31 @@ def _plan_badge(track, cfg, today, dead_days, stall_days):
     if not doc_discovery.is_safe_doc_path(doc_path, local):
         return {"rel": rel, "resolved": False}
     doc = doc_discovery.Doc(path=doc_path, rel=rel, kind=doc_discovery.classify_kind(rel))
-    row = evaluate_doc(doc, local, today, dead_days, stall_days)
+    return (local, doc)
+
+
+def _plan_badge(track, cfg, today, dead_days, stall_days, last_dates=None):
+    """Resolve a track's declared `plan:` link into an execution badge (#285).
+
+    Returns None when the track declares no plan, `{rel, resolved: false}` when
+    the link can't be resolved (no local clone, or the file is absent), and the
+    full badge — verdict/glyph/files/phases/lie_gap/stalled/override — when it
+    resolves. The verdict is computed by the SAME evaluator plan-status uses, so a
+    badge never disagrees with the Plans view. Only the declared link is trusted;
+    there is no name-matching fallback (#285 acceptance criteria).
+
+    `last_dates` (#422): an optional {rel: datetime} batched commit-date map for
+    this track's local clone, built once per clone by run() instead of once per
+    track — forwarded to evaluate_doc so it skips its own per-path git calls.
+    Omitted (None), evaluate_doc falls back to its original per-path behavior,
+    unchanged for direct callers/tests."""
+    resolved = _resolve_plan_doc(track, cfg)
+    if resolved is None or isinstance(resolved, dict):
+        return resolved
+    local, doc = resolved
+    row = evaluate_doc(doc, local, today, dead_days, stall_days, last_dates)
     return {
-        "rel": rel,
+        "rel": doc.rel,
         "resolved": True,
         "verdict": row["verdict"],
         "glyph": row["glyph"],
@@ -157,9 +186,39 @@ def run(args: list[str]) -> int:
     today = date.today()
     cfg_stall = cfg.get("stall_days")
     stall_days = cfg_stall if isinstance(cfg_stall, int) else verdict_mod.STALL_DAYS
+
+    # Batch git history for linked plans (#422): group resolvable plan docs by
+    # local clone (the same repo root plan-status batches per-invocation, #391)
+    # instead of evaluate_doc falling back to one git spawn per declared path
+    # per doc. Resolution itself (_resolve_plan_doc) is filesystem-only — no
+    # git calls — so doing it once here for grouping, and again inside
+    # _plan_badge below, costs nothing worth avoiding.
+    resolved_by_track: dict = {}
+    docs_by_local: dict = {}
+    for t in tracks:
+        r = _resolve_plan_doc(t, cfg)
+        resolved_by_track[track_key(t)] = r
+        if isinstance(r, tuple):
+            plan_local, doc = r
+            docs_by_local.setdefault(plan_local, []).append(doc)
+
+    last_dates_by_local: dict = {}
+    for plan_local, docs in docs_by_local.items():
+        batch_paths = set()
+        for doc in docs:
+            batch_paths.add(doc.rel)
+            try:
+                for dp in manifest.parse_declared_paths(_read_plan_text(doc.path)):
+                    batch_paths.add(dp.path)
+            except OSError:
+                pass
+        last_dates_by_local[plan_local] = paths_last_commit_dates(sorted(batch_paths), plan_local)
+
     plan_by_track: dict[tuple[str, str], dict] = {}
     for t in tracks:
-        badge = _plan_badge(t, cfg, today, verdict_mod.DEAD_DAYS, stall_days)
+        r = resolved_by_track[track_key(t)]
+        last_dates = last_dates_by_local[r[0]] if isinstance(r, tuple) else None
+        badge = _plan_badge(t, cfg, today, verdict_mod.DEAD_DAYS, stall_days, last_dates)
         if badge is not None:
             plan_by_track[track_key(t)] = badge
 
