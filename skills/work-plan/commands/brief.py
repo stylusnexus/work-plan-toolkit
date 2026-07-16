@@ -1,4 +1,6 @@
 """brief subcommand — fully featured."""
+from __future__ import annotations
+
 import os
 from datetime import datetime
 from pathlib import Path
@@ -108,9 +110,43 @@ def run(args: list[str]) -> int:
     print(framing)
     print()
 
+    # Batch same-repo GitHub reads across tracks (#420): tracks sharing a repo
+    # otherwise each re-fetch the same issue set / recent-issues list from
+    # scratch. Fetch once per repo here, then partition back into each track
+    # in _build_track_block — field coverage, ordering, and fail-soft fallback
+    # stay identical to the old per-track fetch (same underlying helpers, same
+    # per-track number/slug subsets, just fetched once instead of N times).
+    repo_tracks: dict = {}
+    for t in active:
+        if t.repo:
+            repo_tracks.setdefault(t.repo, []).append(t)
+
+    issues_by_repo: dict = {}
+    new_issues_by_repo: dict = {}
+    for repo, rtracks in repo_tracks.items():
+        all_nums = _numeric_refs(*[
+            ref_list
+            for rt in rtracks
+            for ref_list in (rt.meta.get("github", {}).get("issues") or [],
+                             rt.meta.get("next_up") or [])
+        ])
+        issues_by_repo[repo] = (
+            {i["number"]: i for i in fetch_issues(repo, all_nums)} if all_nums else {}
+        )
+
+        slugs = [rt.meta.get("track", rt.name) for rt in rtracks]
+        slug_labels = build_slug_labels(rtracks)
+        new_issues_by_repo[repo] = find_new_issues_for_tracks(
+            repo, slugs, slug_labels=slug_labels, since_days=7,
+        )
+
     blocks = []
     for t in active:
-        b = _build_track_block(t, cfg, now)
+        b = _build_track_block(
+            t, cfg, now,
+            repo_issues_by_num=issues_by_repo.get(t.repo, {}),
+            repo_new_issues=new_issues_by_repo.get(t.repo, {}),
+        )
         blocks.append((b["sort_key"], b))
 
     blocks.sort(key=lambda x: x[0])
@@ -142,10 +178,14 @@ def run(args: list[str]) -> int:
     return 0
 
 
-def _build_track_block(track, cfg, now: datetime) -> dict:
+def _build_track_block(track, cfg, now: datetime, *,
+                       repo_issues_by_num: dict | None = None,
+                       repo_new_issues: dict | None = None) -> dict:
     meta = track.meta
     repo = track.repo
     local = track.local_path
+    repo_issues_by_num = repo_issues_by_num or {}
+    repo_new_issues = repo_new_issues or {}
 
     issue_nums = meta.get("github", {}).get("issues") or []
     stored_next_up = meta.get("next_up") or []
@@ -153,7 +193,9 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
     # so stale closed entries surface as a clear signal rather than vanishing.
     # Only numeric refs are fetchable; string tokens in next_up are dropped (#417).
     fetch_nums = _numeric_refs(issue_nums, stored_next_up)
-    issues = fetch_issues(repo, fetch_nums) if (repo and fetch_nums) else []
+    # Partition this track's slice out of the repo-batched fetch (#420) instead
+    # of fetching it directly — same order, same skip-if-missing fallback.
+    issues = [repo_issues_by_num[n] for n in fetch_nums if n in repo_issues_by_num]
     issues_by_num = {i["number"]: i for i in issues}
 
     # When `next_up_auto: true` is set in track frontmatter, derive the list
@@ -225,18 +267,16 @@ def _build_track_block(track, cfg, now: datetime) -> dict:
         operational_status = stored_status
 
     track_slug = meta.get("track", track.name)
-    slug_labels = build_slug_labels([track])
-    new_issues_map = find_new_issues_for_tracks(repo, [track_slug], slug_labels=slug_labels, since_days=7) if repo else {}
     listed_set = set(issue_nums)
     new_issues = []
-    for issue in new_issues_map.get(track_slug, []):
+    for issue in repo_new_issues.get(track_slug, []):
         if issue["number"] in listed_set:
             continue
         new_issues.append({"number": issue["number"], "title": issue["title"]})
 
     drift_items = detect_drift(track.body, issues) if issues else []
 
-    related_recent_count = len(new_issues_map.get(track_slug, []))
+    related_recent_count = len(repo_new_issues.get(track_slug, []))
     signals = compute_signals(meta, issues, local, related_recent_count)
     closure_ready, _ = is_closure_ready(signals)
     if closure_ready:
