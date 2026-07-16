@@ -6,6 +6,18 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.19.4] - 2026-07-16
+
+### Added
+
+- This changelog file, so the Marketplace listing shows a Changelog tab.
+
+### Changed
+
+- Republished alongside paired CLI changes: a yq-capability installer check
+  (#433) and `brief`/`export` GitHub-read batching for a faster daily brief
+  and viewer refresh (#420, #424, #422). Extension code unchanged.
+
 ## [0.19.3] - 2026-07-16
 
 ### Added
