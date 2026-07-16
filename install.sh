@@ -86,6 +86,35 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 ok "all dependencies present"
 
+# 2.5 Verify yq is mikefarah/yq-capable (Go), not a same-named but incompatible
+# shim (e.g. kislyuk/yq, the Python jq wrapper). Presence alone passes both;
+# only mikefarah/yq supports the `-o=json` / `-P` flags the runtime requires
+# (lib/config.py, lib/frontmatter.py) — an incompatible yq otherwise passes
+# installation and only fails later, at the first config/frontmatter read (#433).
+yq_capable() {
+    local json_out yaml_out
+    json_out="$(printf 'work_plan_probe: 1\n' | yq -o=json . 2>/dev/null)" || return 1
+    printf '%s' "${json_out}" | python3 -c '
+import json, sys
+try:
+    ok = json.load(sys.stdin) == {"work_plan_probe": 1}
+except ValueError:
+    ok = False
+sys.exit(0 if ok else 1)
+' 2>/dev/null || return 1
+    yaml_out="$(printf '{"work_plan_probe":1}' | yq -P . 2>/dev/null)" || return 1
+    [ "$(printf '%s' "${yaml_out}" | tr -d '[:space:]')" = "work_plan_probe:1" ]
+}
+if ! yq_capable; then
+    err "yq on PATH does not behave like mikefarah/yq — it failed a JSON/YAML round-trip probe."
+    echo
+    echo "  This toolkit requires mikefarah/yq: https://github.com/mikefarah/yq"
+    echo "  Not kislyuk/yq (the Python jq wrapper) or another 'yq' shim — they take incompatible flags."
+    echo "  Install/upgrade:  brew install yq"
+    exit 1
+fi
+ok "yq is mikefarah/yq-capable"
+
 # 3. Copy skills (with marker file for safe uninstall)
 copy_skill() {
     local name="$1"

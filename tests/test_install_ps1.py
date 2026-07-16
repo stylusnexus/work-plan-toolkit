@@ -111,6 +111,24 @@ class InstallerPowerShellTest(unittest.TestCase):
         self.assertFalse((self.target / "commands/work-plan.md").exists())
         self.assertNotIn("Done.", result.stdout)
 
+    def test_incompatible_yq_is_rejected_before_any_writes(self):
+        toolbin = self.root / "toolbin"
+        toolbin.mkdir()
+        wrapper = toolbin / "yq.cmd"
+        wrapper.write_text(
+            "@echo off\r\n"
+            "echo yq: error: unrecognized arguments 1>&2\r\n"
+            "exit /b 2\r\n",
+            encoding="utf-8",
+        )
+        env = {**self.env, "PATH": f"{toolbin}{os.pathsep}{self.env['PATH']}"}
+        result = self.run_script("install.ps1", env=env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not behave like mikefarah/yq", result.stdout + result.stderr)
+        self.assertNotIn("Done.", result.stdout)
+        self.assertFalse((self.target / "bin/work-plan").exists())
+        self.assertFalse((self.target / "commands/work-plan.md").exists())
+
     def test_failed_smoke_is_fatal_and_never_prints_done(self):
         real_python = shutil.which("python") or sys.executable
         toolbin = self.root / "toolbin"
