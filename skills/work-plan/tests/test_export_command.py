@@ -562,6 +562,139 @@ class ExportPlanBadgeTest(unittest.TestCase):
         self.assertEqual(badge, {"rel": "docs/plans/p.md", "resolved": False})
 
 
+class ExportPlanBadgeBatchingTest(unittest.TestCase):
+    """#422: linked plans sharing a local clone batch their git history into
+    ONE paths_last_commit_dates call instead of one per doc/declared path."""
+
+    def _write_plan(self, root, rel, body):
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+
+    def _track(self, name, folder, plan_rel):
+        return SimpleNamespace(
+            name=name, repo="o/r", tier="private", folder=folder,
+            path=Path(f"/tmp/notes/{name}.md"), has_frontmatter=True,
+            meta={"status": "active", "plan": plan_rel, "github": {"repo": "o/r", "issues": []}})
+
+    def _run(self, tracks, local_by_folder, paths_side_effect=None):
+        import io
+        import tempfile as _tf
+        from contextlib import redirect_stdout
+        from datetime import date as _date
+
+        def _resolve_local(folder, cfg):
+            return local_by_folder.get(folder)
+
+        with patch("commands.export.load_config", return_value={}), \
+             patch("commands.export.discover_tracks", return_value=tracks), \
+             patch("commands.export.fetch_export_issues", return_value={}), \
+             patch("commands.export.fetch_visibility_concurrent", return_value={}), \
+             patch("commands.export.fetch_open_issues_concurrent", return_value={}), \
+             patch("commands.export.resolve_local_path_for_folder", side_effect=_resolve_local), \
+             patch("commands.export.paths_last_commit_dates",
+                   side_effect=paths_side_effect or (lambda paths, root: {})) as mock_pld, \
+             patch("commands.export.datetime") as mock_dt:
+            mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = export_cmd.run(["--json"])
+            return rc, json.loads(buf.getvalue()), mock_pld
+
+    def test_two_tracks_same_clone_share_one_batched_call(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._write_plan(root, "docs/plans/a.md",
+                             "# A\n**Files:**\n- Create: `src/a.ts`\n")
+            self._write_plan(root, "docs/plans/b.md",
+                             "# B\n**Files:**\n- Create: `src/b.ts`\n")
+            (root / "src").mkdir()
+            (root / "src/a.ts").write_text("a")
+            (root / "src/b.ts").write_text("b")
+            track_a = self._track("alpha", "demo", "docs/plans/a.md")
+            track_b = self._track("beta", "demo", "docs/plans/b.md")
+
+            rc, out, mock_pld = self._run([track_a, track_b], {"demo": root})
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(mock_pld.call_count, 1)
+            called_paths, called_root = mock_pld.call_args[0]
+            self.assertEqual(called_root, root)
+            self.assertEqual(
+                set(called_paths),
+                {"docs/plans/a.md", "docs/plans/b.md", "src/a.ts", "src/b.ts"},
+            )
+
+    def test_two_tracks_different_clones_batch_independently(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+            root1, root2 = Path(d1), Path(d2)
+            self._write_plan(root1, "docs/plans/a.md", "# A\n")
+            self._write_plan(root2, "docs/plans/b.md", "# B\n")
+            track_a = self._track("alpha", "repo1", "docs/plans/a.md")
+            track_b = self._track("beta", "repo2", "docs/plans/b.md")
+
+            rc, out, mock_pld = self._run(
+                [track_a, track_b], {"repo1": root1, "repo2": root2})
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(mock_pld.call_count, 2)
+            roots_called = {c.args[1] for c in mock_pld.call_args_list}
+            self.assertEqual(roots_called, {root1, root2})
+
+    def test_unresolved_tracks_never_trigger_a_batch_call(self):
+        track = self._track("alpha", "missing", "docs/plans/a.md")
+        rc, out, mock_pld = self._run([track], {})  # no local clone resolves
+        self.assertEqual(rc, 0)
+        mock_pld.assert_not_called()
+
+    def test_overlapping_declared_path_across_two_plans_deduped_in_one_call(self):
+        """Two linked plans in the same clone that both declare the SAME
+        path — the shared path appears once in the batched request."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._write_plan(root, "docs/plans/a.md",
+                             "# A\n**Files:**\n- Create: `src/shared.ts`\n")
+            self._write_plan(root, "docs/plans/b.md",
+                             "# B\n**Files:**\n- Modify: `src/shared.ts`\n")
+            (root / "src").mkdir()
+            (root / "src/shared.ts").write_text("shared")
+            track_a = self._track("alpha", "demo", "docs/plans/a.md")
+            track_b = self._track("beta", "demo", "docs/plans/b.md")
+
+            rc, out, mock_pld = self._run([track_a, track_b], {"demo": root})
+
+            self.assertEqual(mock_pld.call_count, 1)
+            called_paths = mock_pld.call_args[0][0]
+            self.assertEqual(called_paths.count("src/shared.ts"), 1)
+
+    def test_batched_run_produces_correct_verdict_and_lie_gap(self):
+        """Same body/expected verdict as ExportPlanBadgeTest's direct-call
+        test_resolved_badge_with_lie_gap — batching changes call count, not
+        verdict/lie_gap semantics."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            body = ("# P\n\n**Files:**\n- Create: `src/new.ts`\n"
+                    "- [ ] Step 1\n- [ ] Step 2\n")
+            self._write_plan(root, "docs/plans/p.md", body)
+            (root / "src").mkdir()
+            (root / "src/new.ts").write_text("export const x = 1")
+            track = self._track("alpha", "demo", "docs/plans/p.md")
+
+            rc, out, mock_pld = self._run([track], {"demo": root})
+
+        self.assertEqual(rc, 0)
+        badge = out["tracks"][0]["plan"]
+        self.assertTrue(badge["resolved"])
+        self.assertEqual(badge["verdict"], "shipped")
+        self.assertEqual(badge["files_present"], 1)
+        self.assertEqual(badge["files_declared"], 1)
+        self.assertTrue(badge["lie_gap"])
+
+
 class ExportHotByTrackTest(unittest.TestCase):
     def test_export_marks_in_progress_from_hot_branch(self):
         import io
