@@ -378,6 +378,19 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
         return []
 
 
+def fetch_open_issues_concurrent(repos: Iterable[str], max_workers: int = MAX_FETCH_WORKERS) -> dict:
+    """Fetch fetch_open_issues() for each of `repos` concurrently, deduped
+    (first-seen order irrelevant — result is keyed by repo). Returns
+    {repo: [issue_row, ...]}. Empty/falsy repos filtered; empty input -> {}.
+    Never raises — fetch_open_issues() is itself fail-soft per repo."""
+    unique_repos = list(dict.fromkeys(r for r in repos if r))
+    if not unique_repos:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(unique_repos))) as ex:
+        results = list(ex.map(fetch_open_issues, unique_repos))
+    return dict(zip(unique_repos, results))
+
+
 def fetch_recent_issues(repo: str, since_iso: str, extra_labels: Optional[list[str]] = None) -> list[dict]:
     """Fetch issues created since `since_iso` (date YYYY-MM-DD)."""
     if not _valid_repo(repo):
@@ -431,6 +444,22 @@ def repo_visibility(repo: str) -> Optional[str]:
             vis = None
     _VIS_CACHE[repo] = vis
     return vis
+
+
+def fetch_visibility_concurrent(repos: Iterable[str], max_workers: int = MAX_FETCH_WORKERS) -> dict:
+    """Fetch repo_visibility() for each of `repos` concurrently, deduped.
+    Returns {repo: 'PUBLIC'|'PRIVATE'|None}. Empty/falsy repos filtered;
+    empty input -> {}. Never raises — repo_visibility() is itself fail-soft.
+    repo_visibility()'s own _VIS_CACHE dict may see a benign redundant gh
+    call under a race on first-ever lookup for a repo (plain dict, no lock)
+    — never incorrect data, just a duplicate subprocess in the rare case two
+    threads both miss the cache for the same repo simultaneously."""
+    unique_repos = list(dict.fromkeys(r for r in repos if r))
+    if not unique_repos:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(unique_repos))) as ex:
+        results = list(ex.map(repo_visibility, unique_repos))
+    return dict(zip(unique_repos, results))
 
 
 def repo_full_name(slug: str) -> Optional[str]:

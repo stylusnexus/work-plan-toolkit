@@ -59,7 +59,8 @@ class ExportRunJsonTest(unittest.TestCase):
         with patch("commands.export.load_config", return_value={}), \
              patch("commands.export.discover_tracks", return_value=tracks), \
              patch("commands.export.fetch_export_issues", return_value=export_map) as mock_fei, \
-             patch("commands.export.repo_visibility", side_effect=lambda r: vis.get(r)), \
+             patch("commands.export.fetch_visibility_concurrent",
+                   side_effect=lambda repos: {r: vis.get(r) for r in repos}), \
              patch("commands.export.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
             buf = io.StringIO()
@@ -320,14 +321,13 @@ class ExportCommandUntrackedTest(unittest.TestCase):
 
         vis = vis or {_SHARED_REPO: "PUBLIC"}
 
-        def _fake_open_issues(repo, limit=1000):
-            return open_rows_by_repo.get(repo, [])
-
         with patch("commands.export.load_config", return_value={}), \
              patch("commands.export.discover_tracks", return_value=tracks), \
              patch("commands.export.fetch_export_issues", return_value=export_map), \
-             patch("commands.export.fetch_open_issues", side_effect=_fake_open_issues), \
-             patch("commands.export.repo_visibility", side_effect=lambda r: vis.get(r)), \
+             patch("commands.export.fetch_open_issues_concurrent",
+                   side_effect=lambda repos: {r: open_rows_by_repo.get(r, []) for r in repos}), \
+             patch("commands.export.fetch_visibility_concurrent",
+                   side_effect=lambda repos: {r: vis.get(r) for r in repos}), \
              patch("commands.export.datetime") as mock_dt:
             mock_dt.now.return_value.strftime.return_value = "2026-06-07T12:00:00"
             buf = io.StringIO()
@@ -406,6 +406,25 @@ class ExportCommandUntrackedTest(unittest.TestCase):
         export_map = {(_SHARED_REPO, 1): _ISSUE_A}
         rc, out = self._run_with_mocks(tracks, export_map, open_rows)
         json.dumps(out)  # must not raise
+
+    def test_untracked_order_is_deterministic_across_many_repos(self):
+        """`tracked_repos` must be a first-seen-order list, not a set — a set's
+        iteration order varies run-to-run (hash randomization), which would
+        make `out["untracked"]`'s ordering nondeterministic since it iterates
+        that structure directly to build output (no sort downstream)."""
+        repo_names = [f"org/repo{i}" for i in range(8)]
+        tracks = [_track(f"t{i}", repo_names[i], [i]) for i in range(8)]
+        export_map = {(repo_names[i], i): {"number": i, "title": f"issue{i}",
+                                            "state": "OPEN", "assignees": [], "milestone": None}
+                      for i in range(8)}
+        open_rows = {r: [{"number": 900 + idx, "title": "extra", "state": "OPEN",
+                          "assignees": [], "milestone": None}]
+                     for idx, r in enumerate(repo_names)}
+        vis = {r: "PUBLIC" for r in repo_names}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows, vis=vis)
+        self.assertEqual(rc, 0)
+        seen_order = [entry["repo"] for entry in out["untracked"]]
+        self.assertEqual(seen_order, repo_names)
 
 
 class ExportCommandGateTest(unittest.TestCase):
@@ -556,8 +575,9 @@ class ExportHotByTrackTest(unittest.TestCase):
              patch("commands.export.discover_tracks", return_value=[track]), \
              patch("commands.export.fetch_export_issues",
                    return_value={("o/r", 1): issue}), \
-             patch("commands.export.fetch_open_issues", return_value=[]), \
-             patch("commands.export.repo_visibility", return_value="PRIVATE"), \
+             patch("commands.export.fetch_open_issues_concurrent", return_value={}), \
+             patch("commands.export.fetch_visibility_concurrent",
+                   side_effect=lambda repos: {r: "PRIVATE" for r in repos}), \
              patch("commands.export.resolve_local_path_for_folder",
                    return_value=Path("/repo")), \
              patch("commands.export.hot_issue_numbers", return_value={1}), \
