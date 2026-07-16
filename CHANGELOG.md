@@ -6,6 +6,18 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.16+e76ad81 — 2026-07-16 (#444)
+
+chore: post-merge follow-ups for doctor release (#439)
+
+### Summary
+- Bump VS Code `MIN_CLI_VERSION` to `2026.07.15` to match the CLI's `doctor` subcommand release
+- Bump `vscode/package.json` to `0.19.3` and update `vscode/README.md` Status section for the config-drift-detection feature
+
+Follow-up commits to the already-merged #442 (doctor config-drift detection, #439), required before the VS Code Marketplace publish step of this release.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.07.15+cc41310 — 2026-07-15 (#443)
 
 feat: doctor subcommand — config-drift detection + VS Code status-bar hook
