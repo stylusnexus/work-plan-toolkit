@@ -6,6 +6,27 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.16+015434c — 2026-07-16 (#451)
+
+fix(installer): yq capability check + brief/export perf batching
+
+### Fixed
+
+- Both installers only checked that a command named `yq` exists — an incompatible implementation (e.g. kislyuk/yq, the Python jq wrapper) passed that check and then failed at the first config/frontmatter read. Both installers now run a trivial JSON/YAML round-trip probe before any install writes, rejecting incompatible `yq` shims with a clear remediation message. (#433)
+- `export --json`'s `untracked` array ordering was silently nondeterministic (a set iteration order that varies with Python's hash randomization) — fixed to a first-seen-order list. Found and fixed alongside #424.
+
+### Changed
+
+- `brief` now groups active tracks by repo and fetches issue state + recent issues once per repo instead of once per track — a 10-track, one-repo brief made 20 GitHub operations where 2 repo-level fetches suffice. (#420)
+- `export --json` now fetches per-repo visibility and open-issue state concurrently (bounded thread pool) instead of serially — measured 20.0s → 9.8s on 6 real repos. (#424)
+- `export --json` now batches linked plan-badge git history per local clone (reusing plan-status's existing #391 batching machinery) instead of one git spawn per declared path per doc. (#422)
+
+### Added
+
+- `vscode/CHANGELOG.md`, so the Marketplace listing shows a Changelog tab (previously only Details/Features/Dependencies) — seeded with the last 3 published versions.
+
+All four functional changes verified against real GitHub/git data (not just mocks) with before/after output diffs showing zero behavior change; full test suite green (1364 CLI tests + 21 installer/root tests); each PR passed an independent code review pass with no unresolved findings.
+
 ## 2026.07.16+e76ad81 — 2026-07-16 (#444)
 
 chore: post-merge follow-ups for doctor release (#439)
