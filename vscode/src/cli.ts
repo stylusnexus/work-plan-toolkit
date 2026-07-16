@@ -374,20 +374,25 @@ export async function runWrite(
 
 /**
  * The CalVer date of the oldest CLI the extension can drive. This is the
- * 2026.06.14 release, which added the per-issue `in_progress` export field +
- * `in-progress` subcommand (#271) AND the `blocked_by`/`blocking` export edges
- * (#257) — the in-progress badge/toggle and the dependency graph/chips depend
- * on these. An older CLI omits the fields, so checkVersion surfaces a compat
- * warning instead of letting those surfaces silently fail.
+ * 2026.07.15 release, which added the `doctor` subcommand (#439) — the new
+ * status-bar config-drift indicator calls `doctor --json` at activation, and
+ * an older CLI doesn't have the subcommand at all, so checkVersion surfaces a
+ * compat warning instead of the doctor call silently no-op'ing with zero
+ * signal as to why.
  *
  * INVARIANT: never set this ahead of the repo's own `VERSION` file — the
  * extension and the CLI it ships alongside reach `main` in the same deploy, so
  * the gate must equal (not exceed) that deploy's CalVer. A test in cli.test.ts
  * enforces `meetsMinVersion(<VERSION>, MIN_CLI_VERSION)`. (0.9.0 shipped this
  * one day ahead — "2026.06.15" vs a 2026.06.14 deploy — so every updated user
- * got a false "CLI incompatible" warning; 0.9.1 corrects it.)
+ * got a false "CLI incompatible" warning; 0.9.1 corrects it. This bump is a
+ * deliberate follow-up commit made AFTER the #439 merge, once VERSION was
+ * actually stamped — see docs/superpowers/specs/2026-07-15-config-drift-doctor-design.md's
+ * "Rollout sequencing," since bumping this in the same PR as the feature
+ * would set it ahead of the still-old checked-in VERSION and fail this exact
+ * invariant test.)
  */
-export const MIN_CLI_VERSION = "2026.06.15";
+export const MIN_CLI_VERSION = "2026.07.15";
 
 /**
  * Parses the version token from `work-plan --version` output.
