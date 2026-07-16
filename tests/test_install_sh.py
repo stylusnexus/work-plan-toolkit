@@ -9,8 +9,31 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
+# Minimal mikefarah/yq-compatible stub: only handles the literal capability
+# probe install.sh runs (#433) — a canned response keyed off the exact args,
+# ignoring stdin. Anything else (e.g. the CLI's own config read) is a no-op
+# exit 0, matching this suite's pre-existing tolerance for that path.
+COMPATIBLE_YQ_STUB = """#!/bin/sh
+case "$*" in
+    "-o=json .") printf '{\\n  "work_plan_probe": 1\\n}\\n' ;;
+    "-P .") printf 'work_plan_probe: 1\\n' ;;
+    *) exit 0 ;;
+esac
+"""
+
+# Mimics kislyuk/yq (the Python jq wrapper): doesn't understand mikefarah's
+# `-o=json` / `-P` flags and fails loudly instead of round-tripping YAML/JSON.
+INCOMPATIBLE_YQ_STUB = """#!/bin/sh
+echo "yq: error: unrecognized arguments: $*" >&2
+exit 2
+"""
+
 
 class InstallerShellTest(unittest.TestCase):
+    def write_yq_stub(self, contents):
+        stub = self.toolbin / "yq"
+        stub.write_text(contents)
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
     def setUp(self):
         if os.name == "nt":
             self.skipTest("bash installer is covered on Unix")
@@ -21,10 +44,11 @@ class InstallerShellTest(unittest.TestCase):
         self.target.mkdir()
         self.toolbin = self.root / "bin"
         self.toolbin.mkdir()
-        for name in ("gh", "git", "yq"):
+        for name in ("gh", "git"):
             stub = self.toolbin / name
             stub.write_text("#!/bin/sh\nexit 0\n")
             stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+        self.write_yq_stub(COMPATIBLE_YQ_STUB)
         (self.toolbin / "python3").symlink_to(sys.executable)
         self.env = {
             **os.environ,
@@ -115,6 +139,20 @@ class InstallerShellTest(unittest.TestCase):
         self.assertFalse((self.target / "bin/work-plan").exists())
         self.assertFalse((self.target / "commands/work-plan.md").exists())
         self.assertNotIn("Done.", result.stdout)
+
+    def test_incompatible_yq_is_rejected_before_any_writes(self):
+        self.write_yq_stub(INCOMPATIBLE_YQ_STUB)
+
+        result = self.run_script("install.sh")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not behave like mikefarah/yq", result.stderr)
+        self.assertIn("mikefarah/yq", result.stdout + result.stderr)
+        self.assertNotIn("Done.", result.stdout)
+        self.assertFalse((self.target / "skills").exists()
+                          and any((self.target / "skills").iterdir()))
+        self.assertFalse((self.target / "bin/work-plan").exists())
+        self.assertFalse((self.target / "commands/work-plan.md").exists())
 
     def test_failed_smoke_is_fatal_and_never_prints_done(self):
         real_python = sys.executable
