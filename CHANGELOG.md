@@ -6,6 +6,14 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.16+bcb403e — 2026-07-16 (#453)
+
+chore(vscode): bump to v0.19.4 for the changelog tab
+
+### Changed
+
+- VS Code extension bumped to 0.19.4 — republish only, no extension code change. Bundles the new `vscode/CHANGELOG.md` (added in the previous deploy, #450) so the Marketplace listing's Changelog tab actually reflects it — the tab only refreshes on a new publish, and 0.19.3 was packaged before that file existed. Paired with the CLI release already on `main` (yq capability check #433, `brief`/`export` batching #420/#424/#422).
+
 ## 2026.07.16+015434c — 2026-07-16 (#451)
 
 fix(installer): yq capability check + brief/export perf batching
