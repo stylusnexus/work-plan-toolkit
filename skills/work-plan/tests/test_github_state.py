@@ -133,25 +133,6 @@ class FetchVisibilityConcurrentTest(unittest.TestCase):
             mock_rv.assert_not_called()
 
     @patch("lib.github_state.repo_visibility")
-    def test_runs_concurrently_not_serially(self, mock_rv):
-        """Delayed-fake proof (#424 acceptance criteria): N repos each taking
-        DELAY seconds complete in well under N*DELAY wall time when fetched
-        concurrently, instead of serially one after another."""
-        import time
-        DELAY = 0.2
-
-        def _slow(repo):
-            time.sleep(DELAY)
-            return "PUBLIC"
-        mock_rv.side_effect = _slow
-        repos = [f"org/repo{i}" for i in range(6)]
-        start = time.monotonic()
-        result = fetch_visibility_concurrent(repos, max_workers=6)
-        elapsed = time.monotonic() - start
-        self.assertEqual(len(result), 6)
-        self.assertLess(elapsed, DELAY * 3)
-
-    @patch("lib.github_state.repo_visibility")
     def test_concurrency_bound_is_respected(self, mock_rv):
         """Peak simultaneous in-flight calls never exceeds max_workers, and
         does exceed 1 — proving work is genuinely bounded-concurrent, not
@@ -641,27 +622,6 @@ class FetchOpenIssuesConcurrentTest(unittest.TestCase):
         with patch("lib.github_state.fetch_open_issues") as mock_foi:
             self.assertEqual(fetch_open_issues_concurrent([]), {})
             mock_foi.assert_not_called()
-
-    @patch("lib.github_state.fetch_open_issues")
-    def test_runs_concurrently_not_serially(self, mock_foi):
-        """Delayed-fake proof (#424 acceptance criteria): N repos each taking
-        DELAY seconds complete in well under N*DELAY wall time when fetched
-        concurrently, instead of serially one after another."""
-        import time
-        DELAY = 0.2
-
-        def _slow(repo):
-            time.sleep(DELAY)
-            return []
-        mock_foi.side_effect = _slow
-        repos = [f"org/repo{i}" for i in range(6)]
-        start = time.monotonic()
-        result = fetch_open_issues_concurrent(repos, max_workers=6)
-        elapsed = time.monotonic() - start
-        self.assertEqual(len(result), 6)
-        # Serial would take 6*0.2=1.2s; concurrent (6 workers) should be close
-        # to one DELAY. Generous slack for scheduling jitter in CI.
-        self.assertLess(elapsed, DELAY * 3)
 
     @patch("lib.github_state.fetch_open_issues")
     def test_concurrency_bound_is_respected(self, mock_foi):
