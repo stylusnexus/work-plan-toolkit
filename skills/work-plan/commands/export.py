@@ -114,7 +114,11 @@ def run(args: list[str]) -> int:
     # (treeModel.mergeFetchedUntracked) shuts off the moment a track exists (#342).
     # One `gh issue list` call per repo — bounded by the number of tracked repos
     # (typically a handful), not by issue count, so a serial loop is fine.
-    tracked_repos = {t.repo for t in tracks if t.repo}
+    # First-seen order (not a set): out["untracked"] below iterates this
+    # directly to build JSON output, and Python's hash randomization makes set
+    # iteration order vary run-to-run — a real, silent nondeterminism bug in
+    # the emitted `untracked` array ordering.
+    tracked_repos = list(dict.fromkeys(t.repo for t in tracks if t.repo))
     untracked_by_repo: dict[str, list] = {}
     for repo in tracked_repos:
         tracked = set(repo_to_numbers.get(repo, []))

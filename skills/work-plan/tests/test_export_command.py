@@ -407,6 +407,25 @@ class ExportCommandUntrackedTest(unittest.TestCase):
         rc, out = self._run_with_mocks(tracks, export_map, open_rows)
         json.dumps(out)  # must not raise
 
+    def test_untracked_order_is_deterministic_across_many_repos(self):
+        """`tracked_repos` must be a first-seen-order list, not a set — a set's
+        iteration order varies run-to-run (hash randomization), which would
+        make `out["untracked"]`'s ordering nondeterministic since it iterates
+        that structure directly to build output (no sort downstream)."""
+        repo_names = [f"org/repo{i}" for i in range(8)]
+        tracks = [_track(f"t{i}", repo_names[i], [i]) for i in range(8)]
+        export_map = {(repo_names[i], i): {"number": i, "title": f"issue{i}",
+                                            "state": "OPEN", "assignees": [], "milestone": None}
+                      for i in range(8)}
+        open_rows = {r: [{"number": 900 + idx, "title": "extra", "state": "OPEN",
+                          "assignees": [], "milestone": None}]
+                     for idx, r in enumerate(repo_names)}
+        vis = {r: "PUBLIC" for r in repo_names}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows, vis=vis)
+        self.assertEqual(rc, 0)
+        seen_order = [entry["repo"] for entry in out["untracked"]]
+        self.assertEqual(seen_order, repo_names)
+
 
 class ExportCommandGateTest(unittest.TestCase):
     def test_requires_json_flag(self):
