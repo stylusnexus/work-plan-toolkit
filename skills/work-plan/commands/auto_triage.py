@@ -173,6 +173,17 @@ def run(args: list[str]) -> int:
     # Progress goes to stderr so --json keeps stdout a single clean JSON object.
     print(f"Fetching open issues from {repo}...", file=sys.stderr)
     open_issues = fetch_open_issues(repo, limit=500)
+
+    if open_issues is None:
+        error_msg = "could not fetch open issues from GitHub (gh call failed)"
+        if json_mode:
+            print(json.dumps({"repo": repo, "folder": folder,
+                              "tracks": [], "untracked": [],
+                              "note": "fetch_failed", "error": error_msg}))
+        else:
+            print(f"ERROR: {error_msg} for {repo}.")
+        return 1
+
     untracked = [i for i in open_issues if i.get("number") not in tracked_nums]
 
     if not untracked:

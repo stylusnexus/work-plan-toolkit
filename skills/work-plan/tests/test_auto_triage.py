@@ -432,6 +432,26 @@ class AutoTriageJsonEarlyExitTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("group", out)  # the human guidance still shows
 
+    def test_fetch_failure_json_mode_reports_fetch_failed_note(self):
+        cfg = _make_cfg()
+        tracks = [_make_track("auth-flow", "org/myrepo", [1, 2])]
+        rc, out, _ = _drive_prepare(["--json"], cfg=cfg, tracks=tracks,
+                                    open_issues=None)
+        data = json.loads(out.strip())
+        self.assertEqual(rc, 1)
+        self.assertEqual(data["note"], "fetch_failed")
+        self.assertEqual(data["untracked"], [])
+        self.assertIn("error", data)
+
+    def test_fetch_failure_human_mode_prints_error_not_full_coverage(self):
+        cfg = _make_cfg()
+        tracks = [_make_track("auth-flow", "org/myrepo", [1, 2])]
+        rc, out, _ = _drive_prepare([], cfg=cfg, tracks=tracks,
+                                    open_issues=None)
+        self.assertEqual(rc, 1)
+        self.assertIn("could not fetch open issues", out)
+        self.assertNotIn("full coverage", out)
+
 
 class AutoTriageV2AnswersTest(unittest.TestCase):
     """v2 abstain-first answers schema (#241) + back-compat with v1."""
