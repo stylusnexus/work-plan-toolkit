@@ -6,6 +6,17 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.18+a345203 — 2026-07-18 (#455)
+
+fix: surface GitHub fetch failures instead of false-empty results
+
+### Fixed
+
+- `fetch_open_issues()` no longer converts a failed GitHub fetch (bad repo, timeout, non-zero `gh` exit, malformed JSON, rate-limiting) into an indistinguishable empty list. `coverage`, `auto-triage`, `list-open-issues`, and `export` now report the failure explicitly instead of silently claiming "no open issues" / "full coverage."
+- `export --json` gains an additive `github_fetch_errors` field; the VS Code extension retains a repo's last-known Untracked bucket and shows a "⚠ GitHub fetch failed" warning instead of implying zero untracked issues, and Suggest Tracks warns distinctly on a fetch failure rather than claiming full coverage.
+
+PR: #454
+
 ## 2026.07.16+bcb403e — 2026-07-16 (#453)
 
 chore(vscode): bump to v0.19.4 for the changelog tab
