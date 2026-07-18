@@ -867,43 +867,44 @@ describe("mergeStaleUntracked", () => {
     fetchFailed: false,
   });
 
-  test("returns repos unchanged when there is no previous export", () => {
+  test("returns repos unchanged when the map is empty", () => {
     const repos = [failedRepoNode("o/r")];
-    assert.equal(mergeStaleUntracked(repos, null), repos);
+    assert.equal(mergeStaleUntracked(repos, new Map()), repos);
   });
 
-  test("retains previous untracked for a fetchFailed repo", () => {
-    const previous: Export = {
-      schema: 1, generated_at: "earlier", tracks: [],
-      untracked: [{ repo: "o/r", issues: [issue(1)] }],
-    };
-    const [out] = mergeStaleUntracked([failedRepoNode("o/r")], previous);
+  test("retains last-known untracked for a fetchFailed repo", () => {
+    const lastGood = new Map([["o/r", [issue(1)]]]);
+    const [out] = mergeStaleUntracked([failedRepoNode("o/r")], lastGood);
     assert.deepEqual(out.untracked.map(i => i.number), [1]);
   });
 
   test("does not touch a repo whose fetch did not fail", () => {
-    const previous: Export = {
-      schema: 1, generated_at: "earlier", tracks: [],
-      untracked: [{ repo: "o/r", issues: [issue(1)] }],
-    };
-    const [out] = mergeStaleUntracked([okRepoNode("o/r")], previous);
+    const lastGood = new Map([["o/r", [issue(1)]]]);
+    const [out] = mergeStaleUntracked([okRepoNode("o/r")], lastGood);
     assert.equal(out.untracked.length, 0);
   });
 
-  test("leaves a fetchFailed repo with no prior data untouched", () => {
-    const previous: Export = { schema: 1, generated_at: "earlier", tracks: [] };
+  test("leaves a fetchFailed repo with no prior entry untouched", () => {
     const repos = [failedRepoNode("o/r")];
-    const out = mergeStaleUntracked(repos, previous);
+    const out = mergeStaleUntracked(repos, new Map([["o/other", [issue(1)]]]));
     assert.equal(out[0].untracked.length, 0);
   });
 
+  test("survives multiple consecutive failed refreshes for the same repo (#454 review)", () => {
+    // The map is populated once from a genuinely successful fetch and never
+    // touched again while o/r keeps failing — simulating 3 consecutive
+    // failed refreshes reusing the SAME map, as the real provider does.
+    const lastGood = new Map([["o/r", [issue(1), issue(2)]]]);
+    for (let i = 0; i < 3; i++) {
+      const [out] = mergeStaleUntracked([failedRepoNode("o/r")], lastGood);
+      assert.deepEqual(out.untracked.map(x => x.number), [1, 2]);
+    }
+  });
+
   test("does not mutate the input nodes", () => {
-    const previous: Export = {
-      schema: 1, generated_at: "earlier", tracks: [],
-      untracked: [{ repo: "o/r", issues: [issue(1)] }],
-    };
+    const lastGood = new Map([["o/r", [issue(1)]]]);
     const repos = [failedRepoNode("o/r")];
-    mergeStaleUntracked(repos, previous);
+    mergeStaleUntracked(repos, lastGood);
     assert.equal(repos[0].untracked.length, 0); // original unchanged
   });
 });

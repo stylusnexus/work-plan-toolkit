@@ -400,19 +400,22 @@ export function mergeFetchedUntracked(
 /**
  * Retains a repo's last-known `untracked` issues when the CLI reports its
  * open-issues fetch failed this refresh (`Export.github_fetch_errors`),
- * instead of showing an implied-empty Untracked bucket. `previous` is the
- * last successfully loaded export (`WorkPlanTreeProvider.rawExport` before
- * the new load lands); a repo with no prior data, or a fresh `previous`,
- * is left exactly as `buildTree` produced it. Pure, non-mutating.
+ * instead of showing an implied-empty Untracked bucket. `lastGoodUntracked`
+ * is a PERSISTENT per-repo map (`WorkPlanTreeProvider._lastGoodUntrackedByRepo`)
+ * updated only from a repo's genuinely successful fetch — never overwritten
+ * to empty while that repo keeps failing — so retention survives any number
+ * of consecutive failed refreshes and every re-render path (sort/lens/fetch),
+ * not just the single refresh immediately after a good one. A repo with no
+ * prior entry is left exactly as `buildTree` produced it. Pure, non-mutating.
  */
 export function mergeStaleUntracked(
   repos: RepoNode[],
-  previous: Export | null,
+  lastGoodUntracked: Map<string, Issue[]>,
 ): RepoNode[] {
-  if (!previous) return repos;
+  if (lastGoodUntracked.size === 0) return repos;
   return repos.map(repo => {
     if (!repo.fetchFailed) return repo;
-    const prior = previous.untracked?.find(u => u.repo === repo.repo)?.issues;
+    const prior = lastGoodUntracked.get(repo.repo);
     return prior && prior.length > 0 ? { ...repo, untracked: prior } : repo;
   });
 }

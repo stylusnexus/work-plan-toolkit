@@ -82,6 +82,13 @@ export class WorkPlanTreeProvider
   // node's `untracked` on every (re)build. Survives lens/sort re-renders and a
   // full refresh (a snapshot until the user re-fetches), cleared on nothing.
   private readonly _fetchedUntracked = new Map<string, Issue[]>();
+  // Last genuinely-successful `untracked` list per repo (github_fetch_errors),
+  // keyed by github slug. Updated ONLY from a repo's successful fetch inside
+  // _doRefresh — never cleared or overwritten while that repo keeps failing —
+  // so mergeStaleUntracked's retention survives any number of consecutive
+  // failed refreshes and every re-render path (sort/lens/on-demand fetch),
+  // not just the single refresh immediately following a good one (#454 review).
+  private readonly _lastGoodUntrackedByRepo = new Map<string, Issue[]>();
   // Auto-slot suggestions (#241), keyed by github slug: the suggested/needsReview
   // buckets parsed from each repo's per-repo answers file, plus the batch_id of
   // the scan they belong to (so a stale answers file from a prior scan is
@@ -149,7 +156,7 @@ export class WorkPlanTreeProvider
   setFetchedUntracked(repo: string, issues: Issue[]): void {
     this._fetchedUntracked.set(repo, issues);
     const built = this._filteredCache
-      ? mergeStaleUntracked(buildTree(this._filteredCache), this.cache)
+      ? mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo)
       : [];
     this.roots = this._applySortToRepos(mergeFetchedUntracked(built, this._fetchedUntracked));
     this._onDidChangeTreeData.fire();
@@ -193,7 +200,7 @@ export class WorkPlanTreeProvider
   setSort(mode: TrackSort): void {
     this._activeSort = mode;
     const filtered = this._filteredCache
-      ? mergeStaleUntracked(buildTree(this._filteredCache), this.cache)
+      ? mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo)
       : [];
     this.roots = this._applySortToRepos(mergeFetchedUntracked(filtered, this._fetchedUntracked));
     this._onDidChangeTreeData.fire();
@@ -214,7 +221,7 @@ export class WorkPlanTreeProvider
     this.roots = this._applySortToRepos(
       mergeFetchedUntracked(
         this._filteredCache
-          ? mergeStaleUntracked(buildTree(this._filteredCache), this.cache)
+          ? mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo)
           : [],
         this._fetchedUntracked,
       ),
@@ -314,13 +321,22 @@ export class WorkPlanTreeProvider
           return;
         }
 
-        const previousCache = this.cache;
         this.cache = loaded;
+        // Update the per-repo last-good cache from every repo that fetched
+        // successfully THIS round (export.py omits a failed repo from
+        // `untracked` entirely, so every entry here is genuinely fresh data).
+        // A repo currently failing is left untouched — its prior entry (if
+        // any) survives — so retention works across any number of
+        // consecutive failed refreshes, not just the one right after a good
+        // fetch (#454 review).
+        for (const entry of loaded.untracked ?? []) {
+          this._lastGoodUntrackedByRepo.set(entry.repo, entry.issues);
+        }
         void vscode.commands.executeCommand("setContext", "workPlanLoadError", false);
         this._filteredCache = applyLens(this.cache, this._activeLens);
         this.roots = this._applySortToRepos(
           mergeFetchedUntracked(
-            mergeStaleUntracked(buildTree(this._filteredCache), previousCache),
+            mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo),
             this._fetchedUntracked,
           ),
         );
