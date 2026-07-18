@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Export, Issue } from "./model.ts";
-import { buildTree, mergeFetchedUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge, suggestedIssueNode } from "./treeModel.ts";
+import { buildTree, mergeFetchedUntracked, mergeStaleUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge, suggestedIssueNode } from "./treeModel.ts";
 import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, SuggestedGroupNode, SuggestedIssueNode, NeedsReviewGroupNode, StatusCategory, TrackSort } from "./treeModel.ts";
 import type { SuggestionBuckets } from "./suggestions.ts";
 import { applyLens } from "./webview/lenses.ts";
@@ -148,7 +148,9 @@ export class WorkPlanTreeProvider
    */
   setFetchedUntracked(repo: string, issues: Issue[]): void {
     this._fetchedUntracked.set(repo, issues);
-    const built = this._filteredCache ? buildTree(this._filteredCache) : [];
+    const built = this._filteredCache
+      ? mergeStaleUntracked(buildTree(this._filteredCache), this.cache)
+      : [];
     this.roots = this._applySortToRepos(mergeFetchedUntracked(built, this._fetchedUntracked));
     this._onDidChangeTreeData.fire();
   }
@@ -190,7 +192,9 @@ export class WorkPlanTreeProvider
    */
   setSort(mode: TrackSort): void {
     this._activeSort = mode;
-    const filtered = this._filteredCache ? buildTree(this._filteredCache) : [];
+    const filtered = this._filteredCache
+      ? mergeStaleUntracked(buildTree(this._filteredCache), this.cache)
+      : [];
     this.roots = this._applySortToRepos(mergeFetchedUntracked(filtered, this._fetchedUntracked));
     this._onDidChangeTreeData.fire();
   }
@@ -209,7 +213,9 @@ export class WorkPlanTreeProvider
     this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
     this.roots = this._applySortToRepos(
       mergeFetchedUntracked(
-        this._filteredCache ? buildTree(this._filteredCache) : [],
+        this._filteredCache
+          ? mergeStaleUntracked(buildTree(this._filteredCache), this.cache)
+          : [],
         this._fetchedUntracked,
       ),
     );
@@ -308,11 +314,15 @@ export class WorkPlanTreeProvider
           return;
         }
 
+        const previousCache = this.cache;
         this.cache = loaded;
         void vscode.commands.executeCommand("setContext", "workPlanLoadError", false);
         this._filteredCache = applyLens(this.cache, this._activeLens);
         this.roots = this._applySortToRepos(
-          mergeFetchedUntracked(buildTree(this._filteredCache), this._fetchedUntracked),
+          mergeFetchedUntracked(
+            mergeStaleUntracked(buildTree(this._filteredCache), previousCache),
+            this._fetchedUntracked,
+          ),
         );
         this._onDidChangeTreeData.fire();
 
@@ -590,9 +600,16 @@ export class WorkPlanTreeProvider
         ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.Collapsed
     );
-    item.description = repoDescription(node);
+    item.description = node.fetchFailed
+      ? `${repoDescription(node)} · ⚠ GitHub fetch failed`
+      : repoDescription(node);
     item.contextValue = "workPlanRepo";
     item.iconPath = new vscode.ThemeIcon("repo");
+    if (node.fetchFailed) {
+      item.tooltip =
+        "GitHub fetch failed for this repo's open issues — showing last known data. " +
+        "Run the refresh command to retry.";
+    }
     return item;
   }
 
