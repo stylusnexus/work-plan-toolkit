@@ -6,6 +6,16 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.18+657ad04 — 2026-07-18 (#457)
+
+chore(vscode): bump to 0.19.5
+
+### Changed
+
+- `vscode/package.json` and the `vscode/README.md` Status line bumped to 0.19.5, ahead of publishing the GitHub-fetch-error-propagation fix (#454/#455) to the VS Code Marketplace and Open VSX.
+
+PR: #456
+
 ## 2026.07.18+a345203 — 2026-07-18 (#455)
 
 fix: surface GitHub fetch failures instead of false-empty results
