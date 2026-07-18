@@ -5,6 +5,7 @@ import {
   trackHint,
   buildTree,
   mergeFetchedUntracked,
+  mergeStaleUntracked,
   badgeCounts,
   shouldExpandRepos,
   sortTracks,
@@ -550,6 +551,51 @@ describe("buildTree", () => {
   });
 });
 
+describe("buildTree — fetchFailed (github_fetch_errors)", () => {
+  test("marks a config repo fetchFailed when listed in github_fetch_errors", () => {
+    const exp: Export = {
+      schema: 1, generated_at: "now",
+      tracks: [],
+      repos: [{ folder: "f", repo: "o/r", local: null, has_local: false, visibility: null }],
+      github_fetch_errors: ["o/r"],
+    };
+    const [node] = buildTree(exp);
+    assert.equal(node.fetchFailed, true);
+  });
+
+  test("fetchFailed is false when repo not listed", () => {
+    const exp: Export = {
+      schema: 1, generated_at: "now",
+      tracks: [],
+      repos: [{ folder: "f", repo: "o/r", local: null, has_local: false, visibility: null }],
+      github_fetch_errors: [],
+    };
+    const [node] = buildTree(exp);
+    assert.equal(node.fetchFailed, false);
+  });
+
+  test("fetchFailed is false when github_fetch_errors is absent (older CLI)", () => {
+    const exp: Export = {
+      schema: 1, generated_at: "now",
+      tracks: [],
+      repos: [{ folder: "f", repo: "o/r", local: null, has_local: false, visibility: null }],
+    };
+    const [node] = buildTree(exp);
+    assert.equal(node.fetchFailed, false);
+  });
+
+  test("marks a track-only repo node fetchFailed too", () => {
+    const exp: Export = {
+      schema: 1, generated_at: "now",
+      tracks: [makeTrack({ name: "t1", repo: "o/r" })],
+      github_fetch_errors: ["o/r"],
+    };
+    const [node] = buildTree(exp);
+    assert.equal(node.repo, "o/r");
+    assert.equal(node.fetchFailed, true);
+  });
+});
+
 describe("repoDescription", () => {
   function repoNode(overrides: Partial<RepoNode> = {}): RepoNode {
     return { kind: "repo", repo: "your-org/myproject", isPublic: false, tier: "private", tracks: [], untracked: [], folder: null, hasLocal: false, ...overrides };
@@ -799,6 +845,67 @@ describe("mergeFetchedUntracked", () => {
     const a = repoNode("o/a");
     const out = mergeFetchedUntracked([a], new Map([["o/other", [issue(1)]]]));
     assert.equal(out[0], a);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeStaleUntracked (github_fetch_errors)
+// ---------------------------------------------------------------------------
+
+describe("mergeStaleUntracked", () => {
+  const issue = (n: number): Issue => ({
+    number: n, title: `#${n}`, state: "open", assignee: "—", milestone: null, in_progress: false,
+  });
+  const failedRepoNode = (repo: string): RepoNode => ({
+    kind: "repo", repo, isPublic: false, tier: "private",
+    tracks: [], untracked: [], tierDuplicates: [], folder: "f", hasLocal: true,
+    fetchFailed: true,
+  });
+  const okRepoNode = (repo: string): RepoNode => ({
+    kind: "repo", repo, isPublic: false, tier: "private",
+    tracks: [], untracked: [], tierDuplicates: [], folder: "f", hasLocal: true,
+    fetchFailed: false,
+  });
+
+  test("returns repos unchanged when the map is empty", () => {
+    const repos = [failedRepoNode("o/r")];
+    assert.equal(mergeStaleUntracked(repos, new Map()), repos);
+  });
+
+  test("retains last-known untracked for a fetchFailed repo", () => {
+    const lastGood = new Map([["o/r", [issue(1)]]]);
+    const [out] = mergeStaleUntracked([failedRepoNode("o/r")], lastGood);
+    assert.deepEqual(out.untracked.map(i => i.number), [1]);
+  });
+
+  test("does not touch a repo whose fetch did not fail", () => {
+    const lastGood = new Map([["o/r", [issue(1)]]]);
+    const [out] = mergeStaleUntracked([okRepoNode("o/r")], lastGood);
+    assert.equal(out.untracked.length, 0);
+  });
+
+  test("leaves a fetchFailed repo with no prior entry untouched", () => {
+    const repos = [failedRepoNode("o/r")];
+    const out = mergeStaleUntracked(repos, new Map([["o/other", [issue(1)]]]));
+    assert.equal(out[0].untracked.length, 0);
+  });
+
+  test("survives multiple consecutive failed refreshes for the same repo (#454 review)", () => {
+    // The map is populated once from a genuinely successful fetch and never
+    // touched again while o/r keeps failing — simulating 3 consecutive
+    // failed refreshes reusing the SAME map, as the real provider does.
+    const lastGood = new Map([["o/r", [issue(1), issue(2)]]]);
+    for (let i = 0; i < 3; i++) {
+      const [out] = mergeStaleUntracked([failedRepoNode("o/r")], lastGood);
+      assert.deepEqual(out.untracked.map(x => x.number), [1, 2]);
+    }
+  });
+
+  test("does not mutate the input nodes", () => {
+    const lastGood = new Map([["o/r", [issue(1)]]]);
+    const repos = [failedRepoNode("o/r")];
+    mergeStaleUntracked(repos, lastGood);
+    assert.equal(repos[0].untracked.length, 0); // original unchanged
   });
 });
 

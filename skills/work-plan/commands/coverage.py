@@ -55,6 +55,7 @@ def run(args: list[str]) -> int:
         tracked_by_repo.setdefault(t.repo, set()).update(nums)
 
     any_output = False
+    any_fetch_failed = False
     for folder in folders:
         repo = repos_cfg[folder].get("github")
         if not repo:
@@ -64,6 +65,15 @@ def run(args: list[str]) -> int:
         open_issues = fetch_open_issues(repo)
         tracked = tracked_by_repo.get(repo, set())
 
+        print()
+        print(f"{folder} ({repo}):")
+
+        if open_issues is None:
+            print(f"  ERROR: could not fetch open issues from GitHub (gh call failed) — coverage unknown.")
+            any_output = True
+            any_fetch_failed = True
+            continue
+
         untracked = [i for i in open_issues if i.get("number") not in tracked]
         total = len(open_issues)
         n_untracked = len(untracked)
@@ -71,8 +81,6 @@ def run(args: list[str]) -> int:
         pct_tracked = round(100 * n_tracked / total) if total else 0
         pct_untracked = 100 - pct_tracked if total else 0
 
-        print()
-        print(f"{folder} ({repo}):")
         print(f"  Open issues:  {total}")
         if total == 0:
             print("  No open issues.")
@@ -97,4 +105,4 @@ def run(args: list[str]) -> int:
 
     if not any_output:
         print("No repos with a 'github' entry found in config.")
-    return 0
+    return 1 if any_fetch_failed else 0

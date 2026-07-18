@@ -407,6 +407,28 @@ class ExportCommandUntrackedTest(unittest.TestCase):
         rc, out = self._run_with_mocks(tracks, export_map, open_rows)
         json.dumps(out)  # must not raise
 
+    def test_fetch_failure_surfaces_in_github_fetch_errors(self):
+        """A repo whose open-issues fetch failed (fetch_open_issues_concurrent
+        returns None for it) must appear in github_fetch_errors and must NOT
+        get a misleading empty/confirmed untracked entry."""
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A}
+        open_rows = {_SHARED_REPO: None}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(rc, 0)
+        self.assertIn(_SHARED_REPO, out["github_fetch_errors"])
+        self.assertNotIn(
+            _SHARED_REPO, [u["repo"] for u in out["untracked"]],
+        )
+
+    def test_no_fetch_failures_yields_empty_github_fetch_errors(self):
+        tracks = [_track("alpha", _SHARED_REPO, [1])]
+        export_map = {(_SHARED_REPO, 1): _ISSUE_A}
+        open_rows = {_SHARED_REPO: [_ISSUE_A, _ISSUE_B]}
+        rc, out = self._run_with_mocks(tracks, export_map, open_rows)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out["github_fetch_errors"], [])
+
     def test_untracked_order_is_deterministic_across_many_repos(self):
         """`tracked_repos` must be a first-seen-order list, not a set — a set's
         iteration order varies run-to-run (hash randomization), which would

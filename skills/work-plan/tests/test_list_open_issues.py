@@ -78,10 +78,19 @@ class ListOpenIssuesTest(unittest.TestCase):
         self.assertIn("error", out)
 
     def test_empty_fetch_yields_empty_issue_list(self):
-        # fetch_open_issues returns [] on a bad/unreachable repo — not an error.
+        # fetch_open_issues returns [] when gh confirms zero open issues.
         rc, out = _run(["--repo=o/r"], [])
         self.assertEqual(rc, 0)
         self.assertEqual(out, {"repo": "o/r", "issues": []})
+
+    def test_fetch_failure_returns_error(self):
+        # fetch_open_issues returns None when the gh call itself failed (bad
+        # repo, timeout, nonzero exit, malformed JSON) — distinct from a
+        # confirmed-empty repo, and must be surfaced as a real error.
+        rc, out = _run(["--repo=o/r"], None)
+        self.assertEqual(rc, 1)
+        self.assertEqual(out["issues"], [])
+        self.assertIn("error", out)
 
 
 if __name__ == "__main__":

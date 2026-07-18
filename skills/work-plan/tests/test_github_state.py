@@ -559,28 +559,49 @@ class FetchOpenIssuesTest(unittest.TestCase):
         self.assertIn("number,title,state,assignees,milestone", " ".join(args))
 
     @patch("lib.github_state.subprocess.run")
-    def test_nonzero_returncode_returns_empty(self, mock_run):
+    def test_nonzero_returncode_returns_none(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="error")
-        self.assertEqual(fetch_open_issues("o/r"), [])
+        self.assertIsNone(fetch_open_issues("o/r"))
 
     @patch("lib.github_state.subprocess.run")
-    def test_empty_stdout_returns_empty(self, mock_run):
+    def test_empty_stdout_returns_none(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="   ")
-        self.assertEqual(fetch_open_issues("o/r"), [])
+        self.assertIsNone(fetch_open_issues("o/r"))
 
     @patch("lib.github_state.subprocess.run")
-    def test_bad_json_returns_empty(self, mock_run):
+    def test_bad_json_returns_none(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="not-json{{")
-        self.assertEqual(fetch_open_issues("o/r"), [])
+        self.assertIsNone(fetch_open_issues("o/r"))
 
     @patch("lib.github_state.subprocess.run", side_effect=Exception("gh missing"))
-    def test_exception_returns_empty(self, _):
-        self.assertEqual(fetch_open_issues("o/r"), [])
+    def test_exception_returns_none(self, _):
+        self.assertIsNone(fetch_open_issues("o/r"))
 
     @patch("lib.github_state.subprocess.run")
-    def test_bad_repo_returns_empty_without_calling_gh(self, mock_run):
-        self.assertEqual(fetch_open_issues("notarepo"), [])
+    def test_bad_repo_returns_none_without_calling_gh(self, mock_run):
+        self.assertIsNone(fetch_open_issues("notarepo"))
         mock_run.assert_not_called()
+
+    @patch("lib.github_state.subprocess.run")
+    def test_timeout_returns_none(self, mock_run):
+        import subprocess as _sp
+        mock_run.side_effect = _sp.TimeoutExpired(cmd=["gh"], timeout=30)
+        self.assertIsNone(fetch_open_issues("o/r"))
+
+    @patch("lib.github_state.subprocess.run")
+    def test_rate_limit_error_returns_none(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="",
+            stderr="API rate limit exceeded for installation ID 12345.",
+        )
+        self.assertIsNone(fetch_open_issues("o/r"))
+
+    @patch("lib.github_state.subprocess.run")
+    def test_confirmed_zero_returns_empty_list_not_none(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        result = fetch_open_issues("o/r")
+        self.assertEqual(result, [])
+        self.assertIsNotNone(result)
 
     @patch("lib.github_state.subprocess.run")
     def test_custom_limit_passed(self, mock_run):
