@@ -161,9 +161,13 @@ def run(args: list[str]) -> int:
     # (empty) track nor in untracked, and the viewer's trackless fallback
     # (treeModel.mergeFetchedUntracked) shuts off the moment a track exists (#342).
     untracked_by_repo: dict[str, list] = {}
+    fetch_failed_repos: list[str] = []
     for repo in tracked_repos:
+        open_rows = open_issues_by_repo.get(repo)
+        if open_rows is None:
+            fetch_failed_repos.append(repo)
+            continue
         tracked = set(repo_to_numbers.get(repo, []))
-        open_rows = open_issues_by_repo.get(repo, [])
         untracked_by_repo[repo] = [r for r in open_rows if r.get("number") not in tracked]
 
     # Every CONFIGURED repo, regardless of whether any track references it (#288).
@@ -258,7 +262,8 @@ def run(args: list[str]) -> int:
                      plan_by_track=plan_by_track,
                      hot_by_track=hot_by_track,
                      next_up_default=next_up_default,
-                     tier_duplicates=tier_duplicates),
+                     tier_duplicates=tier_duplicates,
+                     fetch_failed_repos=fetch_failed_repos),
         indent=2,
     ))
     return 0

@@ -115,6 +115,13 @@ export interface RepoNode {
   /** true when the configured repo has a local checkout on disk (`has_local`);
    *  false for track-only repos. */
   hasLocal: boolean;
+  /**
+   * True when the CLI's most recent `export --json` reported this repo's
+   * open-issues fetch failed (Export.github_fetch_errors). The tree shows a
+   * per-repo warning and `mergeStaleUntracked` retains the last-good
+   * `untracked` list instead of an implied-empty one.
+   */
+  fetchFailed: boolean;
 }
 
 /**
@@ -271,6 +278,10 @@ export function buildTree(exp: Export): RepoNode[] {
   // Use a Map to maintain insertion order (config repos first, then track-only).
   const repoMap = new Map<string, RepoNode>();
 
+  // Repos whose open-issues fetch failed this run (additive CLI field). Used
+  // to mark RepoNode.fetchFailed below; mergeStaleUntracked reads that flag.
+  const failedRepos = new Set(exp.github_fetch_errors ?? []);
+
   // Seed a node for every configured repo BEFORE grouping tracks, so an empty
   // registered repo still shows up. Keyed by github slug; a config repo with a
   // null slug can't be matched to tracks (which key by slug) so we skip it.
@@ -289,6 +300,7 @@ export function buildTree(exp: Export): RepoNode[] {
       tierDuplicates: [],
       folder: cr.folder,
       hasLocal: cr.has_local,
+      fetchFailed: failedRepos.has(cr.repo),
     });
   }
 
@@ -305,6 +317,7 @@ export function buildTree(exp: Export): RepoNode[] {
         untracked: [],
         tierDuplicates: [],
         folder: null,
+        fetchFailed: failedRepos.has(repoKey),
         hasLocal: false,
       });
     }
@@ -382,6 +395,29 @@ export function mergeFetchedUntracked(
       ? { ...repo, untracked: fetched.get(repo.repo)! }
       : repo,
   );
+}
+
+/**
+ * Retains a repo's last-known `untracked` issues when the CLI reports its
+ * open-issues fetch failed this refresh (`Export.github_fetch_errors`),
+ * instead of showing an implied-empty Untracked bucket. `lastGoodUntracked`
+ * is a PERSISTENT per-repo map (`WorkPlanTreeProvider._lastGoodUntrackedByRepo`)
+ * updated only from a repo's genuinely successful fetch — never overwritten
+ * to empty while that repo keeps failing — so retention survives any number
+ * of consecutive failed refreshes and every re-render path (sort/lens/fetch),
+ * not just the single refresh immediately after a good one. A repo with no
+ * prior entry is left exactly as `buildTree` produced it. Pure, non-mutating.
+ */
+export function mergeStaleUntracked(
+  repos: RepoNode[],
+  lastGoodUntracked: Map<string, Issue[]>,
+): RepoNode[] {
+  if (lastGoodUntracked.size === 0) return repos;
+  return repos.map(repo => {
+    if (!repo.fetchFailed) return repo;
+    const prior = lastGoodUntracked.get(repo.repo);
+    return prior && prior.length > 0 ? { ...repo, untracked: prior } : repo;
+  });
 }
 
 // ---------------------------------------------------------------------------

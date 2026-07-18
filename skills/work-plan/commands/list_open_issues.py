@@ -26,9 +26,18 @@ def run(args: list[str]) -> int:
 
     exclude = _parse_exclude(flags.get("--exclude"))
 
-    # fetch_open_issues validates the slug and returns [] on any error/bad repo,
-    # so a malformed --repo yields an empty list rather than raising.
+    # fetch_open_issues returns None when the gh call failed (bad repo, timeout,
+    # non-zero exit, malformed JSON) so that's distinguishable from a genuine
+    # zero-open-issues answer — surface it as a real error rather than an
+    # empty pick-list.
     rows = fetch_open_issues(repo)
+    if rows is None:
+        print(json.dumps({
+            "repo": repo, "issues": [],
+            "error": "could not fetch open issues from GitHub (gh call failed)",
+        }, indent=2))
+        return 1
+
     issues = [
         normalize_issue(r) for r in rows
         if r.get("number") not in exclude

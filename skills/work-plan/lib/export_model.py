@@ -98,7 +98,8 @@ def normalize_issue(i: dict, in_progress: bool = False,
 def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None, config_repos=None,
                  plan_by_track=None, hot_by_track=None,
-                 next_up_default=None, tier_duplicates=None) -> dict:
+                 next_up_default=None, tier_duplicates=None,
+                 fetch_failed_repos=None) -> dict:
     plan_by_track = plan_by_track or {}
     hot_by_track = hot_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
@@ -195,4 +196,9 @@ def build_export(tracks, issues_by_track, visibility, now: str,
     # health signal for the viewer; resolved with the `dedupe-tiers` CLI verb.
     # Each entry: {repo, folder, name, shared_path, private_path, safe}.
     out["tier_duplicates"] = list(tier_duplicates or [])
+    # Repos whose open-issues fetch failed this run (additive). The viewer uses
+    # this to distinguish "confirmed zero untracked issues" from "we don't know
+    # right now" and retains its last-good data for these repos instead of
+    # showing an implied-empty Untracked bucket.
+    out["github_fetch_errors"] = list(fetch_failed_repos or [])
     return out

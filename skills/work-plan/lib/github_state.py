@@ -355,11 +355,18 @@ def fetch_export_issues(repo_to_numbers: dict, max_workers: int = MAX_FETCH_WORK
     return result
 
 
-def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
+def fetch_open_issues(repo: str, limit: int = 1000) -> Optional[list[dict]]:
     """All OPEN issues for `repo` as gh rows ({number,title,assignees,milestone,state}).
-    One `gh issue list` call. Never raises — returns [] on any error/bad repo."""
+    One `gh issue list` call. Never raises.
+
+    Returns `None` when the fetch could not be completed — bad repo slug shape,
+    `gh` missing/erroring, timeout, non-zero exit, empty stdout, or malformed
+    JSON — so callers can distinguish "GitHub confirmed zero open issues" from
+    "we don't actually know." Returns `[]` (or a populated list) only when `gh`
+    genuinely reported success.
+    """
     if not _REPO_RE.match(repo or ""):
-        return []
+        return None
     try:
         proc = subprocess.run(
             ["gh", "issue", "list", "--repo", repo,
@@ -369,19 +376,21 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> list[dict]:
             capture_output=True, text=True, timeout=GH_TIMEOUT,
         )
     except Exception:
-        return []
+        return None
     if proc.returncode != 0 or not proc.stdout.strip():
-        return []
+        return None
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError:
-        return []
+        return None
 
 
 def fetch_open_issues_concurrent(repos: Iterable[str], max_workers: int = MAX_FETCH_WORKERS) -> dict:
     """Fetch fetch_open_issues() for each of `repos` concurrently, deduped
     (first-seen order irrelevant — result is keyed by repo). Returns
-    {repo: [issue_row, ...]}. Empty/falsy repos filtered; empty input -> {}.
+    {repo: list[dict] | None} — None for a repo whose fetch failed (see
+    fetch_open_issues), so callers can distinguish a failed fetch from a
+    confirmed-empty repo. Empty/falsy repos filtered; empty input -> {}.
     Never raises — fetch_open_issues() is itself fail-soft per repo."""
     unique_repos = list(dict.fromkeys(r for r in repos if r))
     if not unique_repos:

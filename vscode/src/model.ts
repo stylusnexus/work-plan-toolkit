@@ -211,6 +211,10 @@ export interface Export {
   repos?: ConfigRepo[];
   /** Tracks present in both the shared and private tier (#361, additive). */
   tier_duplicates?: TierDuplicate[];
+  /** Repo slugs whose open-issues fetch failed this run — the viewer shows a
+   *  per-repo warning and retains last-good `untracked` data for these instead
+   *  of treating the omission as a confirmed-empty answer (additive). */
+  github_fetch_errors?: string[];
 }
 
 /** A plan/spec doc with its plan-status verdict (#164). */

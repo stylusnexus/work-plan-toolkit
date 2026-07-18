@@ -1964,6 +1964,14 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
+      if (scan.note === "fetch_failed") {
+        vscode.window.showWarningMessage(
+          `Work Plan: GitHub fetch failed for ${repo} — could not scan for untracked issues. ` +
+            "Try again in a moment.",
+        );
+        return;
+      }
+
       if (scan.note === "full_coverage" || (scan.untracked ?? []).length === 0) {
         vscode.window.showInformationMessage(
           `Work Plan: ${repo} has no untracked issues — full coverage.`,

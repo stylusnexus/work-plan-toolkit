@@ -631,7 +631,9 @@ export interface AutoTriageScan {
   answers_path: string;
   /** Set on informational early-exits the CLI emits as JSON in --json mode:
    *  "no_active_tracks" (nothing to suggest into) / "full_coverage" (no
-   *  untracked issues). batch_id/prompt/answers_path are absent in those cases. */
+   *  untracked issues) / "fetch_failed" (the GitHub open-issues fetch itself
+   *  failed — untracked is [] but that does NOT mean full coverage).
+   *  batch_id/prompt/answers_path are absent in those cases. */
   note?: string;
 }
 
