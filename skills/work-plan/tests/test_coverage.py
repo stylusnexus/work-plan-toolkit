@@ -188,5 +188,30 @@ class CoverageMultiRepoTest(unittest.TestCase):
         self.assertIn("Untracked:    2", out)
 
 
+class CoverageFetchFailureTest(unittest.TestCase):
+
+    def test_fetch_failure_reports_error_not_zero_issues(self):
+        cfg = _make_cfg()
+        tracks = [_make_track("t1", "org/myrepo", [1])]
+        rc, out = _run([], cfg=cfg, tracks=tracks,
+                       open_issues_by_repo={"org/myrepo": None})
+        self.assertEqual(rc, 1)
+        self.assertIn("could not fetch open issues", out)
+        self.assertNotIn("No open issues.", out)
+
+    def test_one_repo_fetch_failure_does_not_block_other_repos(self):
+        cfg = _make_cfg(repos={
+            "repoA": {"github": "org/repoA"},
+            "repoB": {"github": "org/repoB"},
+        })
+        tracks = [_make_track("tB", "org/repoB", [1])]
+        rc, out = _run([], cfg=cfg, tracks=tracks,
+                       open_issues_by_repo={"org/repoA": None,
+                                            "org/repoB": _issues(1, 2)})
+        self.assertEqual(rc, 1)
+        self.assertIn("could not fetch open issues", out)
+        self.assertIn("Untracked:    1", out)
+
+
 if __name__ == "__main__":
     unittest.main()
