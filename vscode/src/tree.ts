@@ -684,6 +684,7 @@ export class WorkPlanTreeProvider
         tierDuplicates: [],
         folder: node.folder,
         hasLocal: false,
+        fetchFailed: false,
       }
     );
   }
