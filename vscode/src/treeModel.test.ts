@@ -830,11 +830,14 @@ describe("trackCountsLabel", () => {
   test("zero owned issues but open references: reference open count is NOT dropped", () => {
     // Regression for the #462 follow-up: "0 open · 34 references" read as
     // nothing-to-do even though 17 of the 34 references were still open.
+    // Also a regression for the follow-up UX fix: "0 open · 34 references
+    // (17 open)" used "open" for two different scopes and read as a
+    // contradiction — "owned"/"referenced" now disambiguate.
     const node = makeTrackNode({
       rollup: { open: 0, closed: 0 },
       reference_rollup: { open: 17, closed: 17 },
     });
-    assert.equal(trackCountsLabel(node), "0 open · 34 references (17 open)");
+    assert.equal(trackCountsLabel(node), "0 owned · 17 of 34 referenced still open");
   });
 
   test("owned issues AND references: both counts shown, reference open surfaced", () => {
@@ -842,7 +845,7 @@ describe("trackCountsLabel", () => {
       rollup: { open: 2, closed: 1 },
       reference_rollup: { open: 3, closed: 0 },
     });
-    assert.equal(trackCountsLabel(node), "2 open · 1/3 · 3 references (3 open)");
+    assert.equal(trackCountsLabel(node), "2 open · 1/3 · 3 of 3 referenced still open");
   });
 
   test("all references closed: reference open count is 0, still shown", () => {
@@ -850,7 +853,7 @@ describe("trackCountsLabel", () => {
       rollup: { open: 0, closed: 0 },
       reference_rollup: { open: 0, closed: 5 },
     });
-    assert.equal(trackCountsLabel(node), "0 open · 5 references (0 open)");
+    assert.equal(trackCountsLabel(node), "0 owned · 0 of 5 referenced still open");
   });
 
   test("reference_rollup absent (older CLI/export): falls back to owned counts only", () => {
