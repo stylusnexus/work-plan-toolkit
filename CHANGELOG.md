@@ -6,6 +6,25 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.19+708eb40 — 2026-07-19 (#461)
+
+feat: model cross-track issue references without transferring ownership
+
+### Added
+- **Cross-track issue references** (#458): a track can now point at an issue owned by *another* track for coordination visibility via `github.references`, without transferring ownership — `github.issues` stays the sole ownership list used by slot/move/reconcile.
+- New CLI: `batch-slot <issue>... <track> --reference` (mutually exclusive with `--move`).
+- New VS Code command **Add Cross-Track Reference**, a **· N references** sidebar badge, and a **Referenced issues** table in the detail panel (capped and collapsible like the owned-issues table).
+- VS Code extension bumped to v0.19.6.
+
+### Fixed
+- `dedupe-tiers --apply` could permanently delete a private track whose only content was cross-track references — `issue_refs()` now accounts for `github.references`.
+- Reference writes had no compare-and-swap staleness guard, unlike ownership writes — added `references_fingerprint` + `--expect` support.
+- `batch-slot --reference` could add an issue to `references` even when the track already owned it via `issues`, leaving a duplicate entry on disk.
+- A cross-track reference's closed state could silently remove an unrelated entry from a track's own `next_up` list.
+- References dropped `in_progress` / `blocked_by` / `blocking` on export, unlike owned issues.
+- The VS Code detail view's referenced-issues table silently capped at 50 rows with no way to see the rest.
+- The milestone-mismatch advisory was unintentionally skipped for `--reference` adds.
+
 ## 2026.07.18+657ad04 — 2026-07-18 (#457)
 
 chore(vscode): bump to 0.19.5
