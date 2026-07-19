@@ -90,17 +90,19 @@ def discover_tracks(cfg: dict) -> list[Track]:
 
 def issue_refs(track: "Track") -> set:
     """All GitHub issue numbers a track references: the union of its frontmatter
-    `github.issues` list and every `#NNNN` token in its body. Used by
+    `github.issues` list, its frontmatter `github.references` list (cross-track
+    coordination refs), and every `#NNNN` token in its body. Used by
     dedupe-tiers as the no-data-loss invariant — a private copy is only safe to
     drop when its issue refs are a subset of the shared twin's.
     """
     refs: set = set()
-    fm_issues = (track.meta.get("github") or {}).get("issues") or []
-    for n in fm_issues:
-        try:
-            refs.add(int(n))
-        except (TypeError, ValueError):
-            continue
+    github = track.meta.get("github") or {}
+    for key in ("issues", "references"):
+        for n in github.get(key) or []:
+            try:
+                refs.add(int(n))
+            except (TypeError, ValueError):
+                continue
     for m in re.finditer(r"#(\d+)", track.body or ""):
         refs.add(int(m.group(1)))
     return refs

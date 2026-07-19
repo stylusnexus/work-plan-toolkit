@@ -105,6 +105,44 @@ class BuildExportReferencesTest(unittest.TestCase):
         self.assertEqual(exported["reference_rollup"], {"open": 1, "closed": 1})
         self.assertEqual([i["number"] for i in exported["references"]], [3, 4])
 
+    def test_closed_reference_does_not_filter_owned_next_up(self):
+        """A track's own next_up list must only be filtered by the track's OWN
+        closed issues, never by a cross-track reference's closed state —
+        regression test for the #458 review finding where closed_nums was
+        widened to issues+references and silently dropped unrelated next_up
+        entries."""
+        track = _track("mvp", "o/r", [1], next_up=[1, 50])
+        owned = [{"number": 1, "title": "owned open", "state": "OPEN", "assignees": []}]
+        # #50 is closed, but only as a cross-track REFERENCE — mvp doesn't own it.
+        refs = [{"number": 50, "title": "closed elsewhere", "state": "CLOSED", "assignees": []}]
+        out = build_export(
+            [track], {("o/r", "mvp"): owned}, {"o/r": "PRIVATE"}, now="t",
+            references_by_track={("o/r", "mvp"): refs},
+        )
+        self.assertEqual(out["tracks"][0]["next_up"], [1, 50])
+
+    def test_reference_carries_blocked_by_blocking_and_in_progress_label(self):
+        """References must not silently drop dependency/in-progress fields that
+        owned issues get — regression test for the #458 review finding where
+        normalize_issue() was called bare for references."""
+        from lib.in_progress import IN_PROGRESS_LABEL
+        track = _track("mvp", "o/r", [1])
+        owned = [{"number": 1, "title": "owned", "state": "OPEN", "assignees": []}]
+        refs = [{
+            "number": 50, "title": "ref with deps", "state": "OPEN", "assignees": [],
+            "blocked_by": [7], "blocking": [8],
+            "labels": [{"name": IN_PROGRESS_LABEL}],
+        }]
+        out = build_export(
+            [track], {("o/r", "mvp"): owned}, {"o/r": "PRIVATE"}, now="t",
+            references_by_track={("o/r", "mvp"): refs},
+        )
+        ref = out["tracks"][0]["references"][0]
+        self.assertEqual(ref["blocked_by"], [7])
+        self.assertEqual(ref["blocking"], [8])
+        self.assertTrue(ref["in_progress_label"])
+        self.assertTrue(ref["in_progress"])
+
 
 class BuildExportNextUpAutoTest(unittest.TestCase):
     """next_up_auto: true → export derives next_up live via the ranking preset."""

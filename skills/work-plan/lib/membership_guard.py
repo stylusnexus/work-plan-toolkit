@@ -82,6 +82,17 @@ def issues_fingerprint(meta: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def references_fingerprint(meta: dict) -> str:
+    """Deterministic sha256[:16] of the sorted github.references list.
+
+    Mirrors `issues_fingerprint` but over the references list ONLY — kept
+    separate so an owned-issue add/remove can't stale-out a pending reference
+    write (and vice versa); the two lists are independent CAS surfaces.
+    """
+    payload = json.dumps(sorted(_reference_set(meta)), separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
     """Re-read `path`, apply the membership delta to the fresh frontmatter, and
     write back the fresh body unchanged.
@@ -116,9 +127,23 @@ def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
     return {"written": final}
 
 
-def guarded_reference_write(path, *, add_nums=()):
-    """Add cross-track references without changing github.issues ownership."""
+def guarded_reference_write(path, *, add_nums=(), expect=None):
+    """Add cross-track references without changing github.issues ownership.
+
+    Same CAS contract as `guarded_membership_write`, checked against
+    `references_fingerprint` instead of `issues_fingerprint`: when `expect` is
+    supplied and the on-disk references list no longer matches it, the write is
+    ABORTED and a `{"stale": ...}` signal is returned instead of overwriting.
+    """
     fresh_meta, fresh_body = parse_file(Path(path))
+
+    if expect is not None and references_fingerprint(fresh_meta) != expect:
+        return {
+            "stale": True,
+            "reason": "track references changed since the operation was prepared",
+            "current": sorted(_reference_set(fresh_meta)),
+        }
+
     references = _reference_set(fresh_meta)
     references |= {int(n) for n in add_nums}
     final = sorted(references)

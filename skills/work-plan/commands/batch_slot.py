@@ -131,19 +131,15 @@ def run(args: list[str]) -> int:
     slotted: list[int] = []
 
     for issue_num in issue_nums:
-        if as_reference:
-            if issue_num in references:
-                skipped.append(issue_num)
-                continue
-            references.append(issue_num)
-            slotted.append(issue_num)
-            continue
-        if issue_num in issues:
+        if issue_num in issues or (as_reference and issue_num in references):
             skipped.append(issue_num)
             continue
 
         # Milestone mismatch check (non-blocking warning). Never let gh being
         # absent/odd crash the command — it's advisory and sits before the write.
+        # Applies to both ownership slots and references: it isn't about
+        # ownership, it's flagging a milestone gap the user should know about
+        # either way.
         try:
             proc = subprocess.run(
                 ["gh", "issue", "view", str(issue_num),
@@ -166,7 +162,13 @@ def run(args: list[str]) -> int:
         except (OSError, json.JSONDecodeError):
             pass
 
-        # Prior-owner detection.
+        if as_reference:
+            references.append(issue_num)
+            slotted.append(issue_num)
+            continue
+
+        # Prior-owner detection (ownership-only — a reference doesn't take
+        # ownership, so there's no prior owner to relocate from).
         sources = _find_prior_owners(
             issue_num, target.repo, target.name, tracks
         )
@@ -206,7 +208,7 @@ def run(args: list[str]) -> int:
     # Write target track once. Carries `expect`: on a detected concurrent change
     # to the membership list it aborts with {stale} instead of clobbering.
     result = (
-        guarded_reference_write(target.path, add_nums=slotted)
+        guarded_reference_write(target.path, add_nums=slotted, expect=expect)
         if as_reference
         else guarded_membership_write(target.path, add_nums=slotted, expect=expect)
     )

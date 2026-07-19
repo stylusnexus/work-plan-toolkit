@@ -124,11 +124,29 @@ def build_export(tracks, issues_by_track, visibility, now: str,
         ]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
-        references = [normalize_issue(i) for i in raw_references]
+        # References are owned by a DIFFERENT track, so the current track's hot
+        # branch set doesn't apply to them — pass no hot numbers so in_progress
+        # reduces to the label signal only (still a real, track-independent
+        # GitHub state), rather than mixing in unrelated branch data.
+        references = [
+            normalize_issue(
+                i,
+                in_progress=issue_in_progress(i, set()),
+                in_progress_label=IN_PROGRESS_LABEL in {
+                    l.get("name") for l in (i.get("labels") or [])
+                },
+                blocked_by=i.get("blocked_by"),
+                blocking=i.get("blocking"),
+            )
+            for i in raw_references
+        ]
         references.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")
         reference_opened = sum(1 for i in references if i["state"] == "open")
-        closed_nums = {i["number"] for i in issues + references if i["state"] == "closed"}
+        # Scoped to the track's OWN issues only — next_up is a manually curated
+        # list of numbers the track owns, so a cross-track reference's closed
+        # state must never silently remove an entry here (#458 review finding).
+        closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
         track_path = getattr(t, "path", None)
         next_up_preset_name, next_up_order = resolve_next_up_order(t.meta, next_up_default)
         # When `next_up_auto: true`, derive the next-up list live from the track's

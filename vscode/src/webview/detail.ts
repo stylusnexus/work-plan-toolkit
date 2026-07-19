@@ -156,14 +156,27 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }
   parts.push("</table>");
 
   if (referenceTotal > 0) {
-    const references = (track.references ?? []).slice(0, DETAIL_ISSUE_CAP);
+    const allReferences = track.references ?? [];
+    const visibleReferences = allReferences.slice(0, DETAIL_ISSUE_CAP);
+    const hiddenReferences = allReferences.slice(DETAIL_ISSUE_CAP);
     parts.push(`<h3>Referenced issues (${referenceTotal})</h3>`);
     parts.push('<p>Owned by other tracks; shown for coordination and excluded from this track’s status and progress.</p>');
     parts.push('<table class="issues">');
     parts.push(`<caption class="sr-only">Referenced issues in ${esc(track.name)}</caption>`);
-    parts.push('<thead><tr><th scope="col">Num</th><th scope="col">Title</th><th scope="col">State</th><th scope="col">Assignee</th></tr></thead><tbody>');
-    for (const issue of references) parts.push(renderReferenceRow(track, issue));
-    parts.push('</tbody></table>');
+    parts.push('<thead><tr><th scope="col">Num</th><th scope="col">Title</th><th scope="col">State</th><th scope="col">Assignee</th></tr></thead>');
+    parts.push("<tbody>");
+    for (const issue of visibleReferences) parts.push(renderReferenceRow(track, issue));
+    parts.push("</tbody>");
+    if (hiddenReferences.length > 0) {
+      // References table has 4 columns (no Actions column), so the toggle's
+      // colspan must match — reusing the owned-issues default (5) would break
+      // the layout (#458 review finding: this table silently capped at 50
+      // with no way to reveal the rest).
+      parts.push(renderCapToggle(allReferences.length, hiddenReferences.length, 4));
+      for (const issue of hiddenReferences) parts.push(renderReferenceRow(track, issue));
+      parts.push("</tbody>");
+    }
+    parts.push('</table>');
   }
 
   // -------------------------------------------------------------------------
@@ -435,10 +448,10 @@ function renderDepLink(track: Track, dep: IssueDep): string {
  * The `.issue-cap-row` class marks the toggle row so the collapse CSS keeps it
  * visible while hiding the rest of the band.
  */
-function renderCapToggle(total: number, hidden: number): string {
+function renderCapToggle(total: number, hidden: number, colspan = 5): string {
   return (
     `<tbody class="issue-cap-band collapsed">` +
-    `<tr class="issue-cap-row"><td colspan="5">` +
+    `<tr class="issue-cap-row"><td colspan="${colspan}">` +
     `<button type="button" class="issue-cap-toggle" aria-expanded="false">` +
     `<span class="issue-cap-marker">▸</span> Show all ${total} issues (${hidden} more)` +
     `</button></td></tr>`

@@ -30,27 +30,33 @@ from lib.write_guard import make_token
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _track(*, name, repo="ok/repo", issues=None, status="active"):
+def _track(*, name, repo="ok/repo", issues=None, references=None, status="active",
+           milestone_alignment=None):
+    meta = {
+        "track": name,
+        "status": status,
+        "github": {"repo": repo, "issues": list(issues or [])},
+    }
+    if references is not None:
+        meta["github"]["references"] = list(references)
+    if milestone_alignment is not None:
+        meta["milestone_alignment"] = milestone_alignment
     return SimpleNamespace(
         name=name,
         path=Path(f"/tmp/fake/{name}.md"),
         body="# fake",
-        meta={
-            "track": name,
-            "status": status,
-            "github": {"repo": repo, "issues": list(issues or [])},
-        },
+        meta=meta,
         has_frontmatter=True,
         repo=repo,
     )
 
 
-def _drive(args, tracks=None, vis="PRIVATE"):
+def _drive(args, tracks=None, vis="PRIVATE", gh_stdout="{}"):
     """Run batch_slot.run(args) with all external I/O mocked."""
     if tracks is None:
         tracks = [_track(name="alpha", repo="ok/repo", issues=[])]
     cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/repo"}}}
-    gh_proc = MagicMock(returncode=0, stdout="{}", stderr="")
+    gh_proc = MagicMock(returncode=0, stdout=gh_stdout, stderr="")
 
     # Writes go through lib.membership_guard (re-read via parse_file, write via
     # write_file). Returning each track's own meta/body lets the guard mutate
@@ -269,6 +275,83 @@ class BatchSlotTest(unittest.TestCase):
         mw.assert_called_once()
         written_meta = mw.call_args[0][1]
         self.assertIn(42, written_meta["github"]["issues"])
+
+    # ------------------------------------------------------------------
+    # --reference (#458)
+    # ------------------------------------------------------------------
+
+    def test_reference_adds_to_references_list(self):
+        """--reference adds to github.references, not github.issues."""
+        track = _track(name="alpha", repo="ok/repo", issues=[10])
+        rc, mw, out = _drive(["30", "alpha", "--reference"], tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        written_meta = mw.call_args[0][1]
+        self.assertEqual(written_meta["github"]["references"], [30])
+        self.assertNotIn(30, written_meta["github"].get("issues", []))
+        self.assertIn("Referenced", out)
+
+    def test_reference_skips_already_referenced(self):
+        """--reference skips an issue already in github.references."""
+        track = _track(name="alpha", repo="ok/repo", references=[30])
+        rc, mw, out = _drive(["30", "alpha", "--reference"], tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        self.assertIn("already in track", out)
+
+    def test_reference_skips_already_owned_issue(self):
+        """--reference must not add a number the track already OWNS via
+        github.issues — regression test for the #458 review finding where the
+        reference branch only checked `references`, never `issues`, allowing a
+        duplicate entry across both lists."""
+        track = _track(name="alpha", repo="ok/repo", issues=[42], references=[])
+        rc, mw, out = _drive(["42", "alpha", "--reference"], tracks=[track], vis="PRIVATE")
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        self.assertIn("already in track", out)
+
+    def test_reference_respects_expect_cas_guard(self):
+        """--reference --expect=<stale-fp> aborts with {stale} instead of
+        silently writing — regression test for the missing CAS guard finding."""
+        import json
+        from lib.membership_guard import references_fingerprint
+        track = _track(name="alpha", repo="ok/repo", references=[10])
+        stale_fp = references_fingerprint({"github": {"references": []}})
+        rc, mw, out = _drive(
+            ["30", "alpha", "--reference", f"--expect={stale_fp}"],
+            tracks=[track], vis="PRIVATE",
+        )
+        self.assertEqual(rc, 0)
+        mw.assert_not_called()
+        data = json.loads(out.strip())
+        self.assertTrue(data["stale"])
+
+    def test_reference_shows_milestone_mismatch_warning(self):
+        """--reference must still surface the milestone-mismatch advisory —
+        it's not ownership-specific, so it shouldn't be skipped just because
+        the issue isn't being taken into ownership."""
+        track = _track(
+            name="alpha", repo="ok/repo", issues=[], references=[],
+            milestone_alignment="v1",
+        )
+        rc, mw, out = _drive(
+            ["30", "alpha", "--reference"], tracks=[track], vis="PRIVATE",
+            gh_stdout='{"milestone": {"title": "v2"}}',
+        )
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        self.assertIn("v2", out)
+        self.assertIn("v1", out)
+
+    def test_reference_and_move_mutually_exclusive(self):
+        """--reference cannot be combined with --move."""
+        track = _track(name="alpha", repo="ok/repo", issues=[])
+        rc, mw, out = _drive(
+            ["42", "alpha", "--reference", "--move"], tracks=[track], vis="PRIVATE",
+        )
+        self.assertEqual(rc, 2)
+        mw.assert_not_called()
+        self.assertIn("cannot be combined", out)
 
     # ------------------------------------------------------------------
     # No input() on non-interactive paths
