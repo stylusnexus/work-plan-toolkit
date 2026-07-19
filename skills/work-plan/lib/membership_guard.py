@@ -149,6 +149,61 @@ def guarded_reference_write(path, *, add_nums=(), expect=None):
     return {"written": final}
 
 
+def demote_fingerprint(meta: dict) -> str:
+    """Deterministic sha256[:16] over BOTH the sorted issues and references
+    lists — the combined CAS surface for `guarded_demote_write`, which moves
+    numbers between the two lists in a single write. Order-independent and
+    stable across runs (no randomness — 3.9 stdlib)."""
+    payload = json.dumps(
+        {"issues": sorted(_issue_set(meta)), "references": sorted(_reference_set(meta))},
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def guarded_demote_write(path, *, nums=(), expect=None):
+    """Re-read `path`, move `nums` from `github.issues` to `github.references`
+    in ONE write, and write back the fresh body unchanged.
+
+    Single-file, single-write migration primitive for `demote-to-reference`:
+    unlike `guarded_membership_write`/`guarded_reference_write` (which each
+    touch one list), this moves numbers between both lists atomically so a
+    reader never observes a state where a number is in neither (or both).
+
+    Returns one of:
+      {"stale": True, "reason": str, "current_issues": [int], "current_references": [int]}
+          — `expect` was supplied and the on-disk (issues, references) pair no
+            longer matches it; NO write happened.
+      {"written": {"issues": [int], "references": [int]}}
+          — wrote successfully; final sorted lists for both fields.
+
+    `nums` not currently present in `github.issues` are added to
+    `github.references` anyway (idempotent from THIS primitive's point of
+    view) — the caller (`demote_to_reference.py`) is responsible for the
+    ownership/orphan preflight; this is the write mechanics only.
+    """
+    fresh_meta, fresh_body = parse_file(Path(path))
+
+    if expect is not None and demote_fingerprint(fresh_meta) != expect:
+        return {
+            "stale": True,
+            "reason": "track issues/references changed since the operation was prepared",
+            "current_issues": sorted(_issue_set(fresh_meta)),
+            "current_references": sorted(_reference_set(fresh_meta)),
+        }
+
+    move_nums = {int(n) for n in nums}
+    issues = _issue_set(fresh_meta) - move_nums
+    references = _reference_set(fresh_meta) | move_nums
+    final_issues = sorted(issues)
+    final_references = sorted(references)
+    github = fresh_meta.setdefault("github", {})
+    github["issues"] = final_issues
+    github["references"] = final_references
+    write_file(Path(path), fresh_meta, fresh_body)
+    return {"written": {"issues": final_issues, "references": final_references}}
+
+
 def shared_rebase_guard(target, cfg):
     """Before writing a SHARED-tier track pinned to a `plan_branch`, fetch +
     rebase its worktree onto origin so the write lands on top of a teammate's
