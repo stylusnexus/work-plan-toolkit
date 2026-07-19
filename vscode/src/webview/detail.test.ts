@@ -82,7 +82,7 @@ describe("renderDetail — rollup", () => {
     const html = renderDetail(platformHealth);
     // Must render "12" as the open count — wrapped in <b>
     assert.ok(
-      html.includes("<b>12</b>") || (html.includes(">12<") && html.includes("open")),
+      html.includes("Owned issues:</b> 12 open"),
       `Expected bold 12 open in:\n${html}`,
     );
   });
@@ -90,7 +90,7 @@ describe("renderDetail — rollup", () => {
   it("contains rollup closed count 8", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes("<b>8</b>") || (html.includes(">8<") && html.includes("closed")),
+      html.includes("12 open · 8 closed"),
       `Expected bold 8 closed in:\n${html}`,
     );
   });
@@ -605,6 +605,55 @@ describe("renderDetail — issue cap", () => {
     assert.ok(html.includes('colspan="5"'), "band header should span 5 columns");
     assert.ok(!html.includes('colspan="4"'), "stale colspan=4 must be gone");
   });
+
+  it("caps referenced issues at 50 with a collapsible overflow toggle (#458)", () => {
+    // Regression test: the references table used to silently .slice(0, CAP)
+    // with no toggle, so "Referenced issues (N)" and the visible row count
+    // silently diverged with no way to reveal the rest.
+    const references: Issue[] = [];
+    for (let i = 1; i <= 60; i++) {
+      references.push({
+        number: i,
+        title: `Ref ${i}`,
+        state: "open",
+        assignee: "@dev",
+        milestone: null,
+        in_progress: false,
+        in_progress_label: false,
+        blocked_by: [],
+        blocking: [],
+      });
+    }
+    const track: Track = {
+      name: "with-refs",
+      repo: "org/repo",
+      tier: "private",
+      status: "active",
+      launch_priority: null,
+      milestone_alignment: null,
+      visibility: null,
+      blockers: [],
+      next_up: [],
+      depends_on: [],
+      rollup: { open: 0, closed: 0 },
+      issues: [],
+      reference_rollup: { open: 60, closed: 0 },
+      references,
+    };
+
+    const html = renderDetail(track);
+    assert.ok(html.includes("Referenced issues (60)"), "missing reference heading count");
+    assert.ok(html.includes("#1"), "missing first reference row");
+    assert.ok(html.includes("#50"), "missing 50th reference row");
+    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle for references");
+    assert.ok(html.includes("Show all 60 issues"), "missing total count in toggle");
+    assert.ok(html.includes("10 more"), "missing '10 more' count");
+    // References table has 4 columns (no Actions/move column) — the toggle's
+    // colspan must match, not reuse the owned-issues table's 5.
+    const refTableStart = html.indexOf('<caption class="sr-only">Referenced issues');
+    const refTableHtml = html.slice(refTableStart);
+    assert.ok(refTableHtml.includes('colspan="4"'), "reference cap toggle should span 4 columns");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -624,7 +673,7 @@ describe("renderDetail — table accessibility", () => {
   it("gives the table a caption naming the track", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('<caption class="sr-only">Issues in platform-health</caption>'),
+      html.includes('<caption class="sr-only">Owned issues in platform-health</caption>'),
       `expected an sr-only caption naming the track:\n${html}`,
     );
   });
@@ -788,7 +837,7 @@ describe("renderDetail — progress bar (#220)", () => {
     const html = renderDetail(platformHealth);   // rollup 12 open / 8 closed → 20 total, 40%
     assert.ok(html.includes('role="progressbar"'), html);
     assert.ok(html.includes('aria-valuenow="8"') && html.includes('aria-valuemax="20"'), html);
-    assert.ok(html.includes('aria-label="8 of 20 issues closed (40%)"'), html);
+    assert.ok(html.includes('aria-label="8 of 20 owned issues closed (40%)"'), html);
     assert.ok(html.includes("width:40%"), html);
   });
   it("omits the bar for an empty track (no divide-by-zero)", () => {

@@ -144,6 +144,10 @@ export interface Track {
   depends_on: string[];
   rollup: Rollup;
   issues: Issue[];
+  /** Cross-track issue scope. These tickets remain owned by their source tracks. */
+  references?: Issue[];
+  /** Live open/closed totals for cross-track scope; absent with older CLIs. */
+  reference_rollup?: Rollup;
   /** The track's declared plan/spec doc + execution badge (#285), or null/absent
    *  when the track declares no `plan:`. Optional on the wire so an older CLI
    *  (no `plan` field) deserializes cleanly. */

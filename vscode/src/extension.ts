@@ -1584,6 +1584,41 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // Add a coordination reference without taking ownership from the source track.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.reference", async (node?: TrackNode) => {
+      try {
+        const trackObj = await resolveTrack(node);
+        if (!trackObj) return;
+        const track = trackObj.name;
+        const repoKey = repoKeyForTrack(trackObj);
+        const raw = await vscode.window.showInputBox({
+          prompt: `Issue number to reference from ${track}`,
+          placeHolder: "e.g. 458",
+          validateInput: (v) => /^\d+$/.test(v) && parseInt(v, 10) > 0
+            ? null : "Enter a positive integer issue number (e.g. 42)",
+        });
+        if (raw === undefined) return;
+        const issue = parseInt(raw, 10);
+        const outcome = await withWriteProgress(
+          `Work Plan: referencing #${issue} from ${track}…`,
+          () => executeWrite(runner, { kind: "reference", track, repoKey, issue }, confirmPublicWrite),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(`Work Plan: referenced #${issue} from ${track}`);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: kept private — no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: reference failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
   // -------------------------------------------------------------------------
   // workPlan.move — move an issue from one track to another (context menu)
   // -------------------------------------------------------------------------

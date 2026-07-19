@@ -381,6 +381,13 @@ describe("actionToArgs", () => {
     ]);
   });
 
+  test("reference → batch-slot --reference without changing ownership", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "reference", track: "mvp", repoKey: "sound", issue: 458 }),
+      ["batch-slot", "--reference", "--repo=sound", "--", "458", "mvp"],
+    );
+  });
+
   // #194: a dash-led track name must survive as a positional, never a flag.
   test("editFields with a '--'-prefixed track name → track lands after '--' separator", () => {
     const action: WriteAction = {

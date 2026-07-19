@@ -48,16 +48,24 @@ from pathlib import Path
 from lib.frontmatter import parse_file, write_file
 
 
-def _issue_set(meta: dict) -> set:
-    """The frontmatter's github.issues as a set of ints (malformed entries
-    dropped — the file may be hand-edited)."""
+def _field_set(meta: dict, field: str) -> set:
+    """The frontmatter's github.<field> (e.g. "issues" or "references") as a
+    set of ints (malformed entries dropped — the file may be hand-edited)."""
     out = set()
-    for n in (meta.get("github", {}).get("issues") or []):
+    for n in (meta.get("github", {}).get(field) or []):
         try:
             out.add(int(n))
         except (TypeError, ValueError):
             continue
     return out
+
+
+def _issue_set(meta: dict) -> set:
+    return _field_set(meta, "issues")
+
+
+def _reference_set(meta: dict) -> set:
+    return _field_set(meta, "references")
 
 
 def issues_fingerprint(meta: dict) -> str:
@@ -68,6 +76,17 @@ def issues_fingerprint(meta: dict) -> str:
     regardless of list order or unrelated frontmatter differences.
     """
     payload = json.dumps(sorted(_issue_set(meta)), separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def references_fingerprint(meta: dict) -> str:
+    """Deterministic sha256[:16] of the sorted github.references list.
+
+    Mirrors `issues_fingerprint` but over the references list ONLY — kept
+    separate so an owned-issue add/remove can't stale-out a pending reference
+    write (and vice versa); the two lists are independent CAS surfaces.
+    """
+    payload = json.dumps(sorted(_reference_set(meta)), separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -101,6 +120,31 @@ def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
     issues -= {int(n) for n in remove_nums}
     final = sorted(issues)
     fresh_meta.setdefault("github", {})["issues"] = final
+    write_file(Path(path), fresh_meta, fresh_body)
+    return {"written": final}
+
+
+def guarded_reference_write(path, *, add_nums=(), expect=None):
+    """Add cross-track references without changing github.issues ownership.
+
+    Same CAS contract as `guarded_membership_write`, checked against
+    `references_fingerprint` instead of `issues_fingerprint`: when `expect` is
+    supplied and the on-disk references list no longer matches it, the write is
+    ABORTED and a `{"stale": ...}` signal is returned instead of overwriting.
+    """
+    fresh_meta, fresh_body = parse_file(Path(path))
+
+    if expect is not None and references_fingerprint(fresh_meta) != expect:
+        return {
+            "stale": True,
+            "reason": "track references changed since the operation was prepared",
+            "current": sorted(_reference_set(fresh_meta)),
+        }
+
+    references = _reference_set(fresh_meta)
+    references |= {int(n) for n in add_nums}
+    final = sorted(references)
+    fresh_meta.setdefault("github", {})["references"] = final
     write_file(Path(path), fresh_meta, fresh_body)
     return {"written": final}
 
