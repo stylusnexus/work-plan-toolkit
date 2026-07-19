@@ -6,6 +6,22 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.19+8d14b70 — 2026-07-19 (#467)
+
+fix(vscode): surface reference open count on zero-owned convergence tracks
+
+### Summary
+- Fixes the VS Code sidebar tree row for a track with zero owned issues but open cross-track references — was `0 open · 34 references`, now `0 open · 34 references (17 open)`.
+- Extracted counts formatting into a new pure, tested `trackCountsLabel()` in `treeModel.ts`.
+- Tooltip updated to state the open/total split.
+- Extension bumped to 0.19.7.
+
+Found live while dogfooding #462's `demote-to-reference` migration — VS Code-only, no CLI changes.
+
+Closes #465
+
+https://github.com/stylusnexus/work-plan-toolkit/pull/466
+
 ## 2026.07.19+5f8b6a2 — 2026-07-19 (#464)
 
 feat: add demote-to-reference migration for over-owned convergence-track issues
