@@ -32,6 +32,7 @@ SUBCOMMANDS = {
     "--orient": "commands.where_was_i",   # flag-style alias
     "slot": "commands.slot",
     "batch-slot": "commands.batch_slot",
+    "demote-to-reference": "commands.demote_to_reference",
     "move": "commands.move",
     "close": "commands.close",
     "refresh-md": "commands.refresh_md",
@@ -100,6 +101,17 @@ DESCRIPTIONS = [
      "Slot multiple GitHub issues into a track at once. `--reference` adds cross-track scope without changing issue ownership or removing source-track membership. Use --move to relocate ownership.",
      "After bulk-triage with auto-triage or group — when several issues need the same track assignment.",
      "/work-plan batch-slot 100 101 102 tabletop --move"),
+    ("demote-to-reference", "<issue-num>... <track | track@repo> [--repo=<key>]",
+     "Migrate issues a track lists in github.issues purely for count-surfacing"
+     " into github.references, once a specialist track has taken real"
+     " ownership. All-or-nothing: refuses (no changes) if any issue isn't"
+     " currently owned by the target, or has no other active owner in the"
+     " same repo (would orphan it). Idempotent — an issue already referenced"
+     " is reported as skipped, not refused.",
+     "Cleaning up a convergence/MVP track after cross-track references"
+     " shipped, so its issue list reflects real ownership instead of"
+     " duplicated counts.",
+     "/work-plan demote-to-reference 100 101 102 mvp"),
     ("move", "<issue-num> <from-track> <to-track> [--repo=<key>]",
      "Move an issue from one track to another (remove from source frontmatter, add to destination). Source-first — the verb is the intent. Both tracks must be active and in the same repo.",
      "When an issue belongs in a different track than where it currently sits — cleaner than slot --move.",

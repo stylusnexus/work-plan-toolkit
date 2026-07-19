@@ -25,6 +25,8 @@ from lib.membership_guard import (
     references_fingerprint,
     guarded_membership_write,
     guarded_reference_write,
+    demote_fingerprint,
+    guarded_demote_write,
 )
 
 
@@ -190,6 +192,84 @@ class GuardedReferenceWriteTest(unittest.TestCase):
     def test_expect_none_never_aborts(self):
         self._seed(references=[10, 20])
         res = guarded_reference_write(self.path, add_nums=[30], expect=None)
+        self.assertIn("written", res)
+
+
+class DemoteFingerprintTest(unittest.TestCase):
+
+    def test_stable_regardless_of_list_order(self):
+        a = _meta([2, 1], references=[9, 8])
+        b = _meta([1, 2], references=[8, 9])
+        self.assertEqual(demote_fingerprint(a), demote_fingerprint(b))
+
+    def test_differs_when_issues_differ(self):
+        self.assertNotEqual(
+            demote_fingerprint(_meta([1], references=[])),
+            demote_fingerprint(_meta([1, 2], references=[])),
+        )
+
+    def test_differs_when_references_differ(self):
+        self.assertNotEqual(
+            demote_fingerprint(_meta([1], references=[])),
+            demote_fingerprint(_meta([1], references=[2])),
+        )
+
+
+class GuardedDemoteWriteTest(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "mvp.md"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _seed(self, issues=(), references=(), body="# body\n", **extra):
+        write_file(self.path, _meta(issues, references=references, **extra), body)
+
+    def test_moves_nums_from_issues_to_references(self):
+        self._seed(issues=[10, 42], references=[5])
+        res = guarded_demote_write(self.path, nums=[42])
+        self.assertEqual(res, {"written": {"issues": [10], "references": [5, 42]}})
+        meta, _ = parse_file(self.path)
+        self.assertEqual(meta["github"]["issues"], [10])
+        self.assertEqual(meta["github"]["references"], [5, 42])
+
+    def test_preserves_unrelated_frontmatter_and_body(self):
+        self._seed(issues=[42], body="# MVP\n\nNarrative body.\n",
+                   next_up=[42], launch_priority="P1")
+        guarded_demote_write(self.path, nums=[42])
+        meta, body = parse_file(self.path)
+        self.assertEqual(meta["launch_priority"], "P1")
+        self.assertEqual(body, "# MVP\n\nNarrative body.\n")
+
+    def test_preserves_concurrent_body_edit(self):
+        self._seed(issues=[42], body="# original\n")
+        meta, _ = parse_file(self.path)
+        write_file(self.path, meta, "# rewritten by another writer\n")
+        guarded_demote_write(self.path, nums=[42])
+        _, body = parse_file(self.path)
+        self.assertIn("rewritten by another writer", body)
+
+    def test_expect_match_writes(self):
+        self._seed(issues=[42], references=[])
+        fp = demote_fingerprint(_meta([42], references=[]))
+        res = guarded_demote_write(self.path, nums=[42], expect=fp)
+        self.assertEqual(res["written"]["references"], [42])
+
+    def test_expect_mismatch_aborts_without_writing(self):
+        self._seed(issues=[42], references=[])
+        stale_fp = demote_fingerprint(_meta([], references=[]))
+        res = guarded_demote_write(self.path, nums=[42], expect=stale_fp)
+        self.assertTrue(res["stale"])
+        self.assertEqual(res["current_issues"], [42])
+        self.assertEqual(res["current_references"], [])
+        meta, _ = parse_file(self.path)
+        self.assertEqual(meta["github"]["issues"], [42])  # unchanged on disk
+
+    def test_expect_none_never_aborts(self):
+        self._seed(issues=[42])
+        res = guarded_demote_write(self.path, nums=[42], expect=None)
         self.assertIn("written", res)
 
 

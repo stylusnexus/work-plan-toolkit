@@ -4,12 +4,16 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
-from lib.tracks import discover_tracks, discover_archived_tracks, iter_private_track_paths
+from lib.tracks import (
+    discover_tracks, discover_archived_tracks, iter_private_track_paths,
+    active_owning_tracks,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "notes_root"
 
@@ -498,6 +502,50 @@ class TestIterPrivateTrackPaths(unittest.TestCase):
                 self.assertNotIn("_draft.md", names)
                 self.assertNotIn(".hidden.md", names)
                 self.assertNotIn("-dash.md", names)
+
+
+class ActiveOwningTracksTest(unittest.TestCase):
+    """Shared 'who else owns this issue' lookup used by demote-to-reference."""
+
+    def _track(self, *, name, repo="ok/repo", issues=None, status="active"):
+        return SimpleNamespace(
+            name=name,
+            repo=repo,
+            has_frontmatter=True,
+            meta={"status": status, "github": {"issues": list(issues or [])}},
+        )
+
+    def test_finds_other_active_owner_in_same_repo(self):
+        target = self._track(name="mvp", repo="ok/repo", issues=[42])
+        owner = self._track(name="specialist", repo="ok/repo", issues=[42])
+        result = active_owning_tracks(42, "ok/repo", "mvp", [target, owner])
+        self.assertEqual([t.name for t in result], ["specialist"])
+
+    def test_excludes_named_track_even_if_it_owns_the_issue(self):
+        target = self._track(name="mvp", repo="ok/repo", issues=[42])
+        result = active_owning_tracks(42, "ok/repo", "mvp", [target])
+        self.assertEqual(result, [])
+
+    def test_ignores_other_repo(self):
+        other_repo = self._track(name="specialist", repo="other/repo", issues=[42])
+        result = active_owning_tracks(42, "ok/repo", "mvp", [other_repo])
+        self.assertEqual(result, [])
+
+    def test_ignores_inactive_track(self):
+        parked = self._track(name="specialist", repo="ok/repo", issues=[42], status="parked")
+        result = active_owning_tracks(42, "ok/repo", "mvp", [parked])
+        self.assertEqual(result, [])
+
+    def test_returns_multiple_owners(self):
+        a = self._track(name="a", repo="ok/repo", issues=[42])
+        b = self._track(name="b", repo="ok/repo", issues=[42])
+        result = active_owning_tracks(42, "ok/repo", "mvp", [a, b])
+        self.assertEqual({t.name for t in result}, {"a", "b"})
+
+    def test_no_frontmatter_track_never_counts_as_owner(self):
+        no_fm = SimpleNamespace(name="x", repo="ok/repo", has_frontmatter=False, meta={})
+        result = active_owning_tracks(42, "ok/repo", "mvp", [no_fm])
+        self.assertEqual(result, [])
 
 
 if __name__ == "__main__":
