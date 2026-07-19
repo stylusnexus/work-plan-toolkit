@@ -205,6 +205,27 @@ def find_track_by_name(
     raise AmbiguousTrackError(name, matching)
 
 
+def active_owning_tracks(issue_num: int, repo: Optional[str], exclude_name: str,
+                          tracks: list[Track]) -> list[Track]:
+    """Active tracks in `repo` (excluding `exclude_name`) whose frontmatter
+    `github.issues` already lists `issue_num`.
+
+    Shared home for the "who else owns this issue" lookup — `slot.py` and
+    `batch_slot.py` keep their own private `_find_prior_owners` copies
+    (pre-existing, unrelated to this addition); `demote_to_reference.py` uses
+    this shared version for its orphan-owner preflight check.
+    """
+    owners = []
+    for t in tracks:
+        if not t.has_frontmatter or t.name == exclude_name or t.repo != repo:
+            continue
+        if t.meta.get("status") not in ("active", "in-progress", "blocked"):
+            continue
+        if issue_num in (t.meta.get("github", {}).get("issues") or []):
+            owners.append(t)
+    return owners
+
+
 def discover_archived_tracks(cfg: dict) -> list[Track]:
     """Walk notes_root for archived .md files, and also scan each repo's
     .work-plan/archive/ for shared archived tracks.
