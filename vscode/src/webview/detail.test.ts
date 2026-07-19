@@ -82,7 +82,7 @@ describe("renderDetail — rollup", () => {
     const html = renderDetail(platformHealth);
     // Must render "12" as the open count — wrapped in <b>
     assert.ok(
-      html.includes("<b>12</b>") || (html.includes(">12<") && html.includes("open")),
+      html.includes("Owned issues:</b> 12 open"),
       `Expected bold 12 open in:\n${html}`,
     );
   });
@@ -90,7 +90,7 @@ describe("renderDetail — rollup", () => {
   it("contains rollup closed count 8", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes("<b>8</b>") || (html.includes(">8<") && html.includes("closed")),
+      html.includes("12 open · 8 closed"),
       `Expected bold 8 closed in:\n${html}`,
     );
   });
@@ -624,7 +624,7 @@ describe("renderDetail — table accessibility", () => {
   it("gives the table a caption naming the track", () => {
     const html = renderDetail(platformHealth);
     assert.ok(
-      html.includes('<caption class="sr-only">Issues in platform-health</caption>'),
+      html.includes('<caption class="sr-only">Owned issues in platform-health</caption>'),
       `expected an sr-only caption naming the track:\n${html}`,
     );
   });
@@ -788,7 +788,7 @@ describe("renderDetail — progress bar (#220)", () => {
     const html = renderDetail(platformHealth);   // rollup 12 open / 8 closed → 20 total, 40%
     assert.ok(html.includes('role="progressbar"'), html);
     assert.ok(html.includes('aria-valuenow="8"') && html.includes('aria-valuemax="20"'), html);
-    assert.ok(html.includes('aria-label="8 of 20 issues closed (40%)"'), html);
+    assert.ok(html.includes('aria-label="8 of 20 owned issues closed (40%)"'), html);
     assert.ok(html.includes("width:40%"), html);
   });
   it("omits the bar for an empty track (no divide-by-zero)", () => {

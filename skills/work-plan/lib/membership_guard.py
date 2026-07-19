@@ -60,6 +60,17 @@ def _issue_set(meta: dict) -> set:
     return out
 
 
+def _reference_set(meta: dict) -> set:
+    """The frontmatter's github.references as a set of ints."""
+    out = set()
+    for n in (meta.get("github", {}).get("references") or []):
+        try:
+            out.add(int(n))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def issues_fingerprint(meta: dict) -> str:
     """Deterministic sha256[:16] of the sorted github.issues list.
 
@@ -101,6 +112,17 @@ def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
     issues -= {int(n) for n in remove_nums}
     final = sorted(issues)
     fresh_meta.setdefault("github", {})["issues"] = final
+    write_file(Path(path), fresh_meta, fresh_body)
+    return {"written": final}
+
+
+def guarded_reference_write(path, *, add_nums=()):
+    """Add cross-track references without changing github.issues ownership."""
+    fresh_meta, fresh_body = parse_file(Path(path))
+    references = _reference_set(fresh_meta)
+    references |= {int(n) for n in add_nums}
+    final = sorted(references)
+    fresh_meta.setdefault("github", {})["references"] = final
     write_file(Path(path), fresh_meta, fresh_body)
     return {"written": final}
 

@@ -5,7 +5,9 @@ import sys
 
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
-from lib.membership_guard import guarded_membership_write, shared_rebase_guard
+from lib.membership_guard import (
+    guarded_membership_write, guarded_reference_write, shared_rebase_guard,
+)
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags
 
@@ -26,7 +28,7 @@ def _find_prior_owners(issue_num: int, repo: str, target_name: str, tracks):
 
 def run(args: list[str]) -> int:
     flags, positional = parse_flags(
-        args, {"--confirm", "--move", "--no-move", "--repo", "--expect"}
+        args, {"--confirm", "--move", "--no-move", "--reference", "--repo", "--expect"}
     )
 
     if len(positional) < 2:
@@ -59,6 +61,9 @@ def run(args: list[str]) -> int:
 
     if "--move" in flags and "--no-move" in flags:
         print("ERROR: --move and --no-move are mutually exclusive.")
+        return 2
+    if "--reference" in flags and "--move" in flags:
+        print("ERROR: --reference cannot be combined with --move.")
         return 2
 
     try:
@@ -108,6 +113,7 @@ def run(args: list[str]) -> int:
         return 0
 
     do_move = "--move" in flags
+    as_reference = "--reference" in flags
 
     # --expect=<fp> opts into the compare-and-swap staleness guard (#241). When
     # present (the assisted/viewer path) advisory notes go to stderr so stdout
@@ -120,10 +126,18 @@ def run(args: list[str]) -> int:
     source_removals: dict[str, tuple] = {}  # source_name -> (source_track, set[issue_num])
 
     issues = list(target.meta.get("github", {}).get("issues") or [])
+    references = list(target.meta.get("github", {}).get("references") or [])
     skipped: list[int] = []
     slotted: list[int] = []
 
     for issue_num in issue_nums:
+        if as_reference:
+            if issue_num in references:
+                skipped.append(issue_num)
+                continue
+            references.append(issue_num)
+            slotted.append(issue_num)
+            continue
         if issue_num in issues:
             skipped.append(issue_num)
             continue
@@ -191,7 +205,11 @@ def run(args: list[str]) -> int:
 
     # Write target track once. Carries `expect`: on a detected concurrent change
     # to the membership list it aborts with {stale} instead of clobbering.
-    result = guarded_membership_write(target.path, add_nums=slotted, expect=expect)
+    result = (
+        guarded_reference_write(target.path, add_nums=slotted)
+        if as_reference
+        else guarded_membership_write(target.path, add_nums=slotted, expect=expect)
+    )
     if result.get("stale"):
         print(json.dumps({
             "stale": True,
@@ -202,7 +220,8 @@ def run(args: list[str]) -> int:
         return 0
 
     slotted_str = ", ".join(f"#{n}" for n in slotted)
-    print(f"✓ Slotted {slotted_str} into '{target.name}'.")
+    verb = "Referenced" if as_reference else "Slotted"
+    print(f"✓ {verb} {slotted_str} in '{target.name}'.")
     if skipped:
         skipped_str = ", ".join(f"#{n}" for n in skipped)
         print(f"ℹ Skipped (already in track): {skipped_str}.")

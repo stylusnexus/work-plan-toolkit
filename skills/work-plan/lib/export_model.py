@@ -99,15 +99,17 @@ def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None, config_repos=None,
                  plan_by_track=None, hot_by_track=None,
                  next_up_default=None, tier_duplicates=None,
-                 fetch_failed_repos=None) -> dict:
+                 fetch_failed_repos=None, references_by_track=None) -> dict:
     plan_by_track = plan_by_track or {}
     hot_by_track = hot_by_track or {}
+    references_by_track = references_by_track or {}
     out = {"schema": SCHEMA, "generated_at": now, "tracks": []}
     for t in tracks:
         from lib.in_progress import issue_in_progress, IN_PROGRESS_LABEL
         key = track_key(t)
         hot = hot_by_track.get(key, set())
         raw = issues_by_track.get(key, [])
+        raw_references = references_by_track.get(key, [])
         issues = [
             normalize_issue(
                 i,
@@ -122,8 +124,11 @@ def build_export(tracks, issues_by_track, visibility, now: str,
         ]
         milestone_alignment = t.meta.get("milestone_alignment")
         issues.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
+        references = [normalize_issue(i) for i in raw_references]
+        references.sort(key=lambda i: milestone_sort_key(i, milestone_alignment))
         opened = sum(1 for i in issues if i["state"] == "open")
-        closed_nums = {i["number"] for i in issues if i["state"] == "closed"}
+        reference_opened = sum(1 for i in references if i["state"] == "open")
+        closed_nums = {i["number"] for i in issues + references if i["state"] == "closed"}
         track_path = getattr(t, "path", None)
         next_up_preset_name, next_up_order = resolve_next_up_order(t.meta, next_up_default)
         # When `next_up_auto: true`, derive the next-up list live from the track's
@@ -169,6 +174,11 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             "depends_on": list(t.meta.get("depends_on") or []),
             "rollup": {"open": opened, "closed": len(issues) - opened},
             "issues": issues,
+            "reference_rollup": {
+                "open": reference_opened,
+                "closed": len(references) - reference_opened,
+            },
+            "references": references,
             # The track's declared plan/spec doc + its execution badge (#285), or
             # null when the track declares no `plan:`. `{rel, resolved:false}` when
             # the link can't be resolved (no local clone / file absent).

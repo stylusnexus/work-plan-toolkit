@@ -85,6 +85,27 @@ class BuildExportTest(unittest.TestCase):
         self.assertIsNone(out["tracks"][0]["path"])
         json.dumps(out)  # null is serializable
 
+class BuildExportReferencesTest(unittest.TestCase):
+    def test_references_have_a_separate_rollup_and_leave_owned_progress_intact(self):
+        track = _track("mvp", "o/r", [1, 2])
+        owned = [
+            {"number": 1, "title": "owned open", "state": "OPEN", "assignees": []},
+            {"number": 2, "title": "owned closed", "state": "CLOSED", "assignees": []},
+        ]
+        refs = [
+            {"number": 3, "title": "reference open", "state": "OPEN", "assignees": []},
+            {"number": 4, "title": "reference closed", "state": "CLOSED", "assignees": []},
+        ]
+        out = build_export(
+            [track], {("o/r", "mvp"): owned}, {"o/r": "PRIVATE"}, now="t",
+            references_by_track={("o/r", "mvp"): refs},
+        )
+        exported = out["tracks"][0]
+        self.assertEqual(exported["rollup"], {"open": 1, "closed": 1})
+        self.assertEqual(exported["reference_rollup"], {"open": 1, "closed": 1})
+        self.assertEqual([i["number"] for i in exported["references"]], [3, 4])
+
+
 class BuildExportNextUpAutoTest(unittest.TestCase):
     """next_up_auto: true → export derives next_up live via the ranking preset."""
 
