@@ -271,6 +271,11 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.reference",
+        "title": "Add Cross-Track Issue Reference",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.close",
         "title": "Close Track",
         "category": "Work Plan"
@@ -543,6 +548,11 @@
           "command": "workPlan.slot",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
           "group": "1_workPlanEdit@2"
+        },
+        {
+          "command": "workPlan.reference",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "1_workPlanEdit@2.5"
         },
         {
           "command": "workPlan.move",

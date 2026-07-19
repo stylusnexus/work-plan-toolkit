@@ -100,12 +100,15 @@ def run(args: list[str]) -> int:
                 t.meta["archived"] = True
                 tracks.append(t)
 
-    # Build repo_to_numbers: {repo: [number, ...]} deduped per repo, first-seen order.
+    # Build repo_to_numbers: owned and cross-track references both fetch live
+    # issue state and keep the issue out of the untracked bucket. Only `issues`
+    # is ownership; `references` is intentionally additive scope.
     repo_to_numbers: dict[str, list[int]] = {}
     for t in tracks:
         if not t.repo:
             continue
-        nums = (t.meta.get("github", {}).get("issues")) or []
+        github = t.meta.get("github", {}) or {}
+        nums = list(github.get("issues") or []) + list(github.get("references") or [])
         if not nums:
             continue
         seen_for_repo = repo_to_numbers.setdefault(t.repo, [])
@@ -141,8 +144,11 @@ def run(args: list[str]) -> int:
     # Reassemble per-track lists, preserving each track's declared issue order.
     # Canonical track identity keeps same-named tracks in different repos apart.
     issues_by_track: dict[tuple[str, str], list] = {}
+    references_by_track: dict[tuple[str, str], list] = {}
     for t in tracks:
-        nums = (t.meta.get("github", {}).get("issues")) or []
+        github = t.meta.get("github", {}) or {}
+        nums = github.get("issues") or []
+        refs = [n for n in (github.get("references") or []) if n not in nums]
         if t.repo and nums:
             issues_by_track[track_key(t)] = [
                 issue_map[(t.repo, n)]
@@ -151,8 +157,13 @@ def run(args: list[str]) -> int:
             ]
         else:
             issues_by_track[track_key(t)] = []
+        references_by_track[track_key(t)] = [
+            issue_map[(t.repo, n)]
+            for n in refs
+            if t.repo and (t.repo, n) in issue_map
+        ]
 
-    # Compute untracked: open issues not referenced by any track, per repo.
+    # Compute untracked: open issues not owned or cross-referenced by any track.
     # Iterate over every repo that has ANY track — NOT just repos in
     # repo_to_numbers (which only collects tracks whose github.issues is
     # non-empty). A repo whose only track has `issues: []` must still get its
@@ -257,6 +268,7 @@ def run(args: list[str]) -> int:
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print(json.dumps(
         build_export(tracks, issues_by_track, visibility, now,
+                     references_by_track=references_by_track,
                      untracked_by_repo=untracked_by_repo,
                      config_repos=config_repos,
                      plan_by_track=plan_by_track,

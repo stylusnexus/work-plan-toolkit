@@ -641,9 +641,16 @@ export class WorkPlanTreeProvider
     // "N open · C/T" — the closed/total count (#220) makes progress glanceable
     // in the tree (the detail panel has the bar). Omit C/T for an empty track.
     const total = node.open + node.closed;
-    const counts = total > 0
+    const reference = node.track.reference_rollup;
+    const referenceTotal = (reference?.open ?? 0) + (reference?.closed ?? 0);
+    const ownedCounts = total > 0
       ? `${node.open} open · ${node.closed}/${total}`
       : `${node.open} open`;
+    const counts = total === 0 && referenceTotal > 0
+      ? `${node.open} open · ${referenceTotal} references`
+      : referenceTotal > 0
+        ? `${ownedCounts} · ${referenceTotal} references`
+        : ownedCounts;
     // 🧹 marks a track flagged as a cleanup candidate (#328/#329/#330) — a
     // reversible frontmatter flag, surfaced alongside the visibility/tier badge.
     const cleanup = node.track.cleanup_candidate ? " 🧹" : "";
@@ -664,7 +671,10 @@ export class WorkPlanTreeProvider
     item.contextValue = node.track.archived ? "workPlanTrackArchived" : "workPlanTrack";
     // MarkdownString (supportThemeIcons) so the $(icon) glyphs render in the tooltip.
     const tip = new vscode.MarkdownString(undefined, true);
-    tip.appendMarkdown(`**${node.name}** — ${node.status} · ${node.open} open\n\n`);
+    tip.appendMarkdown(`**${node.name}** — ${node.status} · ${node.open} owned open\n\n`);
+    if (referenceTotal > 0) {
+      tip.appendMarkdown(`${referenceTotal} referenced issues are owned by other tracks and are excluded from this track’s status and progress.\n\n`);
+    }
     tip.appendMarkdown(badge.tooltipMarkdown);
     if (node.track.cleanup_candidate) {
       const reason = node.track.cleanup_reason;

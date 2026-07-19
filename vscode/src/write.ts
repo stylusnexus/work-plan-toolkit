@@ -23,6 +23,7 @@ export type WriteAction =
   // re-offers instead of clobbering. Omitted → today's unguarded behaviour.
   | { kind: "slot"; track: string; repoKey?: string; issue: number; expect?: string }
   | { kind: "batchSlot"; track: string; repoKey?: string; issues: number[]; expect?: string }
+  | { kind: "reference"; track: string; repoKey?: string; issue: number }
   | { kind: "close"; track: string; repoKey?: string; state: "shipped" | "parked" | "abandoned"; note?: string }
   | { kind: "newTrack"; repo: string; slug: string; priority?: string; milestone?: string }
   | { kind: "renameTrack"; track: string; repoKey?: string; newSlug: string }
@@ -230,6 +231,16 @@ export function actionToArgs(action: WriteAction): string[] {
         ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
         "--",
         ...action.issues.map(String),
+        action.track,
+      ];
+
+    case "reference":
+      return [
+        "batch-slot",
+        "--reference",
+        ...(action.repoKey ? [`--repo=${action.repoKey}`] : []),
+        "--",
+        String(action.issue),
         action.track,
       ];
 

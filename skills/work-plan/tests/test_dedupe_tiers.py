@@ -19,11 +19,13 @@ from lib import tracks
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _track(*, name, repo="org/repo", folder="repo", issues=None, body="", path=None,
-           tier="private"):
+def _track(*, name, repo="org/repo", folder="repo", issues=None, references=None, body="",
+           path=None, tier="private"):
     meta = {"track": name, "github": {"repo": repo}}
     if issues is not None:
         meta["github"]["issues"] = issues
+    if references is not None:
+        meta["github"]["references"] = references
     return SimpleNamespace(
         name=name,
         path=Path(path) if path else Path(f"/tmp/notes/{folder}/{name}.md"),
@@ -61,6 +63,14 @@ class TestIssueRefs(unittest.TestCase):
     def test_ignores_non_int_frontmatter(self):
         t = _track(name="a", issues=[1, "oops", None], body="")
         self.assertEqual(tracks.issue_refs(t), {1})
+
+    def test_unions_cross_track_references(self):
+        t = _track(name="a", issues=[10], references=[40, 50], body="")
+        self.assertEqual(tracks.issue_refs(t), {10, 40, 50})
+
+    def test_references_only_track_not_empty(self):
+        t = _track(name="a", issues=None, references=[99], body="")
+        self.assertEqual(tracks.issue_refs(t), {99})
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +135,21 @@ class TestDedupeCommand(unittest.TestCase):
             rc, out = _drive(["--apply"], [(shared, private)])
             self.assertEqual(rc, 0)
             self.assertTrue(pf.exists(), "diverged orphan must NOT be removed")
+        self.assertIn("#99", out)
+        self.assertIn("manual review", out)
+
+    def test_apply_keeps_orphan_whose_only_content_is_references(self):
+        with tempfile.TemporaryDirectory() as d:
+            pf = Path(d) / "dup.md"
+            pf.write_text("# dup\n")
+            # private has no owned issues/body mentions but DOES hold a cross-track
+            # reference the shared twin lacks — issue_refs() must see it or this
+            # data silently vanishes on --apply (#458 regression).
+            shared = _track(name="dup", issues=[1, 2], tier="shared")
+            private = _track(name="dup", issues=None, references=[99], path=str(pf))
+            rc, out = _drive(["--apply"], [(shared, private)])
+            self.assertEqual(rc, 0)
+            self.assertTrue(pf.exists(), "reference-only orphan must NOT be removed")
         self.assertIn("#99", out)
         self.assertIn("manual review", out)
 
