@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.19+5f8b6a2 — 2026-07-19 (#464)
+
+feat: add demote-to-reference migration for over-owned convergence-track issues
+
+### Summary
+- Adds `work-plan demote-to-reference <issue-num>... <track> [--repo=<key>]` — migrates issues a track lists in `github.issues` purely for count-surfacing into `github.references`, once a specialist track already owns them (cleanup step after #458's cross-track references).
+- All-or-nothing preflight: refuses (no changes) if any requested issue isn't currently owned by the target, or has no other active owning track in the same repo — never creates an orphan. Already-referenced issues are skipped (idempotent), not refused.
+- CAS-guarded, single-write migration primitive (`guarded_demote_write`/`demote_fingerprint`), reusing the existing confirm-token / shared-tier-rebase guard patterns.
+- No VS Code extension changes — this is a CLI-only feature.
+
+Closes #462
+
+https://github.com/stylusnexus/work-plan-toolkit/pull/463
+
 ## 2026.07.19+708eb40 — 2026-07-19 (#461)
 
 feat: model cross-track issue references without transferring ownership
