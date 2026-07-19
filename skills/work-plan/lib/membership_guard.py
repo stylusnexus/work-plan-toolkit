@@ -48,27 +48,24 @@ from pathlib import Path
 from lib.frontmatter import parse_file, write_file
 
 
-def _issue_set(meta: dict) -> set:
-    """The frontmatter's github.issues as a set of ints (malformed entries
-    dropped — the file may be hand-edited)."""
+def _field_set(meta: dict, field: str) -> set:
+    """The frontmatter's github.<field> (e.g. "issues" or "references") as a
+    set of ints (malformed entries dropped — the file may be hand-edited)."""
     out = set()
-    for n in (meta.get("github", {}).get("issues") or []):
+    for n in (meta.get("github", {}).get(field) or []):
         try:
             out.add(int(n))
         except (TypeError, ValueError):
             continue
     return out
+
+
+def _issue_set(meta: dict) -> set:
+    return _field_set(meta, "issues")
 
 
 def _reference_set(meta: dict) -> set:
-    """The frontmatter's github.references as a set of ints."""
-    out = set()
-    for n in (meta.get("github", {}).get("references") or []):
-        try:
-            out.add(int(n))
-        except (TypeError, ValueError):
-            continue
-    return out
+    return _field_set(meta, "references")
 
 
 def issues_fingerprint(meta: dict) -> str:
