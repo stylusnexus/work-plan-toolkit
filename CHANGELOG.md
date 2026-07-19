@@ -6,6 +6,15 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.19+10ab480 — 2026-07-19 (#471)
+
+chore(vscode): bump to 0.19.8 for track-counts wording fix
+
+### Changed
+- vscode: bump to 0.19.8 and update the Marketplace Status section, carrying the track-counts wording fix (#468) onto `main`.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
 ## 2026.07.19+2afdfb8 — 2026-07-19 (#469)
 
 fix(vscode): disambiguate owned vs. referenced open counts in track row
