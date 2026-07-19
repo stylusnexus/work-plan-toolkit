@@ -6,6 +6,15 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.19+2afdfb8 — 2026-07-19 (#469)
+
+fix(vscode): disambiguate owned vs. referenced open counts in track row
+
+### Fixed
+- vscode: track tree rows for convergence tracks reworded their counts label from `N open · X references (Y open)` to `N owned · Y of X referenced still open`, fixing a wording collision where "open" was used for two different scopes (issues the track owns vs. issues it references elsewhere) and read as self-contradictory.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
 ## 2026.07.19+8d14b70 — 2026-07-19 (#467)
 
 fix(vscode): surface reference open count on zero-owned convergence tracks
