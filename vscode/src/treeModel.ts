@@ -181,24 +181,33 @@ export function repoDescription(node: RepoNode): string {
  * do" when 17 of 34 referenced issues were still open). Always surface the
  * reference open count alongside its total so the row stays informative even
  * when owned progress is 0/0.
+ *
+ * Both clauses previously used the word "open" for two different scopes
+ * (issues this track owns vs. issues it references elsewhere) with only a
+ * `·` between them — e.g. "0 open · 34 references (17 open)" reads as a
+ * contradiction on first glance, since `·` elsewhere in this string joins
+ * more detail about the *same* stat. "owned"/"referenced" now scope each
+ * number to a distinct noun so the row doesn't need to be parsed twice.
  */
 export function trackCountsLabel(node: TrackNode): string {
   const total = node.open + node.closed;
-  const ownedCounts = total > 0
-    ? `${node.open} open · ${node.closed}/${total}`
-    : `${node.open} open`;
 
   const reference = node.track.reference_rollup;
   const referenceOpen = reference?.open ?? 0;
   const referenceTotal = referenceOpen + (reference?.closed ?? 0);
+
+  const ownedCounts = total > 0
+    ? `${node.open} open · ${node.closed}/${total}`
+    : referenceTotal > 0
+      ? `${node.open} owned`
+      : `${node.open} open`;
+
   if (referenceTotal === 0) {
     return ownedCounts;
   }
-  const referenceCounts = `${referenceTotal} references (${referenceOpen} open)`;
+  const referenceCounts = `${referenceOpen} of ${referenceTotal} referenced still open`;
 
-  return total === 0
-    ? `${node.open} open · ${referenceCounts}`
-    : `${ownedCounts} · ${referenceCounts}`;
+  return `${ownedCounts} · ${referenceCounts}`;
 }
 
 /**
