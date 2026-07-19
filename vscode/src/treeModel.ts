@@ -171,6 +171,37 @@ export function repoDescription(node: RepoNode): string {
 }
 
 /**
+ * The tree row's "N open · C/T" counts, extended with reference scope.
+ *
+ * A track's OWNED progress (`node.open`/`node.closed`) deliberately excludes
+ * referenced issues (#458/#462) — they're owned by another track. But a bare
+ * reference total ("34 references") can't distinguish "all done" from "17
+ * still open", which reads as misleadingly quiet when a convergence track
+ * owns nothing itself (#462 follow-up: "0 open" was mistaken for "nothing to
+ * do" when 17 of 34 referenced issues were still open). Always surface the
+ * reference open count alongside its total so the row stays informative even
+ * when owned progress is 0/0.
+ */
+export function trackCountsLabel(node: TrackNode): string {
+  const total = node.open + node.closed;
+  const ownedCounts = total > 0
+    ? `${node.open} open · ${node.closed}/${total}`
+    : `${node.open} open`;
+
+  const reference = node.track.reference_rollup;
+  const referenceOpen = reference?.open ?? 0;
+  const referenceTotal = referenceOpen + (reference?.closed ?? 0);
+  if (referenceTotal === 0) {
+    return ownedCounts;
+  }
+  const referenceCounts = `${referenceTotal} references (${referenceOpen} open)`;
+
+  return total === 0
+    ? `${node.open} open · ${referenceCounts}`
+    : `${ownedCounts} · ${referenceCounts}`;
+}
+
+/**
  * The two independent visibility axes of a track, rendered for the tree:
  *   - repo visibility: PUBLIC (`$(globe)`) vs PRIVATE/unknown (`$(lock)`)
  *   - tier: shared (`$(cloud)`, travels via git) vs unshared (no glyph, local only)
