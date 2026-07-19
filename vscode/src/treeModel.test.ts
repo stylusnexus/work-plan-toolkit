@@ -11,6 +11,7 @@ import {
   sortTracks,
   repoDescription,
   visibilityTierBadge,
+  trackCountsLabel,
   suggestedIssueNode,
 } from "./treeModel.ts";
 import type { RepoNode, TrackNode } from "./treeModel.ts";
@@ -49,6 +50,21 @@ function makeTrack(overrides: Partial<Track> = {}): Track {
     rollup: { open: 0, closed: 0 },
     issues: [],
     ...overrides,
+  };
+}
+
+function makeTrackNode(overrides: Partial<Track> = {}): TrackNode {
+  const track = makeTrack(overrides);
+  return {
+    kind: "track",
+    name: track.name,
+    repo: track.repo,
+    status: track.status,
+    category: "active",
+    open: track.rollup.open,
+    closed: track.rollup.closed,
+    hint: null,
+    track,
   };
 }
 
@@ -793,6 +809,53 @@ describe("visibilityTierBadge — the visibility × tier 2×2 (#259)", () => {
       visibilityTierBadge(makeTrack({ tier: "private", visibility: "PRIVATE" })),
     ].map(b => b.descriptionPrefix);
     assert.equal(new Set(states).size, 4, "all four states must be visually distinct");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// trackCountsLabel (#462 follow-up — reference open count must not vanish)
+// ---------------------------------------------------------------------------
+
+describe("trackCountsLabel", () => {
+  test("owned issues only, no references: plain N open · C/T", () => {
+    const node = makeTrackNode({ rollup: { open: 4, closed: 5 } });
+    assert.equal(trackCountsLabel(node), "4 open · 5/9");
+  });
+
+  test("empty track (no owned, no references): just N open", () => {
+    const node = makeTrackNode({ rollup: { open: 0, closed: 0 } });
+    assert.equal(trackCountsLabel(node), "0 open");
+  });
+
+  test("zero owned issues but open references: reference open count is NOT dropped", () => {
+    // Regression for the #462 follow-up: "0 open · 34 references" read as
+    // nothing-to-do even though 17 of the 34 references were still open.
+    const node = makeTrackNode({
+      rollup: { open: 0, closed: 0 },
+      reference_rollup: { open: 17, closed: 17 },
+    });
+    assert.equal(trackCountsLabel(node), "0 open · 34 references (17 open)");
+  });
+
+  test("owned issues AND references: both counts shown, reference open surfaced", () => {
+    const node = makeTrackNode({
+      rollup: { open: 2, closed: 1 },
+      reference_rollup: { open: 3, closed: 0 },
+    });
+    assert.equal(trackCountsLabel(node), "2 open · 1/3 · 3 references (3 open)");
+  });
+
+  test("all references closed: reference open count is 0, still shown", () => {
+    const node = makeTrackNode({
+      rollup: { open: 0, closed: 0 },
+      reference_rollup: { open: 0, closed: 5 },
+    });
+    assert.equal(trackCountsLabel(node), "0 open · 5 references (0 open)");
+  });
+
+  test("reference_rollup absent (older CLI/export): falls back to owned counts only", () => {
+    const node = makeTrackNode({ rollup: { open: 1, closed: 2 } });
+    assert.equal(trackCountsLabel(node), "1 open · 2/3");
   });
 });
 
