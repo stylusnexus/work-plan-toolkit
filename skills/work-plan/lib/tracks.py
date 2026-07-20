@@ -108,6 +108,45 @@ def issue_refs(track: "Track") -> set:
     return refs
 
 
+def _github_int_list(meta: dict, key: str) -> list:
+    """The frontmatter's `github.<key>` list coerced to ints, in declared order,
+    dropping malformed entries (the file may be hand-edited)."""
+    out = []
+    github = meta.get("github") or {}
+    for n in github.get(key) or []:
+        try:
+            out.append(int(n))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def reference_numbers(meta: dict) -> list:
+    """A track's cross-track `github.references` as ints, in declared order,
+    excluding any number also present in `github.issues`.
+
+    Ownership wins: a number appearing in both lists is an OWNED issue, not
+    merely a reference — so it is dropped here to keep the two views disjoint.
+    A convergence track (`issues: []`) references issues owned by specialist
+    tracks; this is the additive cross-track scope it surfaces without claiming
+    ownership. Mirrors the dedup `commands/export.py` already applies (#458).
+    """
+    owned = set(_github_int_list(meta, "issues"))
+    return [n for n in _github_int_list(meta, "references") if n not in owned]
+
+
+def scope_issue_numbers(meta: dict) -> list:
+    """Every issue in a track's tracked SCOPE: owned `github.issues` first
+    (declared order), then cross-track `github.references` (deduped against the
+    owned list).
+
+    This is the set whose live GitHub state a track legitimately surfaces in
+    rollups / handoff / orient. It is strictly a READ view — ownership stays in
+    `github.issues`; nothing here promotes a reference into an owned issue.
+    """
+    return _github_int_list(meta, "issues") + reference_numbers(meta)
+
+
 def find_tier_duplicates(cfg: dict) -> list:
     """Return (shared, private) Track pairs that collide on (repo, name) across
     BOTH the active and archived tiers. Unlike discover_tracks, this does NOT

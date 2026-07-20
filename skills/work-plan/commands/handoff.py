@@ -14,7 +14,10 @@ import subprocess
 from datetime import datetime, timedelta
 
 from lib.config import load_config, ConfigError
-from lib.tracks import discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError
+from lib.tracks import (
+    discover_tracks, find_track_by_name, parse_track_repo_arg,
+    AmbiguousTrackError, reference_numbers, scope_issue_numbers,
+)
 from lib.frontmatter import write_file
 from lib.session_log import append_session_log, SESSION_LOG_HEADER
 from lib.git_state import (
@@ -313,7 +316,18 @@ def _check_next_up_collisions(track, proposed: list[int], cfg: dict) -> bool:
     tracks (i.e. the track being updated itself) are excluded so re-applying
     an existing list isn't flagged as a self-collision. Parked / abandoned
     sibling tracks are skipped because they don't compete for attention.
+
+    The track's OWN `github.references` are excluded from the check: a
+    convergence track deliberately queues issues owned (and next_up'd) by
+    specialist sibling tracks, so those are legitimate cross-track scope, not a
+    duplicate-membership collision. Proposing a non-referenced number that a
+    sibling holds is still flagged normally.
     """
+    own_refs = set(reference_numbers(track.meta))
+    proposed_set = set(proposed) - own_refs
+    if not proposed_set:
+        return True
+
     siblings = [t for t in discover_tracks(cfg)
                 if t.has_frontmatter
                 and t.path != track.path
@@ -323,7 +337,6 @@ def _check_next_up_collisions(track, proposed: list[int], cfg: dict) -> bool:
     if not siblings:
         return True
 
-    proposed_set = set(proposed)
     collisions = []
     for sib in siblings:
         for num in (sib.meta.get("next_up") or []):
@@ -384,8 +397,13 @@ def _derived_handoff(track) -> int:
     )
 
     # === GitHub data (only if reachable) ===
-    issue_nums = track.meta.get("github", {}).get("issues") or []
-    issues = fetch_issues(track.repo, issue_nums) if (track.repo and issue_nums) else []
+    # `owned_nums` is the ownership list (github.issues); `scope_nums` adds the
+    # cross-track github.references so a convergence track (issues: []) still
+    # surfaces the live state of the release scope it references. Fetch the full
+    # scope for display/rollups; ownership-scoped writes below stay on owned_nums.
+    owned_nums = track.meta.get("github", {}).get("issues") or []
+    scope_nums = scope_issue_numbers(track.meta)
+    issues = fetch_issues(track.repo, scope_nums) if (track.repo and scope_nums) else []
     closed_since_last = _issues_closed_since(issues, last_handoff_dt)
     issues_by_num = {i["number"]: i for i in issues}
     open_from_github = [i for i in issues if i.get("state") not in ("CLOSED", "MERGED")]
@@ -396,7 +414,8 @@ def _derived_handoff(track) -> int:
         days = max(1, int((now - last_handoff_dt).total_seconds() / 86400))
         slug_labels = build_slug_labels([track])
         new_map = find_new_issues_for_tracks(track.repo, [slug], slug_labels=slug_labels, since_days=days)
-        listed_set = set(issue_nums)
+        # Anything already in the track's scope (owned OR referenced) is not "new".
+        listed_set = set(scope_nums)
         new_issues = [i for i in new_map.get(slug, []) if i["number"] not in listed_set]
 
     # === Present (body-first, git/GitHub as supplements) ===
@@ -543,7 +562,10 @@ def _derived_handoff(track) -> int:
     if issues:
         for i in issues:
             new_body = update_row_status(new_body, i["number"], state_to_status_label(i.get("state")))
-        new_body, _ = sync_missing_rows(new_body, issue_nums, issues_by_num)
+        # Self-heal only OWNED membership into the canonical table — never
+        # append referenced (cross-track) issues here, or the body would claim
+        # ownership the frontmatter deliberately withholds.
+        new_body, _ = sync_missing_rows(new_body, owned_nums, issues_by_num)
 
     # Update frontmatter timestamps
     track.meta["last_touched"] = iso_now
