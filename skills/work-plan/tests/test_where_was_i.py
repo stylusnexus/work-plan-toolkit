@@ -593,5 +593,75 @@ class OrientBlockedByTest(unittest.TestCase):
         self.assertIn("blocked by other/repo#9", out)
 
 
+class WhereWasIConvergenceReferenceCase(unittest.TestCase):
+    """A convergence track (github.issues: []) whose next_up holds a
+    cross-track reference must still show that reference as the next pick with
+    live GitHub state — orient fetches the next_up numbers directly, so it is
+    reference-aware without needing them in github.issues."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.notes_root = Path(self.tmp.name) / "notes_root"
+        self.repo_dir = self.notes_root / "sound"
+        self.repo_dir.mkdir(parents=True)
+
+        meta = {
+            "track": "mvp",
+            "status": "active",
+            "launch_priority": "P0",
+            "milestone_alignment": "mvp",
+            "github": {
+                "repo": "evemcgivern/soundstellation",
+                "issues": [],
+                "references": [165, 166, 18],
+                "branches": [],
+            },
+            "next_up": [165, 166],
+            "last_touched": "2026-04-28T19:36",
+        }
+        self.track_path = self.repo_dir / "mvp.md"
+        write_file(self.track_path, meta, "\n# MVP convergence\n\nBody.\n")
+
+        self.cfg = {
+            "notes_root": str(self.notes_root),
+            "repos": {"sound": {"github": "evemcgivern/soundstellation"}},
+        }
+
+        def _fetch(repo, nums):
+            titles = {165: "release blocker", 166: "cutover", 18: "polish"}
+            return [{"number": n, "title": titles.get(n, f"issue {n}"),
+                     "state": "OPEN", "labels": [], "milestone": None,
+                     "url": "", "closedAt": None, "body": ""} for n in nums]
+
+        self._patches = [
+            mock.patch("commands.where_was_i.load_config", return_value=self.cfg),
+            mock.patch("commands.where_was_i.fetch_issues", side_effect=_fetch),
+            mock.patch("commands.where_was_i.find_new_issues_for_tracks",
+                       return_value={}),
+            mock.patch("commands.where_was_i.current_branch", return_value=None),
+            mock.patch("commands.where_was_i.commits_ahead", return_value=0),
+            mock.patch("commands.where_was_i.uncommitted_file_count", return_value=0),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def test_referenced_next_up_shown_as_next_pick_with_live_state(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = where_was_i.run(["mvp"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("Next pick: #165", out)
+        self.assertIn("release blocker", out)
+        self.assertIn("Behind it:", out)
+        self.assertIn("#166", out)
+        self.assertNotIn("(none set", out)
+
+
 if __name__ == "__main__":
     unittest.main()
