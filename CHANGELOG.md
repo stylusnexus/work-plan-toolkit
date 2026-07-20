@@ -6,6 +6,24 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.20+b7fed72 — 2026-07-20 (#473)
+
+fix(handoff): treat github.references as tracked scope on convergence tracks
+
+Convergence tracks (`github.issues: []` + cross-track `github.references`) were invisible to `handoff`, which read only owned issues. This deploy makes referenced issues legitimate tracked scope in the handoff paths, without ever promoting them to owned issues.
+
+### Fixed
+- **`handoff` now surfaces referenced open work.** A convergence track no longer reports *"WHAT'S STILL OPEN: (no open items — track may be ready to close)"* — `handoff` fetches live GitHub state for the full scope (owned `github.issues` + `github.references`) and rolls it up, so cross-track release scope shows correctly.
+- **`handoff --set-next` is usable non-interactively on a convergence track.** Referenced issues are no longer flagged as duplicate-membership collisions just because they are `next_up` on their owning specialist track, so `--set-next` no longer prompts *"Apply anyway? [y/N]"* and skips in a non-interactive shell. Ordinary duplicate protection for genuinely non-referenced numbers is unchanged.
+
+### Guarantees preserved
+- Ownership is never rewritten: references stay in `github.references`, never copied into `github.issues` or the canonical body table (`sync_missing_rows` remains owned-scoped).
+- `orient` and the export/viewer read model already handled references (separate `reference_rollup`); regression tests now lock that behavior alongside the handoff fix.
+
+### Internal
+- New `reference_numbers` / `scope_issue_numbers` helpers in `lib/tracks.py` (owned wins on dedup, mirroring the export path).
+- Focused regression tests for handoff, orient, export, and the scope helpers. Full suite: 1442 passing.
+
 ## 2026.07.19+10ab480 — 2026-07-19 (#471)
 
 chore(vscode): bump to 0.19.8 for track-counts wording fix
