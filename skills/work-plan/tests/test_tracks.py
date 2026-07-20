@@ -12,7 +12,7 @@ sys.path.insert(0, str(SKILL_ROOT))
 
 from lib.tracks import (
     discover_tracks, discover_archived_tracks, iter_private_track_paths,
-    active_owning_tracks,
+    active_owning_tracks, reference_numbers, scope_issue_numbers,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "notes_root"
@@ -546,6 +546,34 @@ class ActiveOwningTracksTest(unittest.TestCase):
         no_fm = SimpleNamespace(name="x", repo="ok/repo", has_frontmatter=False, meta={})
         result = active_owning_tracks(42, "ok/repo", "mvp", [no_fm])
         self.assertEqual(result, [])
+
+
+class ScopeHelperTest(unittest.TestCase):
+    """reference_numbers / scope_issue_numbers ownership + dedup semantics."""
+
+    def test_reference_numbers_excludes_owned(self):
+        meta = {"github": {"issues": [1, 2], "references": [2, 3, 4]}}
+        self.assertEqual(reference_numbers(meta), [3, 4])  # 2 is owned → dropped
+
+    def test_reference_numbers_empty_when_no_references(self):
+        self.assertEqual(reference_numbers({"github": {"issues": [1]}}), [])
+
+    def test_reference_numbers_handles_missing_github(self):
+        self.assertEqual(reference_numbers({}), [])
+
+    def test_scope_is_owned_then_references_in_order(self):
+        meta = {"github": {"issues": [10, 20], "references": [30, 20, 40]}}
+        # owned first (declared order), then references deduped against owned
+        self.assertEqual(scope_issue_numbers(meta), [10, 20, 30, 40])
+
+    def test_scope_of_convergence_track_is_just_references(self):
+        meta = {"github": {"issues": [], "references": [165, 166, 18]}}
+        self.assertEqual(scope_issue_numbers(meta), [165, 166, 18])
+
+    def test_malformed_entries_dropped(self):
+        meta = {"github": {"issues": ["x", 5], "references": [None, "6", 7]}}
+        # "5" coerces via int already-int; "x"/None dropped; "6" coerces to 6
+        self.assertEqual(scope_issue_numbers(meta), [5, 6, 7])
 
 
 if __name__ == "__main__":

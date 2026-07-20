@@ -207,6 +207,25 @@ class ExportRunJsonTest(unittest.TestCase):
         self.assertEqual(rollup["open"], 1)
         self.assertEqual(rollup["closed"], 1)
 
+    def test_convergence_track_references_fetched_and_rolled_up(self):
+        """A convergence track (issues: []) with cross-track references must:
+        fetch the referenced issues live, roll them up under reference_rollup,
+        keep its OWN rollup empty, and never claim them as owned issues."""
+        conv = _track("mvp", _SHARED_REPO, [])
+        conv.meta["github"]["references"] = [1, 2, 3]  # 1=OPEN,2=CLOSED,3=OPEN
+        rc, out, mock_fei = self._run_with_mocks([conv], _EXPORT_MAP)
+        self.assertEqual(rc, 0)
+        # Referenced numbers were fetched from GitHub even though issues is [].
+        repo_to_numbers = mock_fei.call_args[0][0]
+        self.assertEqual(sorted(repo_to_numbers[_SHARED_REPO]), [1, 2, 3])
+        t = out["tracks"][0]
+        # Ownership untouched: no owned issues, empty owned rollup.
+        self.assertEqual(t["issues"], [])
+        self.assertEqual(t["rollup"], {"open": 0, "closed": 0})
+        # References carry the live open/closed split in their own rollup.
+        self.assertEqual(t["reference_rollup"], {"open": 2, "closed": 1})
+        self.assertEqual([i["number"] for i in t["references"]], [1, 2, 3])
+
     def test_no_frontmatter_tracks_excluded(self):
         tracks = [
             _track("with_fm", _SHARED_REPO, [1], has_frontmatter=True),
