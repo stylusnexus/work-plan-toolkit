@@ -3112,6 +3112,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // workPlan.orient — re-orient on a track (read-only; context menu + palette).
   context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.trackActionsHelp", () => {
+      void vscode.env.openExternal(
+        vscode.Uri.parse(
+          `${TOOLKIT_URL}/blob/main/vscode/README.md#track-actions-right-click-a-track`,
+        ),
+      );
+    }),
     vscode.commands.registerCommand("workPlan.orient", async (node?: TrackNode) => {
       try {
         const trackObj = await resolveTrack(node);

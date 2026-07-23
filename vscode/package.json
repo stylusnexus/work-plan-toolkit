@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.19.8",
+  "version": "0.19.9",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -149,7 +149,7 @@
       },
       {
         "command": "workPlan.pushTrack",
-        "title": "Push to Shared Tier…",
+        "title": "Publish to Team (Shared Tier)…",
         "category": "Work Plan",
         "icon": "$(cloud-upload)"
       },
@@ -221,9 +221,15 @@
       },
       {
         "command": "workPlan.openTrackFile",
-        "title": "Open Track File",
+        "title": "Open Track File (.md)",
         "category": "Work Plan",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "workPlan.trackActionsHelp",
+        "title": "What Do These Actions Do?",
+        "category": "Work Plan",
+        "icon": "$(question)"
       },
       {
         "command": "workPlan.openIssue",
@@ -232,32 +238,32 @@
       },
       {
         "command": "workPlan.editFields",
-        "title": "Edit Track Fields",
+        "title": "Edit Track Fields (status, milestone…)",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.setNext",
-        "title": "Set Next-Up & Log Session",
+        "title": "Set Next-Up (pick manually)…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.autoNext",
-        "title": "Suggest Next-Up (auto)…",
+        "title": "Set Next-Up (auto-suggest)…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.setNextUpPreset",
-        "title": "Set Next-Up Order…",
+        "title": "Change Next-Up Ranking…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.refreshMd",
-        "title": "Sync Issue States from GitHub",
+        "title": "Refresh Track from GitHub",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.reconcile",
-        "title": "Check Label Drift (preview)",
+        "title": "Preview Label Drift (label-driven tracks)…",
         "category": "Work Plan"
       },
       {
@@ -267,47 +273,47 @@
       },
       {
         "command": "workPlan.slot",
-        "title": "Add Issue to Track",
+        "title": "Add Issue to Track (owned)…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.reference",
-        "title": "Add Cross-Track Issue Reference",
+        "title": "Reference Issue from Another Track…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.close",
-        "title": "Close Track",
+        "title": "Close Track…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.move",
-        "title": "Move Issue from Track",
+        "title": "Move Issue to Another Track…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.renameTrack",
-        "title": "Rename Track",
+        "title": "Rename Track…",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.markCleanup",
-        "title": "Mark for Cleanup",
+        "title": "Mark as Stale 🧹",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.unmarkCleanup",
-        "title": "Unmark Cleanup",
+        "title": "Clear Stale Flag 🧹",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.archiveTrack",
-        "title": "Archive Track",
+        "title": "Archive Track (Set Aside)",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.unarchiveTrack",
-        "title": "Unarchive Track",
+        "title": "Restore from Archive",
         "category": "Work Plan"
       },
       {
@@ -318,7 +324,7 @@
       },
       {
         "command": "workPlan.deleteTrack",
-        "title": "Delete Track…",
+        "title": "Delete Track (Permanent)…",
         "category": "Work Plan"
       },
       {
@@ -405,12 +411,12 @@
       },
       {
         "command": "workPlan.orient",
-        "title": "Re-orient (Where was I)",
+        "title": "Where Was I? (Re-orient)",
         "category": "Work Plan"
       },
       {
         "command": "workPlan.handoff",
-        "title": "Wrap Up Session (Handoff)",
+        "title": "Wrap Up Session — Log & Handoff",
         "category": "Work Plan"
       },
       {
@@ -418,6 +424,12 @@
         "title": "Search Issues…",
         "category": "Work Plan",
         "icon": "$(search)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "workPlan.trackMore",
+        "label": "More Actions"
       }
     ],
     "menus": {
@@ -527,92 +539,62 @@
         {
           "command": "workPlan.openTrackFile",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "0_workPlanNav@1"
+          "group": "0_workPlanOpen@1"
         },
         {
           "command": "workPlan.orient",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "0_workPlanSession@1"
+          "group": "1_workPlanSession@1"
         },
         {
           "command": "workPlan.handoff",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "0_workPlanSession@2"
-        },
-        {
-          "command": "workPlan.editFields",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@1"
-        },
-        {
-          "command": "workPlan.slot",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@2"
-        },
-        {
-          "command": "workPlan.reference",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@2.5"
-        },
-        {
-          "command": "workPlan.move",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@3"
+          "group": "1_workPlanSession@2"
         },
         {
           "command": "workPlan.setNext",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@4"
+          "group": "2_workPlanNextUp@1"
         },
         {
           "command": "workPlan.autoNext",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@5"
+          "group": "2_workPlanNextUp@2"
         },
         {
-          "command": "workPlan.setNextUpPreset",
+          "command": "workPlan.slot",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "1_workPlanEdit@6"
+          "group": "3_workPlanIssues@1"
+        },
+        {
+          "command": "workPlan.move",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "3_workPlanIssues@2"
         },
         {
           "command": "workPlan.refreshMd",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "5_workPlanSync@1"
-        },
-        {
-          "command": "workPlan.reconcile",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "5_workPlanSync@2"
-        },
-        {
-          "command": "workPlan.pushTrack",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "5_workPlanSync@3"
+          "group": "4_workPlanRefresh@1"
         },
         {
           "command": "workPlan.close",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "9_workPlanDanger@1"
-        },
-        {
-          "command": "workPlan.renameTrack",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "9_workPlanDanger@2"
-        },
-        {
-          "command": "workPlan.markCleanup",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "9_workPlanDanger@3"
-        },
-        {
-          "command": "workPlan.unmarkCleanup",
-          "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "9_workPlanDanger@4"
+          "group": "5_workPlanLifecycle@1"
         },
         {
           "command": "workPlan.archiveTrack",
           "when": "view == workPlan.tree && viewItem == workPlanTrack",
-          "group": "9_workPlanDanger@5"
+          "group": "5_workPlanLifecycle@2"
+        },
+        {
+          "submenu": "workPlan.trackMore",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "7_workPlanMore@1"
+        },
+        {
+          "command": "workPlan.trackActionsHelp",
+          "when": "view == workPlan.tree && viewItem == workPlanTrack",
+          "group": "8_workPlanHelp@1"
         },
         {
           "command": "workPlan.unarchiveTrack",
@@ -622,7 +604,7 @@
         {
           "command": "workPlan.deleteTrack",
           "when": "view == workPlan.tree && viewItem =~ /^workPlanTrack(Archived)?$/",
-          "group": "9_workPlanDanger@6"
+          "group": "9_workPlanDanger@2"
         },
         {
           "command": "workPlan.slotUntracked",
@@ -738,6 +720,40 @@
           "command": "workPlan.plans.archiveAllShipped",
           "when": "view == workPlan.plans && viewItem =~ /workPlanPlansRepo/",
           "group": "4_archive"
+        }
+      ],
+      "workPlan.trackMore": [
+        {
+          "command": "workPlan.editFields",
+          "group": "1_fields@1"
+        },
+        {
+          "command": "workPlan.setNextUpPreset",
+          "group": "2_nextup@1"
+        },
+        {
+          "command": "workPlan.reference",
+          "group": "3_scope@1"
+        },
+        {
+          "command": "workPlan.reconcile",
+          "group": "4_sync@1"
+        },
+        {
+          "command": "workPlan.pushTrack",
+          "group": "4_sync@2"
+        },
+        {
+          "command": "workPlan.renameTrack",
+          "group": "5_meta@1"
+        },
+        {
+          "command": "workPlan.markCleanup",
+          "group": "5_meta@2"
+        },
+        {
+          "command": "workPlan.unmarkCleanup",
+          "group": "5_meta@3"
         }
       ],
       "commandPalette": [

@@ -675,6 +675,13 @@ export class WorkPlanTreeProvider
       const reason = node.track.cleanup_reason;
       tip.appendMarkdown(`\n\n🧹 Cleanup candidate${reason ? ` — ${reason}` : ""}`);
     }
+    const nextUp = node.track.next_up;
+    if (nextUp && nextUp.length) {
+      tip.appendMarkdown(`\n\n📍 Next up: ${nextUp.map((n) => `#${n}`).join(", ")}`);
+    }
+    // The context menu is the only place the track's actions live, and menu
+    // entries can't carry hover text — so teach the interaction model here.
+    tip.appendMarkdown(`\n\n_Left-click: open panel · Right-click: actions & refresh_`);
     item.tooltip = tip;
 
     item.command = {
