@@ -6,6 +6,35 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.07.23+e8b226f — 2026-07-23 (#476)
+
+feat(vscode): clarify and reorganize the track right-click menu (ext 0.19.9)
+
+Reorganizes the VS Code track context menu by how often each action is used, and renames the misleading labels. Extension-only — the CLI is unchanged (no npm publish).
+
+### Clearer labels (intent over mechanism)
+- **Sync Issue States from GitHub → Refresh Track from GitHub** — users hunt for "refresh"; the old name hid the action.
+- **Mark for Cleanup → Mark as Stale 🧹** — it writes a reversible flag and deletes nothing; moved out of the destructive group where it read as a delete.
+- **Set Next-Up Order → Change Next-Up Ranking** — it's ranking *config*, not a next-up list edit; the old name collided with the two list-setting actions.
+- The two next-up methods are now a matched pair: **Set Next-Up (pick manually)** / **Set Next-Up (auto-suggest)**.
+- **Add Issue to Track (owned)** vs **Reference Issue from Another Track** now state ownership explicitly.
+
+### Reorganized by frequency (YAGNI)
+- Daily verbs surfaced at the top; the eight rarely-touched/config actions tucked behind a **More Actions ▸** submenu.
+- **Delete Track (Permanent)** is now the only item in the fenced danger zone; **Close** and **Archive** (reversible/archived, not deletions) move to a lifecycle group.
+
+### New help & orientation affordances
+- **What Do These Actions Do?** menu entry opens the track-actions reference in a browser.
+- The track hover tooltip gains a `📍 Next up: …` glance and a `Left-click: open panel · Right-click: actions & refresh` hint — context-menu items can't carry tooltips, so this is the only hover surface.
+
+### Docs
+- `vscode/README.md` track-actions section rewritten to cover all 20 actions, including the "when do I use it?" answers for label-drift, ranking, and owned-vs-reference.
+
+### Verification
+- `npm run typecheck` clean · **827/827 tests pass** · production build succeeds · rendered menu structure matches the design.
+
+VS Code extension bumped 0.19.8 → 0.19.9 (Marketplace + Open VSX both at 0.19.8).
+
 ## 2026.07.20+b7fed72 — 2026-07-20 (#473)
 
 fix(handoff): treat github.references as tracked scope on convergence tracks
