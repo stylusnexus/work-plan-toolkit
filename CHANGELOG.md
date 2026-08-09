@@ -6,6 +6,49 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.08.09+a68a27e — 2026-08-09 (#487)
+
+fix(auth): a transient gh probe failure no longer looks like being signed out (ext 0.19.10)
+
+Returning to a sleeping laptop could greet you with a **"Not signed in to GitHub"** banner and an empty tree while `gh` was perfectly authenticated. Fixes that at the root, in both the CLI and the viewer.
+
+### The bug
+
+`gh auth status` validates your token over the **network**, so a reconnecting VPN or a waking machine makes it exit non-zero — and `gh` reports the cause as `The token in keyring is invalid.`, which is untrue. The CLI read any non-zero exit as a logout, and the viewer marked that verdict authoritative, wiping the tree and prompting a sign-in nobody needed. The viewer's existing "transient probe error → keep the tree" guard could never fire, because the most common real-world failure was misfiled as a definitive logout.
+
+The same defect meant a multi-account `gh` setup broke: `gh` exits non-zero if **any** configured account fails validation, so one stale account read as a logout of the healthy active one.
+
+### CLI
+
+- `auth-status --json` gains a **`probe_ok` trust flag**. Only two verdicts are authoritative: a clean exit 0, and the explicit "not logged into any GitHub hosts" message. Validation failures, timeouts, and unrecognised exits are indeterminate — *unverified*, not *signed out*.
+- New exit code **`3`** for an indeterminate probe (`0`/`1`/`2` unchanged, so `rc == 0` remains the usability gate).
+- Terminal output for that case no longer tells a signed-in user to run `gh auth login`; it relays gh's own diagnosis instead.
+
+### VS Code extension (0.19.10)
+
+- Honours `probe_ok` and stops discarding the CLI's error reason. When the field is absent it recognises gh's validation-failure wording directly, so **the fix works against an already-installed CLI** — `MIN_CLI_VERSION` deliberately stays at `2026.07.15`.
+- **The last-good tree now persists across window reloads** (globalState, version-stamped, 7-day age cap, throttled to one write per minute, 4 MB size cap). Without this, a cold window had no cache to protect — which is why the banner returned every single time.
+- The "couldn't verify" banner and toasts lead with **"you have not been signed out"** instead of blaming missing CLI dependencies.
+- A genuine `gh auth logout` still shows the real sign-in banner.
+
+### Verification
+
+Exercised against real `gh` (network blocked via an unreachable proxy; genuine logout via an isolated `GH_CONFIG_DIR`) through the extension's real `checkAuth`:
+
+| scenario | authenticated | probeOk | banner | tree |
+|---|---|---|---|---|
+| network up | true | true | none | shown |
+| network blip | false | **false** | couldn't-verify | **kept** |
+| real logout | false | true | not-signed-in | cleared |
+
+858 extension tests, 1449 + 21 Python tests, `tsc --noEmit` and production build clean.
+
+Closes #485. Ships ext **0.19.10** + an npm CLI publish (CLI changed).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_01R7g4UeZgVFkKymkM4Q7Zn6
+
 ## 2026.07.23+e8b226f — 2026-07-23 (#476)
 
 feat(vscode): clarify and reorganize the track right-click menu (ext 0.19.9)
