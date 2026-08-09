@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.19.9",
+  "version": "0.19.10",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -857,7 +857,7 @@
       {
         "view": "workPlan.tree",
         "when": "workPlanGitHubAuthed == probe-error",
-        "contents": "Couldn't verify GitHub sign-in.\n\nThe `work-plan` CLI ran but didn't return a result, so Work Plan can't tell whether you're signed in. This is usually a missing CLI dependency, not a GitHub problem — the CLI needs `gh`, `git`, and `yq` (the Go mikefarah/yq) on the same PATH the editor runs in.\n\nCheck dependencies, then:\n[Retry](command:workPlan.checkGitHubAuth)\n\n[Install instructions](https://github.com/stylusnexus/work-plan-toolkit#install)"
+        "contents": "Couldn't verify GitHub sign-in.\n\nThe check didn't reach a verdict, so Work Plan can't tell whether you're signed in. You have NOT been signed out — don't start a sign-in flow yet.\n\nMost often this is transient: `gh auth status` makes a live network call, so a waking laptop or a reconnecting VPN makes it fail (and misreport your token as invalid). Wait a moment and retry.\n\n[Retry](command:workPlan.checkGitHubAuth)\n\nIf it persists, it's usually a CLI dependency rather than a GitHub problem — the CLI needs `gh`, `git`, and `yq` (the Go mikefarah/yq) on the same PATH the editor runs in.\n\n[Install instructions](https://github.com/stylusnexus/work-plan-toolkit#install)"
       },
       {
         "view": "workPlan.tree",

@@ -5,6 +5,7 @@ import type { CliResult, CliRunner } from "./cli.ts";
 import {
   CliError,
   isAlreadyExistsError,
+  summariseAuthError,
   exportJson,
   listRepoOpenIssues,
   planStatus,
@@ -623,6 +624,151 @@ describe("checkAuth", () => {
     assert.deepEqual(await checkAuth(throwingRunner()), {
       authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null, error: "spawn fail",
     });
+  });
+
+  // -- #485: a probe that couldn't reach a verdict must not read as a logout ---
+
+  const KEYRING_BLIP =
+    "github.com\n  X Failed to log in to github.com account eve (keyring)\n" +
+    "  - The token in keyring is invalid.\n  - To re-authenticate, run: gh auth refresh -h github.com";
+
+  test("#485 probe_ok:false from the CLI → probeOk:false and the reason survives", async () => {
+    // A live-network validation failure. gh exits non-zero and actively
+    // misreports the cause as an invalid keyring token; the CLI now flags the
+    // verdict as untrustworthy so the tree is kept instead of wiped.
+    const run = fakeRunner({
+      code: 3,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: false, probe_ok: false, user: null, error: KEYRING_BLIP,
+      }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), {
+      authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null,
+      error: KEYRING_BLIP,
+    });
+  });
+
+  test("#485 probe_ok:true with authenticated:false → still an authoritative logout", async () => {
+    const run = fakeRunner({
+      code: 1,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: false, probe_ok: true, user: null,
+        error: "You are not logged into any GitHub hosts. To log in, run: gh auth login",
+      }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), {
+      authenticated: false, cliPresent: true, ghPresent: true, probeOk: true, user: null, error: null,
+    });
+  });
+
+  test("#485 probe_ok:true with authenticated:true is unaffected", async () => {
+    const run = fakeRunner({
+      code: 0,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: true, probe_ok: true, user: "eve", error: null,
+      }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), {
+      authenticated: true, cliPresent: true, ghPresent: true, probeOk: true, user: "eve", error: null,
+    });
+  });
+
+  test("#485 older CLI (no probe_ok): a validation-failure error is still downgraded", async () => {
+    // Version skew — an installed CLI predating probe_ok. We can still recognise
+    // gh's own validation-failure wording in `error`, so the fix works without
+    // requiring a CLI upgrade first.
+    const run = fakeRunner({
+      code: 1,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: false, user: null, error: KEYRING_BLIP,
+      }),
+      stderr: "",
+    });
+    assert.deepEqual(await checkAuth(run), {
+      authenticated: false, cliPresent: true, ghPresent: true, probeOk: false, user: null,
+      error: KEYRING_BLIP,
+    });
+  });
+
+  test("#485 older CLI (no probe_ok): an explicit logout stays authoritative", async () => {
+    const run = fakeRunner({
+      code: 1,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: false, user: null,
+        error: "You are not logged into any GitHub hosts. To log in, run: gh auth login",
+      }),
+      stderr: "",
+    });
+    const got = await checkAuth(run);
+    assert.equal(got.probeOk, true);
+    assert.equal(got.authenticated, false);
+  });
+
+  test("#485 older CLI (no probe_ok): a timeout reason is downgraded", async () => {
+    const run = fakeRunner({
+      code: 1,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: false, user: null,
+        error: "gh auth status failed: Command 'gh auth status' timed out after 30 seconds",
+      }),
+      stderr: "",
+    });
+    assert.equal((await checkAuth(run)).probeOk, false);
+  });
+
+  test("#485 an authenticated probe is never downgraded by a stray error string", async () => {
+    const run = fakeRunner({
+      code: 0,
+      stdout: JSON.stringify({
+        gh_present: true, authenticated: true, user: "eve", error: "Failed to log in to ghe.corp",
+      }),
+      stderr: "",
+    });
+    const got = await checkAuth(run);
+    assert.equal(got.authenticated, true);
+    assert.equal(got.probeOk, true);
+    assert.equal(got.error, null);
+  });
+
+  test("#485 gh genuinely missing stays authoritative even with probe_ok absent", async () => {
+    const run = fakeRunner({
+      code: 2,
+      stdout: JSON.stringify({
+        gh_present: false, authenticated: false, user: null, error: "gh CLI not found on PATH",
+      }),
+      stderr: "",
+    });
+    const got = await checkAuth(run);
+    assert.equal(got.ghPresent, false);
+    assert.equal(got.probeOk, true);
+  });
+
+  test("#485 summariseAuthError picks the first line carrying prose, not the bare host", () => {
+    assert.equal(
+      summariseAuthError(KEYRING_BLIP),
+      " (Failed to log in to github.com account eve (keyring))",
+    );
+  });
+
+  test("#485 summariseAuthError returns empty for nothing useful", () => {
+    assert.equal(summariseAuthError(null), "");
+    assert.equal(summariseAuthError(""), "");
+    assert.equal(summariseAuthError("   \n\n  "), "");
+    assert.equal(summariseAuthError("github.com"), "");   // single token, no prose
+  });
+
+  test("#485 summariseAuthError caps a runaway reason", () => {
+    const got = summariseAuthError(`x ${"y ".repeat(400)}`);
+    assert.ok(got.length < 160, `too long: ${got.length}`);
+    assert.ok(got.endsWith("…)"));
+  });
+
+  test("#485 summariseAuthError strips gh's gutter markers", () => {
+    assert.equal(summariseAuthError("- The token in keyring is invalid."),
+      " (The token in keyring is invalid.)");
   });
 
   test("CLI not found (ENOENT) → cliPresent:false, probeOk:false (#402, NOT a sign-in problem)", async () => {

@@ -87,41 +87,67 @@ def set_issue_in_progress(repo: str, number: int, clear: bool = False) -> tuple:
     return (True, (proc.stdout or f"{verb} #{number} in-progress").strip())
 
 
+# `gh auth status` says this — and only this — when no credentials are
+# configured at all. Every OTHER non-zero exit means "gh has credentials but
+# couldn't confirm them", which is NOT a logout (#485). Both the current and the
+# legacy phrasings begin the same way.
+_NO_CREDENTIALS_RE = re.compile(r"not logged in ?to any (?:GitHub )?hosts?", re.I)
+
+
 def gh_auth_status() -> dict:
     """Probe `gh` authentication so callers can fast-fail instead of silently
     degrading (#auth). Returns:
 
-        {"gh_present": bool, "authenticated": bool,
+        {"gh_present": bool, "authenticated": bool, "probe_ok": bool,
          "user": str | None, "error": str | None}
 
-    Distinguishes the two failure modes the UI must handle differently:
+    Distinguishes the failure modes the UI must handle differently:
     `gh` not installed (`gh_present` False — fix is "install gh") vs installed
-    but not logged in (`authenticated` False — fix is "gh auth login").
+    but not logged in (`authenticated` False — fix is "gh auth login") vs the
+    probe never reaching a verdict at all (`probe_ok` False — fix is "wait /
+    retry", NOT a sign-in prompt).
 
-    Never raises. `gh auth status` exits 0 when at least one host is logged in,
-    non-zero otherwise; it prints the human status to STDERR. We parse a
-    best-effort `user` from that text but treat the EXIT CODE as authoritative."""
+    `probe_ok` is the trust flag, and it is the whole reason this function is
+    more than an exit-code check (#485). `gh auth status` performs a LIVE
+    token-validation request, so a momentary network failure — waking from
+    sleep, a reconnecting VPN — exits non-zero and actively misreports the cause
+    as "The token in keyring is invalid." Treating that as a logout wipes the
+    viewer's tree and tells an already-signed-in user to sign in again. It also
+    exits non-zero when ANY configured account fails validation, so one stale
+    second account would otherwise read as a logout of a healthy active one.
+
+    So only two verdicts are authoritative: exit 0 (signed in), and the explicit
+    "not logged into any hosts" message (signed out). Everything else — a
+    validation failure, a timeout, an OS error, an exit code we don't recognise
+    — is indeterminate, and callers should keep whatever state they last had.
+
+    Never raises. `gh` prints its human status to STDERR; we parse a best-effort
+    `user` from that text."""
     try:
         proc = subprocess.run(
             ["gh", "auth", "status"],
             capture_output=True, text=True, timeout=GH_TIMEOUT,
         )
     except FileNotFoundError:
-        return {"gh_present": False, "authenticated": False,
+        # Authoritative: the binary genuinely isn't there.
+        return {"gh_present": False, "authenticated": False, "probe_ok": True,
                 "user": None, "error": "gh CLI not found on PATH"}
     except Exception as e:  # timeout / OS error — gh present but unusable now
-        return {"gh_present": True, "authenticated": False,
+        return {"gh_present": True, "authenticated": False, "probe_ok": False,
                 "user": None, "error": f"gh auth status failed: {e}"}
 
     blob = f"{proc.stdout}\n{proc.stderr}"
     authenticated = proc.returncode == 0
+    # Authoritative only for a clean success or an explicit no-credentials
+    # message. Anything else is a probe that failed to reach a verdict.
+    probe_ok = authenticated or bool(_NO_CREDENTIALS_RE.search(blob))
     # `gh auth status` prints e.g. "✓ Logged in to github.com account USER" or
     # the older "Logged in to github.com as USER". Match either phrasing.
     m = re.search(r"Logged in to \S+ (?:account|as) (\S+)", blob)
     user = m.group(1) if (authenticated and m) else None
     error = None if authenticated else (blob.strip() or "not logged in to GitHub")
     return {"gh_present": True, "authenticated": authenticated,
-            "user": user, "error": error}
+            "probe_ok": probe_ok, "user": user, "error": error}
 
 
 def fetch_issue(repo: str, number: int) -> Optional[dict]:
