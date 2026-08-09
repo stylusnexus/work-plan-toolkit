@@ -464,16 +464,20 @@ export async function checkVersion(
  *  When `cliPresent` is false, `ghPresent` is unknown (we never reached gh) and
  *  reported false so callers don't show a misleading gh-specific message.
  *
- *  `probeOk` signals whether the auth probe itself ran and returned a parseable,
- *  authoritative answer (`true`), or whether the probe errored / couldn't be
- *  trusted (`false` — transient). When `probeOk` is false the caller should keep
- *  the last-good tree rather than switching to an onboarding banner.
+ *  `probeOk` signals whether the probe reached a TRUSTWORTHY verdict (`true`) or
+ *  merely failed to reach one (`false`). Note this is about trust, not about
+ *  parseability: a perfectly well-formed `authenticated:false` can still be
+ *  untrustworthy, because `gh auth status` validates the token over the network
+ *  and reports a momentary network failure as an invalid keyring token (#485).
+ *  When `probeOk` is false the caller must keep the last-good tree and say
+ *  "couldn't verify" — never "signed out", which it does not know.
  *
- *  `error` is a short human reason set ONLY when the probe ran but produced no
- *  trustworthy answer (`probeOk:false` with `cliPresent:true`) — typically the
- *  launcher's own stderr, e.g. "work-plan: missing required tool(s) on PATH: yq".
- *  It lets the caller say "the CLI couldn't run: <reason>" instead of the
- *  misleading "not signed in to GitHub". Null whenever there's nothing to add. */
+ *  `error` is a short human reason set ONLY when the answer isn't trustworthy
+ *  (`probeOk:false` with `cliPresent:true`) — either gh's own diagnosis or the
+ *  launcher's stderr, e.g. "work-plan: missing required tool(s) on PATH: yq".
+ *  It lets the caller name the real problem instead of the misleading "not
+ *  signed in to GitHub". Null whenever there's nothing to add; run it through
+ *  `summariseAuthError` before putting it in a notification. */
 export type AuthState = {
   authenticated: boolean;
   cliPresent: boolean;
