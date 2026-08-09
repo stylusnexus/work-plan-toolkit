@@ -1,12 +1,14 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import {
-  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, CliError,
+  exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, summariseAuthError, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
   autoTriageScan, doctorScan,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState, DoctorFinding } from "./cli.ts";
+import { SNAPSHOT_KEY } from "./authCache.ts";
+import type { Snapshot, SnapshotStore } from "./authCache.ts";
 import { buildDoctorStatus } from "./doctor.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
@@ -50,9 +52,17 @@ export function activate(context: vscode.ExtensionContext): void {
   // `--include-archived` flag without reconstructing the provider.
   let showArchivedTracks = false;
 
+  // Last-good tree persistence (#485). globalState (not workspaceState) because
+  // the export spans every configured repo, not just the open folder.
+  const snapshotStore: SnapshotStore = {
+    get: () => context.globalState.get<Snapshot>(SNAPSHOT_KEY),
+    set: (value) => void context.globalState.update(SNAPSHOT_KEY, value),
+  };
+
   const provider = new WorkPlanTreeProvider(
     () => exportJson(runner, showArchivedTracks),
     () => checkAuth(runner),
+    snapshotStore,
   );
   void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
 
@@ -667,11 +677,12 @@ export function activate(context: vscode.ExtensionContext): void {
           "Work Plan: GitHub CLI (gh) not found — install it, then Retry.",
         );
       } else if (auth && !auth.probeOk) {
-        // Probe ran but gave no trustworthy answer — a CLI dependency/runtime
-        // problem, not a sign-in state. Don't claim "still not signed in".
-        const detail = auth.error ? ` (${auth.error})` : "";
+        // Probe ran but gave no trustworthy answer — a transient network failure
+        // or a CLI dependency problem, not a sign-in state (#485). Never claim
+        // "still not signed in": we don't know that, and it's usually false.
+        const detail = summariseAuthError(auth.error);
         vscode.window.showWarningMessage(
-          `Work Plan: couldn't verify GitHub sign-in — the work-plan CLI didn't return a result${detail}. Check its dependencies (gh, git, yq), then Retry.`,
+          `Work Plan: couldn't verify GitHub sign-in — you have not been signed out${detail}. Usually transient (gh checks your token over the network); wait a moment and Retry.`,
         );
       } else {
         vscode.window.showInformationMessage(
@@ -4202,14 +4213,14 @@ function maybeShowAuthToast(auth: AuthState | null): void {
         if (c === "Install gh") void vscode.commands.executeCommand("workPlan.openGhInstallDocs");
       }, () => { /* ignore */ });
   } else if (!auth.probeOk) {
-    // The probe ran but returned no trustworthy answer — a CLI runtime /
-    // dependency problem (e.g. an older launcher gating the probe behind a
-    // missing yq), NOT a sign-in state. Surface the launcher's own reason and
-    // offer Retry instead of sending the user into a futile sign-in loop.
-    const detail = auth.error ? ` (${auth.error})` : "";
+    // The probe ran but returned no trustworthy answer — most often a transient
+    // network failure (gh validates the token over the wire), sometimes a CLI
+    // dependency problem. NOT a sign-in state. Surface the real reason and offer
+    // Retry instead of sending the user into a futile sign-in loop (#485).
+    const detail = summariseAuthError(auth.error);
     vscode.window
       .showWarningMessage(
-        `Work Plan: couldn't verify GitHub sign-in — the work-plan CLI didn't return a result${detail}. Check its dependencies (gh, git, yq), then Retry.`,
+        `Work Plan: couldn't verify GitHub sign-in — you have not been signed out${detail}. Usually transient; wait a moment and Retry.`,
         "Retry",
       )
       .then((c) => {

@@ -483,6 +483,43 @@ export type AuthState = {
   error: string | null;
 };
 
+/** gh's wording when it HAS credentials but couldn't confirm them — a live
+ *  token-validation call that failed, or our own timeout wrapper. Used only as
+ *  the back-compat fallback for a CLI that predates `probe_ok` (#485). Note gh
+ *  says "the token ... is invalid" for a plain network failure, so this wording
+ *  means "unverified", never "definitely logged out". */
+const INDETERMINATE_AUTH_RE =
+  /failed to log in|token .*is invalid|auth status failed|timed out|timeout|connect|network|temporarily unavailable/i;
+
+function looksIndeterminate(reason: string | null): boolean {
+  return reason !== null && INDETERMINATE_AUTH_RE.test(reason);
+}
+
+/** Max chars of `AuthState.error` to inline in a notification. */
+const AUTH_ERROR_MAX = 140;
+
+/**
+ * Condenses an `AuthState.error` into a parenthesised clause for a one-line
+ * notification, or `""` when there's nothing useful to say (#485).
+ *
+ * `gh auth status` emits a multi-line report whose first line is a bare hostname
+ * and whose useful content is an indented, bulleted diagnosis. Pasting the whole
+ * blob into a toast is unreadable, and taking line 1 verbatim yields a message
+ * that just says "(github.com)". So: pick the first line that actually carries a
+ * sentence, strip gh's ✓/X/- gutter markers, and cap it.
+ */
+export function summariseAuthError(reason: string | null): string {
+  if (!reason) return "";
+  const line = reason
+    .split("\n")
+    .map((l) => l.trim().replace(/^[-*✓✗×xX!]\s+/, "").trim())
+    // "github.com" or "-" alone tells the user nothing; require real prose.
+    .find((l) => l.length > 0 && /\s/.test(l));
+  if (!line) return "";
+  const clipped = line.length > AUTH_ERROR_MAX ? `${line.slice(0, AUTH_ERROR_MAX - 1)}…` : line;
+  return ` (${clipped})`;
+}
+
 /**
  * Runs `auth-status --json` and reports whether `gh` is installed + signed in.
  * Never throws — auth detection must degrade gracefully, not break activation.
@@ -516,15 +553,33 @@ export async function checkAuth(run: CliRunner): Promise<AuthState> {
 
   try {
     const blob = JSON.parse(result.stdout) as Partial<{
-      authenticated: boolean; gh_present: boolean; user: string | null;
+      authenticated: boolean; gh_present: boolean; probe_ok: boolean;
+      user: string | null; error: string | null;
     }>;
+    const authenticated = Boolean(blob.authenticated);
+    const ghPresent = blob.gh_present !== false; // default true unless explicitly false
+    const reason = blob.error ?? null;
+    // A verdict is trustworthy when the CLI says so (`probe_ok`, #485). Older
+    // CLIs predating that field don't say — so fall back to recognising gh's own
+    // validation-failure wording in `error`, which lets the fix work against an
+    // already-installed CLI instead of waiting on a coordinated upgrade. Note the
+    // fallback is deliberately the INVERSE of the CLI's rule: there we trust only
+    // known-authoritative verdicts, here we downgrade only known-transient ones,
+    // so a CLI we can't interrogate keeps its historical behaviour.
+    const probeOk =
+      authenticated || !ghPresent
+        ? true
+        : blob.probe_ok ?? !looksIndeterminate(reason);
     return {
-      authenticated: Boolean(blob.authenticated),
+      authenticated,
       cliPresent: true,
-      ghPresent: blob.gh_present !== false, // default true unless explicitly false
-      probeOk: true,
+      ghPresent,
+      probeOk,
       user: blob.user ?? null,
-      error: null,
+      // Per the AuthState contract, `error` is populated only when the answer
+      // isn't trustworthy — that's the case where the caller must explain itself
+      // rather than render an onboarding banner.
+      error: probeOk ? null : reason,
     };
   } catch {
     // The CLI ran (we reached this binary) but returned nothing parseable. That

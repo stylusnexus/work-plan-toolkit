@@ -9,6 +9,8 @@ import { lensShouldApply } from "./autofocus.ts";
 import type { LensSource } from "./autofocus.ts";
 import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
+import { makeSnapshot, readSnapshot } from "./authCache.ts";
+import type { SnapshotStore } from "./authCache.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
 export type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, SuggestedGroupNode, SuggestedIssueNode, NeedsReviewGroupNode };
@@ -104,8 +106,54 @@ export class WorkPlanTreeProvider
   constructor(
     private readonly load: () => Promise<Export>,
     private readonly checkAuth: () => Promise<AuthState>,
+    /** Optional last-good-tree persistence (#485). Omitted in tests and in any
+     *  caller that doesn't want cross-reload caching. */
+    private readonly snapshotStore?: SnapshotStore,
   ) {
     this._refreshFlight = new SingleFlight(() => this._doRefresh());
+    this._hydrateFromSnapshot();
+  }
+
+  /**
+   * Seeds the tree from the persisted last-good export (#485) so a window reload
+   * during a network blip doesn't blank the view. The activation refresh
+   * overwrites this within a second on the happy path; the snapshot only
+   * actually SURVIVES when that refresh comes back untrustworthy.
+   *
+   * Deliberately does not fire the tree-data event — nothing is subscribed yet
+   * during construction, and the activation refresh fires one regardless.
+   */
+  private _hydrateFromSnapshot(): void {
+    if (!this.snapshotStore) return;
+    const snap = readSnapshot(this.snapshotStore, Date.now());
+    if (!snap) return;
+    this.cache = snap.export;
+    this._filteredCache = applyLens(this.cache, this._activeLens);
+    this.roots = this._applySortToRepos(
+      mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo),
+    );
+    // Restore the signed-in context key ONLY on a positive prior state, so the
+    // tree can render immediately instead of flashing an onboarding banner while
+    // the probe runs. A negative state is never resurrected — that would assert
+    // a logout we haven't confirmed this session.
+    if (snap.wasAuthenticated) {
+      void vscode.commands.executeCommand("setContext", "workPlanGitHubAuthed", true);
+      void vscode.commands.executeCommand("setContext", "workPlanConfigured", true);
+      void vscode.commands.executeCommand(
+        "setContext", "workPlanHasTracks", this.cache.tracks.length > 0,
+      );
+    }
+  }
+
+  /** Persists the current export as the last-good snapshot (#485). Best-effort:
+   *  a storage failure must never break a refresh that otherwise succeeded. */
+  private _saveSnapshot(exp: Export, auth: AuthState): void {
+    if (!this.snapshotStore) return;
+    try {
+      this.snapshotStore.set(makeSnapshot(exp, auth, Date.now()));
+    } catch {
+      /* persistence is an optimisation, never a requirement */
+    }
   }
 
   /** The most recent auth probe result (null before the first refresh). */
@@ -262,6 +310,12 @@ export class WorkPlanTreeProvider
    *     b. Authoritative logged-out (probeOk true) OR no last-good → clear tree.
    *  3. Authenticated — run export; keep last-good on load failure.
    *
+   * 2a is the common case, not the exotic one (#485): `gh auth status` validates
+   * the token over the network, so every sleep/VPN blip lands here. It depends on
+   * a last-good tree existing, which is why the export is persisted across
+   * reloads (see _hydrateFromSnapshot) — without that, the first refresh after a
+   * window reload has no cache to protect and falls through to 2b.
+   *
    * viewsWelcome is driven off CONFIG state (repos present) not tracks.length, so a
    * configured-but-empty user never sees "No repos yet" onboarding (#398).
    */
@@ -322,6 +376,9 @@ export class WorkPlanTreeProvider
         }
 
         this.cache = loaded;
+        // Persist it as the last-good tree so a reload during a later network
+        // blip has something to fall back on (#485).
+        this._saveSnapshot(loaded, auth);
         // Update the per-repo last-good cache from every repo that fetched
         // successfully THIS round (export.py omits a failed repo from
         // `untracked` entirely, so every entry here is genuinely fresh data).
