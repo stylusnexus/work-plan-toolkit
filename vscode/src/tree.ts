@@ -9,7 +9,7 @@ import { lensShouldApply } from "./autofocus.ts";
 import type { LensSource } from "./autofocus.ts";
 import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
-import { makeSnapshot, readSnapshot } from "./authCache.ts";
+import { fitsSizeCap, makeSnapshot, readSnapshot, shouldPersist } from "./authCache.ts";
 import type { SnapshotStore } from "./authCache.ts";
 
 // Re-export the node types so extension.ts only needs to import from tree.ts.
@@ -101,6 +101,9 @@ export class WorkPlanTreeProvider
   // the `workPlanGitHubAuthed` context key + lets activation show its one-time
   // toast off the same probe the tree already ran (no second `gh` call).
   private _lastAuth: AuthState | null = null;
+  // Epoch ms of the last last-good-snapshot write attempt (#485), null before
+  // the first. Throttles persistence; see _saveSnapshot.
+  private _lastSnapshotWriteAt: number | null = null;
   private readonly _refreshFlight: SingleFlight;
 
   constructor(
@@ -145,12 +148,26 @@ export class WorkPlanTreeProvider
     }
   }
 
-  /** Persists the current export as the last-good snapshot (#485). Best-effort:
-   *  a storage failure must never break a refresh that otherwise succeeded. */
+  /** Persists the current export as the last-good snapshot (#485). Throttled,
+   *  because a real export runs to hundreds of KB and refreshes can be on a
+   *  timer. Best-effort: a storage failure must never break a refresh that
+   *  otherwise succeeded. */
   private _saveSnapshot(exp: Export, auth: AuthState): void {
     if (!this.snapshotStore) return;
+    const now = Date.now();
+    if (!shouldPersist(this._lastSnapshotWriteAt, now)) return;
+    // Stamp the attempt regardless of outcome, so an export that can't be
+    // persisted isn't re-serialised on every single refresh.
+    this._lastSnapshotWriteAt = now;
     try {
-      this.snapshotStore.set(makeSnapshot(exp, auth, Date.now()));
+      const snap = makeSnapshot(exp, auth, now);
+      if (fitsSizeCap(snap)) {
+        this.snapshotStore.set(snap);
+      } else {
+        // Too big to keep current — drop any prior snapshot rather than leave a
+        // stale tree we've stopped updating.
+        this.snapshotStore.set(undefined);
+      }
     } catch {
       /* persistence is an optimisation, never a requirement */
     }

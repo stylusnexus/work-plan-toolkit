@@ -4,8 +4,12 @@ import assert from "node:assert/strict";
 import {
   SNAPSHOT_VERSION,
   SNAPSHOT_MAX_AGE_MS,
+  SNAPSHOT_MAX_BYTES,
+  SNAPSHOT_MIN_WRITE_INTERVAL_MS,
+  fitsSizeCap,
   makeSnapshot,
   readSnapshot,
+  shouldPersist,
 } from "./authCache.ts";
 import type { Snapshot, SnapshotStore } from "./authCache.ts";
 import type { Export } from "./model.ts";
@@ -93,6 +97,38 @@ describe("authCache", () => {
     // banner before the probe has even run.
     assert.equal(makeSnapshot(EXPORT, { authenticated: false }, NOW).wasAuthenticated, false);
     assert.equal(makeSnapshot(EXPORT, null, NOW).wasAuthenticated, false);
+  });
+
+  test("the first write is never throttled", () => {
+    assert.equal(shouldPersist(null, NOW), true);
+  });
+
+  test("a second write inside the throttle window is skipped", () => {
+    assert.equal(shouldPersist(NOW, NOW + SNAPSHOT_MIN_WRITE_INTERVAL_MS - 1), false);
+  });
+
+  test("a write past the throttle window goes through", () => {
+    assert.equal(shouldPersist(NOW, NOW + SNAPSHOT_MIN_WRITE_INTERVAL_MS), true);
+  });
+
+  test("a backwards clock doesn't wedge the throttle shut", () => {
+    // Without this, a clock correction could block persistence indefinitely.
+    assert.equal(shouldPersist(NOW, NOW - 60_000), true);
+  });
+
+  test("a normal export fits the size cap", () => {
+    assert.equal(fitsSizeCap(makeSnapshot(EXPORT, { authenticated: true }, NOW)), true);
+  });
+
+  test("an oversized export is rejected rather than bloating globalState", () => {
+    const huge = { tracks: [{ name: "x".repeat(SNAPSHOT_MAX_BYTES + 1) }] } as unknown as Export;
+    assert.equal(fitsSizeCap(makeSnapshot(huge, { authenticated: true }, NOW)), false);
+  });
+
+  test("an unserialisable export is rejected, not thrown", () => {
+    const cyclic: Record<string, unknown> = { tracks: [] };
+    cyclic.self = cyclic;
+    assert.equal(fitsSizeCap(makeSnapshot(cyclic as unknown as Export, null, NOW)), false);
   });
 
   test("readSnapshot does not mutate the store", () => {

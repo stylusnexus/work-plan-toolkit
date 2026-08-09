@@ -24,6 +24,17 @@ export const SNAPSHOT_VERSION = 1;
  *  long weekend offline without resurrecting a tree from a previous sprint. */
 export const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** A real multi-repo export runs to hundreds of KB, so persisting on EVERY
+ *  refresh would push that much through globalState each time — and with
+ *  `workPlan.autoRefreshInterval` on, on a timer. The snapshot only has to be
+ *  fresh enough to survive a reload, so once a minute is ample. */
+export const SNAPSHOT_MIN_WRITE_INTERVAL_MS = 60_000;
+
+/** Refuse to persist beyond this. globalState is a shared per-user store, not a
+ *  place to park an unbounded blob; a workspace this large gives up cross-reload
+ *  caching rather than degrading the whole editor's state file. */
+export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
+
 export type Snapshot = {
   version: number;
   /** Epoch ms when this was written. */
@@ -57,6 +68,28 @@ export function makeSnapshot(
     export: exp,
     wasAuthenticated: auth?.authenticated === true,
   };
+}
+
+/**
+ * Throttle gate for persistence. `lastWrittenAt` is null before the first write
+ * of a session, which always goes through so a reload right after startup is
+ * still protected. A `now` earlier than `lastWrittenAt` means the clock moved
+ * backwards; allow the write rather than wedging the throttle shut.
+ */
+export function shouldPersist(lastWrittenAt: number | null, now: number): boolean {
+  if (lastWrittenAt === null) return true;
+  const since = now - lastWrittenAt;
+  return since < 0 || since >= SNAPSHOT_MIN_WRITE_INTERVAL_MS;
+}
+
+/** Whether a snapshot is small enough to persist. Also the serialisability
+ *  check — a value that can't be stringified can't be stored either. */
+export function fitsSizeCap(snap: Snapshot): boolean {
+  try {
+    return JSON.stringify(snap).length <= SNAPSHOT_MAX_BYTES;
+  } catch {
+    return false;
+  }
 }
 
 /**
