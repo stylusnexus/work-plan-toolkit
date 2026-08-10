@@ -411,6 +411,66 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> Optional[list[dict]]:
         return None
 
 
+def fetch_milestones(repo: str) -> Optional[list[dict]]:
+    """All milestones for `repo` as [{title, due_on, state}], open and closed.
+    One `gh api` call. Never raises.
+
+    Returns `None` when the fetch could not be completed (bad slug, `gh`
+    missing/erroring, timeout, malformed JSON), so callers can tell "this repo
+    has no milestones" from "we don't know" — the same contract as
+    `fetch_open_issues`. An inversion report built on an unknown milestone set
+    would be worse than no report.
+    """
+    if not _REPO_RE.match(repo or ""):
+        return None
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{repo}/milestones",
+             "--paginate", "-X", "GET", "-f", "state=all",
+             "--jq", "[.[] | {title, due_on, state}]"],
+            capture_output=True, text=True, timeout=GH_TIMEOUT,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    rows: list = []
+    # --paginate with --jq emits one JSON array per page, newline-separated.
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            page = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(page, list):
+            rows.extend(page)
+        elif isinstance(page, dict):
+            rows.append(page)
+    return rows
+
+
+def milestone_rank(milestones: Optional[list[dict]]) -> dict:
+    """Map milestone title -> sort rank (lower ships sooner).
+
+    Ordered by `due_on` ascending, with undated milestones last, ties broken on
+    title so the result is stable. A repo whose milestones carry no due dates
+    therefore falls back to title order, which for `vX.Y.Z - Name` conventions
+    is already chronological.
+
+    Returns {} when `milestones` is None or empty — callers must treat an empty
+    rank map as "cannot compare" rather than "everything is equal".
+    """
+    if not milestones:
+        return {}
+    def key(m: dict):
+        due = m.get("due_on") or ""
+        return (0, due, m.get("title") or "") if due else (1, "", m.get("title") or "")
+    ordered = sorted((m for m in milestones if m.get("title")), key=key)
+    return {m["title"]: i for i, m in enumerate(ordered)}
+
+
 def fetch_open_issues_concurrent(repos: Iterable[str], max_workers: int = MAX_FETCH_WORKERS) -> dict:
     """Fetch fetch_open_issues() for each of `repos` concurrently, deduped
     (first-seen order irrelevant — result is keyed by repo). Returns

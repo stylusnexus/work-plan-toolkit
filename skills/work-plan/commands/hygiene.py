@@ -4,14 +4,18 @@ Runs in sequence:
   1. refresh-md --all --yes  (drift in body status tables)
   2. reconcile --all          (sync track/<slug> labels ↔ frontmatter)
   3. dedupe-tiers             (report shared/private duplicate tracks)
-  4. duplicates               (find consolidation candidates)
+  4. milestone-drift          (report next_up vs GitHub state/milestones)
+  5. duplicates               (find consolidation candidates)
 
 One command for the standard weekly maintenance pass.
 
-Step 3 (dedupe-tiers) is report-only here — it never deletes during hygiene.
-Run `/work-plan dedupe-tiers --apply` directly to remove the safe orphans.
+Steps 3 and 4 are report-only. dedupe-tiers never deletes during hygiene — run
+`/work-plan dedupe-tiers --apply` directly to remove the safe orphans.
+milestone-drift is report-only ALWAYS, not just here: an inversion between a
+track's rank order and its milestones can be wrong on either side, so the fix is
+a judgement call, never an automatic rewrite.
 
-Pass --repo=<key> to scope steps 1 and 2 to a single repo. Step 4 (duplicates)
+Pass --repo=<key> to scope steps 1, 2 and 4 to a single repo. Step 5 (duplicates)
 is per-repo, so:
   - when --repo is set, it's scoped to that repo;
   - when --repo is absent and config has exactly one repo, it runs against
@@ -22,7 +26,7 @@ is per-repo, so:
 Pass --timeout=N to set the gh subprocess timeout for the duplicates step
 (default 30s).
 """
-from commands import refresh_md, reconcile, duplicates, dedupe_tiers
+from commands import refresh_md, reconcile, duplicates, dedupe_tiers, milestone_drift
 from lib.config import load_config, ConfigError
 from lib.prompts import parse_flags
 from lib.render import render_cleanup_callout
@@ -87,7 +91,7 @@ def run(args: list[str]) -> int:
 
     t0 = time.time()
     print("=" * 60)
-    print(f"WEEKLY HYGIENE — step 1 of 4: refresh-md{scope_label}")
+    print(f"WEEKLY HYGIENE — step 1 of 5: refresh-md{scope_label}")
     print("=" * 60)
     refresh_args = [f"--repo={repo_key}"] if repo_key else ["--all"]
     if yes:
@@ -95,12 +99,12 @@ def run(args: list[str]) -> int:
     rc = refresh_md.run(refresh_args)
     if rc != 0:
         print(f"\n⚠ refresh-md exited with code {rc}; continuing.")
-    print(f"  (step 1/4 done in {time.time() - t0:.1f}s)")
+    print(f"  (step 1/5 done in {time.time() - t0:.1f}s)")
 
     t1 = time.time()
     print()
     print("=" * 60)
-    print(f"WEEKLY HYGIENE — step 2 of 4: reconcile{scope_label}")
+    print(f"WEEKLY HYGIENE — step 2 of 5: reconcile{scope_label}")
     print("=" * 60)
     reconcile_args = [f"--repo={repo_key}"] if repo_key else ["--all"]
     if yes:
@@ -108,18 +112,29 @@ def run(args: list[str]) -> int:
     rc = reconcile.run(reconcile_args)
     if rc != 0:
         print(f"\n⚠ reconcile exited with code {rc}; continuing.")
-    print(f"  (step 2/4 done in {time.time() - t1:.1f}s)")
+    print(f"  (step 2/5 done in {time.time() - t1:.1f}s)")
 
     t_dt = time.time()
     print()
     print("=" * 60)
-    print(f"WEEKLY HYGIENE — step 3 of 4: dedupe-tiers{scope_label} (report-only)")
+    print(f"WEEKLY HYGIENE — step 3 of 5: dedupe-tiers{scope_label} (report-only)")
     print("=" * 60)
     dedupe_args = [f"--repo={repo_key}"] if repo_key else []
     rc = dedupe_tiers.run(dedupe_args)
     if rc != 0:
         print(f"\n⚠ dedupe-tiers exited with code {rc}; continuing.")
-    print(f"  (step 3/4 done in {time.time() - t_dt:.1f}s)")
+    print(f"  (step 3/5 done in {time.time() - t_dt:.1f}s)")
+
+    t_md = time.time()
+    print()
+    print("=" * 60)
+    print(f"WEEKLY HYGIENE — step 4 of 5: milestone-drift{scope_label} (report-only)")
+    print("=" * 60)
+    drift_args = [f"--repo={repo_key}"] if repo_key else []
+    rc = milestone_drift.run(drift_args)
+    if rc != 0:
+        print(f"\n⚠ milestone-drift exited with code {rc}; continuing.")
+    print(f"  (step 4/5 done in {time.time() - t_md:.1f}s)")
 
     # Cleanup earmarks (#328): surface tracks flagged via `mark-cleanup` so they
     # don't get forgotten. Printed after the maintenance steps and before the
@@ -135,7 +150,7 @@ def run(args: list[str]) -> int:
     t2 = time.time()
     print()
     print("=" * 60)
-    print("WEEKLY HYGIENE — step 4 of 4: duplicates")
+    print("WEEKLY HYGIENE — step 5 of 5: duplicates")
     print("=" * 60)
 
     try:
@@ -164,7 +179,7 @@ def run(args: list[str]) -> int:
     rc = duplicates.run(dupes_args)
     if rc != 0:
         print(f"\n⚠ duplicates exited with code {rc}.")
-    print(f"  (step 4/4 done in {time.time() - t2:.1f}s)")
+    print(f"  (step 5/5 done in {time.time() - t2:.1f}s)")
 
     print()
     print(f"✓ Weekly hygiene complete ({time.time() - t0:.1f}s total). Review the duplicate candidates above and "
