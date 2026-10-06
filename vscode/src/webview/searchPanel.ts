@@ -19,6 +19,8 @@ export interface SearchResults {
   query: string;
   hits: SearchHit[];
   generatedAt: string;
+  /** Optional plain-text notice rendered above the results. */
+  notice?: string;
 }
 
 export interface SearchHandlers {
@@ -77,6 +79,7 @@ export class SearchPanel {
       query: results.query,
       hits: results.hits,
       generatedAt: results.generatedAt,
+      notice: results.notice,
       cspSource: inst._panel.webview.cspSource,
       nonce: nonce(),
     });

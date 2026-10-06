@@ -33,6 +33,11 @@ export interface Issue {
   blocked_by: IssueDep[];
   /** Open issues this issue is blocking (GitHub-native dependency edges, #257). */
   blocking: IssueDep[];
+  /**
+   * GitHub label names (#429). Optional on the wire: an older CLI omits it, and
+   * the viewer must then treat labels as unknown rather than as "no labels".
+   */
+  labels?: string[];
 }
 
 /** Aggregate open/closed counts for a track. */
