@@ -101,7 +101,7 @@ def run(args: list[str]) -> int:
     )
     gap = int((now - most_recent).total_seconds()) if most_recent else 999999
     handoff_today = any(
-        t.meta.get("last_handoff", "").startswith(now.strftime("%Y-%m-%d")) for t in active
+        (t.meta.get("last_handoff") or "").startswith(now.strftime("%Y-%m-%d")) for t in active
     )
     framing = time_aware_framing(gap, now.hour, handoff_today)
 
