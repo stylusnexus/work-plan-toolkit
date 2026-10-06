@@ -8,12 +8,30 @@ from unittest import mock
 from commands import doctor
 from lib.config import ConfigError
 
+# Preflight shells out to git/gh/yq and probes GitHub; keep every pre-existing
+# drift test offline and deterministic. Preflight has its own tests
+# (test_preflight.py and the PreflightIntegration class below).
+_ALL_OK = [{"id": "python", "status": "ok", "message": "Python 3.12.0", "remediation": None}]
+_preflight_patch = None
+
+
+def setUpModule():
+    global _preflight_patch
+    _preflight_patch = mock.patch("commands.doctor.run_preflight", return_value=list(_ALL_OK))
+    _preflight_patch.start()
+
+
+def tearDownModule():
+    _preflight_patch.stop()
+
 
 def _finding(findings, type_):
     return [f for f in findings if f["type"] == type_]
 
 
 class TestStep0FatalLoad(unittest.TestCase):
+    # A config that cannot load is BLOCKING: exit 2 in human mode (was 1, which
+    # is now the "warning" code). JSON mode still exits 0 and reports status.
     def _run_json_with_load_error(self, exc):
         with mock.patch("commands.doctor.load_config", side_effect=exc):
             with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
@@ -62,11 +80,11 @@ class TestStep0FatalLoad(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("fatal", json.loads(out))
 
-    def test_human_mode_exits_1_on_fatal(self):
+    def test_human_mode_exits_2_blocking_on_fatal(self):
         with mock.patch("commands.doctor.load_config", side_effect=ConfigError("bad")):
             with mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
                 code = doctor.run([])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         printed = out.getvalue()
         self.assertIn("ERROR:", printed)
         self.assertIn("bad", printed)
@@ -850,3 +868,81 @@ class TestMixedFixtureResidualSet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPreflightIntegration(unittest.TestCase):
+    """doctor reports preflight checks and a three-way verdict (#427)."""
+
+    OK = {"id": "git", "status": "ok", "message": "git version 2", "remediation": None}
+    WARN = {"id": "gh-auth", "status": "warn", "message": "could not verify", "remediation": "retry"}
+    FAIL = {"id": "yq", "status": "fail", "message": "yq not found on PATH", "remediation": "brew install yq"}
+
+    def _run(self, checks, args, *, config_fatal=None, findings=None):
+        cfg = {"notes_root": "/nonexistent-notes", "repos": {}}
+        side = {"side_effect": config_fatal} if config_fatal else {"return_value": cfg}
+        with mock.patch("commands.doctor.run_preflight", return_value=checks), \
+             mock.patch("commands.doctor.load_config", **side), \
+             mock.patch("commands.doctor._scan", return_value=list(findings or [])), \
+             mock.patch("commands.doctor._validate_repo_field_shapes", return_value=({}, [])), \
+             mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out:
+            code = doctor.run(args)
+        return code, out.getvalue()
+
+    def test_json_carries_checks_and_status_alongside_the_old_keys(self):
+        code, out = self._run([self.OK], ["--json"])
+        blob = json.loads(out)
+        self.assertEqual(code, 0)
+        self.assertEqual(blob["status"], "healthy")
+        self.assertEqual(blob["checks"], [self.OK])
+        self.assertEqual(blob["findings"], [])
+        self.assertEqual(blob["attempts"], [])
+
+    def test_json_status_is_warning_for_a_warn_check_or_for_drift(self):
+        _, out = self._run([self.OK, self.WARN], ["--json"])
+        self.assertEqual(json.loads(out)["status"], "warning")
+        finding = {"type": "x", "message": "m", "fixable": False}
+        _, out = self._run([self.OK], ["--json"], findings=[finding])
+        self.assertEqual(json.loads(out)["status"], "warning")
+
+    def test_json_status_is_blocking_when_a_check_fails_and_still_exits_0(self):
+        code, out = self._run([self.OK, self.FAIL], ["--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["status"], "blocking")
+
+    def test_fatal_config_json_still_includes_the_checks_that_explain_it(self):
+        code, out = self._run([self.FAIL], ["--json"], config_fatal=ConfigError("yq missing"))
+        blob = json.loads(out)
+        self.assertEqual(code, 0)
+        self.assertEqual(blob["status"], "blocking")
+        self.assertEqual(blob["checks"], [self.FAIL])
+        self.assertIn("yq missing", blob["fatal"])
+
+    def test_human_exit_codes_distinguish_healthy_warning_blocking(self):
+        self.assertEqual(self._run([self.OK], [])[0], 0)
+        self.assertEqual(self._run([self.OK, self.WARN], [])[0], 1)
+        self.assertEqual(self._run([self.OK, self.FAIL], [])[0], 2)
+
+    def test_drift_findings_alone_are_a_warning_exit_1(self):
+        finding = {"type": "x", "message": "something drifted", "fixable": False}
+        code, out = self._run([self.OK], [], findings=[finding])
+        self.assertEqual(code, 1)
+        self.assertIn("something drifted", out)
+
+    def test_human_output_names_the_check_and_its_fix_only_when_unhealthy(self):
+        _, healthy = self._run([self.OK], [])
+        self.assertIn("All 1 preflight checks passed.", healthy)
+        _, bad = self._run([self.OK, self.FAIL], [])
+        self.assertIn("BLOCKING: [yq] yq not found on PATH", bad)
+        self.assertIn("fix: brew install yq", bad)
+        self.assertNotIn("preflight checks passed", bad)
+
+    def test_a_failed_check_with_a_healthy_config_is_still_blocking(self):
+        code, out = self._run([self.FAIL], [])
+        self.assertEqual(code, 2)
+        self.assertIn("No drift found.", out)
+
+    def test_skipped_checks_are_not_problems(self):
+        skipped = {"id": "config", "status": "skip", "message": "skipped", "remediation": None}
+        code, out = self._run([self.OK, skipped], [])
+        self.assertEqual(code, 0)
+        self.assertIn("All 1 preflight checks passed.", out)

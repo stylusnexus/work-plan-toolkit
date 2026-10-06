@@ -4,12 +4,12 @@ import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, summariseAuthError, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
-  autoTriageScan, doctorScan,
+  autoTriageScan, doctorScan, doctorReport,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState, DoctorFinding } from "./cli.ts";
 import { SNAPSHOT_KEY } from "./authCache.ts";
 import type { Snapshot, SnapshotStore } from "./authCache.ts";
-import { buildDoctorStatus } from "./doctor.ts";
+import { buildDoctorStatus, diagnosticsToast, formatDiagnostics } from "./doctor.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
@@ -970,6 +970,33 @@ export function activate(context: vscode.ExtensionContext): void {
         outputChannel.appendLine(`  • ${f.message}`);
       }
       outputChannel.show();
+    }),
+  );
+
+  // Run Diagnostics (#427): the full preflight, on demand. A missing/old CLI or
+  // a malformed payload is reported as exactly that, never as "all clear".
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.runDiagnostics", async () => {
+      const result = await doctorReport(runner);
+      if (result.kind === "failed") {
+        vscode.window.showErrorMessage(
+          `Work Plan: diagnostics could not run — ${result.reason}. Check workPlan.cliPath, or install from ${TOOLKIT_URL}.`,
+        );
+        return;
+      }
+      if (result.kind === "old-cli") {
+        vscode.window.showWarningMessage(
+          "Work Plan: this work-plan CLI predates diagnostics — update it (re-run ./install.sh), then try again.",
+        );
+        return;
+      }
+      outputChannel.clear();
+      for (const line of formatDiagnostics(result.report)) outputChannel.appendLine(line);
+      outputChannel.show(true);
+      const toast = diagnosticsToast(result.report);
+      if (toast.level === "error") vscode.window.showErrorMessage(toast.text);
+      else if (toast.level === "warning") vscode.window.showWarningMessage(toast.text);
+      else vscode.window.showInformationMessage(toast.text);
     }),
   );
 

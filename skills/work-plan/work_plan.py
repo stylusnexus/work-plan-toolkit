@@ -288,7 +288,7 @@ DESCRIPTIONS = [
      "matches, a non-git local path, duplicate entries, an invalid/missing notes_root, "
      "an orphaned notes folder, or a stale per-track github.repo. --fix corrects only "
      "the two mechanically-safe cases (a GitHub-confirmed rename, a stale track slug) "
-     "and always re-scans afterward before deciding success.",
+     "and always re-scans afterward before deciding success. Also runs a read-only preflight first: Python 3.9+, git, gh and its sign-in, mikefarah/yq, config loading and notes_root access; text mode exits 0 healthy, 1 warning, 2 blocking, and --json adds status + checks.",
      "Run right after renaming a project's local folder or its GitHub repo — this is "
      "exactly the class of bug that silently breaks the VS Code viewer's Auto Focus "
      "Repo setting with zero visible signal.",

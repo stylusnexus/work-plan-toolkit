@@ -129,6 +129,22 @@ class InstallerPowerShellTest(unittest.TestCase):
         self.assertFalse((self.target / "bin/work-plan").exists())
         self.assertFalse((self.target / "commands/work-plan.md").exists())
 
+    def test_unusable_python_is_rejected_before_any_writes(self):
+        # A `python` that exists on PATH but cannot run (as the Windows Store
+        # stub, or a too-old interpreter's failing gate, does). The gate must
+        # stop the install with the specific reason and write nothing.
+        toolbin = self.root / "toolbin"
+        toolbin.mkdir()
+        (toolbin / "python.cmd").write_text("@echo off\r\nexit /b 1\r\n", encoding="utf-8")
+        env = {**self.env, "PATH": f"{toolbin}{os.pathsep}{self.env['PATH']}"}
+        result = self.run_script("install.ps1", env=env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("older than the required 3.9", result.stdout + result.stderr)
+        self.assertIn("python.org", result.stdout + result.stderr)
+        self.assertNotIn("Done.", result.stdout)
+        self.assertFalse((self.target / "bin/work-plan").exists())
+        self.assertFalse((self.target / "commands/work-plan.md").exists())
+
     def test_failed_smoke_is_fatal_and_never_prints_done(self):
         real_python = shutil.which("python") or sys.executable
         toolbin = self.root / "toolbin"

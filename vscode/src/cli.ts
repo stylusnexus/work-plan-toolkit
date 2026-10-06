@@ -670,6 +670,80 @@ export async function doctorScan(run: CliRunner): Promise<DoctorFinding[] | null
 }
 
 // ---------------------------------------------------------------------------
+// doctor preflight diagnostics (#427)
+// ---------------------------------------------------------------------------
+
+/** One preflight check from `doctor --json`'s additive `checks` array. */
+export type PreflightCheck = {
+  id: string;
+  /** fail = blocking, warn = degraded/unverified, skip = a prerequisite failed. */
+  status: "ok" | "warn" | "fail" | "skip";
+  message: string;
+  remediation: string | null;
+};
+
+export type DiagnosticsReport = {
+  status: "healthy" | "warning" | "blocking";
+  checks: PreflightCheck[];
+  findings: DoctorFinding[];
+  /** Set when config could not load at all; the checks above explain why. */
+  fatal?: string;
+};
+
+/**
+ * "report" — a CLI that emits preflight checks. "old-cli" — doctor ran but
+ * predates #427 (no `checks`), so the caller should say so rather than show an
+ * empty report. "failed" — the CLI could not be run or its output made no sense.
+ */
+export type DiagnosticsResult =
+  | { kind: "report"; report: DiagnosticsReport }
+  | { kind: "old-cli" }
+  | { kind: "failed"; reason: string };
+
+const CHECK_STATUSES = new Set(["ok", "warn", "fail", "skip"]);
+const REPORT_STATUSES = new Set(["healthy", "warning", "blocking"]);
+
+/** Runs `doctor --json` and returns the full report. Never throws. */
+export async function doctorReport(run: CliRunner): Promise<DiagnosticsResult> {
+  let result;
+  try {
+    result = await run(["doctor", "--json"]);
+  } catch (err) {
+    return { kind: "failed", reason: `could not run the work-plan CLI (${err instanceof Error ? err.message : String(err)})` };
+  }
+  if (result.code !== 0) {
+    return { kind: "failed", reason: `doctor exited with code ${result.code}${result.stderr.trim() ? `: ${result.stderr.trim()}` : ""}` };
+  }
+  let blob: Record<string, unknown>;
+  try {
+    blob = JSON.parse(result.stdout) as Record<string, unknown>;
+  } catch {
+    return { kind: "failed", reason: "doctor printed output that is not valid JSON" };
+  }
+  if (!blob || typeof blob !== "object") return { kind: "failed", reason: "doctor printed an unexpected payload" };
+  if (!("checks" in blob) && !("status" in blob)) return { kind: "old-cli" };
+  if (!Array.isArray(blob.checks) || !REPORT_STATUSES.has(blob.status as string)) {
+    return { kind: "failed", reason: "doctor's diagnostics payload is malformed" };
+  }
+  const checks = blob.checks.filter(
+    (c): c is PreflightCheck =>
+      !!c && typeof c === "object" &&
+      typeof (c as PreflightCheck).id === "string" &&
+      typeof (c as PreflightCheck).message === "string" &&
+      CHECK_STATUSES.has((c as PreflightCheck).status),
+  );
+  return {
+    kind: "report",
+    report: {
+      status: blob.status as DiagnosticsReport["status"],
+      checks,
+      findings: Array.isArray(blob.findings) ? (blob.findings as DoctorFinding[]) : [],
+      ...(typeof blob.fatal === "string" && { fatal: blob.fatal }),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // auto-triage scan (#241) — fetch untracked issues + the AI prompt for the viewer
 // ---------------------------------------------------------------------------
 

@@ -86,6 +86,18 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 ok "all dependencies present"
 
+# 2.4 Verify Python is new enough. Presence alone passes an old interpreter that
+# then fails at runtime with a confusing syntax/typing error (the toolkit needs
+# 3.9+). Keep in lockstep with install.ps1 (#427).
+py_version() { python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || echo unknown; }
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+    err "python3 $(py_version) is older than the required 3.9 (or could not run)."
+    echo
+    echo "  Install Python 3.9 or newer: https://www.python.org/  (brew install python)"
+    exit 1
+fi
+ok "python3 $(py_version) (3.9+ required)"
+
 # 2.5 Verify yq is mikefarah/yq-capable (Go), not a same-named but incompatible
 # shim (e.g. kislyuk/yq, the Python jq wrapper). Presence alone passes both;
 # only mikefarah/yq supports the `-o=json` / `-P` flags the runtime requires

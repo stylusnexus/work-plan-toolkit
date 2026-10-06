@@ -154,6 +154,40 @@ class InstallerShellTest(unittest.TestCase):
         self.assertFalse((self.target / "bin/work-plan").exists())
         self.assertFalse((self.target / "commands/work-plan.md").exists())
 
+    def test_old_python_is_rejected_before_any_writes(self):
+        # A python3 that reports 3.8: present on PATH (so the presence check
+        # passes) but too old. Must stop with the specific reason, not install.
+        (self.toolbin / "python3").unlink()
+        stub = self.toolbin / "python3"
+        stub.write_text('#!/bin/sh\ncase "$2" in\n  *print*) echo 3.8.18 ;;\n  *) exit 1 ;;\nesac\n')
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+
+        result = self.run_script("install.sh")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("python3 3.8.18 is older than the required 3.9", result.stderr)
+        self.assertIn("python.org", result.stdout + result.stderr)
+        self.assertNotIn("Done.", result.stdout)
+        self.assertFalse((self.target / "skills").exists()
+                          and any((self.target / "skills").iterdir()))
+        self.assertFalse((self.target / "bin/work-plan").exists())
+
+    def test_python_that_cannot_run_is_rejected_with_the_same_gate(self):
+        (self.toolbin / "python3").unlink()
+        stub = self.toolbin / "python3"
+        stub.write_text("#!/bin/sh\nexit 1\n")
+        stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+
+        result = self.run_script("install.sh")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("older than the required 3.9 (or could not run)", result.stderr)
+        self.assertNotIn("Done.", result.stdout)
+
+    def test_supported_python_reports_its_version(self):
+        result = self.install()
+        self.assertRegex(result.stdout, r"python3 \d+\.\d+\.\d+ \(3\.9\+ required\)")
+
     def test_failed_smoke_is_fatal_and_never_prints_done(self):
         real_python = sys.executable
         wrapper = self.toolbin / "python3"
