@@ -382,7 +382,7 @@ def fetch_export_issues(repo_to_numbers: dict, max_workers: int = MAX_FETCH_WORK
 
 
 def fetch_open_issues(repo: str, limit: int = 1000) -> Optional[list[dict]]:
-    """All OPEN issues for `repo` as gh rows ({number,title,assignees,milestone,state}).
+    """All OPEN issues for `repo` as gh rows ({number,title,assignees,milestone,state,labels}).
     One `gh issue list` call. Never raises.
 
     Returns `None` when the fetch could not be completed — bad repo slug shape,
@@ -397,7 +397,7 @@ def fetch_open_issues(repo: str, limit: int = 1000) -> Optional[list[dict]]:
         proc = subprocess.run(
             ["gh", "issue", "list", "--repo", repo,
              "--state", "open",
-             "--json", "number,title,state,assignees,milestone",
+             "--json", "number,title,state,assignees,milestone,labels",
              "--limit", str(limit)],
             capture_output=True, text=True, timeout=GH_TIMEOUT,
         )

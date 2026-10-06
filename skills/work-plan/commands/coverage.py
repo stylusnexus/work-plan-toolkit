@@ -8,6 +8,7 @@ from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks
 from lib.github_state import fetch_open_issues
 from lib.prompts import parse_flags
+from lib.track_labels import effective_labels
 
 
 def run(args: list[str]) -> int:
@@ -54,6 +55,21 @@ def run(args: list[str]) -> int:
         nums = t.meta.get("github", {}).get("issues") or []
         tracked_by_repo.setdefault(t.repo, set()).update(nums)
 
+    # Labels that reconcile would match to an active track, per repo (#493).
+    # An untracked issue carrying one of them was already assigned by someone;
+    # it just needs `reconcile --all`, not a triage decision.
+    reconcile_labels_by_repo: dict[str, set] = {}
+    for t in tracks:
+        if not t.repo or not t.has_frontmatter:
+            continue
+        if t.meta.get("status") not in ("active", "in-progress", "blocked"):
+            continue
+        slug = t.meta.get("track", t.name)
+        declared = t.meta.get("github", {}).get("labels")
+        reconcile_labels_by_repo.setdefault(t.repo, set()).update(
+            lab.lower() for lab in effective_labels(declared, slug)
+        )
+
     any_output = False
     any_fetch_failed = False
     for folder in folders:
@@ -90,6 +106,15 @@ def run(args: list[str]) -> int:
                 print("  Untracked:    0  — full coverage!")
             else:
                 print(f"  Untracked:    {n_untracked}  ({pct_untracked}%)")
+                known = reconcile_labels_by_repo.get(repo, set())
+                n_labelled = sum(
+                    1 for i in untracked
+                    if known & {str(lab.get("name", "")).lower()
+                                for lab in (i.get("labels") or [])}
+                )
+                if n_labelled:
+                    print(f"    ├─ already labelled for a track (run `reconcile --all`):  {n_labelled}")
+                    print(f"    └─ genuinely unassigned:                                  {n_untracked - n_labelled}")
                 if show_list:
                     shown = untracked[:limit]
                     for i in shown:

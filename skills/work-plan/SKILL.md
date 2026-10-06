@@ -30,8 +30,8 @@ Track-aware daily planner. Each "track" is a YAML-frontmattered markdown file th
 | `/work-plan suggest-priorities --repo=<key>` | Two-step AI label backfill (one-time migration). |
 | `/work-plan group [--milestone=X] [--label=Y] [--repo=Z]` | Two-step AI clustering: turn a flat list of issues into thematic track files. Powerful for a new milestone or repo re-org — fetches issues, prints a clustering prompt, you save the JSON answer, then `--apply` creates the track files. |
 | `/work-plan auto-triage [--repo=<key>]` | Two-step AI assignment: assign untracked open issues to *existing* tracks. Use after `coverage` shows a gap. Prints a prompt listing untracked issues + active tracks; save AI's JSON answer; re-run with `--apply`. |
-| `/work-plan coverage [--repo=<key>] [--list]` | Report how many open issues are not in any track (per repo). `--list` shows titles. Read-only. Run before `auto-triage` or `group` to measure the gap. |
-| `/work-plan reconcile <track> \| --all [--draft]` | Sync track frontmatter with GitHub labels (read-only on GitHub). Default label is `track/<slug>`; override per-track via `github.labels` in frontmatter. Add `--draft` to preview proposed ADDs/FLAGs without prompting or writing. |
+| `/work-plan coverage [--repo=<key>] [--list]` | Report how many open issues are not in any track (per repo), split into issues already labelled for an active track (fix: `reconcile --all`) and genuinely unassigned ones. `--list` shows titles. Read-only. Run before `auto-triage` or `group` to measure the gap. |
+| `/work-plan reconcile <track> \| --all [--draft]` | Sync track frontmatter with GitHub labels (read-only on GitHub). Matches `track/<slug>` always, plus any labels in `github.labels` (extra labels add to the default, never replace it). Add `--draft` to preview proposed ADDs/FLAGs without prompting or writing. |
 | `/work-plan duplicates [--min-similarity=0.7]` | Find likely-duplicate issues by title similarity (stdlib difflib). |
 | `/work-plan plan-status [--repo=<key>] [--stamp [--draft]] [--type=plan\|spec]` | **Doc/plan liveness.** "Which of my plan/spec docs actually shipped, half-shipped, or died?" Correlates each plan's declared file-manifest (Create/Modify/Test paths) against git + filesystem — not the unreliable checkboxes. Reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. Read-only by default; `--stamp` writes an idempotent status header into each doc (`--draft` previews, writes nothing). Natural-language triggers: "what's done vs unfinished in `<repo>`", "stamp the plan statuses", "which plans are stale/dead". |
 | `/work-plan plan-confirm --repo=<key> --verdict=shipped\|partial\|dead [--clear] -- <rel>` | **Affirm a human verdict** on one plan doc by writing `verdict_override` into its **frontmatter only** (never body/checkboxes/manifest). `plan-status` then pins that verdict and silences the "shipped but boxes unchecked" lie-gap. Use when a genuinely-shipped plan is flagged red only because nobody ticked its phase checkboxes — confirm it instead of hand-ticking boxes. Public-repo gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`). Natural-language triggers: "that plan really did ship, stop flagging it", "mark `<plan>` as shipped/dead". |
@@ -127,7 +127,8 @@ track: storytelling-enhancements
 status: active
 github:
   repo: your-org/your-repo
-  labels: [storytelling, campaigns]   # OR semantics — issue matches if ANY label is present
+  labels: [storytelling, campaigns]   # OR semantics — issue matches if ANY label is present;
+                                       # `track/storytelling-enhancements` always matches too
   issues: [4296, 4290, ...]
 ---
 ```
