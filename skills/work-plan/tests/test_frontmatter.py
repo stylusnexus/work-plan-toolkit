@@ -141,6 +141,16 @@ class CommentPreservationTest(unittest.TestCase):
     def test_bool_and_int_are_not_confused(self):
         self._edit(lambda m: m.update(next_up=[1, True, 1]))
 
+    def test_int_to_bool_change_is_not_treated_as_unchanged(self):
+        # Python's 1 == True would make these look identical and drop the edit.
+        with tempfile.TemporaryDirectory() as d:
+            p = self._write(d, "# c\nflag: 1\n")
+            meta, body = parse_file(p)
+            meta["flag"] = True
+            write_file(p, meta, body)
+            self.assertIs(parse_file(p)[0]["flag"], True)
+            self.assertIn("# c", p.read_text(encoding="utf-8"))
+
     def test_failed_edit_falls_back_and_warns(self):
         import io
         from contextlib import redirect_stdout

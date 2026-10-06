@@ -82,7 +82,7 @@ def write_file(path: Path, meta: dict, body: str) -> None:
         want = json.loads(json.dumps(meta))
         try:
             old_meta = _yaml_to_dict(old_fm)
-            if old_meta == want:
+            if _same(old_meta, want):
                 new_fm = old_fm
             else:
                 new_fm = _patch_yaml(old_fm, old_meta, want)
@@ -116,8 +116,14 @@ def _scalar(v) -> bool:
 
 
 def _same(a, b) -> bool:
-    # bool is an int subclass and 1 == True, so compare types too.
-    return type(a) is type(b) and a == b
+    """Deep equality that tells 1 from True (Python's == does not)."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    return a == b
 
 
 class _Patch:
@@ -196,7 +202,7 @@ def _patch_yaml(old_fm: str, old: dict, new: dict) -> str:
         text=True, check=True, env={**os.environ, **patch.env},
     )
     out = proc.stdout.rstrip("\n")
-    if _yaml_to_dict(out) != new:
+    if not _same(_yaml_to_dict(out), new):
         raise ValueError("yq edit did not reproduce the requested frontmatter")
     return out
 
