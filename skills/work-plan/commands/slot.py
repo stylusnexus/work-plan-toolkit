@@ -33,6 +33,11 @@ def run(args: list[str]) -> int:
     if not positional:
         print("usage: work_plan.py slot <issue-num> [track | track@repo] [--repo=<key>]")
         return 2
+    if len(positional) > 2:
+        extra = " ".join(positional[2:])
+        print(f"ERROR: unexpected argument(s): {extra}. "
+              "usage: work_plan.py slot <issue-num> [track | track@repo] [--repo=<key>]")
+        return 2
     try:
         issue_num = int(positional[0])
     except ValueError:

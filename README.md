@@ -58,7 +58,7 @@ The five essentials you'll use 80% of the time are:
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), and one-time priority-label backfill. Three capabilities worth calling out explicitly:
 
-**Shared tracks** — track files can live *inside your repo clone* (`.work-plan/<slug>.md`) so teammates see the same planning state via `git pull`. The default is private (`notes_root/<repo>/`); register a local clone with `init-repo --local=<path>` to opt into shared mode. Pass `--private` to any write command to keep a specific track local. See [Shared tracks](#shared-tracks).
+**Shared tracks** — track files can live *inside your repo clone* (`.work-plan/<slug>.md`) so teammates see the same planning state via `git pull`. The default is private (`notes_root/<repo>/`); register a local clone with `init-repo --local=<path>` to opt into shared mode. Pass `--private` to `group` or `new-track` to keep a specific track local; other commands reject the flag. See [Shared tracks](#shared-tracks).
 
 **AI-powered clustering (`group`)** — hand a flat list of GitHub issues to your AI and get back thematic track files. Run `group --milestone=X` to fetch all issues in a milestone, get a clustering prompt, save the JSON answer, then `group --apply` creates the tracks. Pairs with `auto-triage` for ongoing maintenance: once tracks exist, `auto-triage` assigns newly-filed untracked issues back into them.
 
