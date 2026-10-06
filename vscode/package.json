@@ -982,7 +982,7 @@
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.28.0",
     "ovsx": "^0.10.0",
-    "typescript": "^5.8.0"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "mermaid": "^11.15.0"
