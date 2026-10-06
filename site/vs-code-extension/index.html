@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work Plan Viewer: VS Code extension for work-plan</title>
+<meta name="description" content="Work Plan Viewer shows work-plan tracks in VS Code: sidebar tree, Mermaid dependency graph, issue and label search, confirm-gated writes. Free, MIT.">
+<link rel="canonical" href="https://stylusnexus.github.io/work-plan-toolkit/vs-code-extension/">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#5a2fc2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121318" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" sizes="128x128" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/icon.png">
+<link rel="alternate" type="text/plain" title="llms.txt" href="../llms.txt">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="work-plan toolkit">
+<meta property="og:title" content="Work Plan Viewer: VS Code extension for work-plan">
+<meta property="og:description" content="Work Plan Viewer shows work-plan tracks in VS Code: sidebar tree, Mermaid dependency graph, issue and label search, confirm-gated writes. Free, MIT.">
+<meta property="og:url" content="https://stylusnexus.github.io/work-plan-toolkit/vs-code-extension/">
+<meta property="og:image" content="https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Work Plan Viewer dependency graph for a track named platform-health, with next-up issues, a depends-on edge and a blocking issue, above the track's issue table.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Work Plan Viewer: VS Code extension for work-plan">
+<meta name="twitter:description" content="Work Plan Viewer shows work-plan tracks in VS Code: sidebar tree, Mermaid dependency graph, issue and label search, confirm-gated writes. Free, MIT.">
+<meta name="twitter:image" content="https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png">
+<meta name="twitter:image:alt" content="Work Plan Viewer dependency graph and track detail panel in VS Code.">
+<style>
+:root{--bg:#ffffff;--fg:#1b1d23;--muted:#4a4f5c;--accent:#5a2fc2;--accent-fg:#ffffff;--line:#d9dbe3;--card:#f5f6f9;--code:#eef0f5;--focus:#1a5fd6;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#121318;--fg:#e9eaef;--muted:#b4b8c5;--accent:#b9a6ff;--accent-fg:#121318;--line:#2c2f3a;--card:#1a1c23;--code:#20232c;--focus:#7fb0ff}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:var(--accent);text-underline-offset:2px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
+.skip{position:absolute;left:-9999px;top:0;background:var(--accent);color:var(--accent-fg);padding:8px 12px;z-index:10}
+.skip:focus{left:16px;top:8px}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+header.site{border-bottom:1px solid var(--line)}
+header.site .wrap{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;padding-top:12px;padding-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg);text-decoration:none}
+.brand img{border-radius:6px}
+nav ul{list-style:none;display:flex;flex-wrap:wrap;gap:4px 18px;margin:0;padding:0}
+nav a{color:var(--fg);text-decoration:none;padding:4px 0;display:inline-block}
+nav a:hover,nav a[aria-current=page]{color:var(--accent);text-decoration:underline}
+main{padding:24px 0 48px}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.2;margin:16px 0 16px}
+h2{font-size:1.5rem;line-height:1.3;margin:48px 0 12px;padding-top:8px;border-top:1px solid var(--line)}
+h3{font-size:1.15rem;margin:28px 0 8px}
+p,li{max-width:72ch}
+.answer{background:var(--card);border-left:4px solid var(--accent);padding:16px 18px;border-radius:6px;font-size:1.08rem}
+.answer p{margin:0}
+.answer p+p{margin-top:10px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 0;padding:0;list-style:none}
+.btn{display:inline-block;padding:10px 16px;border-radius:6px;border:1px solid var(--accent);text-decoration:none;font-weight:600}
+.btn.primary{background:var(--accent);color:var(--accent-fg)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{max-width:100%;background:var(--code);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45}
+pre code{background:none;padding:0;overflow-wrap:normal}
+figure{margin:24px 0}
+figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}
+figcaption{color:var(--muted);font-size:.93rem;margin-top:6px}
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+.grid>*{min-width:0}
+@media (min-width:720px){.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.card h3{margin-top:0}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-weight:600}
+dl.faq dt{font-weight:700;margin-top:20px}
+dl.faq dd{margin:6px 0 0}
+.muted{color:var(--muted)}
+footer.site{border-top:1px solid var(--line);padding:24px 0 40px;color:var(--muted);font-size:.93rem}
+footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 18px}
+.cmd{border-top:1px solid var(--line);padding:12px 0}
+.cmd h3{margin:0 0 4px;font-size:1.05rem}
+.cmd .usage{margin:0 0 6px}
+.cmd p{margin:4px 0}
+.toc{columns:2 220px;padding-left:20px}
+</style>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "BreadcrumbList",
+ "itemListElement": [
+  {
+   "@type": "ListItem",
+   "position": 1,
+   "name": "work-plan toolkit",
+   "item": "https://stylusnexus.github.io/work-plan-toolkit/"
+  },
+  {
+   "@type": "ListItem",
+   "position": 2,
+   "name": "Work Plan Viewer for VS Code",
+   "item": "https://stylusnexus.github.io/work-plan-toolkit/vs-code-extension/"
+  }
+ ]
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "SoftwareApplication",
+ "@id": "https://stylusnexus.github.io/work-plan-toolkit/vs-code-extension/#software",
+ "name": "Work Plan Viewer",
+ "alternateName": "stylusnexus.work-plan-viewer",
+ "description": "Work Plan Viewer shows work-plan tracks in VS Code: sidebar tree, Mermaid dependency graph, issue and label search, confirm-gated writes. Free, MIT.",
+ "url": "https://stylusnexus.github.io/work-plan-toolkit/vs-code-extension/",
+ "applicationCategory": "DeveloperApplication",
+ "applicationSubCategory": "Visual Studio Code extension",
+ "operatingSystem": "Windows, macOS, Linux",
+ "softwareRequirements": "Visual Studio Code 1.90.0 or later; work-plan CLI",
+ "offers": {
+  "@type": "Offer",
+  "price": "0",
+  "priceCurrency": "USD"
+ },
+ "license": "https://opensource.org/licenses/MIT",
+ "installUrl": "https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer",
+ "downloadUrl": "https://open-vsx.org/extension/stylusnexus/work-plan-viewer",
+ "screenshot": "https://stylusnexus.github.io/work-plan-toolkit/assets/dependency-graph.png",
+ "isAccessibleForFree": true,
+ "isPartOf": {
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#software"
+ },
+ "publisher": {
+  "@type": "Organization",
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#publisher",
+  "name": "Stylus Nexus Holdings LLC",
+  "url": "https://www.stylusnexus.com",
+  "sameAs": [
+   "https://github.com/stylusnexus"
+  ]
+ },
+ "sameAs": [
+  "https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer",
+  "https://open-vsx.org/extension/stylusnexus/work-plan-viewer"
+ ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="site">
+<div class="wrap">
+<a class="brand" href="../"><img src="../assets/icon.png" alt="" width="32" height="32">work-plan toolkit</a>
+<nav aria-label="Main">
+<ul>
+<li><a href="../">Home</a></li>
+<li><a href="../commands/">Commands</a></li>
+<li><a href="../vs-code-extension/" aria-current="page">VS Code extension</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">GitHub</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="main" class="wrap">
+
+<h1>Work Plan Viewer: the VS Code extension for work-plan</h1>
+<section class="answer" aria-label="Summary">
+<p>Work Plan Viewer (<code>stylusnexus.work-plan-viewer</code>, listed as "Work Plan") is the free, MIT-licensed VS Code extension for the work-plan toolkit: it shows your tracks as a sidebar tree and a Mermaid dependency graph, and lets you edit them without leaving the editor.</p>
+<p>It contains no planning logic of its own; every read goes through <code>work-plan export --json</code> and every write runs a work-plan CLI subcommand, so the extension and the CLI never disagree.</p>
+</section>
+<ul class="cta">
+<li><a class="btn primary" href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">Install from the VS Code Marketplace</a></li>
+<li><a class="btn" href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Install from Open VSX</a></li>
+</ul>
+
+<h2 id="see">What Work Plan Viewer shows</h2>
+<p>Work Plan Viewer adds a Work Plan container with two views, Tracks and Plans, to the VS Code activity bar.</p>
+<ul>
+<li><strong>Tracks tree.</strong> Repos and their tracks with a status dot, open and closed counts, blocked and next-up hints, a public-repo badge, and a visibility and tier badge that flags a plan committed to a public repo's shared tier.</li>
+<li><strong>Dependency graph and detail panel.</strong> A Mermaid graph of next-up, depends-on, owns and blocks edges, including GitHub-native blocked-by links, with zoom, pan, fit-to-width and export as SVG or PNG. The detail panel lists issues by milestone with a progress bar, blockers, depends-on chips and next-up order.</li>
+<li><strong>Untracked bucket.</strong> Open issues that no track references, with a right-click action to slot one into a track and optional auto-slot suggestions, including an offline heuristic.</li>
+<li><strong>Lenses and sorting.</strong> Filter by milestone, status, blocked or stale tracks, and sort by blocked first, most open, name or least recently touched.</li>
+<li><strong>Search Issues.</strong> Title search with <code>%</code> wildcards, and label search with a <code>label:</code> prefix such as <code>label:security</code>.</li>
+<li><strong>Plans view.</strong> Plan and spec documents with their <code>plan-status</code> verdicts, so stalled and unverified plans stand out across repos.</li>
+</ul>
+<figure>
+<img src="../assets/dependency-graph.png" width="1400" height="494" alt="Dependency graph for the track platform-health showing next-up issues #487 and #1556, a depends-on edge to the idea-mode track and blocking issue #4821, above the detail panel's issue table grouped by milestone.">
+<figcaption>The dependency graph and track detail panel.</figcaption>
+</figure>
+<figure>
+<img src="../assets/untracked-bucket.png" width="776" height="210" loading="lazy" alt="The Untracked node in the Work Plan sidebar with three open issues and a context menu item reading Work Plan: Slot Untracked Issue into Track.">
+<figcaption>The Untracked bucket: open issues no track references, one right-click from a track.</figcaption>
+</figure>
+
+<h2 id="act">What Work Plan Viewer can change</h2>
+<p>Every action in Work Plan Viewer runs a work-plan CLI command, and writes into a public repository first show a confirm dialog.</p>
+<ul>
+<li>Edit track fields, set next-up by hand or by auto-suggest, add, move or reference issues, refresh a track from GitHub, preview label drift and apply <code>reconcile</code>, run hygiene, create, rename, close, archive or delete tracks, and publish a private track to the shared tier.</li>
+<li>Run the daily commands from the title bar or a track's menu: Daily Brief, Where Was I? (re-orient) and Wrap Up Session (handoff), with output in the Work Plan output channel.</li>
+<li>Close an issue on GitHub, behind a mandatory "cannot be undone" confirmation, or toggle the <code>work-plan:in-progress</code> label. These are the extension's only two GitHub writes.</li>
+<li>Run <strong>Work Plan: Run Diagnostics</strong> to check Python, <code>git</code>, <code>gh</code> sign-in, <code>yq</code>, config and <code>notes_root</code>, with a fix for each problem.</li>
+</ul>
+<div class="grid two">
+<figure>
+<img src="../assets/write-confirm-modal.png" width="526" height="558" loading="lazy" alt="A confirmation dialog stating that stylusnexus/work-plan-toolkit is public or of unknown visibility and the edit will be written there, with Write anyway, Keep private and Cancel buttons.">
+<figcaption>The public-repo confirm dialog shown before any write into a public repository.</figcaption>
+</figure>
+<figure>
+<img src="../assets/onboarding.png" width="734" height="564" loading="lazy" alt="The empty Work Plan Tracks view reading No work-plan repos yet, with an Add a repo button and a Set notes location button.">
+<figcaption>Starting from empty: add a repo and choose where private notes live.</figcaption>
+</figure>
+</div>
+<figure>
+<img src="../assets/command-menu.png" width="598" height="326" loading="lazy" alt="The Tracks view overflow menu listing Work Plan: New Track, Add Repo, Set Notes Location and Run Hygiene.">
+<figcaption>The view's overflow menu: New Track, Add Repo, Set Notes Location and Run Hygiene.</figcaption>
+</figure>
+
+<h2 id="install">Install Work Plan Viewer</h2>
+<p>Install the extension from either registry, then install the work-plan CLI that it drives.</p>
+<ol>
+<li>Install the extension from the <a href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">VS Code Marketplace</a> or <a href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Open VSX</a> (for VSCodium, Cursor and Windsurf), or run <code>code --install-extension stylusnexus.work-plan-viewer</code>.</li>
+<li>Install the CLI: <code>npm install -g @stylusnexus/work-plan</code>, or any method on the <a href="../#install">install section of the overview</a>.</li>
+<li>If VS Code cannot find <code>work-plan</code> on its <code>PATH</code>, which is common when it is opened from the Dock or Finder, set <code>workPlan.cliPath</code> to an absolute launcher path and reload the window.</li>
+</ol>
+<p>In WSL, Remote-SSH and dev containers the extension runs in the remote environment, so install the CLI, <code>gh</code>, <code>python3</code> and <code>yq</code> there and sign in with <code>gh auth login</code> inside it.</p>
+
+<h2 id="requirements">Requirements</h2>
+<p>Work Plan Viewer needs VS Code 1.90.0 or later and the work-plan CLI on your <code>PATH</code> or at <code>workPlan.cliPath</code>.</p>
+<p>The CLI in turn needs Python 3.9+, <code>git</code>, a signed-in <code>gh</code> and mikefarah <code>yq</code> 4.x. The extension checks the CLI version when it starts and says when an update is needed.</p>
+
+<h2 id="settings">Settings</h2>
+<p>Work Plan Viewer has 9 settings, all under the <code>workPlan.</code> prefix; the gear button in the view title opens them.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable table">
+<table>
+<caption class="muted">Work Plan Viewer settings</caption>
+<thead><tr><th scope="col">Setting</th><th scope="col">Default</th><th scope="col">What it does</th></tr></thead>
+<tbody>
+<tr><td><code>workPlan.cliPath</code></td><td><code>&quot;work-plan&quot;</code></td><td>Path to the work-plan CLI launcher. Set an absolute path if VS Code cannot find the CLI on its PATH, then reload the window.</td></tr>
+<tr><td><code>workPlan.trackStaleDays</code></td><td><code>14</code></td><td>Days without activity before an active, in-progress or blocked track counts as stale. Drives the Stale tracks lens; display only.</td></tr>
+<tr><td><code>workPlan.autoRefreshInterval</code></td><td><code>0 (off)</code></td><td>Re-poll the CLI in the background every 30, 60, 300 or 900 seconds, useful when teammates push shared-track changes.</td></tr>
+<tr><td><code>workPlan.expandReposByDefault</code></td><td><code>false</code></td><td>Expand all repo groups on load. A single-repo workspace always expands.</td></tr>
+<tr><td><code>workPlan.autoFocusRepo</code></td><td><code>false</code></td><td>When the open folder is a configured repo, scope the Tracks view to that repo.</td></tr>
+<tr><td><code>workPlan.showNextUpPreset</code></td><td><code>true</code></td><td>Show the active next-up ranking preset in the track detail panel.</td></tr>
+<tr><td><code>workPlan.stallDays</code></td><td><code>&quot;match&quot;</code></td><td>How long a plan&#x27;s declared files can go without a commit before the Plans view calls it stalled: match the CLI, or 14, 30, 45, 60 or 90 days.</td></tr>
+<tr><td><code>workPlan.plansAutoRefresh</code></td><td><code>true</code></td><td>Re-scan a repo&#x27;s plans when its git refs change, without a manual refresh.</td></tr>
+<tr><td><code>workPlan.autoSlotConfidenceThreshold</code></td><td><code>0.7</code></td><td>Confidence cutoff (0 to 1) for an auto-slot suggestion to land in the one-click Suggested bucket.</td></tr>
+</tbody>
+</table>
+</div>
+<p>See the <a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/vscode/README.md" rel="noopener">Work Plan Viewer README</a> for every command and the release history, or the <a href="../commands/">CLI command reference</a> for the commands the extension runs.</p>
+
+</main>
+<footer class="site">
+<div class="wrap">
+<p>The work-plan toolkit is open source under the MIT License, published by <a href="https://www.stylusnexus.com" rel="noopener">Stylus Nexus Holdings LLC</a>.</p>
+<ul>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">Source on GitHub</a></li>
+<li><a href="https://www.npmjs.com/package/@stylusnexus/work-plan" rel="noopener">npm package</a></li>
+<li><a href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">VS Code Marketplace</a></li>
+<li><a href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Open VSX</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/LICENSE" rel="noopener">License (MIT)</a></li>
+<li><a href="../llms.txt">llms.txt</a></li>
+</ul>
+</div>
+</footer>
+</body>
+</html>

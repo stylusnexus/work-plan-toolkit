@@ -1,0 +1,27 @@
+name: Site check
+
+on:
+  pull_request:
+    paths:
+      - "site/**"
+      - "scripts/check_site.py"
+      - ".github/workflows/site-check.yml"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-site:
+    name: Offline site check
+    # Python 3.9 proves the checker stays 3.9-safe; setup-python has no 3.9
+    # build for the next ubuntu-latest, so pin 24.04 like test.yml does.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.9"
+      - name: Check site
+        run: python3 scripts/check_site.py
