@@ -169,10 +169,10 @@ So **the deploy PR title/body IS the changelog entry** — write it as one (conv
 ### Publishing the npm CLI and the VS Code extension
 Two **independent**, version-source-distinct publishes, both gated on the deploy landing on `main` first:
 
-- **npm** (`@stylusnexus/work-plan`) — version is **derived from `VERSION`** (CalVer→semver, e.g. `2026.06.10` → `2026.6.10`) and stamped at publish time; the committed `package.json` version is irrelevant. Trigger manually: `gh workflow run npm-publish.yml --ref main -f dry_run=false` (default `dry_run=true` just packs+validates). Same-day republish of an already-taken version needs the `version_suffix` input (e.g. `-1`).
+- **npm** (`@stylusnexus/work-plan`) — version is **derived from `VERSION`** (CalVer→semver, e.g. `2026.06.10` → `2026.6.10`) and stamped at publish time; the committed `package.json` version is irrelevant. Trigger manually: `gh workflow run npm-publish.yaml --ref main -f dry_run=false` (default `dry_run=true` just packs+validates). Same-day republish of an already-taken version needs the `version_suffix` input (e.g. `-1`).
 - **VS Code** (`stylusnexus.work-plan-viewer`) — version comes from **`vscode/package.json` and must be hand-bumped** (semver; the convention has been a patch bump per deploy — `0.3.1`/`0.3.2`/`0.3.3`/`0.3.4`). Marketplace `--skip-duplicate` means republishing the same version silently no-ops, so bump it in the deploy. **Also update the `## Status` line in `vscode/README.md`** (NOT the root README) to the new extension version in the same deploy — it's the Marketplace listing's first paragraph and the convention is to name the version + what's new in that release. **And add the matching `## [x.y.z] - YYYY-MM-DD` entry to `vscode/CHANGELOG.md`** (the Marketplace Changelog tab; hand-maintained, unlike the root `CHANGELOG.md`). `vscode/src/release.test.ts` fails CI if `package.json`, the changelog and the Status list disagree — the changelog once silently missed six releases because no step named it. It has drifted before (stuck at an old version while `package.json` moved on); bump both together. Publish by **creating a GitHub Release** (`gh release create v<VERSION-with-dash> --target main …`, tag form `v2026.06.10-a6052bf`) which triggers `vscode-publish.yml` → Marketplace + Open VSX as two independent jobs (either can be re-run alone). Or `gh workflow run vscode-publish.yml -f dry_run=false`.
 
-Both publish workflows need repo/org Actions secrets: `NPM_TOKEN`; `VSCE_PAT` + `OVSX_TOKEN`. The Marketplace publisher (`stylusnexus`) must already exist.
+The **npm** workflow publishes with **trusted publishing (OIDC)** — no `NPM_TOKEN`. It only works while the workflow is registered on npmjs.com (package → Settings → Trusted publisher → GitHub Actions: owner `stylusnexus`, repo `work-plan-toolkit`, workflow `npm-publish.yaml` — spelled exactly like the file, `.yaml` not `.yml`, which is the one workflow in this repo that does not use `.yml` because that is how it was registered, no environment); if a publish fails with `E404`/`E401`, check that registration first. The **VS Code** workflows need the org Actions secrets `VSCE_PAT` + `OVSX_TOKEN`. The Marketplace publisher (`stylusnexus`) must already exist.
 
 ### Tag every deploy + repin the agent-plugins catalog
 
@@ -180,7 +180,7 @@ The [`stylusnexus/agent-plugins`](https://github.com/stylusnexus/agent-plugins) 
 
 **1. Every deploy must leave a tag** named `v<VERSION-with-dash>` (e.g. `v2026.06.14-6579bf7`):
 - A **VS Code deploy** already creates one via `gh release create v<VERSION-with-dash> --target main` (that Release is also what fires `vscode-publish.yml`).
-- A **CLI-only / npm-only deploy creates NO tag** (the `npm-publish.yml` workflow doesn't tag). Create a **lightweight tag** so you don't re-trigger the extension publish (`vscode-publish.yml` fires on `release: published`, but a bare tag push does not):
+- A **CLI-only / npm-only deploy creates NO tag** (the `npm-publish.yaml` workflow doesn't tag). Create a **lightweight tag** so you don't re-trigger the extension publish (`vscode-publish.yml` fires on `release: published`, but a bare tag push does not):
   ```bash
   gh api repos/stylusnexus/work-plan-toolkit/git/refs \
     -f ref="refs/tags/v$(cat VERSION | tr '+' '-')" \
@@ -199,7 +199,7 @@ The [`stylusnexus/agent-plugins`](https://github.com/stylusnexus/agent-plugins) 
 
 Two deploys on the **same UTC day** collide on version, because each registry derives its version differently — handle both before re-publishing:
 
-- **npm** drops the sha: `VERSION` `2026.06.10+<sha>` → semver `2026.6.10`. The sha differs per deploy, but the published npm version does **not**, so a second same-day publish of `2026.6.10` is rejected ("cannot publish over existing version"). Use the workflow's `version_suffix` input: `gh workflow run npm-publish.yml --ref main -f dry_run=false -f version_suffix=-1` (then `-2`, …) for the 2nd+ same-day publish.
+- **npm** drops the sha: `VERSION` `2026.06.10+<sha>` → semver `2026.6.10`. The sha differs per deploy, but the published npm version does **not**, so a second same-day publish of `2026.6.10` is rejected ("cannot publish over existing version"). Use the workflow's `version_suffix` input: `gh workflow run npm-publish.yaml --ref main -f dry_run=false -f version_suffix=-1` (then `-2`, …) for the 2nd+ same-day publish.
 - **VS Code** version is independent and hand-set in `vscode/package.json`; it is **not** date-derived, so it never auto-collides — but you must bump it for **every** publish, including a second same-day one (e.g. `0.3.4` → `0.3.5`). Marketplace publishes with `--skip-duplicate`, so forgetting the bump means the workflow silently no-ops and the new build never ships. The GitHub Release tag embeds the sha (`v2026.06.10-<sha2>`), so the tag itself won't collide — only the extension version inside the VSIX matters.
 
 In short: same-day npm needs `version_suffix`; same-day VS Code needs another `package.json` patch bump. Neither is automatic.
