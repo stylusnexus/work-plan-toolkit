@@ -102,7 +102,7 @@ python3 skills/work-plan/work_plan.py brief
 - Subcommands: `skills/work-plan/commands/<name>.py` (each exports `run(args) -> int`). Thin orchestration over `lib/`.
 - Shared helpers: `skills/work-plan/lib/` (`config.py`, `frontmatter.py`, `tracks.py`, `github_state.py`, `git_state.py`, `status_table.py`, `prompts.py`).
 - Tests: `skills/work-plan/tests/` (stdlib `unittest`, offline).
-- Slash-command alias: `commands/work-plan.md`. Skill prompt: `skills/work-plan/SKILL.md`.
+- Slash-command alias: `installer/work-plan.md`. Skill prompt: `skills/work-plan/SKILL.md`.
 - Specs/plans: `docs/superpowers/specs/`, `docs/superpowers/plans/`.
 - Source → runtime: `skills/work-plan/` → `~/.claude/skills/work-plan/` (via `install.sh`).
 
@@ -112,7 +112,7 @@ python3 skills/work-plan/work_plan.py brief
 
 - `skills/work-plan/` (source) → `~/.claude/skills/work-plan/` (installed copy used by `/work-plan`)
 - `skills/repo-activity-summary/` → `~/.claude/skills/repo-activity-summary/`
-- `commands/work-plan.md` → `~/.claude/commands/work-plan.md` (the slash-command alias)
+- `installer/work-plan.md` → `~/.claude/commands/work-plan.md` (the slash-command alias)
 - `notes/` (default `notes_root` in seeded config) — empty until `init-repo` populates it
 
 The active config the skill reads is `~/.claude/work-plan/config.yml`. There is no template file in the repo for it; `install.sh` writes the right two lines directly.
