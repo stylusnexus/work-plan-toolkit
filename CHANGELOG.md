@@ -6,6 +6,39 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.06+d7edb01 — 2026-10-06 (#509)
+
+feat: dependency preflight, stale-track lens, label search, frontmatter comment preservation (ext 0.20.0)
+
+Production deploy of `dev` (14 changes since the last release). Extension **0.20.0**; CLI version is stamped by the release workflow.
+
+### Added
+- **Dependency preflight.** `doctor` now checks that the machine can run work-plan: Python 3.9+, `git`, `gh` and its sign-in, mikefarah `yq` (a missing and a wrong `yq` are separate checks), config, `notes_root` and plan-branch worktrees. Each failure names its fix. Both installers now reject Python older than 3.9. VS Code gets **Work Plan: Run Diagnostics** (#427, #506).
+- **Stale tracks.** A Stale tracks lens, a Least recently touched sort and `workPlan.trackStaleDays` find active tracks that went quiet; `export --json` carries `last_touched` / `last_handoff` (#428, #505).
+- **Label search.** Search Issues matches GitHub labels with a `label:` prefix (`label:security`, `label:priority/%`); issues in the export carry their label names (#429, #507).
+- **`milestone-drift`** audits `next_up` against GitHub state and milestones, and runs inside `hygiene` (#489, #490).
+- **CI:** a lockfile integrity gate for `vscode/package-lock.json` (#500) and a Dependabot config that targets `dev` (#498).
+
+### Fixed
+- **Frontmatter comments survive writes.** Every write used to delete all YAML comments in a track; unchanged frontmatter is now kept byte-for-byte and changed keys are edited in place. Also adds `lift-rationale` and a warning when comments cannot be preserved (#491, #492, #497).
+- **`coverage` and `reconcile`:** a `github.labels` override no longer hides a track's own `track/<slug>` label, and `coverage` splits untracked issues into already-labelled and genuinely unassigned (#493, #504).
+- **`notes-vcs`:** an auto-commit no longer sweeps in files you had already staged (#441, #503).
+- **`--private`** is rejected by every command that does not implement it, and the `hygiene` docs list all five steps (#434, #501).
+- **`brief`** reads each branch once instead of once per track, and no longer crashes on a track with an empty `last_handoff` (#421, #502).
+- **VS Code:** Suggest Tracks (with AI) hands the prompt to Claude Code or the clipboard instead of doing nothing visible (#496).
+
+### Changed
+- **Behaviour change:** `doctor` in text mode now exits **0** healthy, **1** warning, **2** blocking; a config that cannot load exits 2 (was 1). `--json` still exits 0 and gains `status` and `checks`.
+- Vscode security dependency bumps: js-yaml, fast-uri, dompurify, mermaid, undici, linkify-it, brace-expansion (#499).
+- **Docs and process:** `AGENTS.md` is now the canonical agent instructions (`CLAUDE.md` points to it); the extension changelog is backfilled for 0.19.5 to 0.19.10 and a test now fails CI when it drifts from `package.json` (#508).
+
+### Verification
+Full local gate on the release candidate: Python suite 1622, installer suites, Python 3.9 lint, extension typecheck + 933 tests + production build, lockfile gate. Not verified: label search against live GitHub data (GitHub was rate-limiting at the time; it was verified in a real VS Code extension host against a stand-in CLI).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_011bt49AikR55CYFGboCkzzJ
+
 ## 2026.08.09+a68a27e — 2026-08-09 (#487)
 
 fix(auth): a transient gh probe failure no longer looks like being signed out (ext 0.19.10)
