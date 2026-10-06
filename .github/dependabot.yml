@@ -16,6 +16,18 @@ updates:
     groups:
       vscode-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # Types must not be newer than the oldest VS Code the extension supports
+      # (engines.vscode); vsce refuses to package otherwise. Raise them together
+      # with engines.vscode, by hand.
+      - dependency-name: "@types/vscode"
+      # The extension host runs Node 22; types for a newer Node describe APIs it
+      # does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # A major TypeScript upgrade is a migration, not a bump.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
