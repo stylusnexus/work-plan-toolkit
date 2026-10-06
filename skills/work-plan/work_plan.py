@@ -357,6 +357,10 @@ def main(argv: list[str]) -> int:
         print(f"unknown subcommand '{sub}'", file=sys.stderr)
         print("Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
         return 2
+    if _private_flag_unsupported(sub, argv[2:]):
+        print(f"ERROR: --private is only supported by: {', '.join(sorted(_PRIVATE_COMMANDS))}. "
+              f"'{sub.lstrip('-')}' would silently ignore it.", file=sys.stderr)
+        return 2
     try:
         module = __import__(SUBCOMMANDS[sub], fromlist=["run"])
     except ImportError as e:
@@ -376,6 +380,20 @@ def main(argv: list[str]) -> int:
         if shared_pre:
             _commit_shared_writes(shared_pre, argv[1:])
     return rc
+
+
+# `--private` routes a NEW track to notes_root, so only the commands that create
+# tracks implement it (#434). Any other command would parse it as a stray
+# positional and carry on as if it had been honoured.
+_PRIVATE_COMMANDS = frozenset({"group", "new-track"})
+
+
+def _private_flag_unsupported(sub: str, args: list[str]) -> bool:
+    if sub.lstrip("-") in _PRIVATE_COMMANDS:
+        return False
+    # A bare `--` ends option parsing; anything after it is a positional value.
+    opts = args[:args.index("--")] if "--" in args else args
+    return "--private" in opts
 
 
 # Read-only commands never write notes_root — skip the snapshot/commit entirely.
