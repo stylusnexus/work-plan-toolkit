@@ -1054,3 +1054,40 @@ describe("suggestedIssueNode", () => {
     assert.equal(node.runnerUp, undefined);
   });
 });
+
+describe("sortTracks — touched (#428)", () => {
+  function touchedNode(name: string, last_touched?: string | null, last_handoff?: string | null): TrackNode {
+    const base = makeSortTrack(name, "active", 1);
+    return { ...base, track: { ...base.track, last_touched, last_handoff } };
+  }
+  const NODES = [
+    touchedNode("zulu"),
+    touchedNode("recent", "2026-10-01"),
+    touchedNode("junk", "not a date"),
+    touchedNode("oldest", "2026-01-15"),
+    touchedNode("handoff-only", null, "2026-05-01"),
+    touchedNode("also-oldest", "2026-01-15"),
+  ];
+
+  test("least recently touched first, unknown last, name as tie-break", () => {
+    assert.deepEqual(
+      sortTracks(NODES, "touched").map(n => n.name),
+      ["also-oldest", "oldest", "handoff-only", "recent", "junk", "zulu"],
+    );
+  });
+
+  test("input is not mutated and the result is a new array", () => {
+    const before = NODES.map(n => n.name);
+    const out = sortTracks(NODES, "touched");
+    assert.deepEqual(NODES.map(n => n.name), before);
+    assert.notStrictEqual(out, NODES);
+  });
+
+  test("deterministic regardless of input order", () => {
+    const shuffled = [...NODES].reverse();
+    assert.deepEqual(
+      sortTracks(shuffled, "touched").map(n => n.name),
+      sortTracks(NODES, "touched").map(n => n.name),
+    );
+  });
+});

@@ -1427,3 +1427,32 @@ describe("renderDetail — Set Next-Up button", () => {
     );
   });
 });
+
+describe("renderDetail — activity line (#428)", () => {
+  const NOW = new Date(2026, 9, 5, 12, 0).getTime();
+
+  it("shows a human-readable age and the raw timestamp", () => {
+    const html = renderDetail({ ...platformHealth, last_touched: "2026-09-14" }, { now: NOW });
+    assert.match(html, /<b>Activity:<\/b> last touched 3 weeks ago \(2026-09-14\)/);
+  });
+
+  it("falls back to last_handoff", () => {
+    const html = renderDetail({ ...platformHealth, last_touched: null, last_handoff: "2026-10-04" }, { now: NOW });
+    assert.match(html, /last touched 1 day ago \(2026-10-04\)/);
+  });
+
+  it("is omitted when there is no usable timestamp (older CLI, junk value)", () => {
+    for (const t of [platformHealth, { ...platformHealth, last_touched: "junk" }]) {
+      assert.doesNotMatch(renderDetail(t, { now: NOW }), /Activity:/);
+    }
+  });
+
+  it("shows the timestamp that was actually used, not an unparseable one", () => {
+    const html = renderDetail(
+      { ...platformHealth, last_touched: "<img src=x onerror=alert(1)>", last_handoff: "2026-10-04" },
+      { now: NOW },
+    );
+    assert.match(html, /last touched 1 day ago \(2026-10-04\)/);
+    assert.doesNotMatch(html, /<img|onerror/);
+  });
+});

@@ -66,6 +66,19 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
 
+  // `workPlan.trackStaleDays` (#428): read once, then re-applied live. The
+  // provider re-evaluates the Stale lens from its cached export — no refetch.
+  const readStaleDays = () =>
+    vscode.workspace.getConfiguration("workPlan").get<number>("trackStaleDays");
+  provider.setStaleDays(readStaleDays());
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.trackStaleDays")) {
+        provider.setStaleDays(readStaleDays());
+      }
+    }),
+  );
+
   const treeView = vscode.window.createTreeView("workPlan.tree", {
     treeDataProvider: provider,
   });
@@ -292,7 +305,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const lensChoices = availableLenses(raw);
+      const lensChoices = availableLenses(raw, provider.staleOpts);
       const activeLens = provider.activeLens;
 
       // Build the quick-pick items, marking the active one.
@@ -444,6 +457,11 @@ export function activate(context: vscode.ExtensionContext): void {
           label: "Name (A–Z)",
           mode: "name",
           description: activeSort === "name" ? "active" : undefined,
+        },
+        {
+          label: "Least recently touched",
+          mode: "touched",
+          description: activeSort === "touched" ? "active" : undefined,
         },
       ];
 

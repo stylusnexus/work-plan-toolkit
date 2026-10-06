@@ -95,6 +95,11 @@ def normalize_issue(i: dict, in_progress: bool = False,
     }
 
 
+def _timestamp(value):
+    """A frontmatter timestamp as a non-empty string, else None (#428)."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def build_export(tracks, issues_by_track, visibility, now: str,
                  untracked_by_repo=None, config_repos=None,
                  plan_by_track=None, hot_by_track=None,
@@ -184,6 +189,12 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             # (null when unset). Surfaced by the viewer + hygiene callout.
             "cleanup_candidate": bool(t.meta.get("cleanup_candidate")),
             "cleanup_reason": t.meta.get("cleanup_reason"),
+            # Activity timestamps as written in frontmatter ("YYYY-MM-DD" or
+            # "YYYY-MM-DDTHH:MM", local time), or null when absent/blank/not a
+            # string (#428). Passed through unparsed: the viewer parses them and
+            # computes age locally, so a stale-days setting change needs no refetch.
+            "last_touched": _timestamp(t.meta.get("last_touched")),
+            "last_handoff": _timestamp(t.meta.get("last_handoff")),
             "launch_priority": t.meta.get("launch_priority"),
             "milestone_alignment": milestone_alignment,
             "visibility": visibility.get(t.repo),

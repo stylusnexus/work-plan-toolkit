@@ -153,6 +153,13 @@ export interface Track {
    *  (no `plan` field) deserializes cleanly. */
   plan?: TrackPlan | null;
   /**
+   * Activity timestamps as written in frontmatter ("YYYY-MM-DD" or
+   * "YYYY-MM-DDTHH:MM", local time), or null/absent (#428). Optional on the wire
+   * so an older CLI deserializes cleanly; parse with `recency.ts`, never trust.
+   */
+  last_touched?: string | null;
+  last_handoff?: string | null;
+  /**
    * True when the track is flagged as a cleanup candidate (#328/#329/#330) — a
    * reversible, non-destructive frontmatter flag (NOT deletion). Optional on the
    * wire so an older CLI (no field) deserializes cleanly.
