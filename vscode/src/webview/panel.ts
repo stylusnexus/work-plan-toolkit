@@ -15,7 +15,7 @@ import type { Export, Track, TrackKey } from "../model.ts";
 import { parseTrackKey, resolveTrack, trackKey, trackRepoQualifier } from "../model.ts";
 import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
-import { buildHtml, esc } from "./html.ts";
+import { buildHtmlIfChanged, esc } from "./html.ts";
 import { isWebviewMessage } from "./messages.ts";
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,8 @@ export class WorkPlanPanel {
   private _focused = true;
   /** Theme-change subscription — re-renders so the graph follows the editor (#207). */
   private _themeSub: vscode.Disposable | undefined;
+  /** Content key of the graph document currently shown; null after an empty state (#423). */
+  private _htmlKey: string | null = null;
 
   /** Canonical identity of the selected track, or null before a valid render. */
   get currentTrackKey(): TrackKey | null {
@@ -184,6 +186,7 @@ export class WorkPlanPanel {
 
     if (!track) {
       this._currentTrackKey = null;
+      this._htmlKey = null;
       const parts = parseTrackKey(selection);
       const label = parts?.[1] ?? selection;
       // Track not found (or a legacy name is ambiguous) — show an empty state
@@ -218,7 +221,9 @@ export class WorkPlanPanel {
       .get<boolean>("showNextUpPreset", true);
     const detailHtml = renderDetail(track, { showNextUpPreset });
 
-    const html = buildHtml({
+    // Skip the write when nothing rendered changed (#423): replacing
+    // webview.html reloads the page and re-runs Mermaid on every auto-refresh.
+    const next = buildHtmlIfChanged(this._htmlKey, {
       cspSource: webview.cspSource,
       nonce: nonce(),
       mermaidUri,
@@ -230,8 +235,10 @@ export class WorkPlanPanel {
       isDark,
       hasTrackFile: !!track.path,
     });
+    if (!next) return;
 
-    webview.html = html;
+    this._htmlKey = next.key;
+    webview.html = next.html;
   }
 
   /**
@@ -239,6 +246,7 @@ export class WorkPlanPanel {
    * Used when a lens filters out every track while the panel is open.
    */
   renderEmpty(message: string): void {
+    this._htmlKey = null;
     this._panel.webview.html = this._buildEmptyHtml(message);
   }
 

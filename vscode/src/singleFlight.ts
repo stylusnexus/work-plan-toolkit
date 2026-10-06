@@ -53,6 +53,21 @@ export class SingleFlight {
     return this._inflight;
   }
 
+  /**
+   * Start a run only if nothing is in flight; otherwise do nothing (#423).
+   *
+   * For background polling: a tick that lands mid-flight must NOT request a
+   * trailing run, or a task slower than the poll interval keeps refresh busy
+   * forever. The in-flight sequence already delivers fresh data, so skipping
+   * loses nothing. Resolves true when this call started the run, false when it
+   * was skipped.
+   */
+  async runIfIdle(): Promise<boolean> {
+    if (this._inflight !== null) return false;
+    await this.run();
+    return true;
+  }
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------
