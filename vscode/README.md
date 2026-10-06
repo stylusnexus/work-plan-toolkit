@@ -187,7 +187,7 @@ Before any write into a **public** (or unknown-visibility) repo, a **"Write anyw
 | `workPlan.trackStaleDays` | `14` | Days without activity (`last_touched`, else `last_handoff`) before an active, in-progress or blocked track counts as stale. Drives the **Stale tracks** lens and a tooltip flag; display only (nothing is archived or edited). Changing it re-renders from cached data with no refetch. |
 | `workPlan.expandReposByDefault` | `false` | Expand all repo groups on load (a single-repo workspace always expands). |
 | `workPlan.autoFocusRepo` | `false` | When the open workspace folder is a configured repo, default the Tracks lens to that repo (resolved by clone path, then git remote) so you don't read another repo's issues by accident. **Off by default — the Tracks view shows every repo.** A manual lens choice always wins, and the **Select View → Focus current repo / Display all repos** toggle flips scoping any time — and rewrites this setting to match, so your last choice becomes the default. |
-| `workPlan.autoRefreshInterval` | `0` (off) | Re-poll the CLI silently in the background. Options: 0 (off), 30 s, 60 s, 5 min, 15 min. Useful when teammates are pushing shared-track changes and you want the tree to stay current without manual refreshes. |
+| `workPlan.autoRefreshInterval` | `0` (off) | Re-poll the CLI silently in the background. Options: 0 (off), 30 s, 60 s, 5 min, 15 min. Useful when teammates are pushing shared-track changes and you want the tree to stay current without manual refreshes. A poll that comes due while a refresh is still running is skipped rather than queued, and the dependency graph only redraws when what it shows actually changed. |
 
 ### Config-drift indicator
 

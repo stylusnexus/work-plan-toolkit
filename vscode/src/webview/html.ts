@@ -774,6 +774,24 @@ ${afterRun}
 </html>`;
 }
 
+/**
+ * Change-aware wrapper around buildHtml (#423). Every render input except the
+ * per-render nonce forms the key, so an export whose rendered content is
+ * unchanged (e.g. a background poll where only generated_at moved) yields the
+ * same key and returns null: the caller keeps the current document instead of
+ * replacing webview.html and reloading Mermaid. Any change to the graph,
+ * detail card, selected track, focus mode or theme changes the key.
+ */
+export function buildHtmlIfChanged(
+  prevKey: string | null,
+  o: WebviewHtmlOptions,
+): { key: string; html: string } | null {
+  const { nonce: _nonce, ...content } = o;
+  const key = JSON.stringify(content);
+  if (key === prevKey) return null;
+  return { key, html: buildHtml(o) };
+}
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------

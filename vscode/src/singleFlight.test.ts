@@ -1,4 +1,4 @@
-import { test, describe } from "node:test";
+import { test, describe, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { SingleFlight } from "./singleFlight.ts";
 
@@ -242,5 +242,104 @@ describe("SingleFlight — error propagation", () => {
 
     assert.equal(state.calls, 2, "should have executed the task twice total");
     assert.equal(sf.isRunning, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runIfIdle — background polling (#423), driven by fake timers
+// ---------------------------------------------------------------------------
+
+describe("SingleFlight — runIfIdle under slow polling (#423)", () => {
+  // The issue's reproduction: a 40 ms task polled every 30 ms. Timers are
+  // mocked; setImmediate stays real so each 1 ms step can drain promise
+  // continuations before the next timer fires.
+  const TASK_MS = 40;
+  const POLL_MS = 30;
+
+  let now = 0;
+  const flush = () => new Promise<void>((r) => setImmediate(r));
+  async function advance(ms: number): Promise<void> {
+    for (let i = 0; i < ms; i++) {
+      now += 1;
+      mock.timers.tick(1);
+      await flush();
+    }
+  }
+
+  function slowFlight(starts: number[]): SingleFlight {
+    return new SingleFlight(async () => {
+      starts.push(now);
+      await new Promise<void>((r) => setTimeout(r, TASK_MS));
+    });
+  }
+
+  beforeEach(() => {
+    now = 0;
+    mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  });
+  afterEach(() => mock.timers.reset());
+
+  test("a tick during a slow run is skipped: no overlap, no back-to-back chaining", async () => {
+    const starts: number[] = [];
+    const sf = slowFlight(starts);
+    const results: boolean[] = [];
+    const handle = setInterval(() => {
+      void sf.runIfIdle().then((ran) => results.push(ran));
+    }, POLL_MS);
+
+    await advance(300);
+    clearInterval(handle);
+
+    // Runs only start on a tick that finds the flight idle: 30, then 90 (the
+    // 60 tick lands mid-run), 150, 210, 270 — never the continuous
+    // 30/70/110/... chain a trailing run per tick would produce.
+    assert.deepEqual(starts, [30, 90, 150, 210, 270]);
+    for (let i = 1; i < starts.length; i++) {
+      assert.ok(starts[i] - starts[i - 1] >= TASK_MS, "runs must never overlap");
+    }
+    assert.ok(results.includes(false), "mid-flight ticks must report skipped");
+  });
+
+  test("stopping the poll mid-flight leaves no trailing background run", async () => {
+    const starts: number[] = [];
+    const sf = slowFlight(starts);
+    const handle = setInterval(() => { void sf.runIfIdle(); }, POLL_MS);
+
+    // Ticks at 30 (starts the run) and 60 (mid-flight) — stop while busy.
+    await advance(65);
+    clearInterval(handle);
+    assert.equal(sf.isRunning, true, "precondition: a run is still in flight");
+
+    await advance(500);
+
+    assert.deepEqual(starts, [30], "the mid-flight tick must not queue another run");
+    assert.equal(sf.isRunning, false, "refresh goes idle once the poll stops");
+  });
+
+  test("a manual run() during a background run still gets one trailing run", async () => {
+    const starts: number[] = [];
+    const sf = slowFlight(starts);
+
+    const bg = sf.runIfIdle();   // background run starts at t=0
+    await advance(10);
+    const manual = sf.run();     // user/write refresh lands mid-flight
+    await advance(200);
+
+    assert.equal(await bg, true);
+    await manual;
+    assert.deepEqual(starts, [0, TASK_MS], "manual request mid-flight must trail one fresh run");
+  });
+
+  test("runIfIdle while a manual run is in flight skips and resolves false", async () => {
+    const starts: number[] = [];
+    const sf = slowFlight(starts);
+
+    const manual = sf.run();
+    const bg = sf.runIfIdle();
+    await advance(TASK_MS * 4);
+
+    assert.equal(await bg, false);
+    await manual;
+    assert.deepEqual(starts, [0], "a skipped background tick must not add a trailing run");
   });
 });

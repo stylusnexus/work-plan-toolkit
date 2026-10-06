@@ -195,13 +195,17 @@ export function activate(context: vscode.ExtensionContext): void {
   // Defined here so workPlan.refresh and all write commands share one copy.
   // -------------------------------------------------------------------------
 
-  const refreshAndRerender = async (): Promise<void> => {
-    await provider.refresh();
+  const rerenderPanel = (): void => {
     const panel = WorkPlanPanel.getCurrent();
     const exp = provider.currentExport;
     if (panel && exp && exp.tracks.length > 0) {
       panel.render(exp, panel.currentTrackKey ?? trackKey(exp.tracks[0]));
     }
+  };
+
+  const refreshAndRerender = async (): Promise<void> => {
+    await provider.refresh();
+    rerenderPanel();
   };
 
   // -------------------------------------------------------------------------
@@ -4148,8 +4152,14 @@ export function activate(context: vscode.ExtensionContext): void {
       .getConfiguration("workPlan")
       .get<number>("autoRefreshInterval", 0);
     if (intervalSecs > 0) {
+      // refreshIfIdle, not refresh (#423): a tick that lands while a refresh is
+      // still running is dropped instead of queueing a trailing run, so an
+      // export slower than the interval can't keep refresh permanently busy.
+      // A skipped tick doesn't re-render — the in-flight run's caller does.
       const handle = setInterval(() => {
-        refreshAndRerender().catch((err: unknown) => {
+        provider.refreshIfIdle().then((ran) => {
+          if (ran) rerenderPanel();
+        }).catch((err: unknown) => {
           console.error("Work Plan: auto-refresh failed:", err);
         });
       }, intervalSecs * 1000);
