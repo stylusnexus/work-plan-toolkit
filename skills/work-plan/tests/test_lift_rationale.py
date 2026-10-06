@@ -1,6 +1,7 @@
 """Tests for lift-rationale and the frontmatter comment-loss warning (#491)."""
 import io
 import unittest
+from unittest import mock
 import sys
 import tempfile
 from contextlib import redirect_stdout
@@ -173,15 +174,20 @@ class TestWarning(unittest.TestCase):
             p.write_text("just a body\n", encoding="utf-8")
             self.assertEqual(count_frontmatter_comments(p), 0)
 
-    def test_write_warns_when_comments_would_be_lost(self):
+    def test_write_warns_when_comments_cannot_be_preserved(self):
+        # Comments normally survive (#491); if the in-place edit fails, the
+        # fallback re-dump loses them and must say so.
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "t.md"
             p.write_text(f"---\n{FM}---\nbody\n", encoding="utf-8")
             meta, body = parse_file(p)
+            meta["status"] = "parked"
             buf = io.StringIO()
-            with redirect_stdout(buf):
-                write_file(p, meta, body)
-            self.assertIn("dropping 5 frontmatter comment line(s)", buf.getvalue())
+            with mock.patch("lib.frontmatter._patch_yaml",
+                            side_effect=ValueError("boom")):
+                with redirect_stdout(buf):
+                    write_file(p, meta, body)
+            self.assertIn("dropped 5 frontmatter comment line(s)", buf.getvalue())
 
     def test_write_is_silent_when_there_is_nothing_to_lose(self):
         # The falsification case: a clean track must not print a scary warning
