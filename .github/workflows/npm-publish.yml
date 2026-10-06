@@ -38,7 +38,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          # No `registry-url` on purpose: setting it makes setup-node export a dummy
+          # NODE_AUTH_TOKEN, which npm then uses instead of the OIDC trusted-publisher
+          # login and the publish fails with a 404.
 
       - name: Use an npm that supports trusted publishing (>= 11.5.1)
         run: |
@@ -65,7 +67,7 @@ jobs:
 
       - name: Publish to npm
         if: ${{ inputs.dry_run == false }}
-        run: npm publish --access public   # authenticates via OIDC; provenance is attached automatically
+        run: npm publish --access public --registry https://registry.npmjs.org/   # OIDC; provenance is attached automatically
 
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v7
