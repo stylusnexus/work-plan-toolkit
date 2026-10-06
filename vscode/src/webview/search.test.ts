@@ -8,6 +8,7 @@ import type { Export } from "../model.ts";
 import {
   wildcardToRegExp, searchIssues, parseSearchQuery, isLabelQuery, exportCarriesLabels,
 } from "./search.ts";
+import { makeIssue, makeTrack } from "../testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // wildcardToRegExp — grammar
@@ -95,7 +96,7 @@ const exp: Export = {
   schema: 1,
   generated_at: "2026-06-11T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "platform-health",
       repo: "your-org/myproject",
       tier: "private",
@@ -108,11 +109,11 @@ const exp: Export = {
       depends_on: [],
       rollup: { open: 2, closed: 1 },
       issues: [
-        { number: 487, title: "Auth rate limit", state: "open", assignee: "@alice", milestone: "M1" },
-        { number: 488, title: "depends-on cleanup", state: "closed", assignee: "—", milestone: null },
+        makeIssue({ number: 487, title: "Auth rate limit", state: "open", assignee: "@alice", milestone: "M1" }),
+        makeIssue({ number: 488, title: "depends-on cleanup", state: "closed", assignee: "—", milestone: null }),
       ],
-    },
-    {
+    }),
+    makeTrack({
       name: "viewer",
       repo: "your-org/myproject",
       tier: "private",
@@ -125,16 +126,16 @@ const exp: Export = {
       depends_on: [],
       rollup: { open: 1, closed: 0 },
       issues: [
-        { number: 272, title: "issue search with depends", state: "open", assignee: "@bob", milestone: "v2.0.0" },
+        makeIssue({ number: 272, title: "issue search with depends", state: "open", assignee: "@bob", milestone: "v2.0.0" }),
       ],
-    },
+    }),
   ],
   untracked: [
     {
       repo: "your-org/other",
       issues: [
-        { number: 900, title: "DEPENDS graph rewrite", state: "open", assignee: "—", milestone: null },
-        { number: 901, title: "unrelated chore", state: "open", assignee: "—", milestone: null },
+        makeIssue({ number: 900, title: "DEPENDS graph rewrite", state: "open", assignee: "—", milestone: null }),
+        makeIssue({ number: 901, title: "unrelated chore", state: "open", assignee: "—", milestone: null }),
       ],
     },
   ],
@@ -181,19 +182,11 @@ describe("searchIssues — matching across tracks + untracked", () => {
 // ---------------------------------------------------------------------------
 
 function issueWith(number: number, title: string, labels?: string[]) {
-  return {
-    number, title, state: "open" as const, assignee: "—", milestone: null,
-    in_progress: false, in_progress_label: false, blocked_by: [], blocking: [],
-    ...(labels !== undefined && { labels }),
-  };
+  return makeIssue({ number, title, ...(labels !== undefined && { labels }) });
 }
 
 function trackWith(name: string, repo: string, issues: ReturnType<typeof issueWith>[]) {
-  return {
-    name, repo, tier: "private", status: "active", launch_priority: null,
-    milestone_alignment: null, visibility: null, blockers: [], next_up: [],
-    rollup: { open: issues.length, closed: 0 }, issues,
-  };
+  return makeTrack({ name, repo, rollup: { open: issues.length, closed: 0 }, issues });
 }
 
 const labelled: Export = {

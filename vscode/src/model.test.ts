@@ -18,40 +18,22 @@ import {
 } from "./model.ts";
 import type { Issue, Track, Export } from "./model.ts";
 import { actionToArgs } from "./write.ts";
+import { makeIssue, makeTrack as sharedMakeTrack } from "./testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function makeIssue(overrides: Partial<Issue> = {}): Issue {
-  return {
-    number: 1,
-    title: "test issue",
-    state: "open",
-    assignee: "@eve",
-    milestone: null,
-    in_progress: false,
-    ...overrides,
-  };
-}
 
 function makeTrack(overrides: Partial<Track> = {}): Track {
-  return {
-    name: "platform-health",
-    repo: "your-org/myproject",
+  return sharedMakeTrack({
     path: "/tmp/notes/platform-health.md",
     folder: "myrepo",
-    tier: "private",
-    status: "active",
     launch_priority: "P2",
     milestone_alignment: "v1",
     visibility: "PRIVATE",
-    blockers: [],
-    next_up: [],
-    rollup: { open: 0, closed: 0 },
-    issues: [],
     ...overrides,
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------

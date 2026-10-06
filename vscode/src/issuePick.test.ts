@@ -6,17 +6,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildIssuePickItems } from "./issuePick.ts";
 import type { Issue } from "./model.ts";
+import { makeIssue as sharedMakeIssue } from "./testFixtures.ts";
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
-  return {
-    number: 1,
-    title: "an issue",
-    state: "open",
-    assignee: "—",
-    milestone: null,
-    in_progress: false,
-    ...overrides,
-  };
+  return sharedMakeIssue({ title: "an issue", assignee: "—", ...overrides });
 }
 
 describe("buildIssuePickItems — ordering", () => {
