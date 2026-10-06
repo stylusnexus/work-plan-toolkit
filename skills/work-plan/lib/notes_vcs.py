@@ -258,10 +258,13 @@ def auto_commit(notes_root: Path, message: str,
       - it carries the ownership marker (work-plan created it), and
       - it has NO remote (a personal, never-pushed history).
 
-    When `paths` is given, stages ONLY those paths so unrelated pre-existing
-    dirty files stay out of the commit; otherwise stages everything. Commits
-    only if something is actually staged. Never raises — a git failure here must
-    not change the calling command's exit code.
+    When `paths` is given, stages ONLY those paths AND commits only those paths
+    (`commit --only -- <paths>`), so neither unrelated dirty files nor anything
+    the user had already staged (#441) ends up in a commit whose message does not
+    describe it; pre-staged content outside `paths` stays staged afterwards.
+    Otherwise stages everything. Commits only if something is actually staged
+    within that scope. Never raises — a git failure here must not change the
+    calling command's exit code.
     """
     root = Path(notes_root).expanduser()
     if not is_git_root(root) or not is_owned(root) or has_remotes(root):
@@ -269,17 +272,22 @@ def auto_commit(notes_root: Path, message: str,
     if paths is None:
         if _git(root, "add", "-A") is None:
             return None
+        scope: list = []
+        commit_scope: list = []
     else:
         if not paths:
             return None
         if _git(root, "add", "--", *paths) is None:
             return None
-    # Commit only what's staged — scoped `add` above keeps unrelated dirty files
-    # unstaged, so they're preserved rather than folded into this commit.
-    staged = _git(root, "diff", "--cached", "--quiet")
+        scope = ["--", *paths]
+        commit_scope = ["--only", "--", *paths]
+    # Commit only what is staged WITHIN our scope. An unscoped check would see a
+    # file the user pre-staged and commit it under our message even when our own
+    # paths changed nothing.
+    staged = _git(root, "diff", "--cached", "--quiet", *scope)
     if staged is None or staged.returncode == 0:
         return None
-    proc = _git(root, "commit", "-m", message)
+    proc = _git(root, "commit", "-m", message, *commit_scope)
     if proc is None or proc.returncode != 0:
         return None
     head = _git(root, "rev-parse", "--short", "HEAD")
