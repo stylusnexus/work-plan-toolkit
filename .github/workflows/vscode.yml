@@ -23,7 +23,7 @@ concurrency:
 jobs:
   build:
     name: typecheck · test · build · package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: vscode

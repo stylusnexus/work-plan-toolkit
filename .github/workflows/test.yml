@@ -25,7 +25,7 @@ jobs:
   # lint runs in seconds and short-circuits the matrix on failure.
   lint-py39:
     name: Python 3.9 union-syntax lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-26.04]
         python-version:
           - "3.9"
           - "3.10"
@@ -120,7 +120,7 @@ jobs:
   smoke-install:
     name: install.sh smoke (ubuntu)
     needs: lint-py39
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 

@@ -28,7 +28,7 @@ on:
 jobs:
   package:
     name: build · test · package VSIX
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: vscode
@@ -56,7 +56,7 @@ jobs:
     name: publish · VS Code Marketplace
     needs: package
     if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: vscode
@@ -82,7 +82,7 @@ jobs:
     name: publish · Open VSX
     needs: package
     if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: vscode

@@ -27,7 +27,7 @@ on:
 jobs:
   publish:
     name: pack · publish to npm
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write   # lets npm exchange this run's OIDC identity for a publish credential
