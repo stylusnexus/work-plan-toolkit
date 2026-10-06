@@ -339,6 +339,15 @@ export class WorkPlanTreeProvider
   }
 
   /**
+   * Background-poll variant of refresh() (#423): starts a refresh only when
+   * none is in flight and never queues a trailing run. Resolves false when the
+   * tick was skipped.
+   */
+  async refreshIfIdle(): Promise<boolean> {
+    return this._refreshFlight.runIfIdle();
+  }
+
+  /**
    * The actual fetch+render work. Wrapped in a VS Code progress indicator so
    * the Tracks view shows a native progress bar while the CLI is running.
    * Errors propagate out of withProgress → out of this method → through

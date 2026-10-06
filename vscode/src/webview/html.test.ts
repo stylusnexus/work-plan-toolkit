@@ -7,8 +7,12 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildHtml } from "./html.ts";
+import { buildHtml, buildHtmlIfChanged } from "./html.ts";
 import type { WebviewHtmlOptions } from "./html.ts";
+import type { Export, Track } from "../model.ts";
+import { trackKey } from "../model.ts";
+import { toMermaid } from "./graph.ts";
+import { renderDetail } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -687,5 +691,99 @@ describe("buildHtml — Set Next-Up button client script", () => {
       snippet.includes("if (") || snippet.includes("if("),
       `Expected a null-guard 'if' near the setNextBtn handler:\n${snippet}`,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildHtmlIfChanged — skip unchanged re-renders (#423)
+// ---------------------------------------------------------------------------
+
+describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
+  const NOW = Date.parse("2026-06-07T12:00:00Z");
+
+  function track(name: string, title = "auth rate limit"): Track {
+    return {
+      name,
+      repo: "your-org/myproject",
+      tier: "private",
+      status: "active",
+      launch_priority: "P1",
+      milestone_alignment: null,
+      visibility: "PRIVATE",
+      blockers: [],
+      next_up: [487],
+      depends_on: [],
+      rollup: { open: 1, closed: 0 },
+      issues: [{ number: 487, title, state: "open", assignee: "@alice", milestone: null }],
+    };
+  }
+
+  function exportAt(generatedAt: string, tracks: Track[]): Export {
+    return { schema: 1, generated_at: generatedAt, tracks };
+  }
+
+  // Builds options exactly as WorkPlanPanel.render does, with a fresh nonce
+  // per call (panel.ts mints one every render).
+  let nonceSeq = 0;
+  function optionsFor(
+    exp: Export,
+    selection: string,
+    view: { focused?: boolean; isDark?: boolean } = {},
+  ): WebviewHtmlOptions {
+    const sel = exp.tracks.find(t => t.name === selection)!;
+    const focused = view.focused ?? true;
+    const isDark = view.isDark ?? true;
+    const graphExp = focused ? exp : { ...exp, tracks: exp.tracks.filter(t => t.repo === sel.repo) };
+    return {
+      ...BASE,
+      nonce: `nonce${String(++nonceSeq).padStart(27, "0")}`,
+      graphDef: toMermaid(graphExp, trackKey(sel), { focus: focused, dark: isDark }),
+      detailHtml: renderDetail(sel, { now: NOW }),
+      trackName: sel.name,
+      focused,
+      isDark,
+      hasTrackFile: !!sel.path,
+    };
+  }
+
+  const first = exportAt("2026-06-07T00:00:00Z", [track("alpha"), track("beta")]);
+  const shown = buildHtmlIfChanged(null, optionsFor(first, "alpha"))!;
+
+  it("first render always builds the document", () => {
+    assert.ok(shown, "a null previous key must render");
+    assert.ok(shown.html.includes("<!DOCTYPE html>") || shown.html.includes("<html"));
+  });
+
+  it("an unchanged semantic export (only generated_at + nonce differ) does not reload", () => {
+    const polled = exportAt("2026-06-07T00:00:30Z", [track("alpha"), track("beta")]);
+    assert.equal(buildHtmlIfChanged(shown.key, optionsFor(polled, "alpha")), null);
+  });
+
+  it("changed issue data re-renders", () => {
+    const changed = exportAt("2026-06-07T00:00:30Z", [track("alpha", "renamed"), track("beta")]);
+    assert.ok(buildHtmlIfChanged(shown.key, optionsFor(changed, "alpha")));
+  });
+
+  it("a lens that changes the visible tracks re-renders", () => {
+    const lensed = exportAt("2026-06-07T00:00:00Z", [track("alpha")]);
+    const fullMap = buildHtmlIfChanged(null, optionsFor(first, "alpha", { focused: false }))!;
+    assert.ok(buildHtmlIfChanged(fullMap.key, optionsFor(lensed, "alpha", { focused: false })));
+  });
+
+  it("a theme change re-renders", () => {
+    assert.ok(buildHtmlIfChanged(shown.key, optionsFor(first, "alpha", { isDark: false })));
+  });
+
+  it("a different selected track re-renders", () => {
+    assert.ok(buildHtmlIfChanged(shown.key, optionsFor(first, "beta")));
+  });
+
+  it("a focus-mode toggle re-renders", () => {
+    assert.ok(buildHtmlIfChanged(shown.key, optionsFor(first, "alpha", { focused: false })));
+  });
+
+  it("the returned html is exactly buildHtml's output for the same options", () => {
+    const o = optionsFor(first, "beta");
+    assert.equal(buildHtmlIfChanged(null, o)!.html, buildHtml(o));
   });
 });
