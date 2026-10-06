@@ -981,7 +981,7 @@
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.28.0",
-    "ovsx": "^0.10.0",
+    "ovsx": "^1.2.0",
     "typescript": "^5.8.0"
   },
   "dependencies": {
