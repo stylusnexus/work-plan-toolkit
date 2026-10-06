@@ -82,6 +82,24 @@ if ($missing.Count -gt 0) {
 }
 Ok "all dependencies present"
 
+# 2.4 Verify Python is new enough. Presence alone passes an old interpreter that
+# then fails at runtime with a confusing syntax/typing error (the toolkit needs
+# 3.9+). Also catches the Windows Store 'python' stub, which exists on PATH but
+# cannot run. Keep in lockstep with install.sh (#427).
+function Get-PyVersion {
+    $v = python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $v) { return "unknown" }
+    return "$v".Trim()
+}
+python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Err "python $(Get-PyVersion) is older than the required 3.9 (or could not run)."
+    Write-Host ""
+    Write-Host "  Install Python 3.9 or newer: https://www.python.org/  (winget install Python.Python.3)"
+    exit 1
+}
+Ok "python $(Get-PyVersion) (3.9+ required)"
+
 # 2.5 Verify yq is mikefarah/yq-capable (Go), not a same-named but incompatible
 # shim (e.g. kislyuk/yq, the Python jq wrapper). Presence alone passes both;
 # only mikefarah/yq supports the `-o=json` / `-P` flags the runtime requires

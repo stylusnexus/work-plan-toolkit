@@ -191,6 +191,8 @@ Before any write into a **public** (or unknown-visibility) repo, a **"Write anyw
 
 ### Config-drift indicator
 
+**Work Plan: Run Diagnostics** (Command Palette) runs the full preflight on demand and prints every check to the Work Plan output channel — Python 3.9+, `git`, `gh` and its sign-in, mikefarah/`yq`, config, `notes_root`, plan-branch worktrees — with the exact fix under anything that needs attention. It needs a CLI that supports diagnostics and says so if yours predates them.
+
 On activation, the extension silently checks for config drift (a renamed local folder or GitHub repo that `config.yml` no longer matches, an invalid `notes_root`, a stale per-track repo slug, etc.). If it finds anything, a `⚠ Work Plan: N config issues` item appears in the status bar — click it to see the details in the "Work Plan" output channel. Nothing appears when everything's clean. Run `work-plan doctor --fix` from a terminal to correct the safe subset automatically, then reload the window.
 
 ## Build & run

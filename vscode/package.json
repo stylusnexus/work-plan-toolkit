@@ -96,6 +96,11 @@
         "category": "Work Plan"
       },
       {
+        "command": "workPlan.runDiagnostics",
+        "title": "Run Diagnostics",
+        "category": "Work Plan"
+      },
+      {
         "command": "workPlan.openSettings",
         "title": "Open Settings",
         "category": "Work Plan",
