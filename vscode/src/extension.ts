@@ -23,7 +23,7 @@ import { issuesFingerprint } from "./fingerprint.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
-import { searchIssues } from "./webview/search.ts";
+import { exportCarriesLabels, isLabelQuery, parseSearchQuery, searchIssues } from "./webview/search.ts";
 import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
@@ -3284,10 +3284,14 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         const query = await vscode.window.showInputBox({
-          placeHolder: "Search issues — e.g. %depends%, fix%, %audit",
-          prompt: "Match issue titles. Bare word = contains; % = wildcard (fix% starts-with, %audit ends-with).",
+          placeHolder: "Search issues — e.g. %depends%, fix%, label:security",
+          prompt: "Match issue titles. Bare word = contains; % = wildcard (fix% starts-with, %audit ends-with). Prefix label: to search labels (label:priority/%).",
           validateInput: (v) => {
-            const t = v.trim();
+            const { pattern } = parseSearchQuery(v);
+            const t = pattern.trim();
+            if (isLabelQuery(v) && t === "") {
+              return "Add a label to search for, e.g. label:security";
+            }
             return t !== "" && /^%+$/.test(t)
               ? "A query of % alone matches everything — add text, e.g. %fix% or depends%"
               : null;
@@ -3301,7 +3305,16 @@ export function activate(context: vscode.ExtensionContext): void {
           const current = provider.rawExport;
           if (!current) return;
           SearchPanel.showResults(
-            { query: q, hits: searchIssues(current, q), generatedAt: current.generated_at },
+            {
+              query: q,
+              hits: searchIssues(current, q),
+              generatedAt: current.generated_at,
+              // An older CLI exports no labels: say so, rather than let a label
+              // search read as "nothing has that label".
+              ...(isLabelQuery(q) && !exportCarriesLabels(current) && {
+                notice: "This work-plan CLI does not export labels yet — update it (re-run ./install.sh) to search by label.",
+              }),
+            },
             {
               openIssue: (repo, number) =>
                 void vscode.commands.executeCommand("workPlan.openIssue", { repo, number }),

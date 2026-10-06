@@ -91,3 +91,37 @@ describe("buildSearchHtml — rows", () => {
     assert.match(html, /your-org\/other/);
   });
 });
+
+
+describe("buildSearchHtml — labels (#429)", () => {
+  it("renders each label as an escaped chip under the title", () => {
+    const html = buildSearchHtml({ ...base, query: "label:sec%", hits: [hit({ labels: ["security", "priority/P0"] })] });
+    assert.match(html, /<span class="label">security<\/span>/);
+    assert.match(html, /<span class="label">priority\/P0<\/span>/);
+  });
+
+  it("escapes a hostile label name", () => {
+    const evil = `<img src=x onerror=alert(1)>"'&`;
+    const html = buildSearchHtml({ ...base, query: "label:x", hits: [hit({ labels: [evil] })] });
+    assert.doesNotMatch(html, /<img/);
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  });
+
+  it("renders no label block when there are none or labels are absent", () => {
+    for (const labels of [undefined, []]) {
+      const html = buildSearchHtml({ ...base, query: "auth", hits: [hit({ labels })] });
+      assert.doesNotMatch(html, /<div class="labels"/);
+    }
+  });
+
+  it("explains the label: prefix in the hint", () => {
+    const html = buildSearchHtml({ ...base, query: "auth", hits: [hit()] });
+    assert.match(html, /<code>label:<\/code>/);
+  });
+
+  it("shows an escaped notice only when one is given", () => {
+    const withNotice = buildSearchHtml({ ...base, query: "label:x", hits: [], notice: "update the <CLI>" });
+    assert.match(withNotice, /<p class="notice" role="status">update the &lt;CLI&gt;<\/p>/);
+    assert.doesNotMatch(buildSearchHtml({ ...base, query: "x", hits: [] }), /class="notice"/);
+  });
+});

@@ -19,6 +19,8 @@ export interface SearchHtmlOptions {
   cspSource: string;
   /** Caller-generated random nonce. */
   nonce: string;
+  /** Optional plain-text notice shown above the results (escaped). */
+  notice?: string;
 }
 
 /** Open issues sort before closed; within a state, ascending by issue number. */
@@ -43,6 +45,13 @@ function groupByRepo(hits: SearchHit[]): { repo: string; hits: SearchHit[] }[] {
   return order.map(repo => ({ repo, hits: sortHits(byRepo.get(repo)!) }));
 }
 
+/** Label chips under a title (#429). Every label name is untrusted GitHub data, so each is escaped. */
+function labelsHtml(labels: string[] | undefined): string {
+  if (!labels || labels.length === 0) return "";
+  const chips = labels.map(l => `<span class="label">${esc(l)}</span>`).join(" ");
+  return `<div class="labels" aria-label="Labels">${chips}</div>`;
+}
+
 function rowHtml(h: SearchHit): string {
   const stateGlyph = h.state === "open" ? "◆" : "◇";
   const stateClass = h.state === "open" ? "open" : "closed";
@@ -57,7 +66,7 @@ function rowHtml(h: SearchHit): string {
   return `<tr>
     <td class="num"><a href="https://github.com/${esc(h.repo)}/issues/${h.number}" class="issue-link" data-repo="${esc(h.repo)}" data-number="${h.number}"
         aria-label="Open issue ${h.number} on GitHub">#${h.number}</a></td>
-    <td class="title">${esc(h.title)}</td>
+    <td class="title">${esc(h.title)}${labelsHtml(h.labels)}</td>
     <td class="state ${stateClass}"><span aria-hidden="true">${stateGlyph}</span> ${h.state}</td>
     <td class="track">${trackCell}${revealBtn}</td>
   </tr>`;
@@ -78,7 +87,7 @@ function repoSectionHtml(group: { repo: string; hits: SearchHit[] }): string {
 }
 
 export function buildSearchHtml(o: SearchHtmlOptions): string {
-  const { query, hits, generatedAt, cspSource, nonce } = o;
+  const { query, hits, generatedAt, cspSource, nonce, notice } = o;
   const queryEsc = esc(query);
   const count = hits.length;
 
@@ -156,6 +165,12 @@ export function buildSearchHtml(o: SearchHtmlOptions): string {
     }
     tr:hover .reveal-btn, .reveal-btn:focus-visible { opacity: 1; }
     .reveal-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+    .labels { margin-top: 2px; }
+    .label {
+      display: inline-block; font-size: 0.82em; padding: 0 6px; border-radius: 9px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .notice { margin: 0 0 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 3px; }
     .empty { padding: 24px 4px; }
     .empty-head { font-size: 1.05em; margin: 0 0 6px; }
     code { background: var(--row-hover); padding: 0 4px; border-radius: 3px; }
@@ -163,7 +178,8 @@ export function buildSearchHtml(o: SearchHtmlOptions): string {
 </head>
 <body>
   <h1 class="results-heading" tabindex="-1" id="results-heading" aria-live="polite">${headingText}</h1>
-  <p class="hint">Bare words match anywhere in the title. Use <code>%</code> as a wildcard: <code>fix%</code> = starts-with, <code>%audit</code> = ends-with.</p>
+  <p class="hint">Bare words match anywhere in the title. Use <code>%</code> as a wildcard: <code>fix%</code> = starts-with, <code>%audit</code> = ends-with. Prefix with <code>label:</code> to search labels instead: <code>label:security</code>, <code>label:priority/%</code>.</p>
+  ${notice ? `<p class="notice" role="status">${esc(notice)}</p>` : ""}
   <p class="snapshot">As of ${esc(generatedAt)}<button class="refresh" id="refresh">Refresh &amp; re-run</button></p>
   ${body}
   <script nonce="${nonce}">

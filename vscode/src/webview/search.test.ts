@@ -5,7 +5,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Export } from "../model.ts";
-import { wildcardToRegExp, searchIssues } from "./search.ts";
+import {
+  wildcardToRegExp, searchIssues, parseSearchQuery, isLabelQuery, exportCarriesLabels,
+} from "./search.ts";
 
 // ---------------------------------------------------------------------------
 // wildcardToRegExp — grammar
@@ -170,5 +172,136 @@ describe("searchIssues — matching across tracks + untracked", () => {
 
   it("no matches → empty array (not an error)", () => {
     assert.deepStrictEqual(searchIssues(exp, "%nonexistent-term%"), []);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Label search (#429)
+// ---------------------------------------------------------------------------
+
+function issueWith(number: number, title: string, labels?: string[]) {
+  return {
+    number, title, state: "open" as const, assignee: "—", milestone: null,
+    in_progress: false, in_progress_label: false, blocked_by: [], blocking: [],
+    ...(labels !== undefined && { labels }),
+  };
+}
+
+function trackWith(name: string, repo: string, issues: ReturnType<typeof issueWith>[]) {
+  return {
+    name, repo, tier: "private", status: "active", launch_priority: null,
+    milestone_alignment: null, visibility: null, blockers: [], next_up: [],
+    rollup: { open: issues.length, closed: 0 }, issues,
+  };
+}
+
+const labelled: Export = {
+  schema: 1,
+  generated_at: "2026-10-05T00:00:00Z",
+  tracks: [
+    trackWith("platform", "org/app", [
+      issueWith(1, "Rotate signing keys", ["security", "priority/P0"]),
+      issueWith(2, "Tidy docs", ["documentation"]),
+      issueWith(3, "Security review notes", []),          // "security" only in the TITLE
+    ]),
+  ],
+  untracked: [
+    { repo: "org/app", issues: [
+      issueWith(10, "Untriaged crash", ["Security", "needs-triage"]),
+      issueWith(11, "Another", ["area/security-ui"]),
+    ] },
+  ],
+};
+
+describe("parseSearchQuery / isLabelQuery", () => {
+  it("a bare query is a title search, untouched", () => {
+    assert.deepEqual(parseSearchQuery("fix%"), { fields: ["title"], pattern: "fix%" });
+    assert.equal(isLabelQuery("fix%"), false);
+    assert.equal(isLabelQuery("my label: thing"), false); // not a prefix
+  });
+
+  it("label: scopes to labels; everything after it is the pattern", () => {
+    assert.deepEqual(parseSearchQuery("label:security"), { fields: ["labels"], pattern: "security" });
+    assert.deepEqual(parseSearchQuery("  LABEL:good first issue"), { fields: ["labels"], pattern: "good first issue" });
+    assert.equal(isLabelQuery("Label:x"), true);
+  });
+});
+
+describe("searchIssues — label search", () => {
+  const nums = (q: string) => searchIssues(labelled, q).map(h => h.number);
+
+  it("covers tracked AND untracked issues, case-insensitively", () => {
+    assert.deepEqual(nums("label:security"), [1, 10, 11]);
+    assert.deepEqual(nums("label:SECURITY"), [1, 10, 11]);
+  });
+
+  it("honors the % wildcards on each label", () => {
+    assert.deepEqual(nums("label:priority/%"), [1]);        // starts-with
+    assert.deepEqual(nums("label:%/P0"), [1]);              // ends-with
+    assert.deepEqual(nums("label:%triage%"), [10]);         // contains
+    assert.deepEqual(nums("label:sec%"), [1, 10]);          // starts-with: not "area/security-ui"
+  });
+
+  it("matches one whole label pattern, not words spread across labels", () => {
+    assert.deepEqual(nums("label:security P0"), []);
+  });
+
+  it("a label query never matches titles, and a bare query never matches labels", () => {
+    assert.ok(!nums("label:security").includes(3));          // title-only "Security review notes"
+    assert.deepEqual(nums("%notes%"), [3]);
+    assert.deepEqual(nums("needs-triage"), []);              // label text, bare query → title only
+  });
+
+  it("bare queries behave exactly as before", () => {
+    assert.deepEqual(nums("security"), [3]);
+    assert.deepEqual(nums("tidy%"), [2]);
+  });
+
+  it("an empty or wildcard-only label pattern matches nothing", () => {
+    for (const q of ["label:", "label:   ", "label:%", "label:%%"]) assert.deepEqual(nums(q), [], q);
+  });
+
+  it("regex metacharacters in a label pattern are literal", () => {
+    assert.deepEqual(nums("label:a.b"), []);
+    assert.deepEqual(nums("label:(security"), []);
+  });
+
+  it("hits carry the labels", () => {
+    const hit = searchIssues(labelled, "label:priority/%")[0];
+    assert.deepEqual(hit.labels, ["security", "priority/P0"]);
+    assert.equal(hit.track, "platform");
+    assert.equal(searchIssues(labelled, "label:needs-triage")[0].track, null);
+  });
+
+  it("an explicit fields argument still overrides query parsing", () => {
+    assert.deepEqual(searchIssues(labelled, "security", ["labels"]).map(h => h.number), [1, 10, 11]);
+    assert.deepEqual(searchIssues(labelled, "label:security", ["title"]).map(h => h.number), []);
+  });
+});
+
+describe("searchIssues — an export from an older CLI", () => {
+  const old: Export = {
+    schema: 1, generated_at: "t",
+    tracks: [trackWith("t", "org/app", [issueWith(1, "Rotate keys"), issueWith(2, "Fix auth")])],
+  };
+
+  it("keeps bare title search working", () => {
+    assert.deepEqual(searchIssues(old, "auth").map(h => h.number), [2]);
+  });
+
+  it("a label query finds nothing and never throws", () => {
+    assert.deepEqual(searchIssues(old, "label:security"), []);
+  });
+
+  it("hits omit labels rather than inventing an empty list", () => {
+    assert.equal("labels" in searchIssues(old, "auth")[0], false);
+  });
+
+  it("exportCarriesLabels tells 'no labels exported' from 'issues have no labels'", () => {
+    assert.equal(exportCarriesLabels(old), false);
+    assert.equal(exportCarriesLabels({ ...old, tracks: [trackWith("t", "o/r", [issueWith(1, "x", [])])] }), true);
+    assert.equal(exportCarriesLabels({ ...old, tracks: [], untracked: [{ repo: "o/r", issues: [issueWith(1, "x", ["a"])] }] }), true);
+    assert.equal(exportCarriesLabels({ schema: 1, generated_at: "t", tracks: [] }), false);
   });
 });
