@@ -2051,19 +2051,41 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // LLM path: relay the prompt for a Claude session to answer.
+      // LLM path: hand the prompt to the agent the user works in. Claude Code's
+      // extension accepts a prefilled prompt (the same command its own
+      // vscode://anthropic.claude-code/open?prompt= handler calls); no other agent
+      // extension takes text, so everything else gets the prompt on the clipboard.
       outputChannel.clear();
       outputChannel.appendLine(
-        `Ask Claude to produce suggestions and save to ${scan.answers_path}`,
+        `Ask your agent to produce suggestions and save to ${scan.answers_path}`,
       );
       outputChannel.appendLine("");
       outputChannel.append(scan.prompt);
-      outputChannel.show(true);
 
-      vscode.window.showInformationMessage(
-        `Work Plan: scanned ${scan.untracked.length} untracked issue(s) in ${repo}. ` +
-          "Ask Claude with the prompt in the Work Plan output channel; suggestions appear under Untracked.",
+      const done = `${scan.untracked.length} untracked issue(s) in ${repo}; suggestions appear under Untracked once the agent saves its answers.`;
+      // The command is internal to that extension, so a rename or a failed call
+      // falls through to the clipboard instead of leaving the user with nothing.
+      const claudeCmd = "claude-vscode.primaryEditor.open";
+      if (
+        vscode.extensions.getExtension("anthropic.claude-code") &&
+        (await vscode.commands.getCommands(true)).includes(claudeCmd)
+      ) {
+        try {
+          await vscode.commands.executeCommand(claudeCmd, undefined, scan.prompt);
+          vscode.window.showInformationMessage(
+            `Work Plan: opened Claude Code with the prompt. Review and send it — ${done}`,
+          );
+          return;
+        } catch {
+          // fall through to the clipboard path
+        }
+      }
+      await vscode.env.clipboard.writeText(scan.prompt);
+      const choice = await vscode.window.showInformationMessage(
+        `Work Plan: prompt copied to the clipboard. Paste it into your agent — ${done}`,
+        "Show Prompt",
       );
+      if (choice === "Show Prompt") outputChannel.show(false);
     } catch (err: unknown) {
       const msg = err instanceof CliError
         ? `Work Plan: ${err.message}`
