@@ -1,5 +1,9 @@
 # work-plan toolkit
 
+[![CI](https://github.com/stylusnexus/work-plan-toolkit/actions/workflows/test.yml/badge.svg?branch=dev)](https://github.com/stylusnexus/work-plan-toolkit/actions/workflows/test.yml)
+[![npm](https://img.shields.io/npm/v/@stylusnexus/work-plan)](https://www.npmjs.com/package/@stylusnexus/work-plan)
+[![VS Code Marketplace](https://vsmarketplacebadges.dev/version-short/stylusnexus.work-plan-viewer.svg)](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer)
+[![Open VSX](https://img.shields.io/open-vsx/v/stylusnexus/work-plan-viewer?label=Open%20VSX)](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 ![Python 3.9+ stdlib](https://img.shields.io/badge/python-3.9%2B%20stdlib-3776AB)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-7C3AED)
