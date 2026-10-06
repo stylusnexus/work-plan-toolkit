@@ -6,6 +6,26 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.06+4ae1fe1 — 2026-10-06 (#534)
+
+feat: pages site, faster export, quieter refresh, config fixes
+
+### Fixed
+- `config.yml`: a null, list or scalar `repos:` now gives a clear error instead of a traceback (#432). `init-repo --update` and `doctor --fix` migrate scalar-shorthand entries (`foo: org/foo`) to `github:` form, keeping comments, instead of crashing (#440).
+
+### Performance
+- VS Code: auto-refresh skips a poll that comes due mid-refresh, and the dependency graph redraws only when its content changed (#423).
+- `export` reuses already-parsed tracks for tier-duplicate detection, roughly halving `yq` launches (#425).
+
+### Changed
+- VS Code extension 0.20.1: Mermaid 12, `@vscode/vsce` 4, `ovsx` 1.2, test files are now typechecked (#530).
+- CI: the Python 3.9 job runs on `ubuntu-24.04` ahead of `ubuntu-latest` moving to 26.04; Actions bumped to checkout 7, setup-node 7, setup-python 7.
+
+### Added
+- GitHub Pages landing site with `llms.txt`, structured data and a sitemap (`site/`, deployed from `main`).
+- README: CI, npm, Marketplace and Open VSX badges; about 45 stale facts corrected; the AI data-handling note now lists everything `auto-triage` and `plan-status --llm` send.
+- `SECURITY.md`: covers AI-prompt input, `doctor --fix`, `notes-vcs`, `plan-branch push` and the extension's terminal spawn. Secret scanning and push protection are enabled.
+
 ## 2026.10.06+6e60f8e — 2026-10-06 (#522)
 
 ci(npm): publish with trusted publishing (workflow renamed to npm-publish.yaml)
