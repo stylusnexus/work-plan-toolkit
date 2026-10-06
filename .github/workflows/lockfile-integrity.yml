@@ -1,0 +1,85 @@
+name: Lockfile Integrity
+
+# Supply-chain gate on vscode/package-lock.json: blocklisted packages,
+# unreviewed install scripts, package versions that do not exist on npm.
+#
+# Triggers on EVERY pull request to dev or main, with the path check inside the
+# job rather than a trigger-level `paths:` filter. A workflow skipped by a
+# trigger filter never reports a status, so if this ever becomes a required
+# check, every PR that does not touch the lockfile would sit blocked forever.
+# Here the job always runs, reports success, and only does the work when the
+# lockfile (or this gate) changed.
+on:
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: lockfile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile-integrity:
+    name: Verify lockfile integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Did the lockfile change?
+        id: changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Fail closed: anything but a clean "no" runs the checks.
+          if [ -z "$BASE_REF" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if files=$(git diff --name-only "origin/$BASE_REF"...HEAD); then
+            if echo "$files" | grep -qE '^(vscode/package-lock\.json|\.github/scripts/lockfile-integrity\.|\.github/workflows/lockfile-integrity\.yml)'; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              echo "Lockfile unchanged; nothing to verify."
+            fi
+          else
+            echo "::warning::could not diff against origin/$BASE_REF; running the checks anyway."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.changed.outputs.run == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Check script tests
+        if: steps.changed.outputs.run == 'true'
+        run: node --test .github/scripts/lockfile-integrity.test.mjs
+
+      - name: Verify lockfile
+        if: steps.changed.outputs.run == 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          base_args=()
+          if [ -n "$BASE_REF" ] && git show "origin/$BASE_REF:vscode/package-lock.json" > "$RUNNER_TEMP/base-lock.json" 2>/dev/null; then
+            base_args=("$RUNNER_TEMP/base-lock.json")
+          else
+            echo "::warning::no base lockfile found; checking every registry package."
+          fi
+          node .github/scripts/lockfile-integrity.mjs vscode/package-lock.json "${base_args[@]}"
+
+      - name: npm audit (high and critical)
+        if: steps.changed.outputs.run == 'true'
+        working-directory: vscode
+        run: |
+          # Warning only: the publishing tools (vsce, ovsx) carry advisories that
+          # need major bumps. Make this blocking once the baseline is clean.
+          npm audit --audit-level=high || echo "::warning::npm audit reports high/critical advisories."
