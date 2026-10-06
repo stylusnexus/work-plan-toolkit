@@ -4,6 +4,8 @@ git itself is mocked (offline, deterministic) by patching notes_vcs._git, so
 these never shell out. notes_root is a real tmpdir so is_dir()/write_text work.
 """
 import sys
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -257,6 +259,79 @@ class HeadParentTest(unittest.TestCase):
                 self.assertIsNone(notes_vcs.head_parent_sha(Path(d)))
 
 
+@unittest.skipUnless(shutil.which("git"), "git not installed")
+class AutoCommitPreStagedTest(unittest.TestCase):
+    """#441 against REAL git: what a commit contains depends on git's own index
+    semantics, which a fake cannot prove. Offline, in a throwaway repo."""
+
+    def _git(self, root, *args):
+        return subprocess.run(["git", "-C", str(root), *args], capture_output=True,
+                              text=True, check=True).stdout
+
+    def _repo(self, d):
+        root = Path(d)
+        self._git(root, "init", "-q")
+        self._git(root, "config", "user.email", "t@example.com")
+        self._git(root, "config", "user.name", "t")
+        self._git(root, "config", "--local", "workplan.localhistory", "true")
+        for name in ("a.md", "b.md", "gone.md"):
+            (root / name).write_text("1\n")
+        self._git(root, "add", ".")
+        self._git(root, "commit", "-qm", "base")
+        return root
+
+    def _committed(self, root):
+        return self._git(root, "show", "--name-status", "--format=", "HEAD").split()
+
+    def _staged(self, root):
+        return self._git(root, "diff", "--cached", "--name-only").split()
+
+    def test_pre_staged_file_outside_paths_is_not_swept_in_and_stays_staged(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            (root / "a.md").write_text("2\n")          # our change
+            (root / "b.md").write_text("user work\n")  # user's, already staged
+            self._git(root, "add", "b.md")
+            sha = notes_vcs.auto_commit(root, "work-plan: a", paths=["a.md"])
+            self.assertTrue(sha)
+            self.assertEqual(self._committed(root), ["M", "a.md"])
+            self.assertEqual(self._staged(root), ["b.md"])
+
+    def test_modify_delete_and_add_in_one_scoped_commit(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            (root / "a.md").write_text("2\n")
+            (root / "gone.md").unlink()
+            (root / "new.md").write_text("n\n")
+            (root / "b.md").write_text("user\n")
+            self._git(root, "add", "b.md")
+            self.assertTrue(notes_vcs.auto_commit(
+                root, "msg", paths=["a.md", "gone.md", "new.md"]))
+            self.assertEqual(sorted(zip(*[iter(self._committed(root))] * 2)),
+                             [("A", "new.md"), ("D", "gone.md"), ("M", "a.md")])
+            self.assertEqual(self._staged(root), ["b.md"])
+
+    def test_nothing_changed_in_our_paths_makes_no_commit_even_with_other_staged(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            (root / "b.md").write_text("user\n")
+            self._git(root, "add", "b.md")
+            before = self._git(root, "rev-parse", "HEAD")
+            self.assertIsNone(notes_vcs.auto_commit(root, "msg", paths=["a.md"]))
+            self.assertEqual(self._git(root, "rev-parse", "HEAD"), before)
+            self.assertEqual(self._staged(root), ["b.md"])
+
+    def test_unscoped_call_still_commits_everything(self):
+        # paths=None is documented as "stage and commit everything": unchanged.
+        with tempfile.TemporaryDirectory() as d:
+            root = self._repo(d)
+            (root / "a.md").write_text("2\n")
+            (root / "b.md").write_text("user\n")
+            self._git(root, "add", "b.md")
+            self.assertTrue(notes_vcs.auto_commit(root, "msg"))
+            self.assertEqual(sorted(self._committed(root)), ["M", "M", "a.md", "b.md"])
+
+
 class AutoCommitTest(unittest.TestCase):
     def test_commits_when_dirty_owned_no_remote(self):
         with tempfile.TemporaryDirectory() as d:
@@ -277,6 +352,10 @@ class AutoCommitTest(unittest.TestCase):
             # `git add -- a.md b.md`, never `git add -A`.
             self.assertIn(("add", "--", "a.md", "b.md"), fake.calls)
             self.assertNotIn(("add", "-A"), fake.calls)
+            # The staged check and the commit are scoped to the same paths, so
+            # pre-staged content elsewhere neither triggers nor joins a commit (#441).
+            self.assertIn(("diff", "--cached", "--quiet", "--", "a.md", "b.md"), fake.calls)
+            self.assertIn(("commit", "-m", "msg", "--only", "--", "a.md", "b.md"), fake.calls)
 
     def test_noop_when_paths_empty(self):
         with tempfile.TemporaryDirectory() as d:
