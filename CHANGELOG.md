@@ -6,6 +6,22 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.06+6e60f8e — 2026-10-06 (#522)
+
+ci(npm): publish with trusted publishing (workflow renamed to npm-publish.yaml)
+
+CI-only release: moves npm publishing to trusted publishing so the CLI can be published again. No runtime or extension changes.
+
+### Changed
+- **npm publishing uses trusted publishing (OIDC)** instead of `NPM_TOKEN`. The org token was rejected by npm (a publish `PUT` returned `404`), and npm is restricting 2FA-bypass tokens for direct publishing, so a fresh token would fail the same way. The workflow gets `id-token: write` and npm >= 11.5.1 (#519).
+- `setup-node` no longer injects a placeholder `NODE_AUTH_TOKEN` that npm would use instead of the OIDC login (#520).
+- The workflow file is renamed `npm-publish.yml` → `npm-publish.yaml` to match the trusted publisher registered on npmjs.com, which cannot be edited; the release runbook in `AGENTS.md` says so (#521).
+
+### Why a release
+GitHub only lets a workflow be run by name once its file is on the default branch, so the renamed workflow must reach `main` before `@stylusnexus/work-plan` can be published. This publishes nothing by itself.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
 ## 2026.10.06+d7edb01 — 2026-10-06 (#509)
 
 feat: dependency preflight, stale-track lens, label search, frontmatter comment preservation (ext 0.20.0)
