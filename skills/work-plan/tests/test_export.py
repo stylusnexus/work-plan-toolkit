@@ -507,6 +507,39 @@ class BuildExportCleanupCandidateTest(unittest.TestCase):
         self.assertIsNone(tr["cleanup_reason"])
 
 
+class BuildExportActivityTimestampsTest(unittest.TestCase):
+    """last_touched / last_handoff surface in the export JSON (#428)."""
+
+    def _export(self, **meta):
+        t = _track("alpha", "o/r", [1])
+        t.meta.update(meta)
+        return build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t")["tracks"][0]
+
+    def test_both_exported_as_written(self):
+        tr = self._export(last_touched="2026-04-23T22:14", last_handoff="2026-04-20")
+        self.assertEqual(tr["last_touched"], "2026-04-23T22:14")
+        self.assertEqual(tr["last_handoff"], "2026-04-20")
+
+    def test_absent_is_null(self):
+        tr = self._export()
+        self.assertIsNone(tr["last_touched"])
+        self.assertIsNone(tr["last_handoff"])
+
+    def test_blank_null_and_non_string_values_are_null(self):
+        for bad in ("", "   ", None, 20260423, ["2026-04-23"], {"a": 1}):
+            with self.subTest(value=bad):
+                tr = self._export(last_touched=bad, last_handoff=bad)
+                self.assertIsNone(tr["last_touched"])
+                self.assertIsNone(tr["last_handoff"])
+
+    def test_malformed_string_is_passed_through_for_the_viewer_to_judge(self):
+        # The CLI does not validate; the viewer treats an unparseable value as unknown.
+        self.assertEqual(self._export(last_touched="yesterday")["last_touched"], "yesterday")
+
+    def test_surrounding_whitespace_is_trimmed(self):
+        self.assertEqual(self._export(last_touched=" 2026-04-23 ")["last_touched"], "2026-04-23")
+
+
 class BuildExportDependsOnTest(unittest.TestCase):
     """Tests that depends_on is surfaced in the export JSON (#102)."""
 

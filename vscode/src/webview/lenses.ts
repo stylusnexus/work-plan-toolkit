@@ -8,6 +8,8 @@
 import type { Export } from "../model.ts";
 import type { StatusCategory, TrackSort } from "../treeModel.ts";
 import { statusCategory } from "../treeModel.ts";
+import { DEFAULT_STALE_DAYS, isStaleTrack } from "../recency.ts";
+import type { StaleOpts } from "../recency.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,12 +20,18 @@ export type Lens =
   | { kind: "repo"; repo: string }
   | { kind: "milestone"; milestone: string }
   | { kind: "status"; status: StatusCategory }
-  | { kind: "blocked" };
+  | { kind: "blocked" }
+  | { kind: "stale" };
 
 export interface LensChoice {
   id: string;
   label: string;
   lens: Lens;
+}
+
+/** The stale lens needs a threshold and a clock; callers that omit them get the default and Date.now(). */
+function resolveStaleOpts(opts?: StaleOpts): StaleOpts {
+  return opts ?? { staleDays: DEFAULT_STALE_DAYS, now: Date.now() };
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +50,8 @@ export interface LensChoice {
  *      category per `statusCategory`. The "blocked" category is intentionally
  *      NOT surfaced here — it has its own standalone "Blocked tracks" lens.
  *   4. "Blocked tracks" — only when at least one track has non-empty blockers.
+ *   5. "Stale tracks" — only when at least one live track has been idle for
+ *      `opts.staleDays` or more (#428).
  *
  * Categories with no members are omitted. Per-repo lenses are intentionally NOT
  * listed here: repo scoping is the single "Focus current repo / Display all
@@ -49,8 +59,9 @@ export interface LensChoice {
  * noise once the tree shows all repos by default). The `repo` Lens kind still
  * exists and applyLens still honors it — only this menu enumeration is dropped.
  */
-export function availableLenses(exp: Export): LensChoice[] {
+export function availableLenses(exp: Export, opts?: StaleOpts): LensChoice[] {
   const choices: LensChoice[] = [];
+  const stale = resolveStaleOpts(opts);
 
   // 1. Always: all
   choices.push({ id: "all", label: "All tracks", lens: { kind: "all" } });
@@ -105,6 +116,15 @@ export function availableLenses(exp: Export): LensChoice[] {
     });
   }
 
+  // 5. Stale — only when at least one track is past the threshold
+  if (exp.tracks.some(t => isStaleTrack(t, stale.staleDays, stale.now))) {
+    choices.push({
+      id: "stale",
+      label: `Stale tracks (idle ${stale.staleDays}+ days)`,
+      lens: { kind: "stale" },
+    });
+  }
+
   return choices;
 }
 
@@ -118,8 +138,9 @@ export function availableLenses(exp: Export): LensChoice[] {
  * Tracks are kept whole — no per-issue surgery.
  * The input Export is never mutated.
  */
-export function applyLens(exp: Export, lens: Lens): Export {
+export function applyLens(exp: Export, lens: Lens, opts?: StaleOpts): Export {
   let filteredTracks: Export["tracks"];
+  const stale = resolveStaleOpts(opts);
 
   switch (lens.kind) {
     case "all":
@@ -143,6 +164,12 @@ export function applyLens(exp: Export, lens: Lens): Export {
 
     case "blocked":
       filteredTracks = exp.tracks.filter(t => t.blockers.length > 0);
+      break;
+
+    case "stale":
+      // The same predicate availableLenses uses, so the menu entry and the
+      // filter can never disagree. Display only: nothing is archived or edited.
+      filteredTracks = exp.tracks.filter(t => isStaleTrack(t, stale.staleDays, stale.now));
       break;
   }
 
@@ -191,7 +218,8 @@ function scopeReposToLens(
       return repos.filter(r => r.repo === lens.repo);
     case "milestone":
     case "status":
-    case "blocked": {
+    case "blocked":
+    case "stale": {
       const surviving = new Set(filteredTracks.map(t => t.repo));
       // A config repo with a null slug can't own a track — drop it under a
       // filtering lens (it only earns a node under "all", via #288 seeding).
@@ -235,6 +263,9 @@ export function describeView(lens: Lens, sort: TrackSort): string {
     case "blocked":
       parts.push("blocked");
       break;
+    case "stale":
+      parts.push("stale");
+      break;
     case "all":
       break;
   }
@@ -248,6 +279,9 @@ export function describeView(lens: Lens, sort: TrackSort): string {
       break;
     case "name":
       parts.push("name A–Z");
+      break;
+    case "touched":
+      parts.push("least-recent");
       break;
     case "default":
       break;

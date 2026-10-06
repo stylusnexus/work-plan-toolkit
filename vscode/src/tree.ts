@@ -6,6 +6,8 @@ import type { SuggestionBuckets } from "./suggestions.ts";
 import { applyLens } from "./webview/lenses.ts";
 import type { Lens } from "./webview/lenses.ts";
 import { lensShouldApply } from "./autofocus.ts";
+import { DEFAULT_STALE_DAYS, describeActivity, isStaleTrack, normalizeStaleDays } from "./recency.ts";
+import type { StaleOpts } from "./recency.ts";
 import type { LensSource } from "./autofocus.ts";
 import type { AuthState } from "./cli.ts";
 import { SingleFlight } from "./singleFlight.ts";
@@ -78,6 +80,9 @@ export class WorkPlanTreeProvider
   // user picked. Starts "auto" so the first activation auto-focus can apply.
   private _lensSource: LensSource = "auto";
   private _activeSort: TrackSort = "default";
+  // `workPlan.trackStaleDays` (#428). Display-only: a change re-applies the lens
+  // from the cached export, never refetches.
+  private _staleDays = DEFAULT_STALE_DAYS;
   // On-demand open-issue fetches for trackless repos (#303), keyed by github
   // slug. `export` doesn't emit untracked for repos with no tracks, so the user
   // fetches them explicitly; we cache the result here and merge it into the repo
@@ -131,7 +136,7 @@ export class WorkPlanTreeProvider
     const snap = readSnapshot(this.snapshotStore, Date.now());
     if (!snap) return;
     this.cache = snap.export;
-    this._filteredCache = applyLens(this.cache, this._activeLens);
+    this._filteredCache = applyLens(this.cache, this._activeLens, this.staleOpts);
     this.roots = this._applySortToRepos(
       mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo),
     );
@@ -199,6 +204,25 @@ export class WorkPlanTreeProvider
   /** Returns the currently active sort mode. */
   get activeSort(): TrackSort {
     return this._activeSort;
+  }
+
+  /** The stale threshold and a fresh clock reading, for lens derivation (#428). */
+  get staleOpts(): StaleOpts {
+    return { staleDays: this._staleDays, now: Date.now() };
+  }
+
+  /**
+   * Applies a new `workPlan.trackStaleDays` (#428). Re-evaluates the lens from
+   * the cached export when the Stale lens is active — no CLI refetch. Any other
+   * lens is unaffected by the threshold, so nothing re-renders.
+   */
+  setStaleDays(value: unknown): void {
+    const days = normalizeStaleDays(value);
+    if (days === this._staleDays) return;
+    this._staleDays = days;
+    if (this._activeLens.kind === "stale") {
+      this.setLens(this._activeLens, "user");
+    }
   }
 
   /**
@@ -282,7 +306,7 @@ export class WorkPlanTreeProvider
     if (!lensShouldApply(this._lensSource, source)) return;
     this._lensSource = source;
     this._activeLens = lens;
-    this._filteredCache = this.cache ? applyLens(this.cache, lens) : null;
+    this._filteredCache = this.cache ? applyLens(this.cache, lens, this.staleOpts) : null;
     this.roots = this._applySortToRepos(
       mergeFetchedUntracked(
         this._filteredCache
@@ -407,7 +431,7 @@ export class WorkPlanTreeProvider
           this._lastGoodUntrackedByRepo.set(entry.repo, entry.issues);
         }
         void vscode.commands.executeCommand("setContext", "workPlanLoadError", false);
-        this._filteredCache = applyLens(this.cache, this._activeLens);
+        this._filteredCache = applyLens(this.cache, this._activeLens, this.staleOpts);
         this.roots = this._applySortToRepos(
           mergeFetchedUntracked(
             mergeStaleUntracked(buildTree(this._filteredCache), this._lastGoodUntrackedByRepo),
@@ -748,6 +772,11 @@ export class WorkPlanTreeProvider
     if (node.track.cleanup_candidate) {
       const reason = node.track.cleanup_reason;
       tip.appendMarkdown(`\n\n🧹 Cleanup candidate${reason ? ` — ${reason}` : ""}`);
+    }
+    const activity = describeActivity(node.track, Date.now());
+    if (activity) {
+      const stale = isStaleTrack(node.track, this._staleDays, Date.now());
+      tip.appendMarkdown(`\n\n🕒 ${activity.charAt(0).toUpperCase()}${activity.slice(1)}${stale ? " — stale" : ""}`);
     }
     const nextUp = node.track.next_up;
     if (nextUp && nextUp.length) {

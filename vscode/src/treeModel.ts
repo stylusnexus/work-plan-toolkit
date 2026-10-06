@@ -1,5 +1,6 @@
 import type { Export, Issue, Track, TierDuplicate } from "./model.ts";
 import { blockerIssue } from "./model.ts";
+import { compareByLeastRecent } from "./recency.ts";
 import type { SuggestionEntry } from "./suggestions.ts";
 
 // ---------------------------------------------------------------------------
@@ -507,7 +508,7 @@ export function suggestedIssueNode(
 // Track sort
 // ---------------------------------------------------------------------------
 
-export type TrackSort = "default" | "blocked" | "open" | "name";
+export type TrackSort = "default" | "blocked" | "open" | "name" | "touched";
 
 /**
  * Orders a repo's tracks by `mode`. Pure, non-mutating, stable, deterministic.
@@ -517,6 +518,8 @@ export type TrackSort = "default" | "blocked" | "open" | "name";
  *   within each group, tie-break by `open` descending, then `name` ascending.
  * - `"open"` → by `open` descending; tie-break `name` ascending.
  * - `"name"` → by `name` ascending (localeCompare).
+ * - `"touched"` → least recently touched first (#428); tracks with no usable
+ *   timestamp after every known one; tie-break `name` ascending.
  *
  * Always returns a NEW array; the input is never mutated.
  * Uses a total-order comparator (includes `name` as the final tie-break) so
@@ -531,6 +534,11 @@ export function sortTracks(tracks: TrackNode[], mode: TrackSort): TrackNode[] {
 
   if (mode === "name") {
     copy.sort((a, b) => a.name.localeCompare(b.name));
+    return copy;
+  }
+
+  if (mode === "touched") {
+    copy.sort((a, b) => compareByLeastRecent(a.track, b.track));
     return copy;
   }
 
