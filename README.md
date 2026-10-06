@@ -54,7 +54,7 @@ The five essentials you'll use 80% of the time are:
 | `/work-plan reconcile <track> \| --all \| --repo=<key> [--draft] [--yes]` | Track frontmatter membership drifted from GitHub labels. Use on label-driven tracks only — for hand-curated tracks, use `refresh-md` instead. In an `--all`/`--repo` sweep it also moves issues relabeled from one track to another in the same repo. `--draft` previews proposed ADDs/MOVEs/FLAGs; `--yes` applies without prompting. `--repo=<key>` scopes the sweep to one repo. |
 | `/work-plan hygiene [--repo=<key>]` | **Weekly all-in-one cleanup.** Runs five steps: ① `refresh-md --all` (pull live GitHub state into every active track's status table), ② `reconcile --all` (sync frontmatter membership against GitHub labels), ③ `dedupe-tiers` (report shared/private duplicate tracks, no deletes), ④ `milestone-drift` (report next_up entries that are closed, un-milestoned, or ordered against their milestones), ⑤ `duplicates` (flag likely-duplicate issues). `--repo=<key>` scopes steps ①–④ to one repo; step ⑤ is skipped in scoped mode. |
 | `/work-plan in-progress <n> [--clear]` | Starting or stopping active work on an issue. Adds (or removes with `--clear`) the `work-plan:in-progress` label on GitHub. Repo-resolved from the issue number, or pass `--repo=<key\|slug>` to disambiguate. `brief`/`orient`/the VS Code viewer also detect in-progress automatically from a hot `feat/<n>-`/`fix/<n>-` branch. |
-| `/work-plan doctor --fix` | Detect config drift after a folder rename or GitHub repo move. Checks whether config.yml, local clones, track frontmatter, and GitHub match (renamed local folder, renamed repo, broken path, duplicate entries, stale per-track `github.repo`). `--fix` corrects the two safe cases (GitHub-confirmed rename, stale track slug) and re-scans. |
+| `/work-plan doctor --fix` | **Preflight + drift check.** First confirms the machine can run work-plan (Python 3.9+, `git`, `gh` signed in, mikefarah `yq`, config, `notes_root`), naming the fix for anything missing; then detects config drift after a folder rename or GitHub repo move. Checks whether config.yml, local clones, track frontmatter, and GitHub match (renamed local folder, renamed repo, broken path, duplicate entries, stale per-track `github.repo`). `--fix` corrects the two safe cases (GitHub-confirmed rename, stale track slug) and re-scans. |
 
 A dozen more subcommands cover slotting new issues into tracks, closing tracks (shipped/abandoned/parked), and one-time priority-label backfill. Three capabilities worth calling out explicitly:
 
@@ -62,7 +62,7 @@ A dozen more subcommands cover slotting new issues into tracks, closing tracks (
 
 **AI-powered clustering (`group`)** — hand a flat list of GitHub issues to your AI and get back thematic track files. Run `group --milestone=X` to fetch all issues in a milestone, get a clustering prompt, save the JSON answer, then `group --apply` creates the tracks. Pairs with `auto-triage` for ongoing maintenance: once tracks exist, `auto-triage` assigns newly-filed untracked issues back into them.
 
-**Coverage + auto-triage** — `coverage --repo=<key>` reports how many open issues fall outside the track model (42% on a real production repo). `auto-triage --repo=<key>` then produces an AI prompt to assign those orphans to existing tracks. Run both periodically to keep the backlog visible.
+**Coverage + auto-triage** — `coverage --repo=<key>` reports how many open issues fall outside the track model (42% on a real production repo), split into issues **already labelled for a track** (a `reconcile --all` fixes those) and the **genuinely unassigned** ones that need a triage decision. `auto-triage --repo=<key>` then produces an AI prompt to assign those orphans to existing tracks. Run both periodically to keep the backlog visible.
 
 **Cross-track dependencies** — set `depends_on: [<track-slug>]` in a track's frontmatter to declare explicit dependencies between tracks. The VS Code viewer renders these as thick amber `==>` edges in the dependency graph, and the detail panel shows clickable dependency chips that navigate directly to the dependent track. Set via `/work-plan set <track> depends_on=slug1,slug2` or the "Edit Track Fields" right-click menu in VS Code. Complementary to the issue-derived "owns" edges already inferred from blockers.
 
@@ -262,7 +262,7 @@ sudo pacman -S python github-cli git go-yq
 winget install Python.Python.3 GitHub.cli Git.Git MikeFarah.yq
 ```
 
-`install.sh` and `install.ps1` both verify all four are on `PATH` before doing anything else, and print install hints if any are missing.
+`install.sh` and `install.ps1` both verify all four are on `PATH` before doing anything else, check that Python is **3.9 or newer** and that `yq` is the mikefarah build, and print install hints if anything is missing. Run **`/work-plan doctor`** at any time to re-check the whole machine (Python, `git`, `gh` and its sign-in, `yq`, config, `notes_root`, plan-branch worktrees); each failure names the fix.
 
 After installing, authenticate `gh` once:
 
@@ -318,11 +318,14 @@ The extension **shells out to the `work-plan` CLI**, so install the CLI too (npm
 
 > **Windows + WSL (and Remote-SSH / dev containers): install the CLI where the extension *runs*, not where you clicked.** When you open a folder in WSL — e.g. `code .` from a WSL shell, or **Reopen in WSL** (the window shows **`WSL: <distro>`** at the bottom-left) — VS Code runs the extension *inside WSL*, so it looks for `work-plan`, `gh`, `python3`, and `yq` on the **WSL** `PATH`. A CLI installed on **Windows-native** is invisible to it, and you'll see a **"work-plan CLI not found"** banner (or, on older builds, a misleading "Not signed in to GitHub" one) even though `gh` is signed in. Fix: open the **WSL** terminal and run `npm install -g @stylusnexus/work-plan` (plus `gh`, `python3`, `yq`) there, then **reload the window**. The same rule applies to Remote-SSH and dev containers — the CLI must live in the remote, not on your local machine. (`gh auth` is likewise per-environment: `gh auth login` inside WSL authenticates the WSL `gh`, which is what the extension reads.)
 
+Also in the extension: a **Stale tracks** lens and **Least recently touched** sort for finding tracks that quietly went quiet, **label search** in Search Issues (`label:security`, `label:priority/%`), and **Work Plan: Run Diagnostics** for a one-click dependency check. See the [extension README](vscode/README.md) for the full list.
+
 Useful settings:
 
 | Setting | Default | What it does |
 |---|---|---|
 | `workPlan.cliPath` | `"work-plan"` | Absolute path to the CLI, if it's not on the editor's PATH |
+| `workPlan.trackStaleDays` | `14` | Days without activity before an active track counts as stale (drives the Stale tracks lens; display only) |
 | `workPlan.autoRefreshInterval` | `0` (off) | Re-poll the CLI silently in the background (seconds). Set to 30, 60, 300, or 900 if teammates are pushing shared-track changes and you want the tree to stay current without manual refresh |
 | `workPlan.expandReposByDefault` | `false` | Expand all repo groups on load (single-repo workspaces always expand) |
 

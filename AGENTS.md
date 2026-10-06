@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Loop spec for coding agents (Claude Code, Codex, Cursor, Copilot) working on **work-plan-toolkit**.
+**Canonical instructions for coding agents** (Claude Code, Codex, Cursor, Copilot) working on **work-plan-toolkit**. `CLAUDE.md` is a thin pointer to this file and carries no policy of its own — everything below applies to every agent.
 
-**This file = how to verify your work and what "green" means.** `CLAUDE.md` is the deep reference and **overrides this file on any conflict**.
+This file covers: how to verify your work and what "green" means, the architecture and hard constraints, commit/PR/docs conventions, and the maintainer release runbook.
 
-`work-plan-toolkit` *is* a Claude Code / Codex skill (`/work-plan`): a pure-Python-stdlib CLI for track-aware daily planning over GitHub issues, plus the `plan-status` doc-liveness command. An installer copies it into `~/.claude/skills/` (or `~/.agents/skills/` for Codex).
+`work-plan-toolkit` *is* a Claude Code / Codex skill (`/work-plan`): a pure-Python-stdlib CLI for track-aware daily planning over GitHub issues, plus the `plan-status` doc-liveness command. The repo contains the skill source; an installer copies it into `~/.claude/skills/` (or `~/.agents/skills/` for Codex) so the slash command works. **Editing files here does not affect the running `/work-plan` slash command** — re-run `./install.sh` to refresh the installed copy (the installer drops a `.installed-from` marker and safely overwrites prior copies of the same toolkit).
 
 > **For Codex specifically:** in this repo, read-only review and analysis (e.g. `/spec-review`, code review, plan critique) are in scope and welcome — this repo's `AGENTS.md` governs here. Do **not** fall back to plan-only refusal / handoff for read-only work. Anything that writes files or runs mutating commands still follows the normal branch/PR rules below.
 
@@ -27,12 +27,60 @@ There is no build step, no lint config, no CI lint gate beyond a py3.9 union che
 
 ---
 
+### Handy commands
+
+```bash
+# Install / refresh into ~/.claude/skills/ (run after every code change)
+./install.sh                        # macOS / Linux / WSL
+./install.sh --target=$HOME/.agents # Codex variant
+.\install.ps1                       # Windows
+
+# Run tests (no pytest, no pip — stdlib unittest)
+cd skills/work-plan && python3 -m unittest discover tests
+
+# Run a single test module / case
+cd skills/work-plan && python3 -m unittest tests.test_handoff_set_next
+cd skills/work-plan && python3 -m unittest tests.test_handoff_set_next.TestSetNext.test_persists_to_frontmatter
+
+# Run the CLI directly (bypasses the install + slash command)
+python3 skills/work-plan/work_plan.py --help
+python3 skills/work-plan/work_plan.py brief
+```
+
+---
+
+## Architecture
+
+**The CLI is the substrate; SKILL.md is the prompt-engineering on top.** `work_plan.py` is dispatcher-only — it maps subcommand names to modules in `commands/` (each exports `run(args: list[str]) -> int`). Adding a subcommand means: write `commands/<name>.py`, register it in BOTH the `SUBCOMMANDS` dict AND the `DESCRIPTIONS` list in `work_plan.py` (the help text is hand-written, not auto-generated).
+
+**Layered design:**
+
+- `commands/<name>.py` — one file per subcommand. Thin orchestration over `lib/`.
+- `lib/` — shared helpers. Notable modules:
+  - `config.py` — loads `~/.claude/work-plan/config.yml` by shelling out to `yq` (so YAML parsing stays stdlib-only).
+  - `frontmatter.py` — `parse_file` / `write_file` for YAML-frontmattered markdown. Same `yq` shell-out trick.
+  - `tracks.py` — `discover_tracks(cfg)` walks `notes_root/` and builds `Track` dataclasses. `find_track_by_name` is the canonical resolver.
+  - `github_state.py` / `git_state.py` — wrappers over `gh` / `git` subprocess calls.
+  - `status_table.py` — parses + edits the canonical issue table inside a track's markdown body.
+  - `prompts.py` — `prompt_input`, `prompt_lines`, `prompt_yes_no`, `parse_flags` (use these; don't reinvent).
+
+**Data model:** GitHub is canonical for issue state. Track markdown files are lightweight references — they list issue numbers in YAML frontmatter, and the CLI re-derives state live from `gh`/`git`/the markdown body on every invocation. The toolkit deliberately does NOT mirror or cache GitHub state.
+
+**Two unusual patterns to know:**
+
+1. **Verbatim relay** (`brief`, `handoff`, `orient`, `hygiene`): the Python output IS the deliverable. SKILL.md instructs the model to reproduce the full Python output verbatim in chat — users copy-paste from chat into other terminals.
+2. **Two-step AI subcommands** (`group`, `suggest-priorities`, `auto-triage`): CLI fetches issues + prints a prompt → the LLM produces JSON and writes it via the Write tool to a per-user cache file under `~/.claude/work-plan/cache/` (mode `0700`; e.g. `auto_triage.answers.json`) → user re-runs with `--apply`. The CLI never calls an LLM directly.
+
+---
+
 ## Traps that bite agents here
 
 1. **Editing source ≠ updating the live skill.** Files under `skills/work-plan/` are source; the running `/work-plan` reads `~/.claude/skills/work-plan/`. Re-run `./install.sh` or your change has no effect on the slash command.
-2. **`yq` means mikefarah/yq (Go), not kislyuk/yq (the Python jq wrapper).** Incompatible flags. Config + frontmatter parsing shell out to it.
+2. **`yq` means mikefarah/yq (Go), not kislyuk/yq (the Python jq wrapper).** Incompatible flags. Config + frontmatter parsing shell out to it. The installer verifies this.
 3. **Pure stdlib only.** Python 3.9+ stdlib — no third-party packages (the "no `pip install`" property is load-bearing for redistribution). PEP 585 generics (`list[dict]`) are fine; **no 3.10+ features** (no `match` statements).
 4. **New subcommand → register in BOTH places** in `work_plan.py`: the `SUBCOMMANDS` dict AND the `DESCRIPTIONS` list (help text is hand-written, not generated).
+
+---
 
 ---
 
@@ -42,7 +90,9 @@ There is no build step, no lint config, no CI lint gate beyond a py3.9 union che
 - **All GitHub state via `gh`** (reuses the user's `gh auth`; never read or store tokens). All git via `git` subprocess (list-form args).
 - **GitHub is canonical for issue state.** The toolkit does NOT mirror or cache it — state is re-derived live from `gh`/`git`/the markdown body on every invocation. Don't add a cache.
 - **Tests are offline.** Mock every `gh`/`git` subprocess call. Don't add tests that hit the network.
-- **`install.sh` ↔ `install.ps1` and `uninstall.sh` ↔ `uninstall.ps1` stay in lockstep.** Change one, change the other (seed logic, auto-detection, config).
+- **`install.sh` ↔ `install.ps1` and `uninstall.sh` ↔ `uninstall.ps1` stay in lockstep.** Change one, change the other (seed logic, auto-detection, config seeding).
+
+---
 
 ---
 
@@ -58,6 +108,21 @@ There is no build step, no lint config, no CI lint gate beyond a py3.9 union che
 
 ---
 
+### Source → runtime locations
+
+- `skills/work-plan/` (source) → `~/.claude/skills/work-plan/` (installed copy used by `/work-plan`)
+- `skills/repo-activity-summary/` → `~/.claude/skills/repo-activity-summary/`
+- `commands/work-plan.md` → `~/.claude/commands/work-plan.md` (the slash-command alias)
+- `notes/` (default `notes_root` in seeded config) — empty until `init-repo` populates it
+
+The active config the skill reads is `~/.claude/work-plan/config.yml`. There is no template file in the repo for it; `install.sh` writes the right two lines directly.
+
+---
+
+## Commit / PR conventions
+
+Conventional Commits. PR titles become squash-merge commit messages. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`. Scope is encouraged when localized (`feat(orient): ...`, `fix(install.sh): ...`). See `CONTRIBUTING.md` and `.github/pull_request_template.md`.
+
 ## Before you commit
 
 - [ ] Conventional Commit title: `type(scope): description` (`feat|fix|chore|docs|test|refactor|perf|ci`).
@@ -67,4 +132,74 @@ There is no build step, no lint config, no CI lint gate beyond a py3.9 union che
 - [ ] Re-ran `./install.sh` if you changed skill source and want to exercise the live command.
 - [ ] New subcommand registered in BOTH `SUBCOMMANDS` and `DESCRIPTIONS`.
 - [ ] Still pure stdlib (no new imports of third-party packages; no `match`).
-- [ ] **Docs in lockstep** if user-facing: a new/changed flag or subcommand → update `README.md` (both command tables); an extension change → `vscode/README.md`. Don't hand-edit `CHANGELOG.md` (release-generated). See `CLAUDE.md → Keep docs in lockstep with changes`.
+- [ ] **Docs in lockstep** if user-facing: a new/changed flag or subcommand → update `README.md` (both command tables); an extension change → `vscode/README.md`, and a new top entry in `vscode/CHANGELOG.md` whenever the extension version is bumped (hand-maintained; `vscode/src/release.test.ts` enforces it). Don't hand-edit the root `CHANGELOG.md` (release-generated). See *Keep docs in lockstep with changes* below.
+
+## Keep docs in lockstep with changes
+
+When a change warrants it, update the docs **in the same PR** as the code — don't defer:
+
+- **vscode/CHANGELOG.md** — a new top entry whenever `vscode/package.json`'s version is bumped (the Marketplace Changelog tab). Hand-maintained; **don't confuse it with the root `CHANGELOG.md`**, which the bot writes.
+- **README.md** (root) — when you add/rename/remove a subcommand or flag, or change user-visible behavior. The command tables (the `## Commands` reference and the quick-start table near the top) are hand-maintained; update both rows if the change touches a command listed in each.
+- **vscode/README.md** — when the VS Code extension's surface changes (a new lens/sort/command, a new tree affordance, a confirm flow).
+- **agent-plugins** ([stylusnexus/agent-plugins](https://github.com/stylusnexus/agent-plugins), cross-repo) — that README is a **catalog entry pinned to a release tag**, written at the "VS Code viewer + skills" altitude. Update it only when the *plugin's advertised surface* changes (a new/renamed `/work-plan:*` skill command, install/upgrade instructions, the one-line capability summary) — **not** for flag-level details, which live in this repo's README. Day-to-day `feat`/`fix` work does not touch it; a new top-level skill command or a release that changes the pitch does.
+- **CHANGELOG.md** — **don't hand-edit** below the `<!-- new entries inserted below -->` marker. It's written by `.github/workflows/version-bump.yml` on the deploy PR merge to `main`, from that PR's title/body (see "Releasing (maintainers)" below). dev merges don't touch it; the production deploy does.
+
+Rule of thumb: a `feat` that adds/changes a flag or command → README here (both tables). A new top-level skill command or a release that changes the plugin's pitch → also agent-plugins. Pure internal `refactor`/`test`/`chore` → usually no doc change.
+
+## Releasing (maintainers)
+
+**Contributors can skip this section** — releasing is a maintainer task and needs push access to `main`. This repo has **no deploy automation of its own** and no database / release-please steps; a release is just the manual `dev → main` merge below, after which `version-bump.yml` stamps the version and CHANGELOG. (Don't reach for any general-purpose deploy automation you may have from other projects — the flow here is self-contained and documented in full below.)
+
+**The release is a `dev → main` merge.** Merging a deploy PR into `main` fires `.github/workflows/version-bump.yml`, which (on `pull_request: closed` + merged):
+1. writes `VERSION` = `<UTC-date>+<short-sha>` (CalVer, e.g. `2026.06.10+a6052bf`),
+2. syncs that CalVer into `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`,
+3. **prepends a CHANGELOG.md entry from the deploy PR's title + body**, and
+4. commits `chore(version): bump to <ver> [skip ci]` to `main`.
+
+So **the deploy PR title/body IS the changelog entry** — write it as one (conventional-commit title like `feat: …`, body with the shipped changes). The title must be a real conventional type or version-bump still runs but the entry reads poorly.
+
+### Release steps (maintainer-only, run manually)
+1. Confirm `dev` CI is green and `git diff origin/main..dev` is non-empty.
+2. `gh pr create --base main --head dev --title "<conventional summary>" --body "<changelog-worthy body>"`.
+3. Wait for PR checks (Tests matrix 3.9–3.12 × ubuntu/macos/windows, lint, vscode build): `gh pr checks <n> --watch`.
+4. `gh pr merge <n> --merge --admin` (merge commit, matching the `Merge dev → main` history — keeps `main`/`dev` aligned, no squash phantom-diff). version-bump fires automatically.
+5. **Back-merge `main → dev`** to pick up the bot's `[skip ci]` VERSION/CHANGELOG/manifest commit: `git checkout dev && git merge origin/main && git push origin dev`. Skipping this makes the *next* deploy drift on CHANGELOG.md. After it, `git diff origin/main..dev` is empty. (Direct push to `dev` works — the branch-protection "must be a PR" line is advisory here.)
+6. Re-run `./install.sh` if you want the local `~/.claude/skills/work-plan/` copy current.
+
+### Publishing the npm CLI and the VS Code extension
+Two **independent**, version-source-distinct publishes, both gated on the deploy landing on `main` first:
+
+- **npm** (`@stylusnexus/work-plan`) — version is **derived from `VERSION`** (CalVer→semver, e.g. `2026.06.10` → `2026.6.10`) and stamped at publish time; the committed `package.json` version is irrelevant. Trigger manually: `gh workflow run npm-publish.yml --ref main -f dry_run=false` (default `dry_run=true` just packs+validates). Same-day republish of an already-taken version needs the `version_suffix` input (e.g. `-1`).
+- **VS Code** (`stylusnexus.work-plan-viewer`) — version comes from **`vscode/package.json` and must be hand-bumped** (semver; the convention has been a patch bump per deploy — `0.3.1`/`0.3.2`/`0.3.3`/`0.3.4`). Marketplace `--skip-duplicate` means republishing the same version silently no-ops, so bump it in the deploy. **Also update the `## Status` line in `vscode/README.md`** (NOT the root README) to the new extension version in the same deploy — it's the Marketplace listing's first paragraph and the convention is to name the version + what's new in that release. **And add the matching `## [x.y.z] - YYYY-MM-DD` entry to `vscode/CHANGELOG.md`** (the Marketplace Changelog tab; hand-maintained, unlike the root `CHANGELOG.md`). `vscode/src/release.test.ts` fails CI if `package.json`, the changelog and the Status list disagree — the changelog once silently missed six releases because no step named it. It has drifted before (stuck at an old version while `package.json` moved on); bump both together. Publish by **creating a GitHub Release** (`gh release create v<VERSION-with-dash> --target main …`, tag form `v2026.06.10-a6052bf`) which triggers `vscode-publish.yml` → Marketplace + Open VSX as two independent jobs (either can be re-run alone). Or `gh workflow run vscode-publish.yml -f dry_run=false`.
+
+Both publish workflows need repo/org Actions secrets: `NPM_TOKEN`; `VSCE_PAT` + `OVSX_TOKEN`. The Marketplace publisher (`stylusnexus`) must already exist.
+
+### Tag every deploy + repin the agent-plugins catalog
+
+The [`stylusnexus/agent-plugins`](https://github.com/stylusnexus/agent-plugins) marketplace installs work-plan by pinning a **git tag** (`ref`), so a deploy isn't fully shipped until a tag exists for it AND the catalog points at it. Skip this and Codex/Claude marketplace users stay frozen on an old (possibly broken) build even though npm/Marketplace are current.
+
+**1. Every deploy must leave a tag** named `v<VERSION-with-dash>` (e.g. `v2026.06.14-6579bf7`):
+- A **VS Code deploy** already creates one via `gh release create v<VERSION-with-dash> --target main` (that Release is also what fires `vscode-publish.yml`).
+- A **CLI-only / npm-only deploy creates NO tag** (the `npm-publish.yml` workflow doesn't tag). Create a **lightweight tag** so you don't re-trigger the extension publish (`vscode-publish.yml` fires on `release: published`, but a bare tag push does not):
+  ```bash
+  gh api repos/stylusnexus/work-plan-toolkit/git/refs \
+    -f ref="refs/tags/v$(cat VERSION | tr '+' '-')" \
+    -f sha="$(gh api repos/stylusnexus/work-plan-toolkit/commits/main --jq .sha)"
+  ```
+  Do NOT use `gh release create` for a CLI-only deploy — a Release would needlessly republish the (unchanged) VS Code extension.
+
+**2. Repin the catalog** to the new tag, in **both** marketplace indexes (they drift independently — grep the prior tag to find every occurrence):
+- `.agents/plugins/marketplace.json` — Codex index, `source: url` form (Codex can't parse Claude's `{source: github}`).
+- `.claude-plugin/marketplace.json` — Claude index, `source: github` form.
+- The README *row* carries no version pin → leave it unless the advertised skill surface changed (a new `/work-plan:*` command), per "Keep docs in lockstep."
+- **Pin to a CLEAN tag, not merely the newest.** If an earlier same-day tag shipped a build a later deploy fixed, point at the fixed tag. (2026-06-14: three `2026.06.14` tags existed; only `-6579bf7` lacked the hot-branch perf regression — pinning "newest existing" would have shipped the 16-min-reload build.)
+- agent-plugins has **no `dev` branch** — branch → PR → merge to `main`. Then **verify against the published index on GitHub, not your local clone** (a local relative-source test resolves even when the published `source:url`/`ref` is wrong).
+
+### Same-day re-deploys (version collisions)
+
+Two deploys on the **same UTC day** collide on version, because each registry derives its version differently — handle both before re-publishing:
+
+- **npm** drops the sha: `VERSION` `2026.06.10+<sha>` → semver `2026.6.10`. The sha differs per deploy, but the published npm version does **not**, so a second same-day publish of `2026.6.10` is rejected ("cannot publish over existing version"). Use the workflow's `version_suffix` input: `gh workflow run npm-publish.yml --ref main -f dry_run=false -f version_suffix=-1` (then `-2`, …) for the 2nd+ same-day publish.
+- **VS Code** version is independent and hand-set in `vscode/package.json`; it is **not** date-derived, so it never auto-collides — but you must bump it for **every** publish, including a second same-day one (e.g. `0.3.4` → `0.3.5`). Marketplace publishes with `--skip-duplicate`, so forgetting the bump means the workflow silently no-ops and the new build never ships. The GitHub Release tag embeds the sha (`v2026.06.10-<sha2>`), so the tag itself won't collide — only the extension version inside the VSIX matters.
+
+In short: same-day npm needs `version_suffix`; same-day VS Code needs another `package.json` patch bump. Neither is automatic.
