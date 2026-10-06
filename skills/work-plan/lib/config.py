@@ -57,7 +57,15 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH,
         raise ConfigError(f"config.yml must be a YAML mapping; got {type(cfg).__name__}")
     if "notes_root" not in cfg:
         raise ConfigError("config.yml missing required key 'notes_root'.")
-    cfg.setdefault("repos", {})
+    # A key-only `repos:` parses as null: treat it as "no repos yet", like
+    # `repos: {}`. Any other non-mapping shape is a config error, not a crash (#432).
+    repos = cfg.get("repos")
+    if repos is None:
+        repos = {}
+    elif not isinstance(repos, dict):
+        raise ConfigError(
+            f"config.yml key 'repos' must be a mapping of folder -> repo, got {type(repos).__name__}")
+    cfg["repos"] = repos
     scalar_shape_keys = set()
     # Normalize string-shape entries to dict shape
     for folder, val in list(cfg["repos"].items()):
@@ -115,13 +123,32 @@ def write_repo_field(key: str, updates: dict, path: Path = DEFAULT_CONFIG_PATH) 
     function does not re-validate, matching `_update_existing`'s existing
     contract (its caller already validates via `init-repo`'s own regex check).
 
-    Raises `subprocess.CalledProcessError` on any yq failure — including the
-    known case of `repos.<key>` being a scalar string on disk (yq cannot
-    multiply a string with a map). Callers must catch this and treat it as
-    "entry not fixable this way", not crash the whole command.
+    An entry written in the scalar shorthand (`foo: org/foo`) is migrated to
+    mapping form (`foo: {github: org/foo}`) as part of the merge: `yq` cannot
+    multiply a string with a map (#440). The scalar's trailing comment is moved
+    onto the new `github:` line, because yq would otherwise re-attach it to the
+    NEXT key. The merged entry is written in block style, not yq's flow default.
+    All of it is one yq invocation.
+
+    Raises `subprocess.CalledProcessError` on any yq failure. Callers must catch
+    this and treat it as "entry not fixable this way", not crash the whole command.
     """
     env = {**os.environ, "WP_REPO_UPDATES": json.dumps(updates)}
-    yq_expr = f".repos.{key} = (.repos.{key} // {{}}) * env(WP_REPO_UPDATES)"
+    entry = f".repos.{key}"
+    scalar = f"({entry} | select(tag == \"!!str\"))"
+    maps = f"({entry} | .. | select(kind == \"map\"))"
+    yq_expr = (
+        # the scalar's line comment ("" when the entry is not a scalar), then clear
+        # every comment on the scalar so yq cannot re-attach them to the next key
+        f"(({entry} | select(tag == \"!!str\") | line_comment) // \"\") as $c "
+        f"| {scalar} head_comment = \"\" | {scalar} line_comment = \"\" "
+        f"| {scalar} foot_comment = \"\" "
+        # wrap a scalar as {github: <scalar>}, else keep the entry (or start {}), then merge
+        f"| {entry} = ((({entry} | select(tag == \"!!str\")) as $s | {{\"github\": $s}}) "
+        f"// {entry} // {{}}) * env(WP_REPO_UPDATES) "
+        f"| with({entry} | select($c != \"\"); .github line_comment = $c) "
+        f"| {maps} style=\"\" | ({maps} | .[] | key) style=\"\""
+    )
     subprocess.run(
         ["yq", "-i", yq_expr, str(path)],
         check=True, capture_output=True, text=True, env=env,
