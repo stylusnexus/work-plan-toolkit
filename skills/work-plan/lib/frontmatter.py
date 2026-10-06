@@ -20,6 +20,28 @@ def parse_file(path: Path) -> Tuple[dict, str]:
     return (meta, match.group(2))
 
 
+def count_frontmatter_comments(path: Path) -> int:
+    """Number of `#` comment lines in a file's EXISTING frontmatter (#491).
+
+    Frontmatter is written by round-tripping through JSON (`_yaml_to_dict` ->
+    `_dict_to_yaml`), and JSON has no comment concept — so every write erases
+    every comment, structurally. This counts what a pending write would destroy
+    so the loss can be announced instead of silent.
+
+    Never raises: an unreadable or frontmatter-less file simply has nothing to
+    lose, and a warning path must not be able to break a write.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    match = FRONTMATTER_RE.match(text)
+    if not match:
+        return 0
+    return sum(1 for line in match.group(1).split("\n")
+               if line.strip().startswith("#"))
+
+
 def write_file(path: Path, meta: dict, body: str) -> None:
     """Write markdown with frontmatter. Empty meta = body only.
 
@@ -27,6 +49,13 @@ def write_file(path: Path, meta: dict, body: str) -> None:
     a target outside the notes tree would otherwise let a write land on an
     arbitrary file. Track files are never legitimately symlinks, so this rejects
     nothing valid; raises ValueError if one is encountered.
+
+    WARNS on frontmatter comment loss (#491). The JSON round-trip below cannot
+    preserve comments, so a routine `hygiene` run silently deleted 213 lines of
+    ranking rationale from a real track — the `next_up` ORDER survived intact,
+    which is exactly what made it invisible. This does not prevent the loss (the
+    durable fix is to keep rationale in the BODY, which passes through this
+    function untouched); it makes the loss announce itself.
     """
     p = Path(path)
     if p.is_symlink():
@@ -34,6 +63,11 @@ def write_file(path: Path, meta: dict, body: str) -> None:
     if not meta:
         p.write_text(body, encoding="utf-8")
         return
+    lost = count_frontmatter_comments(p)
+    if lost:
+        print(f"WARNING: {p.name}: dropping {lost} frontmatter comment line(s) — "
+              "YAML comments cannot survive a write (#491). Move rationale into "
+              "the body (see `/work-plan lift-rationale`), where it is preserved.")
     yaml_text = _dict_to_yaml(meta)
     p.write_text(f"---\n{yaml_text}---\n{body}", encoding="utf-8")
 

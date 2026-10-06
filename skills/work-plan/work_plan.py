@@ -49,6 +49,7 @@ SUBCOMMANDS = {
     "coverage": "commands.coverage",
     "canonicalize": "commands.canonicalize",
     "dedupe-tiers": "commands.dedupe_tiers",
+    "lift-rationale": "commands.lift_rationale",
     "hygiene": "commands.hygiene",
     "--hygiene": "commands.hygiene",      # flag-style alias
     "plan-status": "commands.plan_status",
@@ -172,6 +173,10 @@ DESCRIPTIONS = [
      "Remove private track copies that a shared twin in a repo's .work-plan/ supersedes (#359). When a track is promoted to the shared tier, the private original under notes_root is sometimes left behind (bulk/manual promotion, or a failed unlink) — discover_tracks then warns 'exists in both shared and private' on every run with no cleanup path. This removes the safe orphans and REFUSES any whose private copy references issue numbers the shared one lacks (no silent data loss; the invariant is issue_refs(private) ⊆ issue_refs(shared)). Covers active and archived tiers. Default is a dry-run report; --apply deletes (auto-committed to notes_root, so undoable).",
      "When `exists in both shared and private` warnings appear, or after a bulk promote that left private originals behind.",
      "/work-plan dedupe-tiers --repo=critforge --apply"),
+    ("lift-rationale", "[--repo=<key>] [--track=<name>] [--apply]",
+     "Move a track's rationale out of YAML frontmatter comments and into a '## Ranking rationale' body section, where writes preserve it (#491). Frontmatter is round-tripped through JSON, which has no comment concept, so EVERY writer (refresh-md, reconcile, slot, hygiene) erases EVERY frontmatter comment — a routine hygiene run silently deleted 213 lines of ranking rationale from a real track, while the next_up ORDER survived intact, which is what made the loss invisible. Comments attached to a next_up entry become bullets naming that issue; section headers become paragraphs. The body is also the only place rationale is VISIBLE — frontmatter comments never render, never reach the VS Code viewer, and never appear in export --json. Dry-run by default; --apply writes.",
+     "ONE-TIME per track that keeps rationale in frontmatter comments — and before running hygiene on one, since hygiene will destroy them.",
+     "/work-plan lift-rationale --repo=critforge --apply"),
     ("hygiene", "[--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]",
      "Weekly cleanup wrapper: refresh-md + reconcile + dedupe-tiers (report-only) + duplicates. With --repo=<key>, steps 1–3 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).",
      "WEEKLY — runs all three hygiene commands in sequence so you don't have to remember each. Use --repo=<key> to clean up one project without touching the others.",
