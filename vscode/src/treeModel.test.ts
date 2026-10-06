@@ -17,40 +17,22 @@ import {
 import type { RepoNode, TrackNode } from "./treeModel.ts";
 import type { SuggestionEntry } from "./suggestions.ts";
 import type { Export, Track, Issue } from "./model.ts";
+import { makeIssue, makeTrack as sharedMakeTrack } from "./testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function makeIssue(overrides: Partial<Issue> = {}): Issue {
-  return {
-    number: 1,
-    title: "test issue",
-    state: "open",
-    assignee: "@eve",
-    milestone: null,
-    in_progress: false,
-    ...overrides,
-  };
-}
 
 function makeTrack(overrides: Partial<Track> = {}): Track {
-  return {
-    name: "platform-health",
-    repo: "your-org/myproject",
+  return sharedMakeTrack({
     path: "/tmp/notes/platform-health.md",
     folder: "myrepo",
-    tier: "private",
-    status: "active",
     launch_priority: "P2",
     milestone_alignment: "v1",
     visibility: "PRIVATE",
-    blockers: [],
-    next_up: [],
-    rollup: { open: 0, closed: 0 },
-    issues: [],
     ...overrides,
-  };
+  });
 }
 
 function makeTrackNode(overrides: Partial<Track> = {}): TrackNode {
@@ -73,7 +55,7 @@ const MOCKUP_EXPORT: Export = {
   schema: 1,
   generated_at: "2026-06-07T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "platform-health",
       repo: "your-org/myproject",
       tier: "private",
@@ -85,8 +67,8 @@ const MOCKUP_EXPORT: Export = {
       next_up: [487, 1556],
       rollup: { open: 12, closed: 8 },
       issues: [makeIssue({ number: 4821 })],
-    },
-    {
+    }),
+    makeTrack({
       name: "idea-mode",
       repo: "your-org/myproject",
       tier: "private",
@@ -98,8 +80,8 @@ const MOCKUP_EXPORT: Export = {
       next_up: [4821],
       rollup: { open: 3, closed: 5 },
       issues: [makeIssue({ number: 4821 })],
-    },
-    {
+    }),
+    makeTrack({
       name: "org-sharing",
       repo: "stylusnexus/work-plan-toolkit",
       tier: "private",
@@ -111,7 +93,7 @@ const MOCKUP_EXPORT: Export = {
       next_up: [87],
       rollup: { open: 2, closed: 6 },
       issues: [makeIssue({ number: 87 })],
-    },
+    }),
   ],
 };
 
@@ -406,13 +388,12 @@ describe("buildTree", () => {
   });
 
   test("untracked issues preserve the full Issue shape", () => {
-    const issue: Issue = {
+    const issue: Issue = makeIssue({
       number: 42,
       title: "Fix the thing",
-      state: "open",
       assignee: "@bob",
       milestone: "v2",
-    };
+    });
     const exp: Export = {
       schema: 1,
       generated_at: "2026-06-07T00:00:00Z",
@@ -614,7 +595,7 @@ describe("buildTree — fetchFailed (github_fetch_errors)", () => {
 
 describe("repoDescription", () => {
   function repoNode(overrides: Partial<RepoNode> = {}): RepoNode {
-    return { kind: "repo", repo: "your-org/myproject", isPublic: false, tier: "private", tracks: [], untracked: [], folder: null, hasLocal: false, ...overrides };
+    return { kind: "repo", repo: "your-org/myproject", isPublic: false, tier: "private", tracks: [], untracked: [], tierDuplicates: [], folder: null, hasLocal: false, fetchFailed: false, ...overrides };
   }
 
   test("private repo → the tier text", () => {
@@ -673,6 +654,7 @@ function makeSortTrack(
     status: category,
     category,
     open,
+    closed: 0,
     hint: null,
     track: makeTrack({ name, status: category === "blocked" ? "blocked" : category }),
   };
@@ -869,10 +851,11 @@ describe("trackCountsLabel", () => {
 describe("mergeFetchedUntracked", () => {
   const repoNode = (repo: string, untracked: Issue[] = []): RepoNode => ({
     kind: "repo", repo, isPublic: false, tier: "private",
-    tracks: [], untracked, folder: repo, hasLocal: true,
+    tracks: [], untracked, tierDuplicates: [], folder: repo, hasLocal: true, fetchFailed: false,
   });
   const issue = (n: number): Issue => ({
     number: n, title: `#${n}`, state: "open", assignee: "—", milestone: null, in_progress: false,
+    in_progress_label: false, blocked_by: [], blocking: [],
   });
 
   test("empty fetch map returns the same array reference", () => {
@@ -921,6 +904,7 @@ describe("mergeFetchedUntracked", () => {
 describe("mergeStaleUntracked", () => {
   const issue = (n: number): Issue => ({
     number: n, title: `#${n}`, state: "open", assignee: "—", milestone: null, in_progress: false,
+    in_progress_label: false, blocked_by: [], blocking: [],
   });
   const failedRepoNode = (repo: string): RepoNode => ({
     kind: "repo", repo, isPublic: false, tier: "private",

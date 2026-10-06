@@ -24,6 +24,8 @@ import {
   doctorReport,
 } from "./cli.ts";
 import type { Export } from "./model.ts";
+import { makeIssue } from "./testFixtures.ts";
+import { makeTrack } from "./testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures & helpers
@@ -39,7 +41,7 @@ const VALID_EXPORT: Export = {
   schema: 1,
   generated_at: "2026-06-07T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "platform-health",
       repo: "your-org/myproject",
       tier: "private",
@@ -51,16 +53,16 @@ const VALID_EXPORT: Export = {
       next_up: [101],
       rollup: { open: 3, closed: 7 },
       issues: [
-        {
+        makeIssue({
           number: 101,
           title: "Fix auth flow",
           state: "open",
           assignee: "@eve",
           milestone: "v1",
           in_progress: false,
-        },
+        }),
       ],
-    },
+    }),
   ],
 };
 

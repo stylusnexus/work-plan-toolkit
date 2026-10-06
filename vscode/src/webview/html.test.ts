@@ -13,6 +13,8 @@ import type { Export, Track } from "../model.ts";
 import { trackKey } from "../model.ts";
 import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
+import { makeIssue } from "../testFixtures.ts";
+import { makeTrack } from "../testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -702,7 +704,7 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
   const NOW = Date.parse("2026-06-07T12:00:00Z");
 
   function track(name: string, title = "auth rate limit"): Track {
-    return {
+    return makeTrack({
       name,
       repo: "your-org/myproject",
       tier: "private",
@@ -714,8 +716,8 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
       next_up: [487],
       depends_on: [],
       rollup: { open: 1, closed: 0 },
-      issues: [{ number: 487, title, state: "open", assignee: "@alice", milestone: null }],
-    };
+      issues: [makeIssue({ number: 487, title, state: "open", assignee: "@alice", milestone: null })],
+    });
   }
 
   function exportAt(generatedAt: string, tracks: Track[]): Export {

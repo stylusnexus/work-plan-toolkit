@@ -4,14 +4,15 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { Track } from "../model.ts";
+import type { Issue, Track } from "../model.ts";
 import { renderDetail, renderPlanSection } from "./detail.ts";
+import { makeTrack } from "../testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const platformHealth: Track = {
+const platformHealth: Track = makeTrack({
   name: "platform-health",
   repo: "your-org/myproject",
   tier: "private",
@@ -29,9 +30,9 @@ const platformHealth: Track = {
     { number: 1556, title: "session cache",  state: "open",   assignee: "@bob",   milestone: "M1",  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
     { number: 2196, title: "RLS audit",      state: "closed", assignee: "—",      milestone: null,  in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] },
   ],
-};
+});
 
-const emptyTrack: Track = {
+const emptyTrack: Track = makeTrack({
   name: "empty-track",
   repo: "stylusnexus/test",
   tier: "private",
@@ -44,9 +45,9 @@ const emptyTrack: Track = {
   depends_on: [],
   rollup: { open: 0, closed: 0 },
   issues: [],
-};
+});
 
-const xssTrack: Track = {
+const xssTrack: Track = makeTrack({
   name: "xss-track",
   repo: "stylusnexus/test",
   tier: "private",
@@ -71,7 +72,7 @@ const xssTrack: Track = {
       blocking: [],
     },
   ],
-};
+});
 
 // ---------------------------------------------------------------------------
 // Tests: platform-health track
@@ -509,7 +510,7 @@ describe("renderDetail — issue cap", () => {
         blocking: [],
       });
     }
-    return {
+    return makeTrack({
       name: "big-track",
       repo: "org/repo",
       tier: "private",
@@ -522,7 +523,7 @@ describe("renderDetail — issue cap", () => {
       depends_on: [],
       rollup: { open: n, closed: 0 },
       issues,
-    };
+    });
   }
 
   it("renders all issues when count is below the cap", () => {
@@ -571,7 +572,7 @@ describe("renderDetail — issue cap", () => {
         blocking: [],
       });
     }
-    const track: Track = {
+    const track: Track = makeTrack({
       name: "multi-ms-big",
       repo: "org/repo",
       tier: "private",
@@ -584,7 +585,7 @@ describe("renderDetail — issue cap", () => {
       depends_on: [],
       rollup: { open: 60, closed: 0 },
       issues,
-    };
+    });
 
     const html = renderDetail(track);
     // Milestone bands should be present
@@ -624,7 +625,7 @@ describe("renderDetail — issue cap", () => {
         blocking: [],
       });
     }
-    const track: Track = {
+    const track: Track = makeTrack({
       name: "with-refs",
       repo: "org/repo",
       tier: "private",
@@ -639,7 +640,7 @@ describe("renderDetail — issue cap", () => {
       issues: [],
       reference_rollup: { open: 60, closed: 0 },
       references,
-    };
+    });
 
     const html = renderDetail(track);
     assert.ok(html.includes("Referenced issues (60)"), "missing reference heading count");

@@ -15,6 +15,8 @@ import assert from "node:assert/strict";
 import type { Export } from "../model.ts";
 import { availableLenses, applyLens, describeView } from "./lenses.ts";
 import type { Lens } from "./lenses.ts";
+import { makeIssue } from "../testFixtures.ts";
+import { makeTrack } from "../testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -24,7 +26,7 @@ const exp: Export = {
   schema: 1,
   generated_at: "2026-06-07T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "platform-health",
       repo: "your-org/myproject",
       tier: "private",
@@ -36,12 +38,12 @@ const exp: Export = {
       next_up: [487, 1556],
       rollup: { open: 12, closed: 8 },
       issues: [
-        { number: 487,  title: "auth rate limit", state: "open",   assignee: "@alice", milestone: "M1" },
-        { number: 1556, title: "session cache",   state: "open",   assignee: "@bob",   milestone: "M1" },
-        { number: 2196, title: "RLS audit",       state: "closed", assignee: "—",      milestone: null },
+        makeIssue({ number: 487,  title: "auth rate limit", state: "open",   assignee: "@alice", milestone: "M1" }),
+        makeIssue({ number: 1556, title: "session cache",   state: "open",   assignee: "@bob",   milestone: "M1" }),
+        makeIssue({ number: 2196, title: "RLS audit",       state: "closed", assignee: "—",      milestone: null }),
       ],
-    },
-    {
+    }),
+    makeTrack({
       name: "idea-mode",
       repo: "your-org/myproject",
       tier: "private",
@@ -53,11 +55,11 @@ const exp: Export = {
       next_up: [4821],
       rollup: { open: 5, closed: 3 },
       issues: [
-        { number: 4821, title: "OAuth scopes", state: "open",   assignee: "@carol", milestone: null },
-        { number: 4830, title: "scope UI",     state: "open",   assignee: "@carol", milestone: null },
+        makeIssue({ number: 4821, title: "OAuth scopes", state: "open",   assignee: "@carol", milestone: null }),
+        makeIssue({ number: 4830, title: "scope UI",     state: "open",   assignee: "@carol", milestone: null }),
       ],
-    },
-    {
+    }),
+    makeTrack({
       name: "org-sharing",
       repo: "stylusnexus/work-plan-toolkit",
       tier: "private",
@@ -69,11 +71,11 @@ const exp: Export = {
       next_up: [87],
       rollup: { open: 3, closed: 2 },
       issues: [
-        { number: 87, title: "VS Code viewer", state: "open",   assignee: "@dave", milestone: "v0.4.0" },
-        { number: 74, title: "plan-status",    state: "closed", assignee: "—",     milestone: null },
+        makeIssue({ number: 87, title: "VS Code viewer", state: "open",   assignee: "@dave", milestone: "v0.4.0" }),
+        makeIssue({ number: 74, title: "plan-status",    state: "closed", assignee: "—",     milestone: null }),
       ],
-    },
-    {
+    }),
+    makeTrack({
       name: "docs-refresh",
       repo: "stylusnexus/work-plan-toolkit",
       tier: "private",
@@ -85,10 +87,10 @@ const exp: Export = {
       next_up: [],
       rollup: { open: 2, closed: 1 },
       issues: [
-        { number: 91, title: "public repo docs", state: "closed", assignee: "@dave", milestone: "v0.4.0" },
-        { number: 92, title: "contrib guide",    state: "open",   assignee: "@dave", milestone: "M1" },
+        makeIssue({ number: 91, title: "public repo docs", state: "closed", assignee: "@dave", milestone: "v0.4.0" }),
+        makeIssue({ number: 92, title: "contrib guide",    state: "open",   assignee: "@dave", milestone: "M1" }),
       ],
-    },
+    }),
   ],
 };
 
@@ -97,7 +99,7 @@ const expNoBlockers: Export = {
   schema: 1,
   generated_at: "2026-06-07T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "alpha",
       repo: "stylusnexus/alpha",
       tier: "private",
@@ -109,9 +111,9 @@ const expNoBlockers: Export = {
       next_up: [],
       rollup: { open: 1, closed: 0 },
       issues: [
-        { number: 1, title: "thing", state: "open", assignee: "@x", milestone: null },
+        makeIssue({ number: 1, title: "thing", state: "open", assignee: "@x", milestone: null }),
       ],
-    },
+    }),
   ],
 };
 
@@ -124,7 +126,7 @@ const expNoBlockers: Export = {
 //   • park     — parked
 //   • aband    — abandoned (maps to "parked")
 function mkTrack(name: string, status: string, blockers: number[]): Export["tracks"][number] {
-  return {
+  return makeTrack({
     name,
     repo: "stylusnexus/status-fixture",
     tier: "private",
@@ -135,8 +137,8 @@ function mkTrack(name: string, status: string, blockers: number[]): Export["trac
     blockers,
     next_up: [],
     rollup: { open: 1, closed: 0 },
-    issues: [{ number: 1, title: "x", state: "open", assignee: "—", milestone: null }],
-  };
+    issues: [makeIssue({ number: 1, title: "x", state: "open", assignee: "—", milestone: null })],
+  });
 }
 
 const expStatuses: Export = {
@@ -203,7 +205,7 @@ describe("availableLenses — milestone lenses", () => {
       schema: 1,
       generated_at: "2026-06-11T00:00:00Z",
       tracks: [
-        {
+        makeTrack({
           name: "t1",
           repo: "org/repo",
           tier: "private",
@@ -215,12 +217,12 @@ describe("availableLenses — milestone lenses", () => {
           next_up: [],
           rollup: { open: 1, closed: 0 },
           issues: [
-            { number: 1, title: "a", state: "open", assignee: "—", milestone: "v1.0.0" },
-            { number: 2, title: "b", state: "open", assignee: "—", milestone: "v0.4.0" },
-            { number: 3, title: "c", state: "open", assignee: "—", milestone: "v0.10.0" },
+            makeIssue({ number: 1, title: "a", state: "open", assignee: "—", milestone: "v1.0.0" }),
+            makeIssue({ number: 2, title: "b", state: "open", assignee: "—", milestone: "v0.4.0" }),
+            makeIssue({ number: 3, title: "c", state: "open", assignee: "—", milestone: "v0.10.0" }),
           ],
-        },
-        {
+        }),
+        makeTrack({
           name: "t2",
           repo: "org/repo",
           tier: "private",
@@ -232,10 +234,10 @@ describe("availableLenses — milestone lenses", () => {
           next_up: [],
           rollup: { open: 1, closed: 0 },
           issues: [
-            { number: 4, title: "d", state: "open", assignee: "—", milestone: "v0.5.0" },
-            { number: 5, title: "e", state: "open", assignee: "—", milestone: "v0.4.0" },
+            makeIssue({ number: 4, title: "d", state: "open", assignee: "—", milestone: "v0.5.0" }),
+            makeIssue({ number: 5, title: "e", state: "open", assignee: "—", milestone: "v0.4.0" }),
           ],
-        },
+        }),
       ],
     };
     const milestones = availableLenses(jumbled)
@@ -578,7 +580,7 @@ describe("applyLens — untracked forwarding (#99 regression)", () => {
       {
         repo: "your-org/myproject",
         issues: [
-          { number: 999, title: "stray", state: "open", assignee: "—", milestone: null },
+          makeIssue({ number: 999, title: "stray", state: "open", assignee: "—", milestone: null }),
         ],
       },
     ],
