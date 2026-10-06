@@ -985,6 +985,6 @@
     "typescript": "^5.8.0"
   },
   "dependencies": {
-    "mermaid": "^11.15.0"
+    "mermaid": "^12.1.0"
   }
 }
