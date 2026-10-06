@@ -35,8 +35,16 @@ def is_closure_ready(signals: ClosureSignals) -> tuple[bool, list[str]]:
 
 def compute_signals(track_meta: dict, github_issues: list[dict],
                     repo_path: Optional[Path],
-                    recent_related_count: int) -> ClosureSignals:
-    """Build ClosureSignals from observed state."""
+                    recent_related_count: int,
+                    snapshot=None) -> ClosureSignals:
+    """Build ClosureSignals from observed state.
+
+    `snapshot` (a lib.git_snapshot.RepoSnapshot for `repo_path`) lets a caller
+    that evaluates many tracks share one read of each branch (#421); without it
+    each branch is queried directly, as before.
+    """
+    exists = snapshot.branch_exists if snapshot else (lambda b: branch_exists(b, repo_path))
+    last_date = snapshot.last_commit_date if snapshot else (lambda b: last_commit_date(b, repo_path))
     listed_issue_nums = track_meta.get("github", {}).get("issues") or []
     state_by_num = {i["number"]: i.get("state", "OPEN") for i in github_issues}
 
@@ -46,7 +54,7 @@ def compute_signals(track_meta: dict, github_issues: list[dict],
 
     branches = track_meta.get("github", {}).get("branches") or []
     if repo_path:
-        all_branches_done = all(not branch_exists(b, repo_path) for b in branches)
+        all_branches_done = all(not exists(b) for b in branches)
     else:
         all_branches_done = len(branches) == 0
 
@@ -56,7 +64,7 @@ def compute_signals(track_meta: dict, github_issues: list[dict],
     cold = True
     if repo_path:
         for b in branches:
-            last = last_commit_date(b, repo_path)
+            last = last_date(b)
             if last and last > cutoff:
                 cold = False
                 break

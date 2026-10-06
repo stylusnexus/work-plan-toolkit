@@ -33,6 +33,11 @@ export interface Issue {
   blocked_by: IssueDep[];
   /** Open issues this issue is blocking (GitHub-native dependency edges, #257). */
   blocking: IssueDep[];
+  /**
+   * GitHub label names (#429). Optional on the wire: an older CLI omits it, and
+   * the viewer must then treat labels as unknown rather than as "no labels".
+   */
+  labels?: string[];
 }
 
 /** Aggregate open/closed counts for a track. */
@@ -152,6 +157,13 @@ export interface Track {
    *  when the track declares no `plan:`. Optional on the wire so an older CLI
    *  (no `plan` field) deserializes cleanly. */
   plan?: TrackPlan | null;
+  /**
+   * Activity timestamps as written in frontmatter ("YYYY-MM-DD" or
+   * "YYYY-MM-DDTHH:MM", local time), or null/absent (#428). Optional on the wire
+   * so an older CLI deserializes cleanly; parse with `recency.ts`, never trust.
+   */
+  last_touched?: string | null;
+  last_handoff?: string | null;
   /**
    * True when the track is flagged as a cleanup candidate (#328/#329/#330) — a
    * reversible, non-destructive frontmatter flag (NOT deletion). Optional on the

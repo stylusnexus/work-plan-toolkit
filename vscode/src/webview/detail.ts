@@ -6,6 +6,7 @@
 
 import type { Track, Issue, TrackPlan, IssueDep } from "../model.ts";
 import { blockerIssue, trackKeyFromParts, trackRepoQualifier } from "../model.ts";
+import { describeActivity, lastActivityRaw } from "../recency.ts";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -33,7 +34,7 @@ const DETAIL_ISSUE_CAP = 50;
  *   render a "Next-up order:" meta row below the next-up steps (#326).
  * @returns     HTML string (safe to set as innerHTML — all text is escaped).
  */
-export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }): string {
+export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean; now?: number }): string {
   const parts: string[] = [];
 
   // -------------------------------------------------------------------------
@@ -48,6 +49,17 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean }
   if (referenceTotal > 0) {
     parts.push(
       `<p class="rollup"><b>Referenced scope:</b> ${referenceRollup!.open} open · ${referenceRollup!.closed} closed</p>`,
+    );
+  }
+
+  // Last activity (#428), when the track carries a usable timestamp. The age is
+  // computed here from `opts.now` (the caller's clock), never baked into the export.
+  const activity = describeActivity(track, opts?.now ?? Date.now());
+  if (activity) {
+    const detail = lastActivityRaw(track) ?? "";
+    parts.push(
+      `<p class="rollup"><b>Activity:</b> ${esc(activity)}` +
+      `${detail ? ` (${esc(detail)})` : ""}</p>`,
     );
   }
 

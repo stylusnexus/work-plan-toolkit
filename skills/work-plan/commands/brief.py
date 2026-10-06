@@ -15,11 +15,11 @@ from lib.github_state import fetch_issues, extract_priority, short_milestone
 from lib.prompts import parse_flags
 from lib.git_state import (
     parse_iso_timestamp, gap_seconds_to_label,
-    branch_in_progress, commits_ahead, uncommitted_file_count, current_branch,
     hot_issue_numbers,
 )
 from lib.in_progress import issue_in_progress
 from lib.closure import compute_signals, is_closure_ready
+from lib.git_snapshot import GitSnapshots
 from lib.new_issues import build_slug_labels, find_new_issues_for_tracks
 from lib.next_up import suggest_next_up, resolve_next_up_order
 from lib.drift import detect_drift
@@ -101,7 +101,7 @@ def run(args: list[str]) -> int:
     )
     gap = int((now - most_recent).total_seconds()) if most_recent else 999999
     handoff_today = any(
-        t.meta.get("last_handoff", "").startswith(now.strftime("%Y-%m-%d")) for t in active
+        (t.meta.get("last_handoff") or "").startswith(now.strftime("%Y-%m-%d")) for t in active
     )
     framing = time_aware_framing(gap, now.hour, handoff_today)
 
@@ -140,10 +140,13 @@ def run(args: list[str]) -> int:
             repo, slugs, slug_labels=slug_labels, since_days=7,
         )
 
+    # One git read per distinct repo/branch, shared by every track that names it (#421).
+    snapshots = GitSnapshots()
+
     blocks = []
     for t in active:
         b = _build_track_block(
-            t, cfg, now,
+            t, cfg, now, snapshots=snapshots,
             repo_issues_by_num=issues_by_repo.get(t.repo, {}),
             repo_new_issues=new_issues_by_repo.get(t.repo, {}),
         )
@@ -180,10 +183,12 @@ def run(args: list[str]) -> int:
 
 def _build_track_block(track, cfg, now: datetime, *,
                        repo_issues_by_num: dict | None = None,
-                       repo_new_issues: dict | None = None) -> dict:
+                       repo_new_issues: dict | None = None,
+                       snapshots: GitSnapshots | None = None) -> dict:
     meta = track.meta
     repo = track.repo
     local = track.local_path
+    snap = (snapshots or GitSnapshots()).for_repo(local)
     repo_issues_by_num = repo_issues_by_num or {}
     repo_new_issues = repo_new_issues or {}
 
@@ -248,15 +253,15 @@ def _build_track_block(track, cfg, now: datetime, *,
     active_branches = []
     branch_in_prog = False
     for bn in branch_names:
-        in_prog = branch_in_progress(bn, local)
+        in_prog = snap.branch_in_progress(bn)
         if in_prog:
             branch_in_prog = True
         active_branches.append({
             "name": bn,
-            "ahead": commits_ahead(bn, "dev", local) if local else 0,
+            "ahead": snap.commits_ahead(bn, "dev") if local else 0,
             "uncommitted_files": (
-                uncommitted_file_count(local)
-                if local and current_branch(local) == bn else 0
+                snap.uncommitted_file_count()
+                if local and snap.current_branch() == bn else 0
             ),
         })
 
@@ -277,7 +282,7 @@ def _build_track_block(track, cfg, now: datetime, *,
     drift_items = detect_drift(track.body, issues) if issues else []
 
     related_recent_count = len(repo_new_issues.get(track_slug, []))
-    signals = compute_signals(meta, issues, local, related_recent_count)
+    signals = compute_signals(meta, issues, local, related_recent_count, snapshot=snap)
     closure_ready, _ = is_closure_ready(signals)
     if closure_ready:
         closure_signals_summary = None

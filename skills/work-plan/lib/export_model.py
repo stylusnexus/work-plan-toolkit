@@ -70,7 +70,7 @@ def normalize_issue(i: dict, in_progress: bool = False,
                     blocked_by=None, blocking=None) -> dict:
     """Reshape a raw gh issue row into the viewer's `Issue` shape
     ({number,title,state,assignee,milestone,in_progress,in_progress_label,
-    blocked_by,blocking}).
+    blocked_by,blocking,labels}).
     Shared by the export and the `list-open-issues` command (#282) so both
     emit an identical issue surface.
 
@@ -92,7 +92,29 @@ def normalize_issue(i: dict, in_progress: bool = False,
         "in_progress_label": bool(in_progress_label),
         "blocked_by": list(blocked_by or []),
         "blocking": list(blocking or []),
+        # GitHub label names, so the viewer can search by label (#429). Taken
+        # from the label data the fetches already request — no extra GitHub call.
+        "labels": _label_names(i.get("labels")),
     }
+
+
+def _label_names(raw) -> list:
+    """Label names from gh rows ([{name,...}]) or plain strings: order kept,
+    blanks and repeats dropped, anything else ignored. Never raises."""
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out, seen = [], set()
+    for item in raw:
+        name = item.get("name") if isinstance(item, dict) else item
+        if isinstance(name, str) and name.strip() and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
+def _timestamp(value):
+    """A frontmatter timestamp as a non-empty string, else None (#428)."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def build_export(tracks, issues_by_track, visibility, now: str,
@@ -184,6 +206,12 @@ def build_export(tracks, issues_by_track, visibility, now: str,
             # (null when unset). Surfaced by the viewer + hygiene callout.
             "cleanup_candidate": bool(t.meta.get("cleanup_candidate")),
             "cleanup_reason": t.meta.get("cleanup_reason"),
+            # Activity timestamps as written in frontmatter ("YYYY-MM-DD" or
+            # "YYYY-MM-DDTHH:MM", local time), or null when absent/blank/not a
+            # string (#428). Passed through unparsed: the viewer parses them and
+            # computes age locally, so a stale-days setting change needs no refetch.
+            "last_touched": _timestamp(t.meta.get("last_touched")),
+            "last_handoff": _timestamp(t.meta.get("last_handoff")),
             "launch_priority": t.meta.get("launch_priority"),
             "milestone_alignment": milestone_alignment,
             "visibility": visibility.get(t.repo),

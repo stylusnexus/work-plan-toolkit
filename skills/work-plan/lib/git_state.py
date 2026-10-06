@@ -107,14 +107,20 @@ def branch_exists(branch_name: str, repo_path: Path) -> bool:
     return proc is not None and proc.returncode == 0
 
 
+def _recent_commits_unchecked(branch_name: str, repo_path: Path, hours: int) -> bool:
+    """The `git log --since` query alone — the caller has already established
+    that the repo path exists and the branch resolves (see RepoSnapshot, #421)."""
+    since = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
+    proc = _git(repo_path, "log", branch_name, f"--since={since}", "--pretty=format:%H")
+    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
+
+
 def _has_recent_commits(branch_name: str, repo_path: Path, hours: int = 24) -> bool:
     if not repo_path or not Path(repo_path).exists():
         return False
     if not branch_exists(branch_name, repo_path):
         return False
-    since = (datetime.now() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
-    proc = _git(repo_path, "log", branch_name, f"--since={since}", "--pretty=format:%H")
-    return proc is not None and proc.returncode == 0 and bool(proc.stdout.strip())
+    return _recent_commits_unchecked(branch_name, repo_path, hours)
 
 
 def branch_in_progress(branch_name: str, repo_path: Path) -> bool:
@@ -202,12 +208,9 @@ def hot_issue_numbers(repo_path: Path) -> set:
     return hot
 
 
-def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:
-    """Most recent commit timestamp on branch (naive)."""
-    if not repo_path or not Path(repo_path).exists():
-        return None
-    if not branch_exists(branch_name, repo_path):
-        return None
+def _last_commit_date_unchecked(branch_name: str, repo_path: Path) -> Optional[datetime]:
+    """The `git log -1` query alone — the caller has already established that
+    the repo path exists and the branch resolves (see RepoSnapshot, #421)."""
     proc = _git(repo_path, "log", "-1", branch_name, "--pretty=format:%cI")
     if proc is None or proc.returncode != 0 or not proc.stdout.strip():
         return None
@@ -216,6 +219,15 @@ def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:
         return datetime.fromisoformat(s)
     except (ValueError, IndexError):
         return None
+
+
+def last_commit_date(branch_name: str, repo_path: Path) -> Optional[datetime]:
+    """Most recent commit timestamp on branch (naive)."""
+    if not repo_path or not Path(repo_path).exists():
+        return None
+    if not branch_exists(branch_name, repo_path):
+        return None
+    return _last_commit_date_unchecked(branch_name, repo_path)
 
 
 def path_last_commit_date(rel_path: str, repo_path: Path) -> Optional[datetime]:

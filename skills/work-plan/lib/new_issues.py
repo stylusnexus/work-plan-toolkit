@@ -5,13 +5,14 @@ import re
 from datetime import datetime, timedelta
 
 from lib.github_state import fetch_recent_issues
+from lib.track_labels import effective_labels
 
 
 def build_slug_labels(tracks) -> dict[str, list[str]]:
     """Build a {slug: [labels]} map from tracks with `github.labels` frontmatter.
 
-    Slugs without an explicit `github.labels` are omitted — callers fall back
-    to the default `track/<slug>` pattern in that case.
+    Slugs without an explicit `github.labels` are omitted — matching adds the
+    default `track/<slug>` to whatever is declared here (see effective_labels).
     """
     out: dict[str, list[str]] = {}
     for t in tracks:
@@ -28,8 +29,8 @@ def match_issue_to_tracks(issue: dict, track_slugs: list[str],
                           *, slug_labels: dict[str, list[str]] | None = None) -> list[str]:
     """Return slugs of tracks this issue might belong to.
 
-    1. Configured label match → exact match. Each slug uses its own labels from
-       `slug_labels` if provided, else falls back to `[track/<slug>]`.
+    1. Configured label match → exact match. Each slug matches its own labels
+       from `slug_labels` PLUS the default `track/<slug>` (#493).
     2. Slug words appear in title → fuzzy match (all >=3-char words must appear).
     """
     label_names = {l["name"] for l in issue.get("labels", [])}
@@ -38,7 +39,7 @@ def match_issue_to_tracks(issue: dict, track_slugs: list[str],
 
     matches = set()
     for slug in track_slugs:
-        labels_for_slug = overrides.get(slug) or [f"track/{slug}"]
+        labels_for_slug = effective_labels(overrides.get(slug), slug)
         if any(lab in label_names for lab in labels_for_slug):
             matches.add(slug)
 

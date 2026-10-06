@@ -49,6 +49,8 @@ SUBCOMMANDS = {
     "coverage": "commands.coverage",
     "canonicalize": "commands.canonicalize",
     "dedupe-tiers": "commands.dedupe_tiers",
+    "lift-rationale": "commands.lift_rationale",
+    "milestone-drift": "commands.milestone_drift",
     "hygiene": "commands.hygiene",
     "--hygiene": "commands.hygiene",      # flag-style alias
     "plan-status": "commands.plan_status",
@@ -172,9 +174,17 @@ DESCRIPTIONS = [
      "Remove private track copies that a shared twin in a repo's .work-plan/ supersedes (#359). When a track is promoted to the shared tier, the private original under notes_root is sometimes left behind (bulk/manual promotion, or a failed unlink) — discover_tracks then warns 'exists in both shared and private' on every run with no cleanup path. This removes the safe orphans and REFUSES any whose private copy references issue numbers the shared one lacks (no silent data loss; the invariant is issue_refs(private) ⊆ issue_refs(shared)). Covers active and archived tiers. Default is a dry-run report; --apply deletes (auto-committed to notes_root, so undoable).",
      "When `exists in both shared and private` warnings appear, or after a bulk promote that left private originals behind.",
      "/work-plan dedupe-tiers --repo=critforge --apply"),
+    ("lift-rationale", "[--repo=<key>] [--track=<name>] [--apply]",
+     "Move a track's rationale out of YAML frontmatter comments and into a '## Ranking rationale' body section (#491). Writes preserve frontmatter comments, but the body is the only place rationale is VISIBLE — frontmatter comments never render, never reach the VS Code viewer, and never appear in export --json. Comments attached to a next_up entry become bullets naming that issue; section headers become paragraphs. The body is also the only place rationale is VISIBLE — frontmatter comments never render, never reach the VS Code viewer, and never appear in export --json. Dry-run by default; --apply writes.",
+     "ONE-TIME per track that keeps rationale in frontmatter comments and wants it visible in the body and the VS Code viewer.",
+     "/work-plan lift-rationale --repo=critforge --apply"),
+    ("milestone-drift", "[--repo=<key>] [--unranked]",
+     "Audit each track's hand-curated next_up queue against live GitHub (#489). Reports three kinds of rot that are invisible from inside the file, because the list still reads like a plausible order: RANKED BUT CLOSED (finished work still occupying the queue — one real track's entire HEAD was closed issues), MILESTONE INVERSION (an issue ranked above another while carrying a LATER milestone, so the ranking and the release plan disagree), and RANKED WITH NO MILESTONE. Milestone order comes from due_on, falling back to title; when a repo's milestones cannot be read the inversion check is SKIPPED rather than guessed. --unranked additionally lists open track issues absent from next_up — off by default, because next_up is a shortlist for most tracks (measured on 33 real tracks: ~1000 findings with it, ~30 without). Report-only always — either side of an inversion can be the wrong one, so the fix is a judgement call.",
+     "WEEKLY (runs inside hygiene), and before trusting a next_up order you did not just reconcile — e.g. when picking what to work on after a deploy.",
+     "/work-plan milestone-drift --repo=critforge"),
     ("hygiene", "[--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]",
-     "Weekly cleanup wrapper: refresh-md + reconcile + dedupe-tiers (report-only) + duplicates. With --repo=<key>, steps 1–3 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).",
-     "WEEKLY — runs all three hygiene commands in sequence so you don't have to remember each. Use --repo=<key> to clean up one project without touching the others.",
+     "Weekly cleanup wrapper: refresh-md + reconcile + dedupe-tiers (report-only) + milestone-drift (report-only) + duplicates. With --repo=<key>, steps 1–4 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).",
+     "WEEKLY — runs all the hygiene commands in sequence so you don't have to remember each. Use --repo=<key> to clean up one project without touching the others.",
      "/work-plan hygiene --repo=myproject"),
     ("export", "--json",
      "Emit the viewer-ready JSON read surface (schema 1): every frontmatter'd track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone. Read-only; derives live from gh. Consumed by the VS Code extension.",
@@ -278,7 +288,7 @@ DESCRIPTIONS = [
      "matches, a non-git local path, duplicate entries, an invalid/missing notes_root, "
      "an orphaned notes folder, or a stale per-track github.repo. --fix corrects only "
      "the two mechanically-safe cases (a GitHub-confirmed rename, a stale track slug) "
-     "and always re-scans afterward before deciding success.",
+     "and always re-scans afterward before deciding success. Also runs a read-only preflight first: Python 3.9+, git, gh and its sign-in, mikefarah/yq, config loading and notes_root access; text mode exits 0 healthy, 1 warning, 2 blocking, and --json adds status + checks.",
      "Run right after renaming a project's local folder or its GitHub repo — this is "
      "exactly the class of bug that silently breaks the VS Code viewer's Auto Focus "
      "Repo setting with zero visible signal.",
@@ -347,6 +357,10 @@ def main(argv: list[str]) -> int:
         print(f"unknown subcommand '{sub}'", file=sys.stderr)
         print("Run 'python3 work_plan.py --help' for usage.", file=sys.stderr)
         return 2
+    if _private_flag_unsupported(sub, argv[2:]):
+        print(f"ERROR: --private is only supported by: {', '.join(sorted(_PRIVATE_COMMANDS))}. "
+              f"'{sub.lstrip('-')}' would silently ignore it.", file=sys.stderr)
+        return 2
     try:
         module = __import__(SUBCOMMANDS[sub], fromlist=["run"])
     except ImportError as e:
@@ -366,6 +380,20 @@ def main(argv: list[str]) -> int:
         if shared_pre:
             _commit_shared_writes(shared_pre, argv[1:])
     return rc
+
+
+# `--private` routes a NEW track to notes_root, so only the commands that create
+# tracks implement it (#434). Any other command would parse it as a stray
+# positional and carry on as if it had been honoured.
+_PRIVATE_COMMANDS = frozenset({"group", "new-track"})
+
+
+def _private_flag_unsupported(sub: str, args: list[str]) -> bool:
+    if sub.lstrip("-") in _PRIVATE_COMMANDS:
+        return False
+    # A bare `--` ends option parsing; anything after it is a positional value.
+    opts = args[:args.index("--")] if "--" in args else args
+    return "--private" in opts
 
 
 # Read-only commands never write notes_root — skip the snapshot/commit entirely.

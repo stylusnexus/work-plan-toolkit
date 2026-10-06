@@ -22,6 +22,7 @@ from lib.cwd_repo import _git, _normalize_remote_url
 from lib.frontmatter import parse_file, write_file
 from lib.github_state import repo_full_name
 from lib.notes_vcs import dirty_paths_checked, auto_commit
+from lib.preflight import run_preflight, overall_status, read_version, FAIL, WARN
 from lib.prompts import parse_flags
 from lib.tracks import iter_private_track_paths
 
@@ -463,18 +464,44 @@ def _print_json(payload):
     print(json.dumps(payload))
 
 
+# Exit codes (human mode): healthy / warning / blocking (#427). JSON mode always
+# exits 0 and reports the same verdict in `status` — the viewer treats any
+# non-zero exit as "the scan itself failed".
+_EXIT = {"healthy": 0, "warning": 1, "blocking": 2}
+
+
+def _print_preflight(checks: list) -> None:
+    """Only what needs attention; a healthy machine prints one summary line."""
+    problems = [c for c in checks if c["status"] in (FAIL, WARN)]
+    for c in problems:
+        label = "BLOCKING" if c["status"] == FAIL else "WARN"
+        print(f"{label}: [{c['id']}] {c['message']}")
+        if c.get("remediation"):
+            print(f"  fix: {c['remediation']}")
+    if not problems:
+        ran = sum(1 for c in checks if c["status"] != "skip")
+        print(f"All {ran} preflight checks passed.")
+
+
 def run(args: list) -> int:
     flags, _ = parse_flags(args, {"--json", "--fix"})
     want_json = bool(flags.get("--json"))
     want_fix = bool(flags.get("--fix"))
 
+    # Preflight first and independent of config: a missing/incompatible yq is
+    # exactly why config can't load, and should be diagnosed as that, not as a
+    # vague config failure. Read-only; never raises.
+    checks = run_preflight(load_config_fn=load_config, version=read_version())
+
     cfg, fatal = _load_config_safely()
     if fatal is not None:
         if want_json:
-            _print_json({"fatal": fatal, "attempts": [], "findings": []})
+            _print_json({"fatal": fatal, "attempts": [], "findings": [],
+                         "checks": checks, "status": "blocking"})
             return 0
+        _print_preflight(checks)
         print(f"ERROR: work-plan config could not be loaded ({fatal}) — doctor cannot run.")
-        return 1
+        return _EXIT["blocking"]
 
     repos, shape_findings = _validate_repo_field_shapes(cfg)
     findings = list(shape_findings) + _scan(cfg, repos)
@@ -499,17 +526,22 @@ def run(args: list) -> int:
         if fatal2 is not None:
             if want_json:
                 _print_json({"fatal": f"{fatal2} (residual state indeterminate after --fix)",
-                              "attempts": attempts, "findings": []})
+                              "attempts": attempts, "findings": [],
+                              "checks": checks, "status": "blocking"})
                 return 0
             print(f"ERROR: post-fix rescan failed ({fatal2}) — residual state indeterminate.")
-            return 1
+            return _EXIT["blocking"]
         repos2, shape_findings2 = _validate_repo_field_shapes(cfg2)
         findings = list(shape_findings2) + _scan(cfg2, repos2)
 
+    status = overall_status(checks, len(findings))
+
     if want_json:
-        _print_json({"attempts": attempts, "findings": findings})
+        _print_json({"attempts": attempts, "findings": findings,
+                     "checks": checks, "status": status})
         return 0
 
+    _print_preflight(checks)
     for a in attempts:
         thing = a["key"] or f"{a['folder']}/{a['track']}"
         if a["fixed"]:
@@ -521,9 +553,9 @@ def run(args: list) -> int:
             print(f"{sum(1 for a in attempts if a['fixed'])} fixed, all clear.")
         else:
             print("No drift found.")
-        return 0
+        return _EXIT[status]
     for f in findings:
         prefix = "WARN (unfixed)" if attempts else "WARN"
         print(f"{prefix}: {f['message']}")
     print(f"{len(findings)} issue(s) found.")
-    return 1
+    return _EXIT[status]

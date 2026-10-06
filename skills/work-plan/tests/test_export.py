@@ -3,7 +3,7 @@ import sys, json, unittest
 from pathlib import Path
 from types import SimpleNamespace
 SKILL_ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0, str(SKILL_ROOT))
-from lib.export_model import build_export, track_key
+from lib.export_model import build_export, normalize_issue, track_key
 import commands.export as export_cmd
 
 def _track(name, repo, issues, blockers=None, next_up=None, status="active", depends_on=None):
@@ -60,7 +60,7 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["folder"], "o/r")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
-        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": []})
+        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": [], "labels": []})
         # Phase 2: next_up_preset must be present in every track
         self.assertIn("next_up_preset", t)
         self.assertEqual(t["next_up_preset"], "flow")  # default when no next_up_order in meta
@@ -505,6 +505,87 @@ class BuildExportCleanupCandidateTest(unittest.TestCase):
         tr = out["tracks"][0]
         self.assertTrue(tr["cleanup_candidate"])
         self.assertIsNone(tr["cleanup_reason"])
+
+
+class IssueLabelsTest(unittest.TestCase):
+    """Issues carry their label names so the viewer can search by label (#429)."""
+
+    def _issue(self, **row):
+        base = {"number": 1, "title": "a", "state": "OPEN", "assignees": []}
+        base.update(row)
+        t = _track("alpha", "o/r", [1])
+        out = build_export([t], {("o/r", "alpha"): [base]}, {"o/r": "PRIVATE"}, now="t")
+        return out["tracks"][0]["issues"][0]
+
+    def test_gh_style_label_objects_become_names_in_order(self):
+        issue = self._issue(labels=[{"name": "security", "color": "ff0000"}, {"name": "priority/P0"}])
+        self.assertEqual(issue["labels"], ["security", "priority/P0"])
+
+    def test_plain_string_labels_are_accepted(self):
+        self.assertEqual(normalize_issue({"number": 1, "labels": ["a", "b"]})["labels"], ["a", "b"])
+
+    def test_absent_or_junk_labels_are_an_empty_list_never_an_error(self):
+        for bad in (None, "security", 5, {}, [None, 5, {"name": None}, {"nope": 1}, "", "  "]):
+            self.assertEqual(normalize_issue({"number": 1, "labels": bad})["labels"], [], bad)
+        self.assertEqual(normalize_issue({"number": 1})["labels"], [])
+        self.assertEqual(self._issue()["labels"], [])
+
+    def test_blank_and_duplicate_names_are_dropped_and_case_is_kept(self):
+        issue = self._issue(labels=[{"name": "Bug"}, {"name": "Bug"}, {"name": ""}, {"name": "bug"}])
+        self.assertEqual(issue["labels"], ["Bug", "bug"])
+
+    def test_list_open_issues_shape_carries_labels_from_the_open_issue_fetch(self):
+        rows = [{"number": 3, "title": "t", "state": "OPEN", "assignees": [],
+                 "labels": [{"name": "security"}]}]
+        self.assertEqual([normalize_issue(r)["labels"] for r in rows], [["security"]])
+
+    def test_untracked_issues_carry_labels_too(self):
+        out = build_export([_track("alpha", "o/r", [1])], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"},
+                           now="t", untracked_by_repo={"o/r": [
+                               {"number": 9, "title": "x", "state": "OPEN", "assignees": [],
+                                "labels": [{"name": "needs-triage"}]}]})
+        self.assertEqual(out["untracked"][0]["issues"][0]["labels"], ["needs-triage"])
+
+    def test_references_carry_labels_too(self):
+        t = _track("alpha", "o/r", [1])
+        out = build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t",
+                           references_by_track={("o/r", "alpha"): [
+                               {"number": 7, "title": "r", "state": "OPEN", "assignees": [],
+                                "labels": [{"name": "area/ui"}]}]})
+        self.assertEqual(out["tracks"][0]["references"][0]["labels"], ["area/ui"])
+
+
+class BuildExportActivityTimestampsTest(unittest.TestCase):
+    """last_touched / last_handoff surface in the export JSON (#428)."""
+
+    def _export(self, **meta):
+        t = _track("alpha", "o/r", [1])
+        t.meta.update(meta)
+        return build_export([t], {("o/r", "alpha"): []}, {"o/r": "PRIVATE"}, now="t")["tracks"][0]
+
+    def test_both_exported_as_written(self):
+        tr = self._export(last_touched="2026-04-23T22:14", last_handoff="2026-04-20")
+        self.assertEqual(tr["last_touched"], "2026-04-23T22:14")
+        self.assertEqual(tr["last_handoff"], "2026-04-20")
+
+    def test_absent_is_null(self):
+        tr = self._export()
+        self.assertIsNone(tr["last_touched"])
+        self.assertIsNone(tr["last_handoff"])
+
+    def test_blank_null_and_non_string_values_are_null(self):
+        for bad in ("", "   ", None, 20260423, ["2026-04-23"], {"a": 1}):
+            with self.subTest(value=bad):
+                tr = self._export(last_touched=bad, last_handoff=bad)
+                self.assertIsNone(tr["last_touched"])
+                self.assertIsNone(tr["last_handoff"])
+
+    def test_malformed_string_is_passed_through_for_the_viewer_to_judge(self):
+        # The CLI does not validate; the viewer treats an unparseable value as unknown.
+        self.assertEqual(self._export(last_touched="yesterday")["last_touched"], "yesterday")
+
+    def test_surrounding_whitespace_is_trimmed(self):
+        self.assertEqual(self._export(last_touched=" 2026-04-23 ")["last_touched"], "2026-04-23")
 
 
 class BuildExportDependsOnTest(unittest.TestCase):

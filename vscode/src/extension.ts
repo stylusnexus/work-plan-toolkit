@@ -4,12 +4,12 @@ import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion, checkAuth, summariseAuthError, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
-  autoTriageScan, doctorScan,
+  autoTriageScan, doctorScan, doctorReport,
 } from "./cli.ts";
 import type { NotesVcsStatus, AuthState, DoctorFinding } from "./cli.ts";
 import { SNAPSHOT_KEY } from "./authCache.ts";
 import type { Snapshot, SnapshotStore } from "./authCache.ts";
-import { buildDoctorStatus } from "./doctor.ts";
+import { buildDoctorStatus, diagnosticsToast, formatDiagnostics } from "./doctor.ts";
 import { pickAutoFocusSlug } from "./autofocus.ts";
 import { WorkPlanTreeProvider } from "./tree.ts";
 import { PlansProvider } from "./plansTree.ts";
@@ -23,7 +23,7 @@ import { issuesFingerprint } from "./fingerprint.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
 import { WorkPlanPanel } from "./webview/panel.ts";
 import { availableLenses, describeView } from "./webview/lenses.ts";
-import { searchIssues } from "./webview/search.ts";
+import { exportCarriesLabels, isLabelQuery, parseSearchQuery, searchIssues } from "./webview/search.ts";
 import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
 import { executeWrite } from "./write.ts";
@@ -65,6 +65,19 @@ export function activate(context: vscode.ExtensionContext): void {
     snapshotStore,
   );
   void vscode.commands.executeCommand("setContext", "workPlanShowArchived", showArchivedTracks);
+
+  // `workPlan.trackStaleDays` (#428): read once, then re-applied live. The
+  // provider re-evaluates the Stale lens from its cached export — no refetch.
+  const readStaleDays = () =>
+    vscode.workspace.getConfiguration("workPlan").get<number>("trackStaleDays");
+  provider.setStaleDays(readStaleDays());
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("workPlan.trackStaleDays")) {
+        provider.setStaleDays(readStaleDays());
+      }
+    }),
+  );
 
   const treeView = vscode.window.createTreeView("workPlan.tree", {
     treeDataProvider: provider,
@@ -292,7 +305,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const lensChoices = availableLenses(raw);
+      const lensChoices = availableLenses(raw, provider.staleOpts);
       const activeLens = provider.activeLens;
 
       // Build the quick-pick items, marking the active one.
@@ -444,6 +457,11 @@ export function activate(context: vscode.ExtensionContext): void {
           label: "Name (A–Z)",
           mode: "name",
           description: activeSort === "name" ? "active" : undefined,
+        },
+        {
+          label: "Least recently touched",
+          mode: "touched",
+          description: activeSort === "touched" ? "active" : undefined,
         },
       ];
 
@@ -970,6 +988,33 @@ export function activate(context: vscode.ExtensionContext): void {
         outputChannel.appendLine(`  • ${f.message}`);
       }
       outputChannel.show();
+    }),
+  );
+
+  // Run Diagnostics (#427): the full preflight, on demand. A missing/old CLI or
+  // a malformed payload is reported as exactly that, never as "all clear".
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.runDiagnostics", async () => {
+      const result = await doctorReport(runner);
+      if (result.kind === "failed") {
+        vscode.window.showErrorMessage(
+          `Work Plan: diagnostics could not run — ${result.reason}. Check workPlan.cliPath, or install from ${TOOLKIT_URL}.`,
+        );
+        return;
+      }
+      if (result.kind === "old-cli") {
+        vscode.window.showWarningMessage(
+          "Work Plan: this work-plan CLI predates diagnostics — update it (re-run ./install.sh), then try again.",
+        );
+        return;
+      }
+      outputChannel.clear();
+      for (const line of formatDiagnostics(result.report)) outputChannel.appendLine(line);
+      outputChannel.show(true);
+      const toast = diagnosticsToast(result.report);
+      if (toast.level === "error") vscode.window.showErrorMessage(toast.text);
+      else if (toast.level === "warning") vscode.window.showWarningMessage(toast.text);
+      else vscode.window.showInformationMessage(toast.text);
     }),
   );
 
@@ -2051,19 +2096,41 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // LLM path: relay the prompt for a Claude session to answer.
+      // LLM path: hand the prompt to the agent the user works in. Claude Code's
+      // extension accepts a prefilled prompt (the same command its own
+      // vscode://anthropic.claude-code/open?prompt= handler calls); no other agent
+      // extension takes text, so everything else gets the prompt on the clipboard.
       outputChannel.clear();
       outputChannel.appendLine(
-        `Ask Claude to produce suggestions and save to ${scan.answers_path}`,
+        `Ask your agent to produce suggestions and save to ${scan.answers_path}`,
       );
       outputChannel.appendLine("");
       outputChannel.append(scan.prompt);
-      outputChannel.show(true);
 
-      vscode.window.showInformationMessage(
-        `Work Plan: scanned ${scan.untracked.length} untracked issue(s) in ${repo}. ` +
-          "Ask Claude with the prompt in the Work Plan output channel; suggestions appear under Untracked.",
+      const done = `${scan.untracked.length} untracked issue(s) in ${repo}; suggestions appear under Untracked once the agent saves its answers.`;
+      // The command is internal to that extension, so a rename or a failed call
+      // falls through to the clipboard instead of leaving the user with nothing.
+      const claudeCmd = "claude-vscode.primaryEditor.open";
+      if (
+        vscode.extensions.getExtension("anthropic.claude-code") &&
+        (await vscode.commands.getCommands(true)).includes(claudeCmd)
+      ) {
+        try {
+          await vscode.commands.executeCommand(claudeCmd, undefined, scan.prompt);
+          vscode.window.showInformationMessage(
+            `Work Plan: opened Claude Code with the prompt. Review and send it — ${done}`,
+          );
+          return;
+        } catch {
+          // fall through to the clipboard path
+        }
+      }
+      await vscode.env.clipboard.writeText(scan.prompt);
+      const choice = await vscode.window.showInformationMessage(
+        `Work Plan: prompt copied to the clipboard. Paste it into your agent — ${done}`,
+        "Show Prompt",
       );
+      if (choice === "Show Prompt") outputChannel.show(false);
     } catch (err: unknown) {
       const msg = err instanceof CliError
         ? `Work Plan: ${err.message}`
@@ -3217,10 +3284,14 @@ export function activate(context: vscode.ExtensionContext): void {
         }
 
         const query = await vscode.window.showInputBox({
-          placeHolder: "Search issues — e.g. %depends%, fix%, %audit",
-          prompt: "Match issue titles. Bare word = contains; % = wildcard (fix% starts-with, %audit ends-with).",
+          placeHolder: "Search issues — e.g. %depends%, fix%, label:security",
+          prompt: "Match issue titles. Bare word = contains; % = wildcard (fix% starts-with, %audit ends-with). Prefix label: to search labels (label:priority/%).",
           validateInput: (v) => {
-            const t = v.trim();
+            const { pattern } = parseSearchQuery(v);
+            const t = pattern.trim();
+            if (isLabelQuery(v) && t === "") {
+              return "Add a label to search for, e.g. label:security";
+            }
             return t !== "" && /^%+$/.test(t)
               ? "A query of % alone matches everything — add text, e.g. %fix% or depends%"
               : null;
@@ -3234,7 +3305,16 @@ export function activate(context: vscode.ExtensionContext): void {
           const current = provider.rawExport;
           if (!current) return;
           SearchPanel.showResults(
-            { query: q, hits: searchIssues(current, q), generatedAt: current.generated_at },
+            {
+              query: q,
+              hits: searchIssues(current, q),
+              generatedAt: current.generated_at,
+              // An older CLI exports no labels: say so, rather than let a label
+              // search read as "nothing has that label".
+              ...(isLabelQuery(q) && !exportCarriesLabels(current) && {
+                notice: "This work-plan CLI does not export labels yet — update it (re-run ./install.sh) to search by label.",
+              }),
+            },
             {
               openIssue: (repo, number) =>
                 void vscode.commands.executeCommand("workPlan.openIssue", { repo, number }),

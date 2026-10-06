@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> Companion to: [README.md](../../README.md) · [CLAUDE.md](../../CLAUDE.md) · [skills/work-plan/SKILL.md](../../skills/work-plan/SKILL.md)
+> Companion to: [README.md](../../README.md) · [AGENTS.md](../../AGENTS.md) · [skills/work-plan/SKILL.md](../../skills/work-plan/SKILL.md)
 > See also: [components.md](components.md) · [data-flow.md](data-flow.md)
 
 ## What this is

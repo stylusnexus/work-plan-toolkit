@@ -751,3 +751,97 @@ describe("describeView — lens + sort combined", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stale lens (#428)
+// ---------------------------------------------------------------------------
+
+function staleTrack(
+  name: string, status: string, last_touched?: string | null, extra: Partial<Export["tracks"][number]> = {},
+): Export["tracks"][number] {
+  return { ...mkTrack(name, status, []), last_touched, ...extra };
+}
+
+const STALE_NOW = new Date(2026, 9, 5, 12, 0).getTime(); // 2026-10-05, local
+const expStale: Export = {
+  schema: 1,
+  generated_at: "2026-10-05T00:00:00Z",
+  tracks: [
+    staleTrack("fresh", "active", "2026-10-03"),
+    staleTrack("old-active", "active", "2026-08-01"),
+    staleTrack("old-blocked", "blocked", "2026-08-01"),
+    staleTrack("old-shipped", "shipped", "2026-01-01"),
+    staleTrack("old-parked", "parked", "2026-01-01"),
+    staleTrack("old-archived", "active", "2026-01-01", { archived: true }),
+    staleTrack("no-timestamp", "active"),
+    staleTrack("bad-timestamp", "active", "last tuesday"),
+    staleTrack("handoff-only", "in-progress", undefined, { last_handoff: "2026-07-01" }),
+  ],
+};
+const STALE = { staleDays: 14, now: STALE_NOW };
+
+describe("stale lens", () => {
+  it("keeps only live, non-archived tracks idle past the threshold", () => {
+    const out = applyLens(expStale, { kind: "stale" }, STALE);
+    assert.deepEqual(out.tracks.map(t => t.name), ["old-active", "old-blocked", "handoff-only"]);
+  });
+
+  it("a bigger threshold shrinks the result; a smaller one grows it (no data change)", () => {
+    assert.deepEqual(
+      applyLens(expStale, { kind: "stale" }, { staleDays: 90, now: STALE_NOW }).tracks.map(t => t.name),
+      ["handoff-only"],
+    );
+    assert.deepEqual(
+      applyLens(expStale, { kind: "stale" }, { staleDays: 1, now: STALE_NOW }).tracks.map(t => t.name),
+      ["fresh", "old-active", "old-blocked", "handoff-only"],
+    );
+  });
+
+  it("missing and malformed timestamps never throw and are never stale", () => {
+    const out = applyLens(expStale, { kind: "stale" }, STALE).tracks.map(t => t.name);
+    assert.ok(!out.includes("no-timestamp"));
+    assert.ok(!out.includes("bad-timestamp"));
+  });
+
+  it("is offered only when some track is stale", () => {
+    const labels = (e: Export) => availableLenses(e, STALE).map(c => c.id);
+    assert.ok(labels(expStale).includes("stale"));
+    assert.ok(!labels({ ...expStale, tracks: [staleTrack("fresh", "active", "2026-10-03")] }).includes("stale"));
+  });
+
+  it("the menu entry names the threshold", () => {
+    const entry = availableLenses(expStale, { staleDays: 30, now: STALE_NOW }).find(c => c.id === "stale");
+    assert.equal(entry?.label, "Stale tracks (idle 30+ days)");
+    assert.deepEqual(entry?.lens, { kind: "stale" });
+  });
+
+  it("an export from an older CLI (no timestamp fields at all) has no stale tracks and no stale lens", () => {
+    // `exp` is the module fixture: it predates last_touched/last_handoff.
+    assert.ok(!availableLenses(exp, STALE).some(c => c.id === "stale"));
+    assert.equal(applyLens(exp, { kind: "stale" }, STALE).tracks.length, 0);
+  });
+
+  it("does not mutate the input export", () => {
+    const before = JSON.stringify(expStale);
+    applyLens(expStale, { kind: "stale" }, STALE);
+    assert.equal(JSON.stringify(expStale), before);
+  });
+
+  it("scopes configured repos like the other filtering lenses", () => {
+    const withRepos: Export = {
+      ...expStale,
+      repos: [
+        { folder: "a", repo: "stylusnexus/status-fixture", local: null, has_local: false, visibility: null },
+        { folder: "b", repo: "org/other", local: null, has_local: false, visibility: null },
+      ],
+    };
+    const out = applyLens(withRepos, { kind: "stale" }, STALE);
+    assert.deepEqual(out.repos?.map(r => r.repo), ["stylusnexus/status-fixture"]);
+  });
+
+  it("describeView labels the lens and the new sort", () => {
+    assert.equal(describeView({ kind: "stale" }, "default"), "stale");
+    assert.equal(describeView({ kind: "all" }, "touched"), "least-recent");
+    assert.equal(describeView({ kind: "stale" }, "touched"), "stale · least-recent");
+  });
+});

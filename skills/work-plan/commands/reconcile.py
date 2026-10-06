@@ -2,9 +2,10 @@
 
 For a given track:
   - Determine the GitHub labels that mark issues as belonging to this track.
-    By default `track/<slug>`. Override per-track via frontmatter:
+    Always `track/<slug>`; add more per-track via frontmatter:
       github:
         labels: [storytelling, campaigns]   # OR semantics — match if any present
+    `github.labels` ADDS to `track/<slug>`, it never replaces it (#493).
   - Fetch all issues AND pull requests with any of those labels from the repo,
     in any state (open/closed/merged). PRs are included because frontmatter
     `github.issues` lists may reference PR numbers, and closed-state coverage
@@ -34,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 from lib.config import load_config, ConfigError
 from lib.tracks import discover_tracks, find_track_by_name, filter_tracks_by_repo, parse_track_repo_arg, AmbiguousTrackError
 from lib.frontmatter import write_file
+from lib.track_labels import effective_labels
 from lib.prompts import parse_flags, prompt_input
 from lib.write_guard import needs_confirm
 
@@ -58,16 +60,10 @@ def _track_key(track) -> tuple:
 def _resolve_labels(track) -> list[str]:
     """Return the GitHub label(s) marking issues as belonging to this track.
 
-    Prefers `track.meta.github.labels` (list). Falls back to `track/<slug>`
-    so existing setups keep working without frontmatter changes.
+    `track/<slug>` always, plus anything in `track.meta.github.labels` (#493).
     """
     slug = track.meta.get("track", track.name)
-    labels = track.meta.get("github", {}).get("labels")
-    if labels:
-        cleaned = [str(lab) for lab in labels if str(lab).strip()]
-        if cleaned:
-            return cleaned
-    return [f"track/{slug}"]
+    return effective_labels(track.meta.get("github", {}).get("labels"), slug)
 
 
 def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:

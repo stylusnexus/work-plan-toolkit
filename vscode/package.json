@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.19.10",
+  "version": "0.20.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -93,6 +93,11 @@
       {
         "command": "workPlan.showDoctorReport",
         "title": "Show Config Health Report",
+        "category": "Work Plan"
+      },
+      {
+        "command": "workPlan.runDiagnostics",
+        "title": "Run Diagnostics",
         "category": "Work Plan"
       },
       {
@@ -944,6 +949,12 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-update the Plans view when a scanned repo's git activity changes (e.g. committing a plan's declared files clears its 'stalled' state) without a manual Refresh. Watches each expanded repo's .git refs; falls back to manual refresh when off."
+        },
+        "workPlan.trackStaleDays": {
+          "type": "integer",
+          "default": 14,
+          "minimum": 1,
+          "description": "Days without activity (frontmatter last_touched, else last_handoff) before an active, in-progress or blocked track counts as stale. Drives the \"Stale tracks\" lens and its tooltip flag. Display only: nothing is archived or edited. Changing it re-renders from cached data with no refetch. Default 14."
         },
         "workPlan.autoSlotConfidenceThreshold": {
           "type": "number",

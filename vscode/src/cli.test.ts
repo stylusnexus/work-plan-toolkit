@@ -21,6 +21,7 @@ import {
   normalizeExportIssue,
   suggestNextUp,
   doctorScan,
+  doctorReport,
 } from "./cli.ts";
 import type { Export } from "./model.ts";
 
@@ -897,5 +898,75 @@ describe("doctorScan", () => {
       stderr: "",
     });
     assert.equal(await doctorScan(run), null);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// doctorReport (#427)
+// ---------------------------------------------------------------------------
+
+describe("doctorReport", () => {
+  const CHECK = { id: "yq", status: "fail", message: "yq not found on PATH", remediation: "brew install yq" };
+  const payload = (extra: object = {}) =>
+    JSON.stringify({ attempts: [], findings: [], checks: [CHECK], status: "blocking", ...extra });
+
+  test("parses a report from a CLI that emits checks", async () => {
+    const out = await doctorReport(fakeRunner({ code: 0, stdout: payload(), stderr: "" }));
+    assert.equal(out.kind, "report");
+    if (out.kind !== "report") return;
+    assert.equal(out.report.status, "blocking");
+    assert.deepEqual(out.report.checks, [CHECK]);
+    assert.deepEqual(out.report.findings, []);
+  });
+
+  test("uses exact argv [\"doctor\", \"--json\"]", async () => {
+    const calls: string[][] = [];
+    const run: CliRunner = (args: string[]) => {
+      calls.push(args);
+      return Promise.resolve({ code: 0, stdout: payload(), stderr: "" });
+    };
+    await doctorReport(run);
+    assert.deepEqual(calls[0], ["doctor", "--json"]);
+  });
+
+  test("keeps the fatal reason when config could not load", async () => {
+    const out = await doctorReport(fakeRunner({ code: 0, stdout: payload({ fatal: "yq missing" }), stderr: "" }));
+    assert.equal(out.kind === "report" && out.report.fatal, "yq missing");
+  });
+
+  test("an older CLI (no checks, no status) is reported as old, never as clean", async () => {
+    const out = await doctorReport(fakeRunner({ code: 0, stdout: JSON.stringify({ attempts: [], findings: [] }), stderr: "" }));
+    assert.deepEqual(out, { kind: "old-cli" });
+  });
+
+  test("nonzero exit, spawn rejection and bad JSON are failures with a reason", async () => {
+    const nonzero = await doctorReport(fakeRunner({ code: 2, stdout: "", stderr: "boom" }));
+    assert.equal(nonzero.kind, "failed");
+    assert.match(nonzero.kind === "failed" ? nonzero.reason : "", /code 2: boom/);
+
+    const rejected = await doctorReport(() => Promise.reject(new Error("spawn ENOENT")));
+    assert.equal(rejected.kind, "failed");
+    assert.match(rejected.kind === "failed" ? rejected.reason : "", /ENOENT/);
+
+    const garbage = await doctorReport(fakeRunner({ code: 0, stdout: "not json", stderr: "" }));
+    assert.equal(garbage.kind, "failed");
+  });
+
+  test("a malformed report is a failure, not an empty clean one", async () => {
+    for (const bad of [
+      { checks: "nope", status: "healthy" },
+      { checks: [], status: "great" },
+      { checks: [] },
+    ]) {
+      const out = await doctorReport(fakeRunner({ code: 0, stdout: JSON.stringify(bad), stderr: "" }));
+      assert.equal(out.kind, "failed", JSON.stringify(bad));
+    }
+  });
+
+  test("drops individually malformed checks and keeps the valid ones", async () => {
+    const stdout = payload({ checks: [CHECK, { id: 5 }, null, { id: "x", status: "weird", message: "m" }, "str"] });
+    const out = await doctorReport(fakeRunner({ code: 0, stdout, stderr: "" }));
+    assert.equal(out.kind === "report" && out.report.checks.length, 1);
   });
 });
