@@ -7,7 +7,7 @@ name: Publish CLI to npm
 # Publishes with npm TRUSTED PUBLISHING (OIDC) — there is no NPM_TOKEN to rotate
 # or expire. npm trusts this exact workflow once it is registered on npmjs.com:
 # package @stylusnexus/work-plan → Settings → Trusted publisher → GitHub Actions,
-# owner `stylusnexus`, repository `work-plan-toolkit`, workflow `npm-publish.yml`
+# owner `stylusnexus`, repository `work-plan-toolkit`, workflow `npm-publish.yaml`
 # (leave "Environment" blank). Token-based publishing is being restricted by npm
 # for tokens that bypass 2FA, which is what broke the previous NPM_TOKEN.
 #
