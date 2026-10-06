@@ -41,7 +41,7 @@ describe("release metadata (package.json ↔ CHANGELOG.md ↔ README Status)", (
     assert.ok(
       versionHeadings.some(h => h.version === version),
       `vscode/CHANGELOG.md has no "## [${version}] - YYYY-MM-DD" entry. ` +
-        `Add one when you bump package.json (see CLAUDE.md → Releasing (maintainers)).`,
+        `Add one when you bump package.json (see AGENTS.md → Releasing (maintainers)).`,
     );
   });
 

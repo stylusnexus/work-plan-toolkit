@@ -11,7 +11,7 @@ This script walks the AST of every .py file under skills/, finds annotation
 expressions containing a `BinOp(BitOr)`, and verifies the file has the
 future-annotations import. Exits non-zero with a punch list of offenders.
 
-CLAUDE.md "Hard constraints": Pure Python 3.9+ stdlib. PEP 585 generics
+AGENTS.md "Non-negotiables": Pure Python 3.9+ stdlib. PEP 585 generics
 (`list[dict]`) are fine; no 3.10+ features. PEP 604 unions fall in the
 3.10+ category — guard them with `from __future__ import annotations`.
 
@@ -105,7 +105,7 @@ def main() -> int:
               file=sys.stderr)
         print("so `X | Y` is treated as a string and never evaluated at",
               file=sys.stderr)
-        print("module load — making it safe on Python 3.9 (per CLAUDE.md",
+        print("module load — making it safe on Python 3.9 (per AGENTS.md",
               file=sys.stderr)
         print("\"Hard constraints: no 3.10+ features\").", file=sys.stderr)
         return 1
