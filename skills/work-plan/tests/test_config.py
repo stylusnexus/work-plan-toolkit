@@ -169,7 +169,9 @@ class TestWriteRepoField(BaseConfigWriteTest):
         write_repo_field("bar", {"local": "/b"}, path=cfg_path)
         text = cfg_path.read_text(encoding="utf-8")
         self.assertIn("github: org/foo # scalar note", text)
-        self.assertIn("# about bar\n  bar:", text)
+        # Windows yq emits a blank line between the comment and its key; the
+        # comment still sits directly above bar, which is what matters.
+        self.assertRegex(text, r"# about bar\n\s*\n?\s*bar:")
         self.assertIn("github: org/bar # bar note", text)
         self.assertIn("# keep", text)
         self.assertNotIn("{", text)  # no flow-style maps
