@@ -1,0 +1,27 @@
+# work-plan toolkit
+
+> The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin for track-aware daily planning over GitHub issues. It is a pure Python 3.9+ standard-library CLI that re-reads state from `gh`, `git` and markdown track files on every run, with a VS Code extension, Work Plan Viewer, that shows the same tracks as a sidebar tree and dependency graph.
+
+Key facts: published by Stylus Nexus Holdings LLC; source at github.com/stylusnexus/work-plan-toolkit; npm package `@stylusnexus/work-plan`; VS Code extension ID `stylusnexus.work-plan-viewer` (Marketplace and Open VSX); requires Python 3.9+, git, a signed-in GitHub CLI (`gh`) and mikefarah `yq` 4.x. GitHub stays the source of truth: the toolkit does not cache or mirror issue state and never stores GitHub tokens.
+
+## Docs
+
+- [Overview](https://stylusnexus.github.io/work-plan-toolkit/): what the work-plan toolkit is, who it is for, features, install, requirements and FAQ
+- [Command reference](https://stylusnexus.github.io/work-plan-toolkit/commands/): every work-plan CLI subcommand with usage and an example
+- [Work Plan Viewer](https://stylusnexus.github.io/work-plan-toolkit/vs-code-extension/): the VS Code extension's views, actions, install steps and settings
+- [Full reference for LLMs](https://stylusnexus.github.io/work-plan-toolkit/llms-full.txt): this site condensed into one plain-markdown file
+
+## Source and packages
+
+- [GitHub repository](https://github.com/stylusnexus/work-plan-toolkit): source code and the full README
+- [Usage walkthrough](https://github.com/stylusnexus/work-plan-toolkit/blob/main/docs/usage-examples.md): morning brief, handoff, orient and weekly hygiene scenarios
+- [Architecture](https://github.com/stylusnexus/work-plan-toolkit/blob/main/docs/architecture.md): track model, shared and private tiers, data flow
+- [npm package](https://www.npmjs.com/package/@stylusnexus/work-plan): `npm install -g @stylusnexus/work-plan`
+- [VS Code Marketplace listing](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer): Work Plan Viewer for VS Code
+- [Open VSX listing](https://open-vsx.org/extension/stylusnexus/work-plan-viewer): Work Plan Viewer for VSCodium, Cursor and Windsurf
+- [agent-plugins marketplace](https://github.com/stylusnexus/agent-plugins): the Claude Code and Codex plugin marketplace that distributes work-plan
+
+## Optional
+
+- [Security policy](https://github.com/stylusnexus/work-plan-toolkit/blob/main/SECURITY.md): vulnerability reporting and threat model
+- [License](https://github.com/stylusnexus/work-plan-toolkit/blob/main/LICENSE): MIT

@@ -1,0 +1,220 @@
+# work-plan toolkit: full reference
+
+> The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin that keeps a live, track-by-track plan of your GitHub issues, so you and your AI agents always know what is in flight, what is blocked and what to pick up next. It is a pure Python 3.9+ standard-library CLI that re-reads state from gh, git and plain markdown track files on every run, and it ships with a VS Code extension, Work Plan Viewer, that shows the same tracks as a sidebar tree and dependency graph.
+
+Canonical site: https://stylusnexus.github.io/work-plan-toolkit/
+Source: https://github.com/stylusnexus/work-plan-toolkit
+Publisher: Stylus Nexus Holdings LLC (https://www.stylusnexus.com). License: MIT. Price: free.
+
+## What it is
+
+The work-plan toolkit is a daily work-planning system for developers who run parallel AI coding sessions across many GitHub issues. It has three parts:
+
+1. A pure Python 3.9+ standard-library CLI, `work-plan` (no third-party packages, no build step).
+2. Track files: markdown files with YAML frontmatter that reference GitHub issue numbers for one workstream.
+3. A `SKILL.md` that tells Claude Code (or Codex) how to run the CLI and when to relay its output word for word.
+
+A companion VS Code extension, Work Plan Viewer (`stylusnexus.work-plan-viewer`, listed as "Work Plan"), shows the same tracks as a sidebar tree and a Mermaid dependency graph. It runs the CLI for every read and write.
+
+## What it is not
+
+- Not a Jira, Linear or GitHub Projects replacement: no sprints, roadmaps or capacity planning.
+- Not a standalone issue tracker: GitHub is canonical; work-plan reads and references it.
+- Not a background service: no daemon, no cache, no sync loop. `git pull` is the sync mechanism for shared tracks.
+
+## How it works
+
+- GitHub is the source of truth for issue state. Track files list issue numbers plus a few fields (`launch_priority`, `milestone_alignment`, `next_up`, `blockers`, `depends_on`, timestamps); every command re-derives the rest live from `gh`, `git` and the markdown body.
+- All GitHub access goes through the user's existing `gh auth` session. The toolkit never reads or stores GitHub tokens and makes no network calls beyond `gh`.
+- Daily rhythm: `brief` in the morning, `orient <track>` when opening a session (a paste block of about 15 lines), `handoff <track>` at the end of a work block, `hygiene` weekly.
+- `handoff --auto-next` picks next-up issues algorithmically with no AI; `--set-next 1,2,3` sets them explicitly. `set-next-up` chooses a ranking preset: `flow` (default: milestone, dependency, priority, recency), `priority-driven`, `backlog` (oldest first) or a custom order.
+- `brief` and `orient` mark issues `⊘ blocked by #N` from GitHub's native dependency links (read-only).
+- Two tiers: private tracks live in `notes_root` (local only); shared tracks live in the repo at `.work-plan/<slug>.md` and travel with `git push`/`git pull`. `plan-branch` pins the shared tier to one canonical branch, by default an orphan `work-plan/plan` branch.
+- GitHub writes are opt-in and gated: `plan-status --issues` creates issues, `close-issue` closes an issue, `in-progress` adds or removes the `work-plan:in-progress` label. Everything else writes only local files.
+- Writes into a public repository (or one of unknown visibility) stop with a `needs_confirm` token; re-run with `--confirm=<token>`.
+- Two-step AI subcommands (`group`, `suggest-priorities`, `auto-triage`) print a prompt; the agent saves a JSON answer; re-run with `--apply`. The CLI never calls a model. `auto-triage --heuristic` works offline.
+- `plan-status` judges plan and spec documents by their declared file manifest against git and the filesystem: shipped, partial, dead, manifest-less or foreign.
+- `doctor` checks Python 3.9+, git, gh sign-in, mikefarah yq, config and notes_root, then detects config drift; `--fix` repairs the safe cases.
+
+## Install
+
+Claude Code plugin (recommended):
+
+```
+/plugin marketplace add stylusnexus/agent-plugins
+/plugin install work-plan@stylus-nexus
+```
+
+Plugin commands: `/work-plan:brief`, `/work-plan:handoff`, `/work-plan:orient`, `/work-plan:hygiene`, `/work-plan:status` (plan-status), and `/work-plan:run <subcommand>`.
+
+Codex plugin:
+
+```
+codex plugin marketplace add stylusnexus/agent-plugins
+codex plugin add work-plan@stylus-nexus
+```
+
+Invoke with `@work-plan` or `/skills`.
+
+npm (standalone CLI for any editor or terminal; macOS and Linux):
+
+```
+npm install -g @stylusnexus/work-plan
+```
+
+Install script (Cursor, GitHub Copilot, direct use; Windows via PowerShell):
+
+```
+git clone https://github.com/stylusnexus/work-plan-toolkit.git
+cd work-plan-toolkit && ./install.sh      # Windows: .\install.ps1
+```
+
+Cursor and GitHub Copilot have no native skill system; copy the drop-in instruction file from `shims/cursor/` or `shims/copilot/` into the project.
+
+VS Code extension, Work Plan Viewer: install from the VS Code Marketplace (https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) or Open VSX (https://open-vsx.org/extension/stylusnexus/work-plan-viewer), or run `code --install-extension stylusnexus.work-plan-viewer`. It needs VS Code 1.90.0 or later and the CLI installed; set `workPlan.cliPath` if VS Code cannot find `work-plan` on its PATH.
+
+Update: `npm install -g @stylusnexus/work-plan@latest`, `/plugin update work-plan@stylus-nexus`, or `git pull` and re-run the install script. Check the version with `work-plan --version` (CalVer plus commit SHA).
+
+## Requirements
+
+- Python 3.9 or newer (standard library only)
+- git 2.x
+- GitHub CLI `gh`, signed in with `gh auth login`
+- mikefarah `yq` 4.x (the Go version; the Python kislyuk/yq wrapper is not compatible)
+
+## Commands
+
+Run as `work-plan <subcommand>` (npm), `/work-plan <subcommand>` (install script) or `/work-plan:run <subcommand>` (Claude Code plugin). Full usage and examples: https://stylusnexus.github.io/work-plan-toolkit/commands/
+
+### Daily workflow
+
+- `brief [--repo=<key>]`: Multi-track snapshot with time-aware framing.
+- `where-was-i (alias: orient) [track | track@repo] [--pick] [--repo=<key>]`: Re-orient.
+- `handoff [track] [--set-next 1,2,3 | --auto-next] [--interactive]`: Wrap up a session: capture touched/next/blockers, update body status table.
+- `hygiene [--yes] [--no-duplicates] [--repo=<key>] [--timeout=N]`: Weekly cleanup wrapper: refresh-md + reconcile + dedupe-tiers (report-only) + milestone-drift (report-only) + duplicates.
+
+### Create and edit tracks
+
+- `new-track <repo> <slug> [--priority=P0..P3] [--milestone=<m>] [--private] [--confirm=<token>]`: Create a brand-new track file under notes_root in one headless call.
+- `init <path-to-md>`: Add frontmatter to an existing track .md file.
+- `list [--all] [--sort=recent|priority]`: List active tracks (or all including parked/archived).
+- `slot <issue-num> [track | track@repo] [--repo=<key>]`: Add a GitHub issue to a track's frontmatter.
+- `batch-slot <issue-num>... <track | track@repo> [--repo=<key>] [--move|--no-move|--reference]`: Slot multiple GitHub issues into a track at once.
+- `move <issue-num> <from-track> <to-track> [--repo=<key>]`: Move an issue from one track to another (remove from source frontmatter, add to destination).
+- `demote-to-reference <issue-num>... <track | track@repo> [--repo=<key>]`: Migrate issues a track lists in github.issues purely for count-surfacing into github.references, once a specialist track has taken real ownership.
+- `set <track | track@repo> field=value [field=value …] [--repo=<key>] [--confirm=<token>]`: Guarded edit of a track's frontmatter fields (status, launch_priority, milestone_alignment, blockers, next_up).
+- `set-next-up <track | track@repo> (--preset=<name> | --order=a,b,c | --clear | --auto=on|off) [--repo=<key>] [--confirm=<token>]`: Configure the ranking preset and/or auto-derivation flag for a track's next_up list.
+- `canonicalize <track | track@repo> | --all [--force] [--repo=<key>]`: Insert a canonical master issue table at the top of a track.
+- `rename-track <old-slug | old@repo> <new-slug> [--repo=<key>] [--fix-refs] [--commit] [--confirm=<token>]`: Rename an active track's slug: moves the .md file, updates the frontmatter `track` field + last_touched.
+- `close <track | track@repo> [--repo=<key>]`: Retire a track: shipped / parked / abandoned.
+
+### Track lifecycle
+
+- `mark-cleanup <track | track@repo> [--repo=<key>] [--clear] [--reason=<text>] [--confirm=<token>]`: Flag a track as a cleanup candidate by writing `cleanup_candidate: true` (and an optional `cleanup_reason`) into its frontmatter — a lightweight earmark that `hygiene` surfaces so stale/consolidatable tracks don't get lost.
+- `archive-track <track | track@repo> [--repo=<key>] [--confirm=<token>]`: Set a track aside REVERSIBLY: move its .md into archive/parked/ so it drops out of the active views but is kept for reference (distinct from `close`, which is terminal).
+- `unarchive-track <track | track@repo> [--repo=<key>] [--confirm=<token>]`: Restore an archived track (parked/shipped/abandoned) back into the active set — the inverse of archive-track and of `close`'s move.
+- `delete-track <track | track@repo> [--repo=<key>] [--confirm=<token>]`: DESTRUCTIVE: remove a track's local .md file.
+
+### Sync and audit against GitHub
+
+- `refresh-md <track> | --all | --repo=<key> [--yes]`: Sync issue STATE (open/closed, status labels) from GitHub into the track body's status table.
+- `reconcile <track> | --all | --repo=<key> [--draft] [--yes]`: Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label.
+- `coverage [--repo=<key>] [--list] [--limit=N]`: Report how many open issues are not referenced by any track (per repo).
+- `duplicates [--min-similarity=0.7] [--limit=20] [--state=open] [--timeout=N]`: Find likely-duplicate issues by title similarity.
+- `milestone-drift [--repo=<key>] [--unranked]`: Audit each track's hand-curated next_up queue against live GitHub.
+- `dedupe-tiers [--repo=<key>] [--apply]`: Remove private track copies that a shared twin in a repo's .work-plan/ supersedes.
+- `lift-rationale [--repo=<key>] [--track=<name>] [--apply]`: Move a track's rationale out of YAML frontmatter comments and into a '## Ranking rationale' body section.
+
+### AI-assisted, two-step commands
+
+- `group [--milestone=X] [--label=Y] [--repo=Z] [--apply] [--limit=N]`: AI-cluster GitHub issues into thematic track files.
+- `auto-triage [--repo=<key>] [--apply] [--json] [--heuristic] [--limit=N]`: AI-assign untracked open issues to existing tracks.
+- `suggest-priorities [--repo=<folder>] [--apply]`: AI-assisted batch backfill of priority/PN labels.
+
+### Repos, config and diagnostics
+
+- `init-repo <key> --github=<org/repo> [--local=<path>] [--update [--clear-local]]`: Bootstrap a new repo: create <notes_root>/<key>/archive/{shipped,abandoned}/ and add the repo block to your config.
+- `remove-repo <key>`: Unregister a repo: delete its block from your config (config-only).
+- `set-notes-root <path>`: Update notes_root in ~/.claude/work-plan/config.yml to an absolute path.
+- `notes-vcs <init|enable|disable|status|undo> [<sha>] [--no-enable] [--json]`: Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed.
+- `which-repo [--json]`: Resolve the current directory to one configured repo — by local clone path first, then the git `origin` remote.
+- `doctor [--json] [--fix]`: Detect drift between config.yml, local git clones, GitHub, and notes_root track frontmatter — a renamed local folder or GitHub repo that config.yml no longer matches, a non-git local path, duplicate entries, an invalid/missing notes_root, an orphaned notes folder, or a stale per-track github.repo.
+
+### Shared tracks
+
+- `plan-branch <init|status|push> <repo> [--branch=<name>] [--confirm=<token>] [--dry-run] [--json]`: Set up and share a repo's canonical SHARED-tier plan branch.
+- `push-track <track | track@repo> [--repo=<key>] [--no-push] [--confirm=<token>]`: Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it.
+
+### Plan and spec documents
+
+- `plan-status [--repo=<key>] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive | --issues] [--draft] [--since-days=N] [--type=plan|spec]`: Reach a verdict on every plan/spec doc in a repo by correlating each plan's declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes.
+- `plan-confirm --repo=<key> --verdict=shipped|partial|dead [--clear] [--confirm=<token>] -- <rel>`: Affirm a human verdict on ONE plan/spec doc by writing `verdict_override` into its YAML frontmatter — FRONTMATTER-ONLY (never the body, manifest, checkboxes, or status banner).
+- `plan-ack --repo=<key> [--clear] [--confirm=<token>] -- <rel>`: Persist an acknowledgment into ONE plan/spec doc's YAML frontmatter only (`acknowledged: true`) — never the body/manifest/checkboxes/banner.
+- `plan-baseline --repo=<key> [--clear] [--confirm=<token>] -- <rel>`: Stamp the CURRENT computed verdict into ONE plan/spec doc's YAML frontmatter only as a drift baseline (`verdict_baseline`).
+- `plan-archive --repo=<key> [--draft] [--yes] [--json] -- <rel>`: Archive ONE plan/spec doc whose effective verdict is shipped: history-preserving `git mv` into archive/shipped/.
+- `plan-unarchive --repo=<key> [--draft] [--yes] [--json] -- <rel>`: Restore ONE archived plan/spec doc back OUT of archive/<kind>/ to its live location — the inverse of plan-archive.
+
+### Commands that write to GitHub
+
+- `close-issue --repo=<key|slug> [--reason=completed|not_planned] [--comment=<text>] -- <number>`: A GitHub-mutating command (others: `in-progress`, `plan-status --issues`) — closes a GitHub issue via `gh issue close` (most of the toolkit is read-only on GitHub).
+- `in-progress <n> [--clear] [--repo=<key|slug>] [--confirm=<token>]`: Mark a tracked GitHub issue as in-progress by adding the `work-plan:in-progress` label (or remove it with --clear).
+
+### Read surfaces for the VS Code extension
+
+- `export --json`: Emit the viewer-ready JSON read surface (schema 1): every frontmatter'd track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone.
+- `list-open-issues --repo=<owner/name> [--exclude=<csv-issue-numbers>]`: Emit a repo's OPEN issues as JSON ({repo, issues:[{number,title,state,assignee,milestone}]}) — the same issue shape as export.
+- `auth-status [--json]`: Report whether gh is installed and signed in to GitHub, using a read-only gh auth status probe.
+
+## Work Plan Viewer settings
+
+- `workPlan.cliPath` (default `"work-plan"`): path to the CLI launcher.
+- `workPlan.trackStaleDays` (default 14): days without activity before a track counts as stale.
+- `workPlan.autoRefreshInterval` (default 0, off): background re-poll interval in seconds (30, 60, 300, 900).
+- `workPlan.expandReposByDefault` (default false): expand repo groups on load.
+- `workPlan.autoFocusRepo` (default false): scope the Tracks view to the open folder's repo.
+- `workPlan.showNextUpPreset` (default true): show the next-up ranking preset in the detail panel.
+- `workPlan.stallDays` (default "match"): staleness window for the Plans view.
+- `workPlan.plansAutoRefresh` (default true): re-scan plans when a repo's git refs change.
+- `workPlan.autoSlotConfidenceThreshold` (default 0.7): cutoff for one-click auto-slot suggestions.
+
+## FAQ
+
+### What is the work-plan toolkit?
+
+The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin for track-aware daily planning over GitHub issues. It groups issues into tracks and tells you and your AI agent what is in flight, what is blocked and what to pick up next.
+
+### What is a track?
+
+A track is a markdown file with YAML frontmatter that lists GitHub issue numbers for one workstream, plus fields such as launch_priority, milestone_alignment, next_up, blockers and depends_on. The body holds a session log and a status table that refresh-md keeps in sync with GitHub.
+
+### Does the work-plan toolkit work with Codex?
+
+Yes. Install it with codex plugin marketplace add stylusnexus/agent-plugins and then codex plugin add work-plan@stylus-nexus, and invoke it with @work-plan or /skills. The same CLI also runs directly from Cursor, GitHub Copilot or any terminal.
+
+### Does it replace Jira, Linear or GitHub Projects?
+
+No. It does not manage sprints, roadmaps or capacity. GitHub stays the source of truth for issues; the toolkit only reads and references them so you and your agent stay oriented.
+
+### Does it cache or mirror GitHub data?
+
+No. Every command re-derives state live from gh, git and your track files. There is no daemon, no stored copy of GitHub state and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing gh auth session.
+
+### Does it write to GitHub?
+
+Only when you ask. Issue data comes from read-only gh calls, and routine writes go to local markdown files. Three opt-in, gated commands change GitHub: plan-status --issues creates issues, close-issue closes one, and in-progress adds or removes the work-plan:in-progress label.
+
+### What do I need installed?
+
+Python 3.9 or newer, git, the GitHub CLI gh (signed in with gh auth login) and mikefarah yq 4.x, the Go version. The Python yq wrapper does not work. Run work-plan doctor to check the machine and get the fix for anything missing.
+
+### Can a team share tracks?
+
+Yes. Shared tracks live inside the repository at .work-plan/<slug>.md and travel with git pull and git push. The plan-branch command can pin them to one canonical branch, by default an orphan work-plan/plan branch, so planning stays out of code branches and pull requests. Private tracks stay in your local notes_root.
+
+### Is there a VS Code extension?
+
+Yes. Work Plan Viewer (stylusnexus.work-plan-viewer) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write.
+
+### Does the CLI call an AI model?
+
+No. The AI-assisted subcommands group, suggest-priorities and auto-triage print a prompt for your agent session, the agent saves a JSON answer, and you re-run the command with --apply. auto-triage --heuristic works offline with no model at all.
