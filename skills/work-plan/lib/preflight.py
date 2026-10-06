@@ -196,6 +196,86 @@ def check_notes_root(cfg: Optional[dict]) -> dict:
     return _result("notes-root", OK, f"notes_root is readable and writable ({raw})")
 
 
+def _git_dir_marker(git: Callable, wt: Path, name: str) -> Optional[Path]:
+    """The on-disk path of git state file `name` (e.g. rebase-merge) for worktree `wt`."""
+    proc = git(wt, "rev-parse", "--git-path", name)
+    if proc is None or proc.returncode != 0 or not (proc.stdout or "").strip():
+        return None
+    path = Path(proc.stdout.strip())
+    return path if path.is_absolute() else wt / path
+
+
+def check_plan_worktrees(cfg: Optional[dict], *, git: Optional[Callable] = None,
+                         worktree_dir: Optional[Callable] = None,
+                         branch_exists: Optional[Callable] = None) -> list:
+    """Health of each configured plan_branch worktree (#427, #260). Read-only:
+    it inspects, and never creates the worktree (ensure_worktree would).
+
+    One result per repo that declares `plan_branch`, id `plan-worktree:<key>`.
+    Always at most a warning: a broken plan worktree degrades the SHARED tier to
+    "no shared tier", it does not stop the toolkit working. A worktree that has
+    not been created yet is healthy — it is made lazily on first use.
+    """
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("repos"), dict):
+        return []
+    if git is None or worktree_dir is None or branch_exists is None:
+        from lib import plan_worktree as pw
+        git = git or pw._git
+        worktree_dir = worktree_dir or pw._worktree_dir
+        branch_exists = branch_exists or pw._branch_exists
+
+    out = []
+    for key, entry in cfg["repos"].items():
+        if not isinstance(entry, dict) or not entry.get("plan_branch"):
+            continue
+        id_ = f"plan-worktree:{key}"
+        branch = str(entry["plan_branch"])
+        local = entry.get("local")
+        if not isinstance(local, str) or not Path(local).expanduser().is_dir():
+            out.append(_result(id_, SKIP, f"skipped: '{key}' has no local clone on disk (see config findings)"))
+            continue
+        local_path = Path(local).expanduser()
+        try:
+            if not branch_exists(local_path, branch):
+                out.append(_result(
+                    id_, WARN, f"plan branch '{branch}' not found locally or on origin for '{key}'",
+                    f"Create it: work-plan plan-branch init {key} — or fetch it: git -C '{local}' fetch origin {branch}"))
+                continue
+            wt = worktree_dir(local_path)
+            if not (wt / ".git").exists():
+                if wt.exists() and any(wt.iterdir()):
+                    out.append(_result(
+                        id_, WARN, f"plan worktree dir for '{key}' exists but is not a git worktree ({wt})",
+                        f"Remove it so it can be recreated: rm -rf '{wt}' && git -C '{local}' worktree prune"))
+                else:
+                    out.append(_result(id_, OK, f"plan branch '{branch}' exists; its worktree is created on first use"))
+                continue
+            head = git(wt, "rev-parse", "--abbrev-ref", "HEAD")
+            if head is None or head.returncode != 0:
+                out.append(_result(
+                    id_, WARN, f"could not read the plan worktree for '{key}' ({wt})",
+                    f"Inspect it: git -C '{wt}' status — or remove it: rm -rf '{wt}' && git -C '{local}' worktree prune"))
+                continue
+            current = head.stdout.strip()
+            if current != branch:
+                out.append(_result(
+                    id_, WARN, f"plan worktree for '{key}' is on '{current}', not '{branch}'",
+                    f"Switch it back: git -C '{wt}' checkout {branch}"))
+                continue
+            stuck = next((n for n in ("rebase-merge", "rebase-apply", "MERGE_HEAD")
+                          if (m := _git_dir_marker(git, wt, n)) is not None and m.exists()), None)
+            if stuck:
+                what = "a rebase" if stuck.startswith("rebase") else "a merge"
+                out.append(_result(
+                    id_, WARN, f"plan worktree for '{key}' is stuck in {what}",
+                    f"Finish or abort it: git -C '{wt}' {'rebase' if what == 'a rebase' else 'merge'} --abort"))
+                continue
+            out.append(_result(id_, OK, f"plan worktree for '{key}' is on '{branch}'"))
+        except Exception as e:  # health inspection must never take doctor down
+            out.append(_result(id_, WARN, f"could not inspect the plan worktree for '{key}': {e}"))
+    return out
+
+
 def run_preflight(*, which: Callable = shutil.which, runner: Callable = subprocess.run,
                   version_info=None, wsl: Optional[bool] = None,
                   auth_fn: Optional[Callable] = None,
@@ -218,6 +298,7 @@ def run_preflight(*, which: Callable = shutil.which, runner: Callable = subproce
     config_result, cfg = check_config(load_config_fn, yq_ok)
     results.append(config_result)
     results.append(check_notes_root(cfg))
+    results += check_plan_worktrees(cfg)
     return results
 
 

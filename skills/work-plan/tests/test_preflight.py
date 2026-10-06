@@ -2,6 +2,7 @@
 check and a remediation, results stay well-formed when subprocesses misbehave,
 and nothing here touches the real machine (all seams are injected)."""
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ sys.path.insert(0, str(SKILL_ROOT))
 from lib import preflight
 from lib.preflight import (
     FAIL, OK, SKIP, WARN, check_config, check_git, check_gh, check_notes_root,
-    check_python, check_yq, overall_status, run_preflight,
+    check_plan_worktrees, check_python, check_yq, overall_status, run_preflight,
 )
 
 
@@ -243,6 +244,141 @@ class ConfigAndNotesTest(unittest.TestCase):
         self.assertEqual(check_notes_root({"notes_root": r"C:\Users\eve\Notes"})["status"], SKIP)
 
 
+class PlanWorktreeTest(unittest.TestCase):
+    """#427/#260: read-only health of each configured plan_branch worktree."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.local = self.root / "clone"
+        self.local.mkdir()
+        self.wt = self.root / "wt"
+        self.calls = []
+
+    def cfg(self, **entry):
+        base = {"github": "o/r", "local": str(self.local), "plan_branch": "work-plan/plan"}
+        base.update(entry)
+        return {"repos": {"myrepo": base}}
+
+    def make_git(self, *, head="work-plan/plan", head_rc=0, markers=()):
+        def git(cwd, *args, timeout=None):
+            self.calls.append(args)
+            if args[:3] == ("rev-parse", "--abbrev-ref", "HEAD"):
+                return None if head is None else proc(head + "\n", head_rc)
+            if args[:2] == ("rev-parse", "--git-path"):
+                name = args[2]
+                return proc(str(self.root / "gitdir" / name) + "\n")
+            raise AssertionError(f"unexpected git call {args}")
+        for m in markers:
+            (self.root / "gitdir").mkdir(exist_ok=True)
+            (self.root / "gitdir" / m).mkdir(exist_ok=True)
+        return git
+
+    def run_check(self, cfg=None, *, git=None, exists=True, create_wt=False):
+        if create_wt:
+            self.wt.mkdir(exist_ok=True)
+            (self.wt / ".git").write_text("gitdir: elsewhere\n")
+        return check_plan_worktrees(
+            cfg if cfg is not None else self.cfg(),
+            git=git or self.make_git(), worktree_dir=lambda p: self.wt,
+            branch_exists=lambda p, b: exists)
+
+    def one(self, **kw):
+        out = self.run_check(**kw)
+        self.assertEqual(len(out), 1, out)
+        return out[0]
+
+    def test_healthy_worktree_on_the_plan_branch(self):
+        r = self.one(create_wt=True)
+        self.assertEqual((r["id"], r["status"]), ("plan-worktree:myrepo", OK))
+
+    def test_not_created_yet_is_healthy_because_it_is_made_on_first_use(self):
+        r = self.one()
+        self.assertEqual(r["status"], OK)
+        self.assertIn("created on first use", r["message"])
+
+    def test_missing_plan_branch_warns_with_both_fixes(self):
+        r = self.one(exists=False)
+        self.assertEqual(r["status"], WARN)
+        self.assertIn("not found locally or on origin", r["message"])
+        self.assertIn("plan-branch init myrepo", r["remediation"])
+        self.assertIn("fetch origin work-plan/plan", r["remediation"])
+
+    def test_worktree_on_the_wrong_branch_warns(self):
+        r = self.one(create_wt=True, git=self.make_git(head="feature/x"))
+        self.assertEqual(r["status"], WARN)
+        self.assertIn("is on 'feature/x', not 'work-plan/plan'", r["message"])
+        self.assertIn("checkout work-plan/plan", r["remediation"])
+
+    def test_unreadable_worktree_warns(self):
+        for git in (self.make_git(head_rc=128), self.make_git(head=None)):
+            r = self.one(create_wt=True, git=git)
+            self.assertEqual(r["status"], WARN)
+            self.assertIn("could not read the plan worktree", r["message"])
+
+    def test_stale_non_worktree_directory_warns(self):
+        self.wt.mkdir()
+        (self.wt / "junk.txt").write_text("x")
+        r = self.one()
+        self.assertEqual(r["status"], WARN)
+        self.assertIn("not a git worktree", r["message"])
+        self.assertIn("git -C", r["remediation"])
+        self.assertIn("worktree prune", r["remediation"])
+
+    def test_empty_leftover_directory_is_not_a_problem(self):
+        self.wt.mkdir()
+        self.assertEqual(self.one()["status"], OK)
+
+    def test_mid_rebase_and_mid_merge_are_reported_distinctly(self):
+        for marker, word, abort in (("rebase-merge", "rebase", "rebase --abort"),
+                                    ("rebase-apply", "rebase", "rebase --abort"),
+                                    ("MERGE_HEAD", "merge", "merge --abort")):
+            with self.subTest(marker=marker):
+                shutil.rmtree(self.root / "gitdir", ignore_errors=True)  # one marker at a time
+                r = self.one(create_wt=True, git=self.make_git(markers=[marker]))
+                self.assertEqual(r["status"], WARN)
+                self.assertIn(f"stuck in a {word}", r["message"])
+                self.assertIn(abort, r["remediation"])
+
+    def test_one_result_per_repo_that_declares_a_plan_branch(self):
+        cfg = {"repos": {
+            "a": {"local": str(self.local), "plan_branch": "p"},
+            "b": {"local": str(self.local)},                     # no plan_branch → no result
+            "c": "scalar-shorthand",                             # malformed entry → ignored
+            "d": {"local": str(self.local), "plan_branch": "q"},
+        }}
+        out = self.run_check(cfg)
+        self.assertEqual([r["id"] for r in out], ["plan-worktree:a", "plan-worktree:d"])
+
+    def test_missing_local_clone_is_skipped_not_failed(self):
+        for entry in ({"plan_branch": "p"}, {"plan_branch": "p", "local": None},
+                      {"plan_branch": "p", "local": str(self.root / "nowhere")},
+                      {"plan_branch": "p", "local": r"C:\Users\eve\clone"}):
+            r = self.one(cfg={"repos": {"r": entry}})
+            self.assertEqual(r["status"], SKIP, entry)
+
+    def test_no_repos_or_no_config_yields_nothing(self):
+        for cfg in (None, {}, {"repos": None}, {"repos": []}, {"repos": {}}):
+            self.assertEqual(
+                check_plan_worktrees(cfg, git=self.make_git(), worktree_dir=lambda p: self.wt,
+                                     branch_exists=lambda p, b: True), [])
+
+    def test_an_unexpected_error_becomes_a_warning_not_an_exception(self):
+        def boom(*a, **k):
+            raise RuntimeError("disk on fire")
+        out = check_plan_worktrees(self.cfg(), git=self.make_git(), worktree_dir=boom,
+                                   branch_exists=lambda p, b: True)
+        self.assertEqual(out[0]["status"], WARN)
+        self.assertIn("disk on fire", out[0]["message"])
+
+    def test_never_creates_the_worktree_or_runs_a_write_command(self):
+        self.run_check(create_wt=True)
+        self.assertFalse(self.root.joinpath("gitdir").exists())
+        self.assertTrue(all(a[0] == "rev-parse" for a in self.calls), self.calls)
+        self.assertFalse((self.wt / "new-file").exists())
+
+
 class RunPreflightTest(unittest.TestCase):
     def _run(self, **kw):
         base = dict(which=which_for(git="/usr/bin/git", gh="/usr/bin/gh", yq="/usr/bin/yq"),
@@ -289,6 +425,15 @@ class RunPreflightTest(unittest.TestCase):
     def test_missing_version_file_is_only_a_warning(self):
         out = self._run(version=None)
         self.assertEqual(by_id(out, "launcher")["status"], WARN)
+        self.assertEqual(overall_status(out), "warning")
+
+    def test_plan_worktree_checks_join_the_run_when_a_repo_declares_one(self):
+        cfg = {"notes_root": tempfile.gettempdir(),
+               "repos": {"r": {"local": tempfile.gettempdir(), "plan_branch": "p"}}}
+        with mock.patch("lib.plan_worktree._branch_exists", return_value=False):
+            out = self._run(load_config_fn=lambda: cfg)
+        self.assertEqual(out[-1]["id"], "plan-worktree:r")
+        self.assertEqual(out[-1]["status"], WARN)
         self.assertEqual(overall_status(out), "warning")
 
     def test_only_expected_read_only_commands_run(self):
