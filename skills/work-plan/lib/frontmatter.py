@@ -55,8 +55,9 @@ def write_file(path: Path, meta: dict, body: str) -> None:
     frontmatter text is kept byte-for-byte, and otherwise only the keys that
     changed are edited in place with `yq` (see `_patch_yaml`). If that cannot be
     done and verified, it falls back to a full re-dump and WARNS how many comment
-    lines were lost. A comment travels with the entry that follows it, so
-    comments on an entry that was actually removed are dropped (and counted).
+    lines were lost. A comment between list entries travels with a neighbouring entry (which
+    one depends on the yq version), so comments on an entry that was actually
+    removed may be dropped (and are counted).
     """
     p = Path(path)
     if p.is_symlink():
