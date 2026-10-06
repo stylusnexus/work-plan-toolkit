@@ -119,13 +119,14 @@ class ReadOnlyContractTest(unittest.TestCase):
         )
         self.assertEqual(rc, 0)
         self._assert_read_only(captured)
-        # Two configured labels × two kinds (issue + pr) → four gh invocations
+        # Two configured labels PLUS the default `track/beta` (#493: an override
+        # adds to the default, never replaces it) × two kinds (issue + pr).
         gh_calls = [a for a in captured if a and a[0] == "gh"]
-        self.assertEqual(len(gh_calls), 4,
+        self.assertEqual(len(gh_calls), 6,
                          f"expected one gh issue + one gh pr call per label, got {len(gh_calls)}")
         kinds = sorted(c[1] for c in gh_calls)
-        self.assertEqual(kinds, ["issue", "issue", "pr", "pr"],
-                         f"expected two issue + two pr calls, got {kinds}")
+        self.assertEqual(kinds, ["issue"] * 3 + ["pr"] * 3,
+                         f"expected three issue + three pr calls, got {kinds}")
 
     def test_user_accept_writes_local_file_only_not_gh(self):
         # Even when the user accepts the proposed ADDs, the only write should

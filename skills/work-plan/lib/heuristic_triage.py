@@ -23,6 +23,8 @@ doc is stamped `source: "heuristic"` so the viewer can flag it as lower-trust.
 """
 import re
 
+from lib.track_labels import effective_labels
+
 # Weights are deliberately simple and sum-clamped to 1.0. Tuned so a single
 # strong signal alone stays below the default suggest bar (0.3 < 0.4/0.5), i.e.
 # one weak coincidence won't auto-suggest, but a strong signal does clear it.
@@ -50,13 +52,10 @@ def _tokens(text):
 
 
 def _track_labels(track):
-    """A track's effective reconcile labels (lowercased): github.labels if set,
-    else the default `track/<slug>` — mirrors reconcile's resolution (#373)."""
-    labels = (track.get("labels") or [])
-    if labels:
-        return {str(x).lower() for x in labels}
-    slug = track.get("slug") or ""
-    return {f"track/{slug}".lower()} if slug else set()
+    """A track's effective reconcile labels (lowercased): `track/<slug>` plus any
+    github.labels — mirrors reconcile's resolution (#373, #493)."""
+    labels = effective_labels(track.get("labels"), track.get("slug") or "")
+    return {str(x).lower() for x in labels}
 
 
 def score_suggestions(untracked, tracks, *, min_score=0.3, margin_gap=0.15):
