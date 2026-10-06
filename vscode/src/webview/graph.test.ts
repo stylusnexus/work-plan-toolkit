@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import type { Export, Track } from "../model.ts";
 import { trackKey } from "../model.ts";
 import { toMermaid, __mermaidLabelForTest as mermaidLabel } from "./graph.ts";
+import { makeIssue, makeTrack } from "../testFixtures.ts";
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -23,7 +24,7 @@ const exp: Export = {
   schema: 1,
   generated_at: "2026-06-07T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "platform-health",
       repo: "your-org/myproject",
       tier: "private",
@@ -35,13 +36,13 @@ const exp: Export = {
       next_up: [487, 1556],
       rollup: { open: 12, closed: 8 },
       issues: [
-        { number: 487,  title: "auth rate limit",  state: "open",   assignee: "@alice", milestone: "M1" },
-        { number: 1556, title: "session cache",    state: "open",   assignee: "@bob",   milestone: "M1" },
-        { number: 2196, title: "RLS audit",        state: "closed", assignee: "—",      milestone: null },
-        { number: 2528, title: "poll schema",      state: "open",   assignee: "@alice", milestone: null },
+        makeIssue({ number: 487,  title: "auth rate limit",  state: "open",   assignee: "@alice", milestone: "M1" }),
+        makeIssue({ number: 1556, title: "session cache",    state: "open",   assignee: "@bob",   milestone: "M1" }),
+        makeIssue({ number: 2196, title: "RLS audit",        state: "closed", assignee: "—",      milestone: null }),
+        makeIssue({ number: 2528, title: "poll schema",      state: "open",   assignee: "@alice", milestone: null }),
       ],
-    },
-    {
+    }),
+    makeTrack({
       name: "idea-mode",
       repo: "your-org/myproject",
       tier: "private",
@@ -53,11 +54,11 @@ const exp: Export = {
       next_up: [4821],
       rollup: { open: 5, closed: 3 },
       issues: [
-        { number: 4821, title: "OAuth scopes", state: "open",   assignee: "@carol", milestone: null },
-        { number: 4830, title: "scope UI",     state: "open",   assignee: "@carol", milestone: null },
+        makeIssue({ number: 4821, title: "OAuth scopes", state: "open",   assignee: "@carol", milestone: null }),
+        makeIssue({ number: 4830, title: "scope UI",     state: "open",   assignee: "@carol", milestone: null }),
       ],
-    },
-    {
+    }),
+    makeTrack({
       name: "org-sharing",
       repo: "stylusnexus/work-plan-toolkit",
       tier: "private",
@@ -69,10 +70,10 @@ const exp: Export = {
       next_up: [87],
       rollup: { open: 3, closed: 2 },
       issues: [
-        { number: 87, title: "VS Code viewer", state: "open",   assignee: "@dave", milestone: null },
-        { number: 74, title: "plan-status",    state: "closed", assignee: "—",     milestone: null },
+        makeIssue({ number: 87, title: "VS Code viewer", state: "open",   assignee: "@dave", milestone: null }),
+        makeIssue({ number: 74, title: "plan-status",    state: "closed", assignee: "—",     milestone: null }),
       ],
-    },
+    }),
   ],
 };
 
@@ -312,7 +313,7 @@ describe("toMermaid — label escaping", () => {
     schema: 1,
     generated_at: "2026-06-07T00:00:00Z",
     tracks: [
-      {
+      makeTrack({
         name: "quoted",
         repo: "stylusnexus/test",
         tier: "private",
@@ -324,15 +325,15 @@ describe("toMermaid — label escaping", () => {
         next_up: [555],
         rollup: { open: 1, closed: 0 },
         issues: [
-          {
+          makeIssue({
             number: 555,
             title: 'auth "rate" limit',
             state: "open",
             assignee: "@x",
             milestone: null,
-          },
+          }),
         ],
-      },
+      }),
     ],
   };
 
@@ -527,7 +528,7 @@ describe("toMermaid — next_up self-loop dedup", () => {
     schema: 1,
     generated_at: "2026-06-07T00:00:00Z",
     tracks: [
-      {
+      makeTrack({
         name: "dup",
         repo: "stylusnexus/test",
         tier: "private",
@@ -539,7 +540,7 @@ describe("toMermaid — next_up self-loop dedup", () => {
         next_up: [10, 10, 20],
         rollup: { open: 0, closed: 0 },
         issues: [],
-      },
+      }),
     ],
   };
 
@@ -565,7 +566,7 @@ describe("toMermaid — track id collision disambiguation", () => {
     schema: 1,
     generated_at: "2026-06-09T00:00:00Z",
     tracks: [
-      {
+      makeTrack({
         name: "my-track",
         repo: "org/repo",
         tier: "private",
@@ -577,10 +578,10 @@ describe("toMermaid — track id collision disambiguation", () => {
         next_up: [1],
         rollup: { open: 0, closed: 0 },
         issues: [
-          { number: 1, title: "test issue", state: "open", assignee: "@x", milestone: null },
+          makeIssue({ number: 1, title: "test issue", state: "open", assignee: "@x", milestone: null }),
         ],
-      },
-      {
+      }),
+      makeTrack({
         name: "my_track",
         repo: "org/repo",
         tier: "private",
@@ -592,7 +593,7 @@ describe("toMermaid — track id collision disambiguation", () => {
         next_up: [],
         rollup: { open: 0, closed: 0 },
         issues: [],
-      },
+      }),
     ],
   };
 
@@ -659,7 +660,7 @@ describe("toMermaid — track id collision disambiguation", () => {
       schema: 1,
       generated_at: "2026-06-09T00:00:00Z",
       tracks: [
-        {
+        makeTrack({
           name: "platform-health",
           repo: "org/repo",
           tier: "private",
@@ -671,9 +672,9 @@ describe("toMermaid — track id collision disambiguation", () => {
           next_up: [1],
           rollup: { open: 0, closed: 0 },
           issues: [
-            { number: 1, title: "test", state: "open", assignee: "@x", milestone: null },
+            makeIssue({ number: 1, title: "test", state: "open", assignee: "@x", milestone: null }),
           ],
-        },
+        }),
       ],
     };
     const out = toMermaid(singleTrackExp);
@@ -718,7 +719,7 @@ const crossRepoIdentityExp: Export = {
       depends_on: ["dep"],
       rollup: { open: 2, closed: 0 },
       issues: [
-        { number: 2, title: "A selected issue", state: "open", assignee: "@a", milestone: null },
+        makeIssue({ number: 2, title: "A selected issue", state: "open", assignee: "@a", milestone: null }),
       ],
     },
     {
@@ -736,7 +737,7 @@ const crossRepoIdentityExp: Export = {
       depends_on: [],
       rollup: { open: 1, closed: 0 },
       issues: [
-        { number: 1, title: "A prerequisite", state: "open", assignee: "@a", milestone: null },
+        makeIssue({ number: 1, title: "A prerequisite", state: "open", assignee: "@a", milestone: null }),
       ],
     },
     {
@@ -754,7 +755,7 @@ const crossRepoIdentityExp: Export = {
       depends_on: ["dep"],
       rollup: { open: 2, closed: 0 },
       issues: [
-        { number: 2, title: "B selected issue", state: "open", assignee: "@b", milestone: null },
+        makeIssue({ number: 2, title: "B selected issue", state: "open", assignee: "@b", milestone: null }),
       ],
     },
     {
@@ -772,7 +773,7 @@ const crossRepoIdentityExp: Export = {
       depends_on: [],
       rollup: { open: 1, closed: 0 },
       issues: [
-        { number: 1, title: "B prerequisite", state: "open", assignee: "@b", milestone: null },
+        makeIssue({ number: 1, title: "B prerequisite", state: "open", assignee: "@b", milestone: null }),
       ],
     },
   ],
@@ -916,7 +917,7 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
     schema: 1,
     generated_at: "2026-06-09T00:00:00Z",
     tracks: [
-      {
+      makeTrack({
         name: "special",
         repo: "org/repo",
         tier: "private",
@@ -928,13 +929,13 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
         next_up: [],
         rollup: { open: 0, closed: 0 },
         issues: [
-          { number: 10, title: "Fix [API] rate limit", state: "open", assignee: "@x", milestone: null },
-          { number: 20, title: "Update (urgent) dependencies", state: "open", assignee: "@x", milestone: null },
-          { number: 30, title: "Handle {JSON} parsing", state: "open", assignee: "@x", milestone: null },
-          { number: 40, title: 'Auth "token" refresh', state: "open", assignee: "@x", milestone: null },
-          { number: 50, title: "Run `migrate` script", state: "open", assignee: "@x", milestone: null },
+          makeIssue({ number: 10, title: "Fix [API] rate limit", state: "open", assignee: "@x", milestone: null }),
+          makeIssue({ number: 20, title: "Update (urgent) dependencies", state: "open", assignee: "@x", milestone: null }),
+          makeIssue({ number: 30, title: "Handle {JSON} parsing", state: "open", assignee: "@x", milestone: null }),
+          makeIssue({ number: 40, title: 'Auth "token" refresh', state: "open", assignee: "@x", milestone: null }),
+          makeIssue({ number: 50, title: "Run `migrate` script", state: "open", assignee: "@x", milestone: null }),
         ],
-      },
+      }),
     ],
   };
 
@@ -993,7 +994,7 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
       schema: 1,
       generated_at: "2026-06-09T00:00:00Z",
       tracks: [
-        {
+        makeTrack({
           name: "fix [API] (v2) {urgent}",
           repo: "org/repo",
           tier: "private",
@@ -1005,7 +1006,7 @@ describe("toMermaid — label escaping (brackets/parens/braces/backticks)", () =
           next_up: [],
           rollup: { open: 0, closed: 0 },
           issues: [],
-        },
+        }),
       ],
     };
     const out = toMermaid(bracketTrackExp);
@@ -1032,7 +1033,7 @@ describe("toMermaid — depends_on edges (#102)", () => {
     schema: 1,
     generated_at: "2026-06-09T00:00:00Z",
     tracks: [
-      {
+      makeTrack({
         name: "alpha",
         repo: "org/repo",
         tier: "private",
@@ -1045,8 +1046,8 @@ describe("toMermaid — depends_on edges (#102)", () => {
         depends_on: ["beta"],
         rollup: { open: 0, closed: 0 },
         issues: [],
-      },
-      {
+      }),
+      makeTrack({
         name: "beta",
         repo: "org/repo",
         tier: "private",
@@ -1059,7 +1060,7 @@ describe("toMermaid — depends_on edges (#102)", () => {
         depends_on: [],
         rollup: { open: 0, closed: 0 },
         issues: [],
-      },
+      }),
     ],
   };
 
@@ -1176,7 +1177,7 @@ describe("mermaidLabel — hostile-title corpus (#197)", () => {
       schema: 1,
       generated_at: "2026-06-10T00:00:00Z",
       tracks: [
-        {
+        makeTrack({
           name: 'evil")\nx["pwned',
           repo: "stylusnexus/work-plan-toolkit",
           tier: "shared",
@@ -1188,9 +1189,9 @@ describe("mermaidLabel — hostile-title corpus (#197)", () => {
           next_up: [42],
           rollup: { open: 1, closed: 0 },
           issues: [
-            { number: 42, title: 'boom"]\nclass x evil', state: "open", assignee: "@x", milestone: null },
+            makeIssue({ number: 42, title: 'boom"]\nclass x evil', state: "open", assignee: "@x", milestone: null }),
           ],
-        },
+        }),
       ],
     };
 
@@ -1278,7 +1279,7 @@ const sameRepoExp: Export = {
   schema: 1,
   generated_at: "2026-06-14T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       ...blockedByBaseTrack,
       // Both #5 and #9 in next_up → both become issue nodes in focused graph.
       next_up: [5, 9],
@@ -1307,7 +1308,7 @@ const sameRepoExp: Export = {
           blocking: [{ number: 5, repo: "o/r", title: "do the thing" }],
         },
       ],
-    },
+    }),
   ],
 };
 
@@ -1315,7 +1316,7 @@ const crossRepoExp: Export = {
   schema: 1,
   generated_at: "2026-06-14T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       ...blockedByBaseTrack,
       next_up: [5, 9],
       issues: [
@@ -1343,7 +1344,7 @@ const crossRepoExp: Export = {
           blocking: [],
         },
       ],
-    },
+    }),
   ],
 };
 
@@ -1383,7 +1384,7 @@ const freeTextBlockerExp: Export = {
   schema: 1,
   generated_at: "2026-06-20T00:00:00Z",
   tracks: [
-    {
+    makeTrack({
       name: "gpt-5-4-upgrades",
       repo: "stylusnexus/CritForge",
       tier: "private",
@@ -1395,12 +1396,12 @@ const freeTextBlockerExp: Export = {
       next_up: [5554, 5550],
       rollup: { open: 6, closed: 0 },
       issues: [
-        { number: 4773, title: "zero entity loss weight", state: "open", assignee: "@x", milestone: null },
-        { number: 5548, title: "tag $ai_content_type",    state: "open", assignee: "@x", milestone: null },
-        { number: 5554, title: "maps cost-telemetry",      state: "open", assignee: "@x", milestone: null },
-        { number: 5550, title: "selective routing",        state: "open", assignee: "@x", milestone: null },
+        makeIssue({ number: 4773, title: "zero entity loss weight", state: "open", assignee: "@x", milestone: null }),
+        makeIssue({ number: 5548, title: "tag $ai_content_type",    state: "open", assignee: "@x", milestone: null }),
+        makeIssue({ number: 5554, title: "maps cost-telemetry",      state: "open", assignee: "@x", milestone: null }),
+        makeIssue({ number: 5550, title: "selective routing",        state: "open", assignee: "@x", milestone: null }),
       ],
-    },
+    }),
   ],
 };
 

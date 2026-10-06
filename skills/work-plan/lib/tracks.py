@@ -56,10 +56,14 @@ class Track:
     tier: Optional[str] = None
 
 
-def discover_tracks(cfg: dict) -> list[Track]:
+def discover_tracks(cfg: dict, collisions: Optional[list] = None) -> list[Track]:
     """Walk notes_root for active (non-archived) .md files, then union with
     shared tracks from each configured repo's .work-plan/ directory.
     Shared wins on (repo, name) collisions.
+
+    `collisions` (#425): an optional list that receives each (shared, private)
+    pair the merge dropped, so a caller that also wants duplicates (export) reuses
+    the tracks already parsed here instead of rescanning both tiers.
     """
     private = _discover_private_tracks(cfg, include_archive=False)
     shared = _discover_shared_tracks(cfg, include_archive=False)
@@ -82,6 +86,8 @@ def discover_tracks(cfg: dict) -> list[Track]:
                 f" → resolve with `/work-plan dedupe-tiers{hint}`.",
                 file=sys.stderr,
             )
+            if collisions is not None:
+                collisions.append((shared_keys[key], t))
         else:
             merged.append(t)
 
@@ -147,11 +153,16 @@ def scope_issue_numbers(meta: dict) -> list:
     return _github_int_list(meta, "issues") + reference_numbers(meta)
 
 
-def find_tier_duplicates(cfg: dict) -> list:
+def find_tier_duplicates(cfg: dict, active: Optional[list] = None,
+                         archived: Optional[list] = None) -> list:
     """Return (shared, private) Track pairs that collide on (repo, name) across
     BOTH the active and archived tiers. Unlike discover_tracks, this does NOT
     print a warning and does NOT drop the private side — it hands both copies to
     the caller (dedupe-tiers) so the orphan can be inspected and removed.
+
+    `active` / `archived` (#425): pairs already collected by discover_tracks /
+    discover_archived_tracks via their `collisions` arg. A supplied tier is not
+    rescanned (each rescan re-parses every file through `yq`); None scans it.
     """
     pairs: list = []
 
@@ -161,12 +172,19 @@ def find_tier_duplicates(cfg: dict) -> list:
     if not cfg.get("notes_root"):
         return pairs
 
-    shared_active = {(t.repo, t.name): t
-                     for t in _discover_shared_tracks(cfg, include_archive=False)}
-    for t in _discover_private_tracks(cfg, include_archive=False):
-        s = shared_active.get((t.repo, t.name))
-        if s is not None:
-            pairs.append((s, t))
+    if active is not None:
+        pairs.extend(active)
+    else:
+        shared_active = {(t.repo, t.name): t
+                         for t in _discover_shared_tracks(cfg, include_archive=False)}
+        for t in _discover_private_tracks(cfg, include_archive=False):
+            s = shared_active.get((t.repo, t.name))
+            if s is not None:
+                pairs.append((s, t))
+
+    if archived is not None:
+        pairs.extend(archived)
+        return pairs
 
     shared_arch = {(t.repo, t.name): t
                    for t in _discover_shared_tracks(cfg, include_archive=True,
@@ -265,12 +283,13 @@ def active_owning_tracks(issue_num: int, repo: Optional[str], exclude_name: str,
     return owners
 
 
-def discover_archived_tracks(cfg: dict) -> list[Track]:
+def discover_archived_tracks(cfg: dict, collisions: Optional[list] = None) -> list[Track]:
     """Walk notes_root for archived .md files, and also scan each repo's
     .work-plan/archive/ for shared archived tracks.
 
     Deduplicates by (repo, name): shared wins over private, same as
-    discover_tracks for active tracks.
+    discover_tracks for active tracks. `collisions` collects the dropped
+    (shared, private) pairs, as in discover_tracks (#425).
     """
     notes_root = Path(cfg["notes_root"]).expanduser()
     private_archived: list[Track] = []
@@ -306,6 +325,8 @@ def discover_archived_tracks(cfg: dict) -> list[Track]:
                 f" → resolve with `/work-plan dedupe-tiers{hint}`.",
                 file=sys.stderr,
             )
+            if collisions is not None:
+                collisions.append((shared_keys[key], t))
         else:
             merged.append(t)
 

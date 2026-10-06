@@ -102,7 +102,7 @@ python3 skills/work-plan/work_plan.py brief
 - Subcommands: `skills/work-plan/commands/<name>.py` (each exports `run(args) -> int`). Thin orchestration over `lib/`.
 - Shared helpers: `skills/work-plan/lib/` (`config.py`, `frontmatter.py`, `tracks.py`, `github_state.py`, `git_state.py`, `status_table.py`, `prompts.py`).
 - Tests: `skills/work-plan/tests/` (stdlib `unittest`, offline).
-- Slash-command alias: `commands/work-plan.md`. Skill prompt: `skills/work-plan/SKILL.md`.
+- Slash-command alias: `installer/work-plan.md`. Skill prompt: `skills/work-plan/SKILL.md`.
 - Specs/plans: `docs/superpowers/specs/`, `docs/superpowers/plans/`.
 - Source → runtime: `skills/work-plan/` → `~/.claude/skills/work-plan/` (via `install.sh`).
 
@@ -112,7 +112,7 @@ python3 skills/work-plan/work_plan.py brief
 
 - `skills/work-plan/` (source) → `~/.claude/skills/work-plan/` (installed copy used by `/work-plan`)
 - `skills/repo-activity-summary/` → `~/.claude/skills/repo-activity-summary/`
-- `commands/work-plan.md` → `~/.claude/commands/work-plan.md` (the slash-command alias)
+- `installer/work-plan.md` → `~/.claude/commands/work-plan.md` (the slash-command alias)
 - `notes/` (default `notes_root` in seeded config) — empty until `init-repo` populates it
 
 The active config the skill reads is `~/.claude/work-plan/config.yml`. There is no template file in the repo for it; `install.sh` writes the right two lines directly.
@@ -141,6 +141,7 @@ When a change warrants it, update the docs **in the same PR** as the code — do
 - **vscode/CHANGELOG.md** — a new top entry whenever `vscode/package.json`'s version is bumped (the Marketplace Changelog tab). Hand-maintained; **don't confuse it with the root `CHANGELOG.md`**, which the bot writes.
 - **README.md** (root) — when you add/rename/remove a subcommand or flag, or change user-visible behavior. The command tables (the `## Commands` reference and the quick-start table near the top) are hand-maintained; update both rows if the change touches a command listed in each.
 - **vscode/README.md** — when the VS Code extension's surface changes (a new lens/sort/command, a new tree affordance, a confirm flow).
+- **site/** (the GitHub Pages site) — mirrors README facts; update it (pages, `llms.txt`, `llms-full.txt`) when commands, flags, settings, install steps or requirements change, and run `python3 scripts/check_site.py`. It deploys from `main` via `.github/workflows/pages.yml`.
 - **agent-plugins** ([stylusnexus/agent-plugins](https://github.com/stylusnexus/agent-plugins), cross-repo) — that README is a **catalog entry pinned to a release tag**, written at the "VS Code viewer + skills" altitude. Update it only when the *plugin's advertised surface* changes (a new/renamed `/work-plan:*` skill command, install/upgrade instructions, the one-line capability summary) — **not** for flag-level details, which live in this repo's README. Day-to-day `feat`/`fix` work does not touch it; a new top-level skill command or a release that changes the pitch does.
 - **CHANGELOG.md** — **don't hand-edit** below the `<!-- new entries inserted below -->` marker. It's written by `.github/workflows/version-bump.yml` on the deploy PR merge to `main`, from that PR's title/body (see "Releasing (maintainers)" below). dev merges don't touch it; the production deploy does.
 

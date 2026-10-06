@@ -6,6 +6,27 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.20.1] - 2026-10-06
+
+### Changed
+
+- **Auto-refresh no longer piles up.** A background poll that comes due while
+  a refresh is still running is skipped instead of queued, so a slow export
+  can no longer keep the tree permanently busy. The dependency graph also
+  redraws only when what it shows has changed, instead of reloading on every
+  poll (#423).
+- **Faster export.** Tier-duplicate detection reuses the tracks `export`
+  already parsed instead of re-reading both tiers, roughly halving the `yq`
+  launches on a tree with many tracks (#425).
+- The dependency graph now bundles **Mermaid 12**.
+
+### Fixed
+
+- A `repos:` key in `config.yml` that is empty, a list or a bare string now
+  gives a clear error instead of a crash (#432). `init-repo --update` and
+  Doctor's config fix now migrate a scalar entry (`foo: org/foo`) to
+  `github:` form instead of failing on it, and keep its comment (#440).
+
 ## [0.20.0] - 2026-10-06
 
 ### Added

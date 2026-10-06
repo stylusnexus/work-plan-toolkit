@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>work-plan CLI command reference | work-plan toolkit</title>
+<meta name="description" content="Reference for every work-plan CLI subcommand, with usage and examples: brief, orient, handoff, hygiene, doctor, plan-status, shared tracks and more.">
+<link rel="canonical" href="https://stylusnexus.github.io/work-plan-toolkit/commands/">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#5a2fc2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121318" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" sizes="128x128" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/icon.png">
+<link rel="alternate" type="text/plain" title="llms.txt" href="../llms.txt">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="work-plan toolkit">
+<meta property="og:title" content="work-plan CLI command reference | work-plan toolkit">
+<meta property="og:description" content="Reference for every work-plan CLI subcommand, with usage and examples: brief, orient, handoff, hygiene, doctor, plan-status, shared tracks and more.">
+<meta property="og:url" content="https://stylusnexus.github.io/work-plan-toolkit/commands/">
+<meta property="og:image" content="https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Work Plan Viewer dependency graph for a track named platform-health, with next-up issues, a depends-on edge and a blocking issue, above the track's issue table.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="work-plan CLI command reference | work-plan toolkit">
+<meta name="twitter:description" content="Reference for every work-plan CLI subcommand, with usage and examples: brief, orient, handoff, hygiene, doctor, plan-status, shared tracks and more.">
+<meta name="twitter:image" content="https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png">
+<meta name="twitter:image:alt" content="Work Plan Viewer dependency graph and track detail panel in VS Code.">
+<style>
+:root{--bg:#ffffff;--fg:#1b1d23;--muted:#4a4f5c;--accent:#5a2fc2;--accent-fg:#ffffff;--line:#d9dbe3;--card:#f5f6f9;--code:#eef0f5;--focus:#1a5fd6;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#121318;--fg:#e9eaef;--muted:#b4b8c5;--accent:#b9a6ff;--accent-fg:#121318;--line:#2c2f3a;--card:#1a1c23;--code:#20232c;--focus:#7fb0ff}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:var(--accent);text-underline-offset:2px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
+.skip{position:absolute;left:-9999px;top:0;background:var(--accent);color:var(--accent-fg);padding:8px 12px;z-index:10}
+.skip:focus{left:16px;top:8px}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+header.site{border-bottom:1px solid var(--line)}
+header.site .wrap{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;padding-top:12px;padding-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg);text-decoration:none}
+.brand img{border-radius:6px}
+nav ul{list-style:none;display:flex;flex-wrap:wrap;gap:4px 18px;margin:0;padding:0}
+nav a{color:var(--fg);text-decoration:none;padding:4px 0;display:inline-block}
+nav a:hover,nav a[aria-current=page]{color:var(--accent);text-decoration:underline}
+main{padding:24px 0 48px}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.2;margin:16px 0 16px}
+h2{font-size:1.5rem;line-height:1.3;margin:48px 0 12px;padding-top:8px;border-top:1px solid var(--line)}
+h3{font-size:1.15rem;margin:28px 0 8px}
+p,li{max-width:72ch}
+.answer{background:var(--card);border-left:4px solid var(--accent);padding:16px 18px;border-radius:6px;font-size:1.08rem}
+.answer p{margin:0}
+.answer p+p{margin-top:10px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 0;padding:0;list-style:none}
+.btn{display:inline-block;padding:10px 16px;border-radius:6px;border:1px solid var(--accent);text-decoration:none;font-weight:600}
+.btn.primary{background:var(--accent);color:var(--accent-fg)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{max-width:100%;background:var(--code);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45}
+pre code{background:none;padding:0;overflow-wrap:normal}
+figure{margin:24px 0}
+figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}
+figcaption{color:var(--muted);font-size:.93rem;margin-top:6px}
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+.grid>*{min-width:0}
+@media (min-width:720px){.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.card h3{margin-top:0}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-weight:600}
+dl.faq dt{font-weight:700;margin-top:20px}
+dl.faq dd{margin:6px 0 0}
+.muted{color:var(--muted)}
+footer.site{border-top:1px solid var(--line);padding:24px 0 40px;color:var(--muted);font-size:.93rem}
+footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 18px}
+.cmd{border-top:1px solid var(--line);padding:12px 0}
+.cmd h3{margin:0 0 4px;font-size:1.05rem}
+.cmd .usage{margin:0 0 6px}
+.cmd p{margin:4px 0}
+.toc{columns:2 220px;padding-left:20px}
+</style>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "BreadcrumbList",
+ "itemListElement": [
+  {
+   "@type": "ListItem",
+   "position": 1,
+   "name": "work-plan toolkit",
+   "item": "https://stylusnexus.github.io/work-plan-toolkit/"
+  },
+  {
+   "@type": "ListItem",
+   "position": 2,
+   "name": "Command reference",
+   "item": "https://stylusnexus.github.io/work-plan-toolkit/commands/"
+  }
+ ]
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "work-plan CLI command reference",
+ "description": "Reference for every work-plan CLI subcommand, with usage and examples: brief, orient, handoff, hygiene, doctor, plan-status, shared tracks and more.",
+ "url": "https://stylusnexus.github.io/work-plan-toolkit/commands/",
+ "inLanguage": "en",
+ "about": {
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#software"
+ },
+ "publisher": {
+  "@type": "Organization",
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#publisher",
+  "name": "Stylus Nexus Holdings LLC",
+  "url": "https://www.stylusnexus.com",
+  "sameAs": [
+   "https://github.com/stylusnexus"
+  ]
+ }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="site">
+<div class="wrap">
+<a class="brand" href="../"><img src="../assets/icon.png" alt="" width="32" height="32">work-plan toolkit</a>
+<nav aria-label="Main">
+<ul>
+<li><a href="../">Home</a></li>
+<li><a href="../commands/" aria-current="page">Commands</a></li>
+<li><a href="../vs-code-extension/">VS Code extension</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">GitHub</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="main" class="wrap">
+
+<h1>work-plan CLI command reference</h1>
+<section class="answer" aria-label="Summary">
+<p>The work-plan CLI has 49 subcommands for planning work across GitHub issues: run them as <code>work-plan &lt;subcommand&gt;</code> from npm, as <code>/work-plan &lt;subcommand&gt;</code> after the install script, or as <code>/work-plan:run &lt;subcommand&gt;</code> from the Claude Code plugin.</p>
+<p>This reference is generated from the help text in <code>skills/work-plan/work_plan.py</code>; run <code>work-plan --help</code> for the same list in your terminal.</p>
+</section>
+<nav aria-label="Command groups"><ul class="toc">
+<li><a href="#daily">Daily workflow</a></li>
+<li><a href="#tracks">Create and edit tracks</a></li>
+<li><a href="#lifecycle">Track lifecycle</a></li>
+<li><a href="#sync">Sync and audit against GitHub</a></li>
+<li><a href="#ai">AI-assisted, two-step commands</a></li>
+<li><a href="#setup">Repos, config and diagnostics</a></li>
+<li><a href="#sharing">Shared tracks</a></li>
+<li><a href="#plans">Plan and spec documents</a></li>
+<li><a href="#github-writes">Commands that write to GitHub</a></li>
+<li><a href="#viewer">Read surfaces for the VS Code extension</a></li>
+</ul></nav>
+<h2 id="daily">Daily workflow</h2>
+<p>These four commands make up the daily rhythm: a morning snapshot, a re-orient for each new session, a handoff when you stop, and a weekly cleanup.</p>
+<div class="cmd" id="cmd-brief">
+<h3><code>brief</code></h3>
+<p class="usage"><code>work-plan brief [--repo=&lt;key&gt;]</code></p>
+<p>Multi-track snapshot with time-aware framing. --repo scopes the brief (and the archived-reopen callouts) to one configured repo.</p>
+<p class="muted">Example: <code>/work-plan brief --repo=myproject</code></p>
+</div>
+<div class="cmd" id="cmd-where-was-i">
+<h3><code>where-was-i (alias: orient)</code></h3>
+<p class="usage"><code>work-plan where-was-i [track | track@repo] [--pick] [--repo=&lt;key&gt;]</code></p>
+<p>Re-orient. With a track name: track paste-block. With no args: cwd snapshot (branch, recent commits, modified files). Add --pick to force the interactive track picker. Use --repo=&lt;key&gt; or track@repo to disambiguate when the same track slug exists in multiple repos.</p>
+<p class="muted">Example: <code>/work-plan where-was-i ux-redesign  (or just `/work-plan orient` for cwd snapshot)</code></p>
+</div>
+<div class="cmd" id="cmd-handoff">
+<h3><code>handoff</code></h3>
+<p class="usage"><code>work-plan handoff [track] [--set-next 1,2,3 | --auto-next] [--interactive]</code></p>
+<p>Wrap up a session: capture touched/next/blockers, update body status table. Use --set-next to set the next_up list explicitly — note this is a full handoff, so it also appends a session-log entry (use <code>set next_up=</code> for a field-only change with no log). Use --auto-next to suggest a priority-sorted list from open issues (interactive: apply / edit / skip).</p>
+<p class="muted">Example: <code>/work-plan handoff tabletop --auto-next</code></p>
+</div>
+<div class="cmd" id="cmd-hygiene">
+<h3><code>hygiene</code></h3>
+<p class="usage"><code>work-plan hygiene [--yes] [--no-duplicates] [--repo=&lt;key&gt;] [--timeout=N]</code></p>
+<p>Weekly cleanup wrapper: refresh-md + reconcile + dedupe-tiers (report-only) + milestone-drift (report-only) + duplicates. With --repo=&lt;key&gt;, steps 1–4 scope to that repo; the duplicates step (a global similarity scan) is skipped. --timeout=N sets the gh subprocess timeout for the duplicates step (default 30s).</p>
+<p class="muted">Example: <code>/work-plan hygiene --repo=myproject</code></p>
+</div>
+<h2 id="tracks">Create and edit tracks</h2>
+<p>These commands create tracks, add or move issues, and edit track frontmatter.</p>
+<div class="cmd" id="cmd-new-track">
+<h3><code>new-track</code></h3>
+<p class="usage"><code>work-plan new-track &lt;repo&gt; &lt;slug&gt; [--priority=P0..P3] [--milestone=&lt;m&gt;] [--private] [--confirm=&lt;token&gt;]</code></p>
+<p>Create a brand-new track file under notes_root in one headless call. &lt;repo&gt; is either a configured key (e.g. &#x27;myproject&#x27;) or a bare org/repo slug (e.g. &#x27;your-org/myproject&#x27;). Writes frontmatter with status=active and optional priority/milestone. Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=&lt;token&gt; to proceed.</p>
+<p class="muted">Example: <code>/work-plan new-track stylusnexus/work-plan-toolkit my-feature</code></p>
+</div>
+<div class="cmd" id="cmd-init">
+<h3><code>init</code></h3>
+<p class="usage"><code>work-plan init &lt;path-to-md&gt;</code></p>
+<p>Add frontmatter to an existing track .md file.</p>
+<p class="muted">Example: <code>/work-plan init &#x27;&lt;notes_root&gt;/&lt;repo-key&gt;/foo.md&#x27;</code></p>
+</div>
+<div class="cmd" id="cmd-list">
+<h3><code>list</code></h3>
+<p class="usage"><code>work-plan list [--all] [--sort=recent|priority]</code></p>
+<p>List active tracks (or all including parked/archived).</p>
+<p class="muted">Example: <code>/work-plan list --all</code></p>
+</div>
+<div class="cmd" id="cmd-slot">
+<h3><code>slot</code></h3>
+<p class="usage"><code>work-plan slot &lt;issue-num&gt; [track | track@repo] [--repo=&lt;key&gt;]</code></p>
+<p>Add a GitHub issue to a track&#x27;s frontmatter. If the issue is already in another active track in the same repo, prompts to move it (remove from source) rather than duplicate. Use --repo=&lt;key&gt; or track@repo to disambiguate when the same track slug exists in multiple repos.</p>
+<p class="muted">Example: <code>/work-plan slot 4234 tabletop</code></p>
+</div>
+<div class="cmd" id="cmd-batch-slot">
+<h3><code>batch-slot</code></h3>
+<p class="usage"><code>work-plan batch-slot &lt;issue-num&gt;... &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--move|--no-move|--reference]</code></p>
+<p>Slot multiple GitHub issues into a track at once. <code>--reference</code> adds cross-track scope without changing issue ownership or removing source-track membership. Use --move to relocate ownership.</p>
+<p class="muted">Example: <code>/work-plan batch-slot 100 101 102 tabletop --move</code></p>
+</div>
+<div class="cmd" id="cmd-move">
+<h3><code>move</code></h3>
+<p class="usage"><code>work-plan move &lt;issue-num&gt; &lt;from-track&gt; &lt;to-track&gt; [--repo=&lt;key&gt;]</code></p>
+<p>Move an issue from one track to another (remove from source frontmatter, add to destination). Source-first — the verb is the intent. Both tracks must be active and in the same repo.</p>
+<p class="muted">Example: <code>/work-plan move 4234 platform-health org-sharing</code></p>
+</div>
+<div class="cmd" id="cmd-demote-to-reference">
+<h3><code>demote-to-reference</code></h3>
+<p class="usage"><code>work-plan demote-to-reference &lt;issue-num&gt;... &lt;track | track@repo&gt; [--repo=&lt;key&gt;]</code></p>
+<p>Migrate issues a track lists in github.issues purely for count-surfacing into github.references, once a specialist track has taken real ownership. All-or-nothing: refuses (no changes) if any issue isn&#x27;t currently owned by the target, or has no other active owner in the same repo (would orphan it). Idempotent — an issue already referenced is reported as skipped, not refused.</p>
+<p class="muted">Example: <code>/work-plan demote-to-reference 100 101 102 mvp</code></p>
+</div>
+<div class="cmd" id="cmd-set">
+<h3><code>set</code></h3>
+<p class="usage"><code>work-plan set &lt;track | track@repo&gt; field=value [field=value …] [--repo=&lt;key&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>Guarded edit of a track&#x27;s frontmatter fields (status, launch_priority, milestone_alignment, blockers, next_up). Validates field names + status values; blockers/next_up take comma-separated issue numbers. Setting <code>next_up</code> here writes ONLY the frontmatter field — for next_up plus a session-log entry (and a body refresh), use <code>handoff --set-next</code> instead. Writes into a PUBLIC repo only with a confirm token: without one it prints {needs_confirm, reason, token} and makes no change (the VS Code viewer surfaces that as a modal, then re-invokes with --confirm=&lt;token&gt;).</p>
+<p class="muted">Example: <code>/work-plan set ux-redesign status=parked</code></p>
+</div>
+<div class="cmd" id="cmd-set-next-up">
+<h3><code>set-next-up</code></h3>
+<p class="usage"><code>work-plan set-next-up &lt;track | track@repo&gt; (--preset=&lt;name&gt; | --order=a,b,c | --clear | --auto=on|off) [--repo=&lt;key&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>Configure the ranking preset and/or auto-derivation flag for a track&#x27;s next_up list. --preset sets one of the named presets (flow, priority-driven, backlog) or &#x27;custom&#x27; (which requires --order). --order=a,b,c sets a custom comma-separated criterion list (milestone, dependency, priority, recency, aging). --clear reverts to the global or default preset. --auto=on activates auto-derivation (brief/orient/export derive next-up live via the ranking preset instead of the curated list); --auto=off reverts to the curated list. --auto can be used standalone or combined with --preset/--order/--clear. Writes next_up_order and/or next_up_auto into the track&#x27;s frontmatter (does NOT touch the next_up issue list). Public-repo gated: without --confirm it prints {needs_confirm, reason, token} and makes no change.</p>
+<p class="muted">Example: <code>/work-plan set-next-up my-track --preset=priority-driven --auto=on</code></p>
+</div>
+<div class="cmd" id="cmd-canonicalize">
+<h3><code>canonicalize</code></h3>
+<p class="usage"><code>work-plan canonicalize &lt;track | track@repo&gt; | --all [--force] [--repo=&lt;key&gt;]</code></p>
+<p>Insert a canonical master issue table at the top of a track. The table has a Milestone column and is ordered active-milestone-first (the track&#x27;s milestone_alignment milestone, then other milestones grouped with a blank divider row, then no-milestone last) so near-term work sits above someday work (#101). Refresh-md then targets ONLY this table, re-deriving it (so the order self-heals) and leaving narrative tables alone. Use --repo=&lt;key&gt; or track@repo to disambiguate; with --all, --repo=&lt;key&gt; scopes to one repo.</p>
+<p class="muted">Example: <code>/work-plan canonicalize ux-redesign</code></p>
+</div>
+<div class="cmd" id="cmd-rename-track">
+<h3><code>rename-track</code></h3>
+<p class="usage"><code>work-plan rename-track &lt;old-slug | old@repo&gt; &lt;new-slug&gt; [--repo=&lt;key&gt;] [--fix-refs] [--commit] [--confirm=&lt;token&gt;]</code></p>
+<p>Rename an active track&#x27;s slug: moves the .md file, updates the frontmatter <code>track</code> field + last_touched. Resolve &lt;old-slug&gt; with track@repo or --repo when ambiguous. Validates &lt;new-slug&gt; like new-track and rejects a name already taken in the same repo/tier. For shared tracks, --commit stages + commits the move (else prints a &#x27;commit to share&#x27; hint). --fix-refs rewrites sibling tracks&#x27; depends_on that reference the old slug (otherwise they&#x27;re just warned about). Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=&lt;token&gt;.</p>
+<p class="muted">Example: <code>/work-plan rename-track old-project-name new-project-name</code></p>
+</div>
+<div class="cmd" id="cmd-close">
+<h3><code>close</code></h3>
+<p class="usage"><code>work-plan close &lt;track | track@repo&gt; [--repo=&lt;key&gt;]</code></p>
+<p>Retire a track: shipped / parked / abandoned. Moves to archive/. Use --repo=&lt;key&gt; or track@repo to disambiguate when the same track slug exists in multiple repos.</p>
+<p class="muted">Example: <code>/work-plan close tabletop</code></p>
+</div>
+<h2 id="lifecycle">Track lifecycle</h2>
+<p>These commands flag, archive, restore or delete a track. None of them touch GitHub issues.</p>
+<div class="cmd" id="cmd-mark-cleanup">
+<h3><code>mark-cleanup</code></h3>
+<p class="usage"><code>work-plan mark-cleanup &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--clear] [--reason=&lt;text&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>Flag a track as a cleanup candidate by writing <code>cleanup_candidate: true</code> (and an optional <code>cleanup_reason</code>) into its frontmatter — a lightweight earmark that <code>hygiene</code> surfaces so stale/consolidatable tracks don&#x27;t get lost. --clear removes both keys. Gates on public repos — prints {needs_confirm, token} and exits cleanly; re-run with --confirm=&lt;token&gt;.</p>
+<p class="muted">Example: <code>/work-plan mark-cleanup old-experiment --reason=&#x27;superseded by v2&#x27;</code></p>
+</div>
+<div class="cmd" id="cmd-archive-track">
+<h3><code>archive-track</code></h3>
+<p class="usage"><code>work-plan archive-track &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>Set a track aside REVERSIBLY: move its .md into archive/parked/ so it drops out of the active views but is kept for reference (distinct from <code>close</code>, which is terminal). Git-aware — a shared track archives as a staged <code>git mv</code> (commit &amp; push to share), a private one as a filesystem move. Never touches GitHub. Gates on public repos. Restore with unarchive-track.</p>
+<p class="muted">Example: <code>/work-plan archive-track spike-idea</code></p>
+</div>
+<div class="cmd" id="cmd-unarchive-track">
+<h3><code>unarchive-track</code></h3>
+<p class="usage"><code>work-plan unarchive-track &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>Restore an archived track (parked/shipped/abandoned) back into the active set — the inverse of archive-track and of <code>close</code>&#x27;s move. Git-aware staged/local move; never touches GitHub. Gates on public repos.</p>
+<p class="muted">Example: <code>/work-plan unarchive-track spike-idea</code></p>
+</div>
+<div class="cmd" id="cmd-delete-track">
+<h3><code>delete-track</code></h3>
+<p class="usage"><code>work-plan delete-track &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>DESTRUCTIVE: remove a track&#x27;s local .md file. NEVER touches GitHub — the issues it referenced outlive the track. Private tier: the deletion is an undoable notes-vcs commit. Shared tier: a staged <code>git rm</code> you commit &amp; push (recoverable from git history until then). Gates on public repos (the VS Code viewer adds a hard modal + type-to-confirm for shared tracks). Prefer archive-track for a reversible set-aside.</p>
+<p class="muted">Example: <code>/work-plan delete-track abandoned-spike</code></p>
+</div>
+<h2 id="sync">Sync and audit against GitHub</h2>
+<p>These commands keep track files consistent with live GitHub state and report drift.</p>
+<div class="cmd" id="cmd-refresh-md">
+<h3><code>refresh-md</code></h3>
+<p class="usage"><code>work-plan refresh-md &lt;track&gt; | --all | --repo=&lt;key&gt; [--yes]</code></p>
+<p>Sync issue STATE (open/closed, status labels) from GitHub into the track body&#x27;s status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place.</p>
+<p class="muted">Example: <code>/work-plan refresh-md --repo=myproject</code></p>
+</div>
+<div class="cmd" id="cmd-reconcile">
+<h3><code>reconcile</code></h3>
+<p class="usage"><code>work-plan reconcile &lt;track&gt; | --all | --repo=&lt;key&gt; [--draft] [--yes]</code></p>
+<p>Update track MEMBERSHIP (the <code>github.issues</code> list in frontmatter) by syncing it against a GitHub label. Default label is <code>track/&lt;slug&gt;</code>; override per-track via <code>github.labels: [...]</code> in frontmatter. Read-only on GitHub. In an --all/--repo sweep it also detects MOVEs — an issue relabeled from one track to another in the same repo is moved (removed from the old track, added to the new). Add --draft to preview the label drift (proposed ADDs/MOVEs/FLAGs) without prompting or writing; add --yes to apply without prompting (non-interactive, e.g. from the VS Code extension; PUBLIC-repo move destinations are skipped under --yes). NOT for hand-curated tracks — see <code>refresh-md</code> if you only want to update issue state.</p>
+<p class="muted">Example: <code>/work-plan reconcile --repo=myproject --draft</code></p>
+</div>
+<div class="cmd" id="cmd-coverage">
+<h3><code>coverage</code></h3>
+<p class="usage"><code>work-plan coverage [--repo=&lt;key&gt;] [--list] [--limit=N]</code></p>
+<p>Report how many open issues are not referenced by any track (per repo). --list prints issue titles (default: show 20; override with --limit=N). Read-only; derives live from gh.</p>
+<p class="muted">Example: <code>/work-plan coverage --repo=myproject --list</code></p>
+</div>
+<div class="cmd" id="cmd-duplicates">
+<h3><code>duplicates</code></h3>
+<p class="usage"><code>work-plan duplicates [--min-similarity=0.7] [--limit=20] [--state=open] [--timeout=N]</code></p>
+<p>Find likely-duplicate issues by title similarity.</p>
+<p class="muted">Example: <code>/work-plan duplicates --min-similarity=0.85</code></p>
+</div>
+<div class="cmd" id="cmd-milestone-drift">
+<h3><code>milestone-drift</code></h3>
+<p class="usage"><code>work-plan milestone-drift [--repo=&lt;key&gt;] [--unranked]</code></p>
+<p>Audit each track&#x27;s hand-curated next_up queue against live GitHub (#489). Reports three kinds of rot that are invisible from inside the file, because the list still reads like a plausible order: RANKED BUT CLOSED (finished work still occupying the queue — one real track&#x27;s entire HEAD was closed issues), MILESTONE INVERSION (an issue ranked above another while carrying a LATER milestone, so the ranking and the release plan disagree), and RANKED WITH NO MILESTONE. Milestone order comes from due_on, falling back to title; when a repo&#x27;s milestones cannot be read the inversion check is SKIPPED rather than guessed. --unranked additionally lists open track issues absent from next_up — off by default, because next_up is a shortlist for most tracks (measured on 33 real tracks: ~1000 findings with it, ~30 without). Report-only always — either side of an inversion can be the wrong one, so the fix is a judgement call.</p>
+<p class="muted">Example: <code>/work-plan milestone-drift --repo=myproject</code></p>
+</div>
+<div class="cmd" id="cmd-dedupe-tiers">
+<h3><code>dedupe-tiers</code></h3>
+<p class="usage"><code>work-plan dedupe-tiers [--repo=&lt;key&gt;] [--apply]</code></p>
+<p>Remove private track copies that a shared twin in a repo&#x27;s .work-plan/ supersedes (#359). When a track is promoted to the shared tier, the private original under notes_root is sometimes left behind (bulk/manual promotion, or a failed unlink) — discover_tracks then warns &#x27;exists in both shared and private&#x27; on every run with no cleanup path. This removes the safe orphans and REFUSES any whose private copy references issue numbers the shared one lacks (no silent data loss; the invariant is issue_refs(private) ⊆ issue_refs(shared)). Covers active and archived tiers. Default is a dry-run report; --apply deletes (auto-committed to notes_root, so undoable).</p>
+<p class="muted">Example: <code>/work-plan dedupe-tiers --repo=myproject --apply</code></p>
+</div>
+<div class="cmd" id="cmd-lift-rationale">
+<h3><code>lift-rationale</code></h3>
+<p class="usage"><code>work-plan lift-rationale [--repo=&lt;key&gt;] [--track=&lt;name&gt;] [--apply]</code></p>
+<p>Move a track&#x27;s rationale out of YAML frontmatter comments and into a &#x27;## Ranking rationale&#x27; body section (#491). Writes preserve frontmatter comments, but the body is the only place rationale is VISIBLE — frontmatter comments never render, never reach the VS Code viewer, and never appear in export --json. Comments attached to a next_up entry become bullets naming that issue; section headers become paragraphs. The body is also the only place rationale is VISIBLE — frontmatter comments never render, never reach the VS Code viewer, and never appear in export --json. Dry-run by default; --apply writes.</p>
+<p class="muted">Example: <code>/work-plan lift-rationale --repo=myproject --apply</code></p>
+</div>
+<h2 id="ai">AI-assisted, two-step commands</h2>
+<p>These commands print a prompt for your agent, which saves a JSON answer; re-run with --apply to write. The CLI never calls a model itself.</p>
+<div class="cmd" id="cmd-group">
+<h3><code>group</code></h3>
+<p class="usage"><code>work-plan group [--milestone=X] [--label=Y] [--repo=Z] [--apply] [--limit=N]</code></p>
+<p>AI-cluster GitHub issues into thematic track files. --limit controls how many issues are shown in the prompt (default 100).</p>
+<p class="muted">Example: <code>/work-plan group --milestone=&#x27;v1.0.0 — Public Launch&#x27;</code></p>
+</div>
+<div class="cmd" id="cmd-auto-triage">
+<h3><code>auto-triage</code></h3>
+<p class="usage"><code>work-plan auto-triage [--repo=&lt;key&gt;] [--apply] [--json] [--heuristic] [--limit=N]</code></p>
+<p>AI-assign untracked open issues to existing tracks. Step 1 (no --apply): fetches untracked issues + existing tracks, prints an AI prompt and writes a per-repo batch file stamped with a batch_id; --json emits that batch (+ prompt + answers path) as one JSON object on stdout for the VS Code viewer instead of the human prompt. --heuristic (#373) skips the LLM entirely: it scores each issue against the candidate tracks using local signals (milestone match, track-label overlap, title/scope keyword overlap), writes the v2 answers file itself (stamped source:&quot;heuristic&quot;, abstain-first), so suggestions work with no Claude session — lower-trust, but offline. Step 2 (--apply [--repo=&lt;key&gt;]): reads the answers (v2 abstain-first shape preferred — only clear-margin suggestions are slotted; legacy v1 [{track,issues}] still accepted) and slots each assignment into track frontmatter. Complements <code>group</code> (which creates new tracks); <code>auto-triage</code> assigns to tracks that already exist. --limit controls how many untracked issues are shown (default 100).</p>
+<p class="muted">Example: <code>/work-plan auto-triage --repo=myproject</code></p>
+</div>
+<div class="cmd" id="cmd-suggest-priorities">
+<h3><code>suggest-priorities</code></h3>
+<p class="usage"><code>work-plan suggest-priorities [--repo=&lt;folder&gt;] [--apply]</code></p>
+<p>AI-assisted batch backfill of priority/PN labels.</p>
+<p class="muted">Example: <code>/work-plan suggest-priorities --repo=myproject</code></p>
+</div>
+<h2 id="setup">Repos, config and diagnostics</h2>
+<p>These commands register repos, move your notes, add local history and check your setup.</p>
+<div class="cmd" id="cmd-init-repo">
+<h3><code>init-repo</code></h3>
+<p class="usage"><code>work-plan init-repo &lt;key&gt; --github=&lt;org/repo&gt; [--local=&lt;path&gt;] [--update [--clear-local]]</code></p>
+<p>Bootstrap a new repo: create &lt;notes_root&gt;/&lt;key&gt;/archive/{shipped,abandoned}/ and add the repo block to your config. With --update on an existing key, change its local/github; --update --clear-local drops the saved local path (keeps github + other fields). --clear-local and --local are mutually exclusive.</p>
+<p class="muted">Example: <code>/work-plan init-repo myproject --github=your-org/myproject</code></p>
+</div>
+<div class="cmd" id="cmd-remove-repo">
+<h3><code>remove-repo</code></h3>
+<p class="usage"><code>work-plan remove-repo &lt;key&gt;</code></p>
+<p>Unregister a repo: delete its block from your config (config-only). The notes folder, any tracks, and the local clone are LEFT UNTOUCHED — if a notes folder or tracks reference it they&#x27;re now orphaned and can be cleaned up by hand.</p>
+<p class="muted">Example: <code>/work-plan remove-repo myproject</code></p>
+</div>
+<div class="cmd" id="cmd-set-notes-root">
+<h3><code>set-notes-root</code></h3>
+<p class="usage"><code>work-plan set-notes-root &lt;path&gt;</code></p>
+<p>Update notes_root in ~/.claude/work-plan/config.yml to an absolute path. Creates the target directory if absent. Prints a WARN if existing frontmatter&#x27;d tracks live at the old location (they won&#x27;t be moved — manual migration required). Non-interactive: safe to call from a GUI or script.</p>
+<p class="muted">Example: <code>/work-plan set-notes-root ~/Documents/work-plan-notes</code></p>
+</div>
+<div class="cmd" id="cmd-notes-vcs">
+<h3><code>notes-vcs</code></h3>
+<p class="usage"><code>work-plan notes-vcs &lt;init|enable|disable|status|undo&gt; [&lt;sha&gt;] [--no-enable] [--json]</code></p>
+<p>Opt-in LOCAL version control for the private notes_root tier — history/undo for tracks you keep on your machine, never pushed. <code>init</code> git-inits notes_root as a personal repo (initial commit of existing tracks) and turns on auto-commit; with --no-enable it inits without enabling. For safety it REFUSES a notes_root that already has a git remote or is a repo work-plan didn&#x27;t create, and only ever commits the files a command changed — private notes stay un-pushable and your unrelated edits are never swept in. <code>enable</code>/<code>disable</code> toggle auto-commit (history is kept either way). <code>status</code> reports whether notes_root is a repo, whether auto-commit is on, and the last commit (add --json for the machine-readable shape the VS Code viewer polls). <code>undo [&lt;sha&gt;]</code> reverts a commit (default HEAD) — the last edit, by default. When auto-commit is on, every track-mutating command (slot/group/handoff/close/set/…) writes an undoable commit; the shared tier is unaffected (it&#x27;s versioned by its own repo).</p>
+<p class="muted">Example: <code>/work-plan notes-vcs init</code></p>
+</div>
+<div class="cmd" id="cmd-which-repo">
+<h3><code>which-repo</code></h3>
+<p class="usage"><code>work-plan which-repo [--json]</code></p>
+<p>Resolve the current directory to one configured repo — by local clone path first, then the git <code>origin</code> remote. Prints the matched config key + GitHub slug, or reports no match. Read-only. Underlies <code>brief</code> cwd auto-scope and the VS Code viewer&#x27;s repo auto-focus.</p>
+<p class="muted">Example: <code>/work-plan which-repo --json</code></p>
+</div>
+<div class="cmd" id="cmd-doctor">
+<h3><code>doctor</code></h3>
+<p class="usage"><code>work-plan doctor [--json] [--fix]</code></p>
+<p>Detect drift between config.yml, local git clones, GitHub, and notes_root track frontmatter — a renamed local folder or GitHub repo that config.yml no longer matches, a non-git local path, duplicate entries, an invalid/missing notes_root, an orphaned notes folder, or a stale per-track github.repo. --fix corrects only the two mechanically-safe cases (a GitHub-confirmed rename, a stale track slug) and always re-scans afterward before deciding success. Also runs a read-only preflight first: Python 3.9+, git, gh and its sign-in, mikefarah/yq, config loading and notes_root access; text mode exits 0 healthy, 1 warning, 2 blocking, and --json adds status + checks.</p>
+<p class="muted">Example: <code>/work-plan doctor --fix</code></p>
+</div>
+<h2 id="sharing">Shared tracks</h2>
+<p>These commands publish tracks to a repo&#x27;s shared tier on a canonical plan branch.</p>
+<div class="cmd" id="cmd-plan-branch">
+<h3><code>plan-branch</code></h3>
+<p class="usage"><code>work-plan plan-branch &lt;init|status|push&gt; &lt;repo&gt; [--branch=&lt;name&gt;] [--confirm=&lt;token&gt;] [--dry-run] [--json]</code></p>
+<p>Set up and share a repo&#x27;s canonical SHARED-tier plan branch (#260). The shared <code>.work-plan/</code> tier is pinned to ONE per-repo <code>plan_branch</code>, read/written through a dedicated git worktree, so planning never diverges across code branches or pollutes PR / deploy diffs. <code>init &lt;repo&gt;</code> creates that branch + a <code>.work-plan/</code> skeleton (default an ORPHAN <code>work-plan/plan</code>, zero shared history with code like gh-pages; override with --branch) and records <code>plan_branch</code> in config — or CONNECTS to a teammate&#x27;s already-published branch if one exists. init is LOCAL ONLY (no push). <code>status &lt;repo&gt;</code> reports whether the branch exists, is published to origin, and how many commits are unpushed (--json for the machine shape). <code>push &lt;repo&gt;</code> shares it: on a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=&lt;token&gt;); --dry-run previews the commits that would push. Requires a repo registered via init-repo with a local clone path.</p>
+<p class="muted">Example: <code>/work-plan plan-branch init work-plan-toolkit</code></p>
+</div>
+<div class="cmd" id="cmd-push-track">
+<h3><code>push-track</code></h3>
+<p class="usage"><code>work-plan push-track &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--no-push] [--confirm=&lt;token&gt;]</code></p>
+<p>Promote a PRIVATE track (local-only, in notes_root) to the repo&#x27;s SHARED tier and publish it (#306). Moves the track&#x27;s <code>.md</code> into the repo&#x27;s <code>.work-plan/</code> (on its <code>plan_branch</code>, via a worktree), removes the private copy so it isn&#x27;t duplicated, commits to the plan branch, and pushes — unless <code>--no-push</code> (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a <code>plan_branch</code> (else hints <code>plan-branch init</code>). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints <code>needs_confirm</code> + token; re-run with <code>--confirm=&lt;token&gt;</code>).</p>
+<p class="muted">Example: <code>/work-plan push-track my-feature --repo=myproject</code></p>
+</div>
+<h2 id="plans">Plan and spec documents</h2>
+<p>These commands judge which plan and spec documents shipped and record decisions in their frontmatter.</p>
+<div class="cmd" id="cmd-plan-status">
+<h3><code>plan-status</code></h3>
+<p class="usage"><code>work-plan plan-status [--repo=&lt;key&gt;] [--json] [--stamp [--draft]] [--llm [--apply]] [--archive | --issues] [--draft] [--since-days=N] [--type=plan|spec]</code></p>
+<p>Reach a verdict on every plan/spec doc in a repo by correlating each plan&#x27;s declared file-manifest (Create/Modify/Test paths) against the filesystem + git — not the unreliable checkboxes. Read-only: reports ✅ shipped / 🟡 partial / 💀 dead / 👻 manifest-less. --json for machine output. Add --stamp to write each verdict into its doc as an idempotent status header (--draft previews without writing). Add --llm for a two-step AI pass that judges prose/ambiguous docs (writes a prompt; you save JSON to the cache; re-run with --llm --apply). --archive moves dead plans to archive/abandoned/ (gated); --issues opens a GitHub issue per partial plan listing its unsatisfied files (gated). Both honor --draft.</p>
+<p class="muted">Example: <code>/work-plan plan-status --repo=myproject</code></p>
+</div>
+<div class="cmd" id="cmd-plan-confirm">
+<h3><code>plan-confirm</code></h3>
+<p class="usage"><code>work-plan plan-confirm --repo=&lt;key&gt; --verdict=shipped|partial|dead [--clear] [--confirm=&lt;token&gt;] -- &lt;rel&gt;</code></p>
+<p>Affirm a human verdict on ONE plan/spec doc by writing <code>verdict_override</code> into its YAML frontmatter — FRONTMATTER-ONLY (never the body, manifest, checkboxes, or status banner) (#286). plan-status then pins that verdict over the mechanical one and silences the &#x27;shipped but boxes unchecked&#x27; lie-gap. Use when a plan genuinely shipped but its phase checkboxes were never ticked, so the red lie-gap X is a false alarm. <code>&lt;rel&gt;</code> is the repo-relative doc path from <code>plan-status --json</code>. On a PUBLIC repo it prints a confirm heads-up + token and exits (re-run with --confirm=&lt;token&gt;) — the VS Code viewer surfaces this as a modal. --clear removes the override.</p>
+<p class="muted">Example: <code>/work-plan plan-confirm --repo=myproject --verdict=shipped -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md</code></p>
+</div>
+<div class="cmd" id="cmd-plan-ack">
+<h3><code>plan-ack</code></h3>
+<p class="usage"><code>work-plan plan-ack --repo=&lt;key&gt; [--clear] [--confirm=&lt;token&gt;] -- &lt;rel&gt;</code></p>
+<p>Persist an acknowledgment into ONE plan/spec doc&#x27;s YAML <strong>frontmatter only</strong> (<code>acknowledged: true</code>) — never the body/manifest/checkboxes/banner (#286). Unlike the VS Code viewer&#x27;s default ack (per-machine, ephemeral <code>workspaceState</code>), this is durable + shared: it&#x27;s committed with the repo, and <code>plan-status</code> reads it back to demote the doc. <code>&lt;rel&gt;</code> is the repo-relative doc path. Public-repo gated (prints <code>needs_confirm</code> + token; re-run with <code>--confirm=&lt;token&gt;</code>). <code>--clear</code> removes it.</p>
+<p class="muted">Example: <code>/work-plan plan-ack --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md</code></p>
+</div>
+<div class="cmd" id="cmd-plan-baseline">
+<h3><code>plan-baseline</code></h3>
+<p class="usage"><code>work-plan plan-baseline --repo=&lt;key&gt; [--clear] [--confirm=&lt;token&gt;] -- &lt;rel&gt;</code></p>
+<p>Stamp the CURRENT computed verdict into ONE plan/spec doc&#x27;s YAML <strong>frontmatter only</strong> as a drift baseline (<code>verdict_baseline</code>) (#286). Distinct from <code>plan-confirm</code> (a human pin) and the body banner. <code>plan-status</code> then flags <strong>drift</strong> when the live verdict diverges from the baseline — catching a once-shipped plan that silently regressed (its declared files were deleted/moved). The baseline value is computed authoritatively here. Public-repo gated; <code>--clear</code> removes it. <code>verdict_override</code>, if present, suppresses drift.</p>
+<p class="muted">Example: <code>/work-plan plan-baseline --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md</code></p>
+</div>
+<div class="cmd" id="cmd-plan-archive">
+<h3><code>plan-archive</code></h3>
+<p class="usage"><code>work-plan plan-archive --repo=&lt;key&gt; [--draft] [--yes] [--json] -- &lt;rel&gt;</code></p>
+<p>Archive ONE plan/spec doc whose effective verdict is shipped: history-preserving <code>git mv</code> into archive/shipped/. Refuses non-shipped docs; skips (never overwrites) a name collision. --draft previews; --yes skips the prompt for non-interactive callers (the VS Code viewer); --json emits a single {action,rel,outcome,dest} object. <code>&lt;rel&gt;</code> is the repo-relative doc path from <code>plan-status --json</code>.</p>
+<p class="muted">Example: <code>/work-plan plan-archive --repo=myproject -- docs/superpowers/plans/2026-03-16-idea-mode-ui.md</code></p>
+</div>
+<div class="cmd" id="cmd-plan-unarchive">
+<h3><code>plan-unarchive</code></h3>
+<p class="usage"><code>work-plan plan-unarchive --repo=&lt;key&gt; [--draft] [--yes] [--json] -- &lt;rel&gt;</code></p>
+<p>Restore ONE archived plan/spec doc back OUT of archive/&lt;kind&gt;/ to its live location — the inverse of plan-archive (#388). Refuses (never overwrites) a collision with a live doc of the same name. Git-aware staged/local move. --draft previews; --yes / --json for non-interactive callers. <code>&lt;rel&gt;</code> is the archived doc&#x27;s repo-relative path (from <code>plan-status --json --include-archived</code>).</p>
+<p class="muted">Example: <code>/work-plan plan-unarchive --repo=myproject -- docs/superpowers/plans/archive/shipped/2026-03-16-idea-mode-ui.md</code></p>
+</div>
+<h2 id="github-writes">Commands that write to GitHub</h2>
+<p>These are the only commands that change GitHub issues, alongside plan-status --issues. Each one is opt-in.</p>
+<div class="cmd" id="cmd-close-issue">
+<h3><code>close-issue</code></h3>
+<p class="usage"><code>work-plan close-issue --repo=&lt;key|slug&gt; [--reason=completed|not_planned] [--comment=&lt;text&gt;] -- &lt;number&gt;</code></p>
+<p>⚠️ A GitHub-mutating command (others: <code>in-progress</code>, <code>plan-status --issues</code>) — closes a GitHub issue via <code>gh issue close</code> (most of the toolkit is read-only on GitHub). PRs merged to <code>dev</code> don&#x27;t auto-close issues (GitHub auto-closes only from the default branch), so done-but-OPEN issues pile up; this closes one. <code>--reason</code> maps to GitHub&#x27;s completed/not-planned; <code>--comment</code> posts a closing note. <code>--repo</code> takes a config key or an org/repo slug. The VS Code viewer gates this behind a mandatory &#x27;Close on GitHub?&#x27; modal on every close.</p>
+<p class="muted">Example: <code>/work-plan close-issue --repo=stylusnexus/work-plan-toolkit --reason=completed --comment=&#x27;Closed via dev merge&#x27; -- 287</code></p>
+</div>
+<div class="cmd" id="cmd-in-progress">
+<h3><code>in-progress</code></h3>
+<p class="usage"><code>work-plan in-progress &lt;n&gt; [--clear] [--repo=&lt;key|slug&gt;] [--confirm=&lt;token&gt;]</code></p>
+<p>Mark a tracked GitHub issue as in-progress by adding the <code>work-plan:in-progress</code> label (or remove it with --clear). Repo-scoped: resolves &lt;n&gt; to the one tracked repo that lists it, or pass --repo to disambiguate. The label is auto-created. Writes into a PUBLIC repo only with a confirm token (prints {needs_confirm, token} otherwise — the VS Code viewer surfaces it as a modal). brief/orient/the viewer also derive in-progress for free from a hot feat/&lt;n&gt;- or fix/&lt;n&gt;- branch.</p>
+<p class="muted">Example: <code>/work-plan in-progress 271</code></p>
+</div>
+<h2 id="viewer">Read surfaces for the VS Code extension</h2>
+<p>Work Plan Viewer calls these read-only commands for its data.</p>
+<div class="cmd" id="cmd-export">
+<h3><code>export</code></h3>
+<p class="usage"><code>work-plan export --json</code></p>
+<p>Emit the viewer-ready JSON read surface (schema 1): every frontmatter&#x27;d track with repo, tier, status, visibility, blockers, next_up, an open/closed rollup, and per-issue state/assignee/milestone. Read-only; derives live from gh. Consumed by the VS Code extension.</p>
+<p class="muted">Example: <code>/work-plan export --json</code></p>
+</div>
+<div class="cmd" id="cmd-list-open-issues">
+<h3><code>list-open-issues</code></h3>
+<p class="usage"><code>work-plan list-open-issues --repo=&lt;owner/name&gt; [--exclude=&lt;csv-issue-numbers&gt;]</code></p>
+<p>Emit a repo&#x27;s OPEN issues as JSON ({repo, issues:[{number,title,state,assignee,milestone}]}) — the same issue shape as export. Read-only; derives live from gh. --repo takes a bare org/repo slug; --exclude drops the given issue numbers (the viewer passes a track&#x27;s current issues so already-slotted ones don&#x27;t reappear). Unlike export&#x27;s <code>untracked</code>, this includes issues tracked by OTHER tracks, since those are valid slot targets.</p>
+<p class="muted">Example: <code>/work-plan list-open-issues --repo=stylusnexus/work-plan-toolkit --exclude=87,91</code></p>
+</div>
+<div class="cmd" id="cmd-auth-status">
+<h3><code>auth-status</code></h3>
+<p class="usage"><code>work-plan auth-status [--json]</code></p>
+<p>Report whether gh is installed and signed in to GitHub, using a read-only gh auth status probe. --json emits gh_present, authenticated, probe_ok, user and error. Exit codes: 0 signed in, 1 gh present but not signed in, 2 gh not found, 3 the probe could not reach a verdict (for example a network failure), which callers treat as unverified rather than signed out.</p>
+<p class="muted">Example: <code>/work-plan auth-status --json</code></p>
+</div>
+
+<h2 id="public-repo-gate">The public-repo confirm gate</h2>
+<p>Every write into a public repository, or one whose visibility <code>gh</code> cannot determine, stops and prints <code>{"needs_confirm": true, "reason": …, "token": …}</code> without changing anything; re-run with <code>--confirm=&lt;token&gt;</code> to proceed. Private repositories write straight through. Set <code>assume_private_when_unknown: true</code> in <code>config.yml</code> to skip the prompt only for unknown visibility; public repositories always prompt.</p>
+<p>Back to the <a href="../">work-plan toolkit overview</a> or the <a href="../vs-code-extension/">Work Plan Viewer extension</a>.</p>
+
+</main>
+<footer class="site">
+<div class="wrap">
+<p>The work-plan toolkit is open source under the MIT License, published by <a href="https://www.stylusnexus.com" rel="noopener">Stylus Nexus Holdings LLC</a>.</p>
+<ul>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">Source on GitHub</a></li>
+<li><a href="https://www.npmjs.com/package/@stylusnexus/work-plan" rel="noopener">npm package</a></li>
+<li><a href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">VS Code Marketplace</a></li>
+<li><a href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Open VSX</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/LICENSE" rel="noopener">License (MIT)</a></li>
+<li><a href="../llms.txt">llms.txt</a></li>
+</ul>
+</div>
+</footer>
+</body>
+</html>

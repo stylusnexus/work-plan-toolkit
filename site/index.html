@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>work-plan toolkit: planning for Claude Code and Codex</title>
+<meta name="description" content="Free MIT CLI and Claude Code / Codex plugin for track-aware daily planning over GitHub issues, with the Work Plan Viewer extension for VS Code.">
+<link rel="canonical" href="https://stylusnexus.github.io/work-plan-toolkit/">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#5a2fc2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121318" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" type="image/png" sizes="128x128" href="./assets/icon.png">
+<link rel="apple-touch-icon" href="./assets/icon.png">
+<link rel="alternate" type="text/plain" title="llms.txt" href="./llms.txt">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="work-plan toolkit">
+<meta property="og:title" content="work-plan toolkit: planning for Claude Code and Codex">
+<meta property="og:description" content="Free MIT CLI and Claude Code / Codex plugin for track-aware daily planning over GitHub issues, with the Work Plan Viewer extension for VS Code.">
+<meta property="og:url" content="https://stylusnexus.github.io/work-plan-toolkit/">
+<meta property="og:image" content="https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Work Plan Viewer dependency graph for a track named platform-health, with next-up issues, a depends-on edge and a blocking issue, above the track's issue table.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="work-plan toolkit: planning for Claude Code and Codex">
+<meta name="twitter:description" content="Free MIT CLI and Claude Code / Codex plugin for track-aware daily planning over GitHub issues, with the Work Plan Viewer extension for VS Code.">
+<meta name="twitter:image" content="https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png">
+<meta name="twitter:image:alt" content="Work Plan Viewer dependency graph and track detail panel in VS Code.">
+<style>
+:root{--bg:#ffffff;--fg:#1b1d23;--muted:#4a4f5c;--accent:#5a2fc2;--accent-fg:#ffffff;--line:#d9dbe3;--card:#f5f6f9;--code:#eef0f5;--focus:#1a5fd6;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#121318;--fg:#e9eaef;--muted:#b4b8c5;--accent:#b9a6ff;--accent-fg:#121318;--line:#2c2f3a;--card:#1a1c23;--code:#20232c;--focus:#7fb0ff}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+a{color:var(--accent);text-underline-offset:2px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
+.skip{position:absolute;left:-9999px;top:0;background:var(--accent);color:var(--accent-fg);padding:8px 12px;z-index:10}
+.skip:focus{left:16px;top:8px}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+header.site{border-bottom:1px solid var(--line)}
+header.site .wrap{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;padding-top:12px;padding-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--fg);text-decoration:none}
+.brand img{border-radius:6px}
+nav ul{list-style:none;display:flex;flex-wrap:wrap;gap:4px 18px;margin:0;padding:0}
+nav a{color:var(--fg);text-decoration:none;padding:4px 0;display:inline-block}
+nav a:hover,nav a[aria-current=page]{color:var(--accent);text-decoration:underline}
+main{padding:24px 0 48px}
+h1{font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.2;margin:16px 0 16px}
+h2{font-size:1.5rem;line-height:1.3;margin:48px 0 12px;padding-top:8px;border-top:1px solid var(--line)}
+h3{font-size:1.15rem;margin:28px 0 8px}
+p,li{max-width:72ch}
+.answer{background:var(--card);border-left:4px solid var(--accent);padding:16px 18px;border-radius:6px;font-size:1.08rem}
+.answer p{margin:0}
+.answer p+p{margin-top:10px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 0;padding:0;list-style:none}
+.btn{display:inline-block;padding:10px 16px;border-radius:6px;border:1px solid var(--accent);text-decoration:none;font-weight:600}
+.btn.primary{background:var(--accent);color:var(--accent-fg)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{max-width:100%;background:var(--code);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45}
+pre code{background:none;padding:0;overflow-wrap:normal}
+figure{margin:24px 0}
+figure img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px}
+figcaption{color:var(--muted);font-size:.93rem;margin-top:6px}
+.grid{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+.grid>*{min-width:0}
+@media (min-width:720px){.grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.card h3{margin-top:0}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+th{font-weight:600}
+dl.faq dt{font-weight:700;margin-top:20px}
+dl.faq dd{margin:6px 0 0}
+.muted{color:var(--muted)}
+footer.site{border-top:1px solid var(--line);padding:24px 0 40px;color:var(--muted);font-size:.93rem}
+footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 18px}
+.cmd{border-top:1px solid var(--line);padding:12px 0}
+.cmd h3{margin:0 0 4px;font-size:1.05rem}
+.cmd .usage{margin:0 0 6px}
+.cmd p{margin:4px 0}
+.toc{columns:2 220px;padding-left:20px}
+</style>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "WebSite",
+ "@id": "https://stylusnexus.github.io/work-plan-toolkit/#website",
+ "name": "work-plan toolkit",
+ "url": "https://stylusnexus.github.io/work-plan-toolkit/",
+ "inLanguage": "en",
+ "publisher": {
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#publisher"
+ }
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "SoftwareApplication",
+ "@id": "https://stylusnexus.github.io/work-plan-toolkit/#software",
+ "name": "work-plan toolkit",
+ "alternateName": "work-plan",
+ "description": "The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin that keeps a live, track-by-track plan of your GitHub issues, so you and your AI agents always know what is in flight, what is blocked and what to pick up next. It is a pure Python 3.9+ standard-library CLI that re-reads state from gh, git and plain markdown track files on every run, and it ships with a VS Code extension, Work Plan Viewer, that shows the same tracks as a sidebar tree and dependency graph.",
+ "url": "https://stylusnexus.github.io/work-plan-toolkit/",
+ "applicationCategory": "DeveloperApplication",
+ "operatingSystem": "macOS, Linux, Windows",
+ "softwareRequirements": "Python 3.9 or newer, git, GitHub CLI (gh), mikefarah yq 4.x",
+ "offers": {
+  "@type": "Offer",
+  "price": "0",
+  "priceCurrency": "USD"
+ },
+ "license": "https://opensource.org/licenses/MIT",
+ "downloadUrl": "https://www.npmjs.com/package/@stylusnexus/work-plan",
+ "installUrl": "https://github.com/stylusnexus/agent-plugins",
+ "image": "https://stylusnexus.github.io/work-plan-toolkit/assets/og-image.png",
+ "screenshot": "https://stylusnexus.github.io/work-plan-toolkit/assets/dependency-graph.png",
+ "isAccessibleForFree": true,
+ "publisher": {
+  "@type": "Organization",
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#publisher",
+  "name": "Stylus Nexus Holdings LLC",
+  "url": "https://www.stylusnexus.com",
+  "sameAs": [
+   "https://github.com/stylusnexus"
+  ]
+ },
+ "author": {
+  "@id": "https://stylusnexus.github.io/work-plan-toolkit/#publisher"
+ },
+ "sameAs": [
+  "https://github.com/stylusnexus/work-plan-toolkit",
+  "https://www.npmjs.com/package/@stylusnexus/work-plan",
+  "https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer",
+  "https://open-vsx.org/extension/stylusnexus/work-plan-viewer"
+ ]
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "FAQPage",
+ "@id": "https://stylusnexus.github.io/work-plan-toolkit/#faq",
+ "mainEntity": [
+  {
+   "@type": "Question",
+   "name": "What is the work-plan toolkit?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin for track-aware daily planning over GitHub issues. It groups issues into tracks and tells you and your AI agent what is in flight, what is blocked and what to pick up next."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "What is a track?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "A track is a markdown file with YAML frontmatter that lists GitHub issue numbers for one workstream, plus fields such as launch_priority, milestone_alignment, next_up, blockers and depends_on. The body holds a session log and a status table that refresh-md keeps in sync with GitHub."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does the work-plan toolkit work with Codex?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Install it with codex plugin marketplace add stylusnexus/agent-plugins and then codex plugin add work-plan@stylus-nexus, and invoke it with @work-plan or /skills. The same CLI also runs directly from Cursor, GitHub Copilot or any terminal."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does it replace Jira, Linear or GitHub Projects?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "No. It does not manage sprints, roadmaps or capacity. GitHub stays the source of truth for issues; the toolkit only reads and references them so you and your agent stay oriented."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does it cache or mirror GitHub data?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "No. Every command re-derives state live from gh, git and your track files. There is no daemon, no stored copy of GitHub state and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing gh auth session."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does it write to GitHub?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Only when you ask. Issue data comes from read-only gh calls, and routine writes go to local markdown files. Three opt-in, gated commands change GitHub: plan-status --issues creates issues, close-issue closes one, and in-progress adds or removes the work-plan:in-progress label."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "What do I need installed?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Python 3.9 or newer, git, the GitHub CLI gh (signed in with gh auth login) and mikefarah yq 4.x, the Go version. The Python yq wrapper does not work. Run work-plan doctor to check the machine and get the fix for anything missing."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can a team share tracks?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Shared tracks live inside the repository at .work-plan/<slug>.md and travel with git pull and git push. The plan-branch command can pin them to one canonical branch, by default an orphan work-plan/plan branch, so planning stays out of code branches and pull requests. Private tracks stay in your local notes_root."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Is there a VS Code extension?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. Work Plan Viewer (stylusnexus.work-plan-viewer) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does the CLI call an AI model?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "No. The AI-assisted subcommands group, suggest-priorities and auto-triage print a prompt for your agent session, the agent saves a JSON answer, and you re-run the command with --apply. auto-triage --heuristic works offline with no model at all."
+   }
+  }
+ ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+<header class="site">
+<div class="wrap">
+<a class="brand" href="./"><img src="./assets/icon.png" alt="" width="32" height="32">work-plan toolkit</a>
+<nav aria-label="Main">
+<ul>
+<li><a href="" aria-current="page">Home</a></li>
+<li><a href="commands/">Commands</a></li>
+<li><a href="vs-code-extension/">VS Code extension</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">GitHub</a></li>
+</ul>
+</nav>
+</div>
+</header>
+<main id="main" class="wrap">
+
+<h1>Track-aware work planning for Claude Code and Codex</h1>
+<section class="answer" aria-label="Summary">
+<p>The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin that keeps a live, track-by-track plan of your GitHub issues, so you and your AI agents always know what is in flight, what is blocked and what to pick up next.</p>
+<p>It is a pure Python 3.9+ standard-library CLI that re-reads state from <code>gh</code>, <code>git</code> and plain markdown track files on every run, and it ships with a VS Code extension, Work Plan Viewer, that shows the same tracks as a sidebar tree and dependency graph.</p>
+</section>
+<ul class="cta">
+<li><a class="btn primary" href="#install">Install the work-plan toolkit</a></li>
+<li><a class="btn" href="commands/">Browse the command reference</a></li>
+<li><a class="btn" href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">Get Work Plan Viewer for VS Code</a></li>
+</ul>
+
+<h2 id="who">Who the work-plan toolkit is for</h2>
+<p>The work-plan toolkit is for developers who run several AI coding sessions in parallel across many GitHub issues and lose track of which session is doing what.</p>
+<ul>
+<li><strong>Claude Code and Codex users</strong> who open a fresh agent session per workstream and need a paste-ready summary of where each one left off.</li>
+<li><strong>Maintainers of several repositories</strong> who want one morning view of every active workstream across all of them.</li>
+<li><strong>Small teams</strong> who want to share a plan through git instead of a separate tool, using shared tracks in the repository.</li>
+<li><strong>Cursor and GitHub Copilot users</strong>, who can run the same CLI directly and load drop-in instruction files from the <code>shims/</code> folder.</li>
+</ul>
+<p>It is not a Jira, Linear or GitHub Projects replacement. It does not manage sprints, roadmaps or capacity; GitHub stays canonical for issue state.</p>
+
+<h2 id="features">Key features</h2>
+<p>The work-plan toolkit turns GitHub issues into tracks and gives each stage of a work session its own command.</p>
+<div class="grid two">
+<div class="card"><h3>Morning snapshot: <code>brief</code></h3><p><code>brief</code> prints a multi-track snapshot of every active track across your configured repos. Run inside a configured repo and it scopes to that repo automatically; <code>--repo=all</code> shows everything.</p></div>
+<div class="card"><h3>Fresh-session context: <code>orient</code></h3><p><code>orient &lt;track&gt;</code> (also <code>where-was-i</code>) prints a paste block of about 15 lines with priority, last session, next pick and git state, ready to drop into a new agent session.</p></div>
+<div class="card"><h3>End of a work block: <code>handoff</code></h3><p><code>handoff &lt;track&gt;</code> logs what you touched and sets tomorrow's <code>next_up</code>, either by hand with <code>--set-next</code> or algorithmically with <code>--auto-next</code>, which uses no AI.</p></div>
+<div class="card"><h3>Next-up ranking presets</h3><p><code>set-next-up</code> picks how next-up issues are ranked: <code>flow</code> (milestone, dependency, priority, recency), <code>priority-driven</code>, <code>backlog</code> (oldest first) or a custom order.</p></div>
+<div class="card"><h3>Blockers and dependencies</h3><p><code>brief</code> and <code>orient</code> mark issues <code>⊘ blocked by #N</code> from GitHub's native dependency links. A track's <code>depends_on</code> field declares dependencies between tracks.</p></div>
+<div class="card"><h3>Weekly cleanup: <code>hygiene</code></h3><p><code>hygiene</code> runs <code>refresh-md</code>, <code>reconcile</code>, <code>dedupe-tiers</code>, <code>milestone-drift</code> and <code>duplicates</code> in one pass so status tables, labels and next-up queues stay honest.</p></div>
+<div class="card"><h3>Shared and private tiers</h3><p>Private tracks live in your local <code>notes_root</code>. Shared tracks live in the repo at <code>.work-plan/</code>, and <code>plan-branch</code> can keep them on one canonical branch.</p></div>
+<div class="card"><h3>Diagnostics: <code>doctor</code></h3><p><code>doctor</code> checks Python, <code>git</code>, <code>gh</code> sign-in, mikefarah <code>yq</code>, config and <code>notes_root</code>, then detects config drift after a folder rename or repo move. <code>--fix</code> repairs the safe cases.</p></div>
+<div class="card"><h3>Plan and spec liveness: <code>plan-status</code></h3><p><code>plan-status</code> checks each plan document's declared file manifest against git and the filesystem and reports it as shipped, partial, dead, manifest-less or foreign, instead of trusting checkboxes.</p></div>
+<div class="card"><h3>Issue and label search</h3><p>Work Plan Viewer's Search Issues command matches issue titles with <code>%</code> wildcards, and matches GitHub label names with a <code>label:</code> prefix, such as <code>label:priority/%</code>.</p></div>
+</div>
+
+<h2 id="how-it-works">How it works</h2>
+<p>The work-plan toolkit treats GitHub as the source of truth and never mirrors it: track files only reference issue numbers, and every command re-derives the rest live.</p>
+<ol>
+<li><strong>Register a repo.</strong> <code>work-plan init-repo myproject --github=your-org/myproject</code> adds it to <code>~/.claude/work-plan/config.yml</code>.</li>
+<li><strong>Create tracks.</strong> <code>new-track</code> makes one track; <code>group</code> clusters a milestone's issues into tracks with your agent's help; <code>slot</code> adds an issue to a track.</li>
+<li><strong>Work the daily rhythm.</strong> <code>brief</code> in the morning, <code>orient &lt;track&gt;</code> when you open a session, <code>handoff &lt;track&gt;</code> when you stop, and <code>hygiene</code> once a week.</li>
+</ol>
+<p>In Claude Code, the <code>/work-plan</code> skill tells the agent how to run the CLI and to relay the output of <code>brief</code>, <code>handoff</code>, <code>orient</code> and <code>hygiene</code> word for word, so you can copy it into another terminal.</p>
+<figure>
+<img src="assets/dependency-graph.png" width="1400" height="494" alt="Work Plan Viewer's dependency graph for the track platform-health: next_up arrows to issues #487 and #1556, a depends-on edge to the idea-mode track, and issue #4821 blocking the track. Below it, the detail panel lists issues by milestone with state and assignee, plus blockers, depends-on and next-up chips.">
+<figcaption>Work Plan Viewer in VS Code: a track's dependency graph and detail panel.</figcaption>
+</figure>
+
+<h2 id="install">Install</h2>
+<p>Install the work-plan toolkit as a Claude Code or Codex plugin, as a global npm package, or with the install script; the VS Code extension is a separate install that drives the same CLI.</p>
+<h3>Claude Code plugin (recommended)</h3>
+<pre tabindex="0"><code>/plugin marketplace add stylusnexus/agent-plugins
+/plugin install work-plan@stylus-nexus</code></pre>
+<p>Plugin commands are namespaced: <code>/work-plan:brief</code>, <code>/work-plan:handoff</code>, <code>/work-plan:orient</code>, <code>/work-plan:hygiene</code>, <code>/work-plan:status</code>, and <code>/work-plan:run &lt;subcommand&gt;</code> for everything else. Update with <code>/plugin update work-plan@stylus-nexus</code>.</p>
+<h3>Codex plugin</h3>
+<pre tabindex="0"><code>codex plugin marketplace add stylusnexus/agent-plugins
+codex plugin add work-plan@stylus-nexus</code></pre>
+<p>Both plugins come from the <a href="https://github.com/stylusnexus/agent-plugins" rel="noopener">stylusnexus/agent-plugins marketplace</a>.</p>
+<h3>npm (standalone CLI for any editor or terminal)</h3>
+<pre tabindex="0"><code>npm install -g @stylusnexus/work-plan</code></pre>
+<p>This installs the <code>work-plan</code> command from the <a href="https://www.npmjs.com/package/@stylusnexus/work-plan" rel="noopener">@stylusnexus/work-plan npm package</a>. Python, <code>gh</code> and <code>yq</code> must already be on your <code>PATH</code>. The npm package targets macOS and Linux; on Windows, use the install script.</p>
+<h3>Install script (Cursor, Copilot, direct use)</h3>
+<pre tabindex="0"><code>git clone https://github.com/stylusnexus/work-plan-toolkit.git
+cd work-plan-toolkit &amp;&amp; ./install.sh   # Windows PowerShell: .\install.ps1</code></pre>
+<p>The installer checks for Python 3.9+, <code>gh</code>, <code>git</code> and mikefarah <code>yq</code> first, and seeds <code>~/.claude/work-plan/config.yml</code> on first run.</p>
+<h3>VS Code extension: Work Plan Viewer</h3>
+<p>Install Work Plan Viewer from the <a href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">VS Code Marketplace</a> or from <a href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Open VSX</a> for VSCodium, Cursor and Windsurf, or search for "Work Plan" by publisher <code>stylusnexus</code>.</p>
+<pre tabindex="0"><code>code --install-extension stylusnexus.work-plan-viewer</code></pre>
+<p>The extension needs the CLI installed too. See the <a href="vs-code-extension/">Work Plan Viewer page</a> for features and settings.</p>
+
+<h2 id="requirements">Requirements</h2>
+<p>The work-plan CLI needs four tools on your <code>PATH</code>: Python 3.9+, <code>git</code>, the GitHub CLI and mikefarah <code>yq</code>.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable table">
+<table>
+<caption class="muted">Requirements for the work-plan CLI</caption>
+<thead><tr><th scope="col">Tool</th><th scope="col">Version</th><th scope="col">Why</th></tr></thead>
+<tbody>
+<tr><td>Python</td><td>3.9 or newer</td><td>Runs the CLI. Standard library only, no <code>pip install</code> step.</td></tr>
+<tr><td><a href="https://cli.github.com/" rel="noopener"><code>gh</code> (GitHub CLI)</a></td><td>recent, signed in</td><td>Reads live issue, milestone and label state. Run <code>gh auth login</code> once.</td></tr>
+<tr><td><code>git</code></td><td>any 2.x</td><td>Reads the current branch, commits ahead of upstream and modified files.</td></tr>
+<tr><td><a href="https://github.com/mikefarah/yq" rel="noopener"><code>yq</code> by mikefarah</a></td><td>4.x</td><td>Reads and edits YAML frontmatter and config. The Python <code>yq</code> (kislyuk/yq) is not compatible.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Work Plan Viewer also needs VS Code 1.90.0 or later. Run <code>work-plan doctor</code> at any time to re-check the machine.</p>
+
+<h2 id="faq">Frequently asked questions</h2>
+<dl class="faq">
+<dt>What is the work-plan toolkit?</dt>
+<dd><p>The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin for track-aware daily planning over GitHub issues. It groups issues into <em>tracks</em> and tells you and your AI agent what is in flight, what is blocked and what to pick up next.</p></dd>
+<dt>What is a track?</dt>
+<dd><p>A track is a markdown file with YAML frontmatter that lists GitHub issue numbers for one workstream, plus fields such as <code>launch_priority</code>, <code>milestone_alignment</code>, <code>next_up</code>, <code>blockers</code> and <code>depends_on</code>. The body holds a session log and a status table that <code>refresh-md</code> keeps in sync with GitHub.</p></dd>
+<dt>Does the work-plan toolkit work with Codex?</dt>
+<dd><p>Yes. Install it with <code>codex plugin marketplace add stylusnexus/agent-plugins</code> and then <code>codex plugin add work-plan@stylus-nexus</code>, and invoke it with <code>@work-plan</code> or <code>/skills</code>. The same CLI also runs directly from Cursor, GitHub Copilot or any terminal.</p></dd>
+<dt>Does it replace Jira, Linear or GitHub Projects?</dt>
+<dd><p>No. It does not manage sprints, roadmaps or capacity. GitHub stays the source of truth for issues; the toolkit only reads and references them so you and your agent stay oriented.</p></dd>
+<dt>Does it cache or mirror GitHub data?</dt>
+<dd><p>No. Every command re-derives state live from <code>gh</code>, <code>git</code> and your track files. There is no daemon, no stored copy of GitHub state and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing <code>gh auth</code> session.</p></dd>
+<dt>Does it write to GitHub?</dt>
+<dd><p>Only when you ask. Issue data comes from read-only <code>gh</code> calls, and routine writes go to local markdown files. Three opt-in, gated commands change GitHub: <code>plan-status --issues</code> creates issues, <code>close-issue</code> closes one, and <code>in-progress</code> adds or removes the <code>work-plan:in-progress</code> label.</p></dd>
+<dt>What do I need installed?</dt>
+<dd><p>Python 3.9 or newer, <code>git</code>, the GitHub CLI <code>gh</code> (signed in with <code>gh auth login</code>) and mikefarah <code>yq</code> 4.x, the Go version. The Python <code>yq</code> wrapper does not work. Run <code>work-plan doctor</code> to check the machine and get the fix for anything missing.</p></dd>
+<dt>Can a team share tracks?</dt>
+<dd><p>Yes. Shared tracks live inside the repository at <code>.work-plan/&lt;slug&gt;.md</code> and travel with <code>git pull</code> and <code>git push</code>. The <code>plan-branch</code> command can pin them to one canonical branch, by default an orphan <code>work-plan/plan</code> branch, so planning stays out of code branches and pull requests. Private tracks stay in your local <code>notes_root</code>.</p></dd>
+<dt>Is there a VS Code extension?</dt>
+<dd><p>Yes. Work Plan Viewer (<code>stylusnexus.work-plan-viewer</code>) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write.</p></dd>
+<dt>Does the CLI call an AI model?</dt>
+<dd><p>No. The AI-assisted subcommands <code>group</code>, <code>suggest-priorities</code> and <code>auto-triage</code> print a prompt for your agent session, the agent saves a JSON answer, and you re-run the command with <code>--apply</code>. <code>auto-triage --heuristic</code> works offline with no model at all.</p></dd>
+</dl>
+
+<h2 id="links">Links and documentation</h2>
+<ul>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">work-plan-toolkit source code and README on GitHub</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/docs/usage-examples.md" rel="noopener">Usage walkthrough: morning brief, handoff, orient and weekly hygiene</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/docs/architecture.md" rel="noopener">Architecture: track model, tiers and data flow</a></li>
+<li><a href="commands/">work-plan CLI command reference</a></li>
+<li><a href="vs-code-extension/">Work Plan Viewer for VS Code</a></li>
+<li><a href="https://www.npmjs.com/package/@stylusnexus/work-plan" rel="noopener">@stylusnexus/work-plan on npm</a></li>
+<li><a href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">Work Plan Viewer on the VS Code Marketplace</a></li>
+<li><a href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Work Plan Viewer on Open VSX</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/SECURITY.md" rel="noopener">Security policy</a></li>
+</ul>
+
+</main>
+<footer class="site">
+<div class="wrap">
+<p>The work-plan toolkit is open source under the MIT License, published by <a href="https://www.stylusnexus.com" rel="noopener">Stylus Nexus Holdings LLC</a>.</p>
+<ul>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit" rel="noopener">Source on GitHub</a></li>
+<li><a href="https://www.npmjs.com/package/@stylusnexus/work-plan" rel="noopener">npm package</a></li>
+<li><a href="https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer" rel="noopener">VS Code Marketplace</a></li>
+<li><a href="https://open-vsx.org/extension/stylusnexus/work-plan-viewer" rel="noopener">Open VSX</a></li>
+<li><a href="https://github.com/stylusnexus/work-plan-toolkit/blob/main/LICENSE" rel="noopener">License (MIT)</a></li>
+<li><a href="./llms.txt">llms.txt</a></li>
+</ul>
+</div>
+</footer>
+</body>
+</html>

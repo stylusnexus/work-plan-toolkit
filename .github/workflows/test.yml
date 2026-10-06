@@ -27,8 +27,8 @@ jobs:
     name: Python 3.9 union-syntax lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Run py39 union-syntax lint
@@ -44,11 +44,14 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python-version:
-          - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
         include:
+          # setup-python has no 3.9 build for Ubuntu 26.04, which ubuntu-latest
+          # becomes between 2026-10-19 and 2026-11-19. 24.04 is supported until 2029.
+          - os: ubuntu-24.04
+            python-version: "3.9"
           - os: macos-latest
             python-version: "3.12"
           - os: windows-latest
@@ -56,10 +59,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -122,9 +125,9 @@ jobs:
     needs: lint-py39
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -168,9 +171,9 @@ jobs:
     needs: lint-py39
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

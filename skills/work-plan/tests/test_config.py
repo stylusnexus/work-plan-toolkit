@@ -1,4 +1,5 @@
 """Tests for config loader."""
+import json
 import unittest
 import tempfile
 import sys
@@ -130,14 +131,81 @@ class TestWriteRepoField(BaseConfigWriteTest):
         self.assertEqual(cfg["repos"]["bar"]["github"], "org/bar-renamed")
         self.assertEqual(cfg["repos"]["bar"]["local"], "/code/bar")
 
-    def test_raises_on_scalar_entry(self):
+    def test_scalar_entry_is_migrated_to_mapping(self):
+        # #440: a scalar-shorthand entry used to crash yq; it now becomes a mapping.
         cfg_path = self._write_config(
             "notes_root: /tmp/notes\n"
             "repos:\n"
             "  foo: org/foo\n"
         )
-        with self.assertRaises(subprocess.CalledProcessError):
-            write_repo_field("foo", {"github": "org/foo-renamed"}, path=cfg_path)
+        write_repo_field("foo", {"local": "/code/foo"}, path=cfg_path)
+        cfg = load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
+        self.assertEqual(cfg["repos"]["foo"], {"github": "org/foo", "local": "/code/foo"})
+        self.assertEqual(cfg["_scalar_shape_keys"], set())
+
+    def test_null_and_missing_entries_get_only_the_updates(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes\n"
+            "repos:\n"
+            "  empty:\n"
+        )
+        write_repo_field("empty", {"local": "/a"}, path=cfg_path)
+        write_repo_field("fresh", {"local": "/b"}, path=cfg_path)
+        # load_config rightly demands `github`, so read the raw file instead
+        out = subprocess.run(["yq", "-o=json", "-I=0", ".repos", str(cfg_path)],
+                             check=True, capture_output=True, text=True).stdout
+        self.assertEqual(json.loads(out), {"empty": {"local": "/a"}, "fresh": {"local": "/b"}})
+
+    def test_comments_stay_with_their_own_entry_and_style_is_block(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes  # keep\n"
+            "repos:\n"
+            "  foo: org/foo   # scalar note\n"
+            "  # about bar\n"
+            "  bar:\n"
+            "    github: org/bar  # bar note\n"
+        )
+        write_repo_field("foo", {"local": "/f"}, path=cfg_path)
+        write_repo_field("bar", {"local": "/b"}, path=cfg_path)
+        text = cfg_path.read_text(encoding="utf-8")
+        self.assertIn("github: org/foo # scalar note", text)
+        # Windows yq emits a blank line between the comment and its key; the
+        # comment still sits directly above bar, which is what matters.
+        self.assertRegex(text, r"# about bar\n\s*\n?\s*bar:")
+        self.assertIn("github: org/bar # bar note", text)
+        self.assertIn("# keep", text)
+        self.assertNotIn("{", text)  # no flow-style maps
+
+    def test_rewrite_is_idempotent(self):
+        cfg_path = self._write_config(
+            "notes_root: /tmp/notes\n"
+            "repos:\n"
+            "  foo: org/foo  # c\n"
+        )
+        write_repo_field("foo", {"local": "/f"}, path=cfg_path)
+        once = cfg_path.read_text(encoding="utf-8")
+        write_repo_field("foo", {"local": "/f"}, path=cfg_path)
+        self.assertEqual(cfg_path.read_text(encoding="utf-8"), once)
+
+
+class TestReposShape(BaseConfigWriteTest):
+    # #432: a malformed `repos` key must be a clean error, not an AttributeError.
+    def test_null_repos_is_empty(self):
+        cfg_path = self._write_config("notes_root: /tmp/notes\nrepos:\n")
+        cfg = load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
+        self.assertEqual(cfg["repos"], {})
+
+    def test_list_repos_raises_config_error(self):
+        cfg_path = self._write_config("notes_root: /tmp/notes\nrepos: [a, b]\n")
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
+        self.assertIn("repos", str(ctx.exception))
+        self.assertIn("list", str(ctx.exception))
+
+    def test_scalar_repos_raises_config_error(self):
+        cfg_path = self._write_config("notes_root: /tmp/notes\nrepos: oops\n")
+        with self.assertRaises(ConfigError):
+            load_config(path=cfg_path, notes_root=Path("/tmp/notes"))
 
 
 if __name__ == "__main__":

@@ -89,13 +89,18 @@ def run(args: list[str]) -> int:
         cfg = load_config()
     except ConfigError as e:
         print(json.dumps({"error": str(e)})); return 1
-    tracks = [t for t in discover_tracks(cfg) if t.has_frontmatter]
+    # Collisions come back from discovery (#425) so tier-duplicate detection below
+    # reuses these parsed tracks instead of re-walking both tiers through `yq`.
+    active_dups: list = []
+    tracks = [t for t in discover_tracks(cfg, collisions=active_dups) if t.has_frontmatter]
 
     # --include-archived (#328): append archived-tier tracks, tagged so the
     # viewer can render them greyed under a "Show archived" toggle. In-memory
     # meta flag only (never written back). Excluded by default.
+    archived_dups = None
     if flags.get("--include-archived"):
-        for t in discover_archived_tracks(cfg):
+        archived_dups = []
+        for t in discover_archived_tracks(cfg, collisions=archived_dups):
             if t.has_frontmatter:
                 t.meta["archived"] = True
                 tracks.append(t)
@@ -254,7 +259,7 @@ def run(args: list[str]) -> int:
     # no-data-loss invariant (private issue refs ⊆ shared), so the viewer can
     # tell auto-removable orphans from diverged ones needing manual review.
     tier_duplicates = []
-    for shared_t, private_t in find_tier_duplicates(cfg):
+    for shared_t, private_t in find_tier_duplicates(cfg, active=active_dups, archived=archived_dups):
         tier_duplicates.append({
             "repo": shared_t.repo,
             "folder": shared_t.folder,
