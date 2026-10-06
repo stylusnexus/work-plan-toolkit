@@ -197,7 +197,7 @@ No. It does not manage sprints, roadmaps or capacity. GitHub stays the source of
 
 ### Does it cache or mirror GitHub data?
 
-No. Every command re-derives state live from gh, git and your track files. There is no daemon, no cache and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing gh auth session.
+No. Every command re-derives state live from gh, git and your track files. There is no daemon, no stored copy of GitHub state and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing gh auth session.
 
 ### Does it write to GitHub?
 

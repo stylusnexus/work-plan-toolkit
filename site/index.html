@@ -183,7 +183,7 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
    "name": "Does it cache or mirror GitHub data?",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "No. Every command re-derives state live from gh, git and your track files. There is no daemon, no cache and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing gh auth session."
+    "text": "No. Every command re-derives state live from gh, git and your track files. There is no daemon, no stored copy of GitHub state and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing gh auth session."
    }
   },
   {
@@ -345,7 +345,7 @@ cd work-plan-toolkit &amp;&amp; ./install.sh   # Windows PowerShell: .\install.p
 <dt>Does it replace Jira, Linear or GitHub Projects?</dt>
 <dd><p>No. It does not manage sprints, roadmaps or capacity. GitHub stays the source of truth for issues; the toolkit only reads and references them so you and your agent stay oriented.</p></dd>
 <dt>Does it cache or mirror GitHub data?</dt>
-<dd><p>No. Every command re-derives state live from <code>gh</code>, <code>git</code> and your track files. There is no daemon, no cache and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing <code>gh auth</code> session.</p></dd>
+<dd><p>No. Every command re-derives state live from <code>gh</code>, <code>git</code> and your track files. There is no daemon, no stored copy of GitHub state and no sync loop, and the toolkit never reads or stores GitHub tokens; it reuses your existing <code>gh auth</code> session.</p></dd>
 <dt>Does it write to GitHub?</dt>
 <dd><p>Only when you ask. Issue data comes from read-only <code>gh</code> calls, and routine writes go to local markdown files. Three opt-in, gated commands change GitHub: <code>plan-status --issues</code> creates issues, <code>close-issue</code> closes one, and <code>in-progress</code> adds or removes the <code>work-plan:in-progress</code> label.</p></dd>
 <dt>What do I need installed?</dt>
