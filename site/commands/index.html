@@ -292,7 +292,7 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
 <div class="cmd" id="cmd-refresh-md">
 <h3><code>refresh-md</code></h3>
 <p class="usage"><code>work-plan refresh-md &lt;track&gt; | --all | --repo=&lt;key&gt; [--yes]</code></p>
-<p>Sync issue STATE (open/closed, status labels) from GitHub into the track body&#x27;s status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place.</p>
+<p>Sync issue STATE (open/closed, status labels) from GitHub into the track body&#x27;s status table. Does not change track membership. For a canonical table it re-derives the whole block from live data, milestone-ordered, so the table self-heals and stays grouped; narrative tables are updated in place. Adjacent tables are parsed separately. Rows whose cell count differs from their header are left untouched and reported as malformed; the command exits nonzero rather than risk overwriting a title with a status.</p>
 <p class="muted">Example: <code>/work-plan refresh-md --repo=myproject</code></p>
 </div>
 <div class="cmd" id="cmd-reconcile">
