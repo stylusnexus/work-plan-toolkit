@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "node:fs";
 import {
   exportJson, listRepoOpenIssues, makeSpawnRunner, checkVersion,
-  MIN_REFRESH_SAFE_CLI_VERSION, checkAuth, summariseAuthError, CliError,
+  MIN_REFRESH_SAFE_CLI_VERSIONS, checkAuth, summariseAuthError, CliError,
   isAlreadyExistsError,
   notesVcsStatus, notesVcsRun, notesVcsUndo, suggestNextUp,
   autoTriageScan, doctorScan, doctorReport,
@@ -1468,10 +1468,10 @@ export function activate(context: vscode.ExtensionContext): void {
         const track = trackObj.name;
         const repoKey = repoKeyForTrack(trackObj);
 
-        const refreshVersion = await checkVersion(runner, MIN_REFRESH_SAFE_CLI_VERSION);
+        const refreshVersion = await checkVersion(runner, MIN_REFRESH_SAFE_CLI_VERSIONS);
         if (!refreshVersion.ok) {
           const choice = await vscode.window.showWarningMessage(
-            `Work Plan: refreshing requires CLI ${MIN_REFRESH_SAFE_CLI_VERSION} or a later-dated release. ` +
+            `Work Plan: refreshing requires a CLI build with the title-preservation fix or a later-dated release. ` +
             `Found "${refreshVersion.version ?? "unknown"}". Older builds can overwrite track titles.`,
             "Update CLI",
           );
