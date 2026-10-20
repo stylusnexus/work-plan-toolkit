@@ -14,9 +14,11 @@ verbs. It exercises both the default-label path (no `github.labels`
 override) and the new override path from #32.
 """
 import json
+import io
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -252,6 +254,74 @@ class ReadOnlyContractTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertTrue(timed_out)
         mock_prompt.assert_not_called()
+        mock_write.assert_not_called()
+
+    def test_fetch_uses_large_paginated_limit_and_unions_more_than_200_results(self):
+        # `gh issue/pr list --limit` follows all API pages up to the requested
+        # limit. A 250-result label must therefore survive as full membership.
+        issues = [
+            {"number": n, "title": f"issue {n}", "state": "OPEN"}
+            for n in range(1, 251)
+        ]
+        prs = [
+            {"number": n, "title": f"pr {n}", "state": "CLOSED"}
+            for n in range(251, 276)
+        ]
+        calls = []
+
+        def fake_run(argv, *args, **kwargs):
+            calls.append(list(argv))
+            payload = issues if argv[1] == "issue" else prs
+            return MagicMock(returncode=0, stdout=json.dumps(payload), stderr="")
+
+        with patch("commands.reconcile.subprocess.run", side_effect=fake_run):
+            result = reconcile._fetch_labeled_issues("ok/ok", ["track/large"])
+
+        self.assertEqual(len(result), 275)
+        self.assertEqual({item["number"] for item in result}, set(range(1, 276)))
+        self.assertEqual(len(calls), 2)
+        for argv in calls:
+            self.assertEqual(argv[argv.index("--limit") + 1], "10000")
+            self.assertEqual(argv[argv.index("--state") + 1], "all")
+
+    def test_exact_result_cap_fails_closed_as_possible_truncation(self):
+        # Reaching the cap is ambiguous: skip the whole track rather than emit
+        # false FLAGs (or incomplete ADDs) from a potentially partial list.
+        response = [
+            {"number": n, "title": str(n), "state": "OPEN"}
+            for n in range(1, 4)
+        ]
+        with patch("commands.reconcile.LABELED_ISSUE_LIMIT", 3), \
+             patch("commands.reconcile.subprocess.run", return_value=MagicMock(
+                 returncode=0, stdout=json.dumps(response), stderr="")):
+            with self.assertRaisesRegex(RuntimeError, "may be truncated.*skipping reconciliation"):
+                reconcile._fetch_labeled_issues("ok/ok", ["track/large"])
+
+    def test_all_tracks_skipped_reports_incomplete_instead_of_in_sync(self):
+        tracks = [
+            _fake_track(slug="alpha", repo="ok/ok", issues=[1]),
+            _fake_track(slug="beta", repo="ok/ok", issues=[2]),
+        ]
+        capped = [
+            {"number": n, "title": str(n), "state": "OPEN"}
+            for n in range(1, 3)
+        ]
+        cfg = {"notes_root": "/tmp/fake-notes", "repos": {"ok": {"github": "ok/ok"}}}
+        output = io.StringIO()
+        with patch("commands.reconcile.LABELED_ISSUE_LIMIT", 2), \
+             patch("commands.reconcile.subprocess.run", return_value=MagicMock(
+                 returncode=0, stdout=json.dumps(capped), stderr="")), \
+             patch("commands.reconcile.load_config", return_value=cfg), \
+             patch("commands.reconcile.discover_tracks", return_value=tracks), \
+             patch("commands.reconcile.write_file") as mock_write, \
+             redirect_stdout(output):
+            rc = reconcile.run(["--all"])
+
+        rendered = output.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("may be truncated", rendered)
+        self.assertIn("Reconciliation incomplete: 2 track(s) skipped", rendered)
+        self.assertNotIn("All tracks in sync", rendered)
         mock_write.assert_not_called()
 
 
