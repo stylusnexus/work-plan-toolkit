@@ -14,10 +14,14 @@ def find_status_table(body: str) -> Optional[dict]:
     first 'Status' table if none have issue refs.
     """
     tables = find_all_status_tables(body, with_issue_refs_only=False)
-    with_refs = [t for t in tables if t["has_issue_refs"]]
+    # A Status index from the header cannot safely be applied to data rows
+    # whose width disagrees with that header. Leave malformed tables for the
+    # refresh command to report, and only return a table that can be edited.
+    valid_tables = [t for t in tables if t["row_shapes_valid"]]
+    with_refs = [t for t in valid_tables if t["has_issue_refs"]]
     if with_refs:
         return with_refs[0]
-    return tables[0] if tables else None
+    return valid_tables[0] if valid_tables else None
 
 
 def find_all_status_tables(body: str, with_issue_refs_only: bool = True) -> list[dict]:
@@ -62,6 +66,13 @@ def find_all_status_tables(body: str, with_issue_refs_only: bool = True) -> list
         while j < len(lines):
             if "|" not in lines[j]:
                 break
+            # Markdown permits adjacent tables with no blank line between
+            # them. A header followed by a separator starts a new table; do
+            # not absorb it (and the rows below it) into the current table.
+            # Otherwise the current table's status column can be applied to
+            # rows whose own header places Status elsewhere (#540).
+            if j + 1 < len(lines) and _is_separator(lines[j + 1]):
+                break
             row_cells = _parse_row(lines[j])
             if not row_cells:
                 break
@@ -69,9 +80,14 @@ def find_all_status_tables(body: str, with_issue_refs_only: bool = True) -> list
             j += 1
         has_refs = any(ISSUE_NUM_RE.search(cell) for row in rows for cell in row["cells"])
         if not with_issue_refs_only or has_refs:
+            column_count = len(cells)
             tables.append({
                 "header_line_idx": i,
                 "rows": rows,
+                "header_column_count": column_count,
+                "row_shapes_valid": all(
+                    len(row["cells"]) == column_count for row in rows
+                ),
                 "status_col_index": status_idx,
                 "has_issue_refs": has_refs,
                 "is_canonical": is_canonical,

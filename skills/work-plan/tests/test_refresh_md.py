@@ -257,6 +257,50 @@ class NarrativeTableTest(unittest.TestCase):
         self.assertIn("| #1 | first | — | ✅ Shipped |", new_body)
         self.assertNotIn("Milestone", new_body)
 
+    def test_adjacent_two_col_table_does_not_overwrite_issue_titles(self):
+        body = (
+            "## Promise matrix\n"
+            "| Promise | Status | Evidence |\n"
+            "|---|---|---|\n"
+            "| #11 | 🔲 Open | audit |\n"
+            "| #12 | 🔲 Open | audit |\n"
+            "| Issue | Title | Owner | Status |\n"
+            "|---|---|---|---|\n"
+            "| #9751 | tailor reuse tip | @gm | 🔲 Open |\n"
+            "| #9785 | search trusts user id | @gm | 🔲 Open |\n"
+        )
+        track = _track(name="adjacent", repo="o/r", issues=[11, 12, 9751, 9785], body=body)
+        fetched = [
+            _gh(11, "promise one"),
+            _gh(12, "promise two"),
+            _gh(9751, "tailor reuse tip"),
+            _gh(9785, "search trusts user id", "CLOSED"),
+        ]
+
+        rc, mw, out = _drive(track, fetched, ["adjacent", "--yes"])
+
+        self.assertEqual(rc, 0)
+        mw.assert_called_once()
+        new_body = mw.call_args[0][2]
+        self.assertIn("| #9751 | tailor reuse tip | @gm | 🔲 Open |", new_body)
+        self.assertIn("| #9785 | search trusts user id | @gm | ✅ Shipped |", new_body)
+
+    def test_malformed_row_is_skipped_and_reported(self):
+        body = (
+            "| Promise | Status | Evidence |\n"
+            "|---|---|---|\n"
+            "| #9751 | tailor reuse tip | @gm | 🔲 Open |\n"
+        )
+        track = _track(name="malformed", repo="o/r", issues=[9751], body=body)
+
+        rc, mw, out = _drive(track, [_gh(9751, "tailor reuse tip", "CLOSED")],
+                             ["malformed", "--yes"])
+
+        self.assertEqual(rc, 1)
+        mw.assert_not_called()
+        self.assertIn("Skipped 1 malformed status row", out)
+        self.assertIn("| #9751 | tailor reuse tip | @gm | 🔲 Open |", body)
+
     def test_missing_row_appended_in_frontmatter_order(self):
         body = self._narrative_body(["| #1 | first | — | 🔲 Open |"])
         track = _track(name="n", repo="o/r", issues=[1, 5], body=body)
