@@ -110,6 +110,10 @@ def _apply(cfg: dict) -> int:
         print(f"ERROR: batch repo '{repo}' not in config.yml repos.")
         return 1
     answers = json.loads(answers_path.read_text())
+    batch_numbers = {
+        issue["number"] for issue in batch.get("issues", [])
+        if isinstance(issue, dict) and type(issue.get("number")) is int
+    }
 
     print(f"Applying {len(answers)} priority labels to {repo}...")
     for ans in answers:
@@ -119,10 +123,19 @@ def _apply(cfg: dict) -> int:
         if not isinstance(ans, dict):
             print(f"  SKIP: answer is not an object: {ans!r}")
             continue
+        raw_num = ans.get("number")
+        if isinstance(raw_num, bool) or (
+            isinstance(raw_num, float) and not raw_num.is_integer()
+        ):
+            print(f"  SKIP: answer has a malformed 'number': {ans!r}")
+            continue
         try:
-            num = int(ans["number"])
+            num = int(raw_num)
         except (KeyError, TypeError, ValueError):
             print(f"  SKIP: answer missing a numeric 'number': {ans!r}")
+            continue
+        if num not in batch_numbers:
+            print(f"  SKIP #{num}: not in the prepared batch")
             continue
         priority = ans.get("priority")
         if priority not in ("P0", "P1", "P2", "P3"):

@@ -41,6 +41,10 @@ from lib.write_guard import needs_confirm
 
 
 PER_TRACK_TIMEOUT = 15  # seconds; each gh call gets this budget
+# `gh issue/pr list` paginates up to this limit. Keep the limit high enough for
+# long-lived tracks, and fail closed when the result reaches it: GitHub CLI may
+# have stopped at the cap, so membership cannot safely support ADD/FLAG output.
+LABELED_ISSUE_LIMIT = 10000
 
 
 def _track_key(track) -> tuple:
@@ -81,7 +85,7 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
                 proc = subprocess.run(
                     ["gh", kind, "list", "--repo", repo,
                      "--label", lab,
-                     "--state", "all", "--limit", "200",
+                     "--state", "all", "--limit", str(LABELED_ISSUE_LIMIT),
                      "--json", "number,title,state"],
                     capture_output=True, text=True,
                     timeout=PER_TRACK_TIMEOUT,
@@ -94,7 +98,14 @@ def _fetch_labeled_issues(repo: str, labels: list[str]) -> list[dict]:
                 raise RuntimeError(
                     f"gh {kind} query failed for label '{lab}': {proc.stderr.strip()}"
                 )
-            for item in (json.loads(proc.stdout) if proc.stdout.strip() else []):
+            items = json.loads(proc.stdout) if proc.stdout.strip() else []
+            if len(items) >= LABELED_ISSUE_LIMIT:
+                raise RuntimeError(
+                    f"{lab}: gh {kind} list returned {len(items)} results, "
+                    f"may be truncated at limit {LABELED_ISSUE_LIMIT}; "
+                    "skipping reconciliation to avoid false membership results"
+                )
+            for item in items:
                 seen.setdefault(item["number"], item)
     return list(seen.values())
 
@@ -321,5 +332,15 @@ def run(args: list[str]) -> int:
         print(f"  ✓ Updated {track.path.name}")
 
     if not any_changes:
-        print("All tracks in sync with configured labels.")
+        incomplete_count = sum(
+            1 for track, _labels in work_items
+            if results.get(_track_key(track)) is None
+        )
+        if incomplete_count:
+            print(
+                f"Reconciliation incomplete: {incomplete_count} track(s) "
+                "skipped because GitHub membership could not be fully fetched."
+            )
+        else:
+            print("All tracks in sync with configured labels.")
     return 0

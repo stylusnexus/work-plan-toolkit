@@ -67,7 +67,10 @@ jobs:
 
       - name: Publish to npm
         if: ${{ inputs.dry_run == false }}
-        run: npm publish --access public --registry https://registry.npmjs.org/   # OIDC; provenance is attached automatically
+        # A same-day suffix (e.g. 2026.10.6-1) is a semver prerelease, and npm >= 11 refuses to
+        # publish one without an explicit --tag. The suffix is a same-day republish, not a
+        # preview, so it takes `latest`.
+        run: npm publish --access public --registry https://registry.npmjs.org/ ${{ inputs.version_suffix != '' && '--tag latest' || '' }}   # OIDC; provenance is attached automatically
 
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v7
