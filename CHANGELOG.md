@@ -6,6 +6,14 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.20+a4a89f5 — 2026-10-20 (#547)
+
+fix: protect track titles in VS Code refresh
+
+Protect track titles from refresh behavior in older CLI builds.
+
+The extension now blocks Refresh Track unless the CLI includes the title-preservation fix. Updates extension v0.20.2 and documents the CLI requirement across the README and site.
+
 ## 2026.10.20+b1b122f — 2026-10-20 (#545)
 
 fix(refresh-md): protect table titles
