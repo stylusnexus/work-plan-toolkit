@@ -15,6 +15,7 @@ import {
   checkVersion,
   checkAuth,
   MIN_CLI_VERSION,
+  MIN_REFRESH_SAFE_CLI_VERSION,
   notesVcsStatus,
   notesVcsRun,
   notesVcsUndo,
@@ -311,6 +312,12 @@ describe("meetsMinVersion", () => {
     assert.equal(meetsMinVersion("2026.06.14", "2026.06.14"), true);
   });
 
+  test("same-day builds must match the required fix when the minimum names a build", () => {
+    assert.equal(meetsMinVersion("2026.10.20+6477802", MIN_REFRESH_SAFE_CLI_VERSION), false);
+    assert.equal(meetsMinVersion("2026.10.20+b1b122f", MIN_REFRESH_SAFE_CLI_VERSION), true);
+    assert.equal(meetsMinVersion("2026.10.21+newbuild", MIN_REFRESH_SAFE_CLI_VERSION), true);
+  });
+
   test("MIN_CLI_VERSION is never ahead of the repo's own CLI VERSION", () => {
     // Root-cause guard for the 0.9.0 regression: MIN_CLI_VERSION was set one day
     // ahead of the deploy (2026.06.15 vs a 2026.06.14 CLI), so every updated user
@@ -327,6 +334,11 @@ describe("meetsMinVersion", () => {
       true,
       `MIN_CLI_VERSION (${MIN_CLI_VERSION}) is ahead of repo VERSION (${repoVersion})`,
     );
+    assert.equal(
+      meetsMinVersion(repoVersion as string, MIN_REFRESH_SAFE_CLI_VERSION),
+      true,
+      `MIN_REFRESH_SAFE_CLI_VERSION (${MIN_REFRESH_SAFE_CLI_VERSION}) is ahead of repo VERSION (${repoVersion})`,
+    );
   });
 });
 
@@ -335,8 +347,8 @@ describe("meetsMinVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseVersion", () => {
-  test("parses 'work-plan 2026.06.07+9f049ec' → '2026.06.07'", () => {
-    assert.equal(parseVersion("work-plan 2026.06.07+9f049ec"), "2026.06.07");
+  test("preserves the build suffix from 'work-plan 2026.06.07+9f049ec'", () => {
+    assert.equal(parseVersion("work-plan 2026.06.07+9f049ec"), "2026.06.07+9f049ec");
   });
 
   test("parses 'work-plan 2026.06.07' with no build suffix", () => {
@@ -348,7 +360,7 @@ describe("parseVersion", () => {
   });
 
   test("bare version string without prefix parses correctly", () => {
-    assert.equal(parseVersion("2026.06.07+abc"), "2026.06.07");
+    assert.equal(parseVersion("2026.06.07+abc"), "2026.06.07+abc");
   });
 
   test("empty string → null", () => {
@@ -361,18 +373,18 @@ describe("parseVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("checkVersion", () => {
-  test("returns {ok:true, version:'2026.07.15'} for a current version", async () => {
+  test("returns the complete version token for a current version", async () => {
     const run = fakeRunner({ code: 0, stdout: "work-plan 2026.07.15+abc", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.07.15");
+    assert.equal(result.version, "2026.07.15+abc");
   });
 
   test("returns {ok:false} for an older version", async () => {
     const run = fakeRunner({ code: 0, stdout: "work-plan 2026.05.30+old", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, false);
-    assert.equal(result.version, "2026.05.30");
+    assert.equal(result.version, "2026.05.30+old");
   });
 
   test("returns {ok:false, version:null} when runner returns code 1", async () => {
@@ -393,7 +405,14 @@ describe("checkVersion", () => {
     const run = fakeRunner({ code: 0, stdout: "work-plan 2026.08.01+future", stderr: "" });
     const result = await checkVersion(run);
     assert.equal(result.ok, true);
-    assert.equal(result.version, "2026.08.01");
+    assert.equal(result.version, "2026.08.01+future");
+  });
+
+  test("supports a same-day build-specific minimum", async () => {
+    const oldBuild = fakeRunner({ code: 0, stdout: "work-plan 2026.10.20+6477802", stderr: "" });
+    const fixedBuild = fakeRunner({ code: 0, stdout: "work-plan 2026.10.20+b1b122f", stderr: "" });
+    assert.equal((await checkVersion(oldBuild, MIN_REFRESH_SAFE_CLI_VERSION)).ok, false);
+    assert.equal((await checkVersion(fixedBuild, MIN_REFRESH_SAFE_CLI_VERSION)).ok, true);
   });
 
   test("never throws even when runner throws (spawn failure simulation)", async () => {
