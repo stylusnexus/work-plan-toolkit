@@ -14,7 +14,7 @@ The work-plan toolkit is a daily work-planning system for developers who run par
 2. Track files: markdown files with YAML frontmatter that reference GitHub issue numbers for one workstream.
 3. A `SKILL.md` that tells Claude Code (or Codex) how to run the CLI and when to relay its output word for word.
 
-A companion VS Code extension, Work Plan Viewer (`stylusnexus.work-plan-viewer`, listed as "Work Plan"), shows the same tracks as a sidebar tree and a Mermaid dependency graph. It runs the CLI for every read and write. Refresh Track requires CLI builds `2026.10.20+b1b122f` or `2026.10.20+a4a89f5`, or a later-dated release, because earlier dates and other same-day builds can overwrite issue titles in malformed tables.
+A companion VS Code extension, Work Plan Viewer (`stylusnexus.work-plan-viewer`, listed as "Work Plan"), shows the same tracks as a sidebar tree and a Mermaid dependency graph. It runs the CLI for every read and write. Refresh Track requires a CLI dated 2026.10.20 or later, while blocking the known unsafe same-day build `2026.10.20+6477802` because it can overwrite issue titles in malformed tables.
 
 ## What it is not
 

@@ -226,7 +226,7 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
 
 <h2 id="requirements">Requirements</h2>
 <p>Work Plan Viewer needs VS Code 1.90.0 or later and the work-plan CLI on your <code>PATH</code> or at <code>workPlan.cliPath</code>.</p>
-<p>The CLI in turn needs Python 3.9+, <code>git</code>, a signed-in <code>gh</code> and mikefarah <code>yq</code> 4.x. The extension checks the CLI version when it starts. Refresh Track requires builds <code>2026.10.20+b1b122f</code> or <code>2026.10.20+a4a89f5</code>, or a later-dated release; it blocks earlier dates and other same-day builds that can overwrite titles in malformed tables.</p>
+<p>The CLI in turn needs Python 3.9+, <code>git</code>, a signed-in <code>gh</code> and mikefarah <code>yq</code> 4.x. The extension checks the CLI version when it starts. Refresh Track requires a CLI dated 2026.10.20 or later; it blocks earlier dates and the known unsafe same-day build <code>2026.10.20+6477802</code>, which can overwrite titles in malformed tables.</p>
 
 <h2 id="settings">Settings</h2>
 <p>Work Plan Viewer has 9 settings, all under the <code>workPlan.</code> prefix; the gear button in the view title opens them.</p>
