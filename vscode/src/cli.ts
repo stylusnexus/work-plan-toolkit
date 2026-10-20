@@ -399,10 +399,14 @@ export const MIN_CLI_VERSION = "2026.07.15";
  * tables. The date alone is not enough: an earlier release was published on
  * the same day, so compare the build suffix when dates match.
  */
-export const MIN_REFRESH_SAFE_CLI_VERSIONS = [
-  "2026.10.20+b1b122f",
-  "2026.10.20+a4a89f5",
-] as const;
+export const MIN_REFRESH_SAFE_CLI_VERSION = "2026.10.20";
+const KNOWN_UNSAFE_REFRESH_CLI_BUILDS = new Set(["2026.10.20+6477802"]);
+
+/** Accept the fixed date and later builds, except the known unsafe same-day build. */
+export function isRefreshSafeCliVersion(version: string): boolean {
+  return meetsMinVersion(version, MIN_REFRESH_SAFE_CLI_VERSION)
+    && !KNOWN_UNSAFE_REFRESH_CLI_BUILDS.has(version.toLowerCase());
+}
 
 /**
  * Parses the version token from `work-plan --version` output.
@@ -451,7 +455,7 @@ export function meetsMinVersion(actual: string, min: string): boolean {
  */
 export async function checkVersion(
   run: CliRunner,
-  minVersion: string | readonly string[] = MIN_CLI_VERSION,
+  minVersion = MIN_CLI_VERSION,
 ): Promise<{ ok: boolean; version: string | null }> {
   try {
     const result = await run(["--version"]);
@@ -462,10 +466,7 @@ export async function checkVersion(
     if (version === null) {
       return { ok: false, version: null };
     }
-    const ok = typeof minVersion === "string"
-      ? meetsMinVersion(version, minVersion)
-      : minVersion.some((minimum) => meetsMinVersion(version, minimum));
-    return { ok, version };
+    return { ok: meetsMinVersion(version, minVersion), version };
   } catch {
     // Spawn failure (ENOENT) or any other error — degrade gracefully.
     return { ok: false, version: null };
