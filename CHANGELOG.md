@@ -6,6 +6,14 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.20+0264309 — 2026-10-20 (#550)
+
+fix: accept deployed CLI build for track refresh
+
+Keep Refresh Track available with the deployment-stamped build of the CLI fix.
+
+The extension accepts both verified safe same-day builds and continues to block older same-day builds. Updates the extension to v0.20.3 and keeps the README and changelog requirements aligned.
+
 ## 2026.10.20+a4a89f5 — 2026-10-20 (#547)
 
 fix: protect track titles in VS Code refresh
