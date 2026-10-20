@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.20+6477802 — 2026-10-20 (#543)
+
+fix(reconcile,priorities): validate membership
+
+### Shipped changes
+- Reconcile fetches complete label membership up to a guarded 10,000-result cap and reports incomplete scans clearly.
+- `suggest-priorities --apply` limits writes to integer issue numbers in the prepared batch.
+- Also includes the merged `@types/node` update and npm same-day suffix fix from #536 and #535.
+
+Source candidate: `30e9e14363c0c1c2c6023f360f7fa94119288104`
+Previous deployed source: `a4969fcc789a29eb718dda4ce44572f2c7183d4b`
+
+Refs #538, #537.
+
 ## 2026.10.06+4ae1fe1 — 2026-10-06 (#534)
 
 feat: pages site, faster export, quieter refresh, config fixes
