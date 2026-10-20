@@ -6,14 +6,14 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
-## [0.20.2] - 2026-10-20
+## [0.20.3] - 2026-10-20
 
 ### Fixed
 
 - Refresh Track checks the CLI build and refuses to run on earlier dates or
-  other same-day builds than `2026.10.20+b1b122f`. Earlier builds can overwrite
-  issue titles when a track table is malformed; the command offers a link to
-  update the CLI.
+  other same-day builds than `2026.10.20+b1b122f` and the release build
+  `2026.10.20+a4a89f5`. Earlier builds can overwrite issue titles when a track
+  table is malformed; the command offers a link to update the CLI.
 
 ## [0.20.1] - 2026-10-06
 

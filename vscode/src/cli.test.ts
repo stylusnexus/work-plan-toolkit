@@ -15,7 +15,7 @@ import {
   checkVersion,
   checkAuth,
   MIN_CLI_VERSION,
-  MIN_REFRESH_SAFE_CLI_VERSION,
+  MIN_REFRESH_SAFE_CLI_VERSIONS,
   notesVcsStatus,
   notesVcsRun,
   notesVcsUndo,
@@ -313,9 +313,10 @@ describe("meetsMinVersion", () => {
   });
 
   test("same-day builds must match the required fix when the minimum names a build", () => {
-    assert.equal(meetsMinVersion("2026.10.20+6477802", MIN_REFRESH_SAFE_CLI_VERSION), false);
-    assert.equal(meetsMinVersion("2026.10.20+b1b122f", MIN_REFRESH_SAFE_CLI_VERSION), true);
-    assert.equal(meetsMinVersion("2026.10.21+newbuild", MIN_REFRESH_SAFE_CLI_VERSION), true);
+    assert.equal(meetsMinVersion("2026.10.20+6477802", MIN_REFRESH_SAFE_CLI_VERSIONS[0]), false);
+    assert.equal(meetsMinVersion("2026.10.20+b1b122f", MIN_REFRESH_SAFE_CLI_VERSIONS[0]), true);
+    assert.equal(meetsMinVersion("2026.10.20+a4a89f5", MIN_REFRESH_SAFE_CLI_VERSIONS[1]), true);
+    assert.equal(meetsMinVersion("2026.10.21+newbuild", MIN_REFRESH_SAFE_CLI_VERSIONS[0]), true);
   });
 
   test("MIN_CLI_VERSION is never ahead of the repo's own CLI VERSION", () => {
@@ -335,9 +336,9 @@ describe("meetsMinVersion", () => {
       `MIN_CLI_VERSION (${MIN_CLI_VERSION}) is ahead of repo VERSION (${repoVersion})`,
     );
     assert.equal(
-      meetsMinVersion(repoVersion as string, MIN_REFRESH_SAFE_CLI_VERSION),
+      MIN_REFRESH_SAFE_CLI_VERSIONS.some((minimum) => meetsMinVersion(repoVersion as string, minimum)),
       true,
-      `MIN_REFRESH_SAFE_CLI_VERSION (${MIN_REFRESH_SAFE_CLI_VERSION}) is ahead of repo VERSION (${repoVersion})`,
+      `MIN_REFRESH_SAFE_CLI_VERSIONS (${MIN_REFRESH_SAFE_CLI_VERSIONS.join(", ")}) are ahead of repo VERSION (${repoVersion})`,
     );
   });
 });
@@ -411,8 +412,10 @@ describe("checkVersion", () => {
   test("supports a same-day build-specific minimum", async () => {
     const oldBuild = fakeRunner({ code: 0, stdout: "work-plan 2026.10.20+6477802", stderr: "" });
     const fixedBuild = fakeRunner({ code: 0, stdout: "work-plan 2026.10.20+b1b122f", stderr: "" });
-    assert.equal((await checkVersion(oldBuild, MIN_REFRESH_SAFE_CLI_VERSION)).ok, false);
-    assert.equal((await checkVersion(fixedBuild, MIN_REFRESH_SAFE_CLI_VERSION)).ok, true);
+    const deployBuild = fakeRunner({ code: 0, stdout: "work-plan 2026.10.20+a4a89f5", stderr: "" });
+    assert.equal((await checkVersion(oldBuild, MIN_REFRESH_SAFE_CLI_VERSIONS)).ok, false);
+    assert.equal((await checkVersion(fixedBuild, MIN_REFRESH_SAFE_CLI_VERSIONS)).ok, true);
+    assert.equal((await checkVersion(deployBuild, MIN_REFRESH_SAFE_CLI_VERSIONS)).ok, true);
   });
 
   test("never throws even when runner throws (spawn failure simulation)", async () => {
