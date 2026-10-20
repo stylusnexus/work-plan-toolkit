@@ -5,12 +5,14 @@ Covers:
 - commands.group._apply() rejects a batch whose `folder` is not in cfg.
 - commands.suggest_priorities._apply() rejects a batch whose `repo` is not in cfg.
 """
+import io
 import json
 import os
 import stat
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -111,6 +113,51 @@ class SuggestPrioritiesApplyValidationTest(unittest.TestCase):
                 cfg = {"repos": {"legitrepo": {"github": "ok/ok"}}}
                 rc = suggest_priorities._apply(cfg)
             self.assertEqual(rc, 0)
+
+    def test_skips_answer_number_outside_prepared_batch(self):
+        with tempfile.TemporaryDirectory() as td:
+            cache = Path(td) / "cache"
+            cache.mkdir()
+            (cache / "priorities.json").write_text(json.dumps({
+                "repo": "ok/ok", "issues": [{"number": 12}],
+            }))
+            (cache / "priorities.answers.json").write_text(json.dumps([
+                {"number": 99, "priority": "P1"},
+            ]))
+            output = io.StringIO()
+            with mock.patch.object(suggest_priorities, "_batch_path", return_value=cache / "priorities.json"), \
+                 mock.patch.object(suggest_priorities.subprocess, "run") as run_gh, \
+                 redirect_stdout(output):
+                cfg = {"repos": {"legitrepo": {"github": "ok/ok"}}}
+                rc = suggest_priorities._apply(cfg)
+            self.assertEqual(rc, 0)
+            self.assertIn("SKIP #99: not in the prepared batch", output.getvalue())
+            run_gh.assert_not_called()
+
+    def test_malformed_answer_numbers_never_reach_gh(self):
+        with tempfile.TemporaryDirectory() as td:
+            cache = Path(td) / "cache"
+            cache.mkdir()
+            (cache / "priorities.json").write_text(json.dumps({
+                "repo": "ok/ok", "issues": [
+                    {"number": 12}, {"number": True},
+                ],
+            }))
+            (cache / "priorities.answers.json").write_text(json.dumps([
+                {"number": True, "priority": "P1"},
+                {"number": 12.9, "priority": "P1"},
+                {"number": 1, "priority": "P1"},
+            ]))
+            output = io.StringIO()
+            with mock.patch.object(suggest_priorities, "_batch_path", return_value=cache / "priorities.json"), \
+                 mock.patch.object(suggest_priorities.subprocess, "run") as run_gh, \
+                 redirect_stdout(output):
+                cfg = {"repos": {"legitrepo": {"github": "ok/ok"}}}
+                rc = suggest_priorities._apply(cfg)
+            self.assertEqual(rc, 0)
+            self.assertEqual(output.getvalue().count("malformed 'number'"), 2)
+            self.assertIn("SKIP #1: not in the prepared batch", output.getvalue())
+            run_gh.assert_not_called()
 
 
 if __name__ == "__main__":
