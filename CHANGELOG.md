@@ -6,6 +6,17 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.20+b1b122f — 2026-10-20 (#545)
+
+fix(refresh-md): protect table titles
+
+Release source: ad862d62603f (merged into dev via PR #544).
+Previous production source: 6a42422485cc8744b7836ab425781d8410780486.
+
+refresh-md now separates adjacent Markdown tables and refuses to write status values into rows whose column count disagrees with the header. It reports malformed rows and exits nonzero, preserving issue titles. Added regression coverage and updated the README and site command guide.
+
+References #540. For the second npm publish on 2026-10-20, publish with version_suffix=-1 per the release runbook.
+
 ## 2026.10.20+6477802 — 2026-10-20 (#543)
 
 fix(reconcile,priorities): validate membership
