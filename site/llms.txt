@@ -2,7 +2,7 @@
 
 > The work-plan toolkit is a free, MIT-licensed command-line tool and Claude Code / Codex plugin for track-aware daily planning over GitHub issues. It is a pure Python 3.9+ standard-library CLI that re-reads state from `gh`, `git` and markdown track files on every run, with a VS Code extension, Work Plan Viewer, that shows the same tracks as a sidebar tree and dependency graph.
 
-Key facts: published by Stylus Nexus Holdings LLC; source at github.com/stylusnexus/work-plan-toolkit; npm package `@stylusnexus/work-plan`; VS Code extension ID `stylusnexus.work-plan-viewer` (Marketplace and Open VSX); requires Python 3.9+, git, a signed-in GitHub CLI (`gh`) and mikefarah `yq` 4.x. The extension's Refresh Track action requires CLI builds `2026.10.20+b1b122f` or `2026.10.20+a4a89f5`, or a later-dated release, to protect issue titles. GitHub stays the source of truth: the toolkit does not cache or mirror issue state and never stores GitHub tokens.
+Key facts: published by Stylus Nexus Holdings LLC; source at github.com/stylusnexus/work-plan-toolkit; npm package `@stylusnexus/work-plan`; VS Code extension ID `stylusnexus.work-plan-viewer` (Marketplace and Open VSX); requires Python 3.9+, git, a signed-in GitHub CLI (`gh`) and mikefarah `yq` 4.x. The extension's Refresh Track action requires a CLI dated 2026.10.20 or later, and blocks the known unsafe same-day build `2026.10.20+6477802` to protect issue titles. GitHub stays the source of truth: the toolkit does not cache or mirror issue state and never stores GitHub tokens.
 
 ## Docs
 
