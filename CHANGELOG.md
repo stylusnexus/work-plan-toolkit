@@ -6,6 +6,14 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.20+24b316a — 2026-10-20 (#552)
+
+fix: block unsafe same-day CLI refresh build
+
+Block the known unsafe same-day CLI build before Refresh Track runs.
+
+The version guard also accepts deployment-stamped builds for the fixed CLI, whose build hash changes during the release workflow. Ships extension v0.20.3 with README and changelog updates.
+
 ## 2026.10.20+0264309 — 2026-10-20 (#550)
 
 fix: accept deployed CLI build for track refresh
