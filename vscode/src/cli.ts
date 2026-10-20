@@ -395,36 +395,51 @@ export async function runWrite(
 export const MIN_CLI_VERSION = "2026.07.15";
 
 /**
+ * The CLI build that fixed refresh-md overwriting issue titles in malformed
+ * tables. The date alone is not enough: an earlier release was published on
+ * the same day, so compare the build suffix when dates match.
+ */
+export const MIN_REFRESH_SAFE_CLI_VERSION = "2026.10.20+b1b122f";
+
+/**
  * Parses the version token from `work-plan --version` output.
  * The CLI prints `work-plan <VERSION>` (e.g. `work-plan 2026.06.07+9f049ec`).
- * Returns the `YYYY.MM.DD` string, or null if unparseable.
+ * Returns the `YYYY.MM.DD[+build]` token, or null if unparseable.
  */
 export function parseVersion(versionOutput: string): string | null {
   // Strip optional "work-plan " prefix and trailing whitespace.
   const token = versionOutput.trim().replace(/^work-plan\s+/, "");
-  // Take the part before any + build-suffix.
-  const base = token.split("+")[0].trim();
-  // Validate YYYY.MM.DD shape.
-  if (/^\d{4}\.\d{2}\.\d{2}$/.test(base)) {
-    return base;
-  }
-  return null;
+  const normalized = token.toLowerCase();
+  return /^\d{4}\.\d{2}\.\d{2}(?:\+[a-z0-9]+)?$/.test(normalized)
+    ? normalized
+    : null;
 }
 
 /**
- * Compares two `YYYY.MM.DD` CalVer strings as numeric tuples.
- * Returns true when `actual >= min`.
+ * Compares CalVer strings as numeric tuples. When the minimum names a build on
+ * the same day, only that exact build is accepted because commit hashes are
+ * opaque and cannot be ordered.
  */
 export function meetsMinVersion(actual: string, min: string): boolean {
-  const toTuple = (v: string): [number, number, number] => {
-    const parts = v.split(".").map(Number);
-    return [parts[0], parts[1], parts[2]];
+  const parse = (v: string): { tuple: [number, number, number]; build: string | null } | null => {
+    const match = /^(\d{4})\.(\d{2})\.(\d{2})(?:\+([a-z0-9]+))?$/i.exec(v);
+    if (!match) return null;
+    return {
+      tuple: [Number(match[1]), Number(match[2]), Number(match[3])],
+      build: match[4]?.toLowerCase() ?? null,
+    };
   };
-  const [ay, am, ad] = toTuple(actual);
-  const [my, mm, md] = toTuple(min);
+  const actualVersion = parse(actual);
+  const minVersion = parse(min);
+  if (!actualVersion || !minVersion) return false;
+  const [ay, am, ad] = actualVersion.tuple;
+  const [my, mm, md] = minVersion.tuple;
   if (ay !== my) return ay > my;
   if (am !== mm) return am > mm;
-  return ad >= md;
+  if (ad !== md) return ad > md;
+  // If the minimum names a specific same-day build, require that exact build.
+  // Build hashes are opaque and cannot be ordered lexically.
+  return minVersion.build === null || actualVersion.build === minVersion.build;
 }
 
 /**
@@ -432,7 +447,8 @@ export function meetsMinVersion(actual: string, min: string): boolean {
  * Never throws — activation should degrade gracefully to a warning.
  */
 export async function checkVersion(
-  run: CliRunner
+  run: CliRunner,
+  minVersion = MIN_CLI_VERSION,
 ): Promise<{ ok: boolean; version: string | null }> {
   try {
     const result = await run(["--version"]);
@@ -443,7 +459,7 @@ export async function checkVersion(
     if (version === null) {
       return { ok: false, version: null };
     }
-    return { ok: meetsMinVersion(version, MIN_CLI_VERSION), version };
+    return { ok: meetsMinVersion(version, minVersion), version };
   } catch {
     // Spawn failure (ENOENT) or any other error — degrade gracefully.
     return { ok: false, version: null };
