@@ -7,7 +7,7 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_ROOT))
 
 from lib.status_table import (
-    find_status_table, update_row_status, ISSUE_NUM_RE,
+    find_status_table, find_all_status_tables, update_row_status, ISSUE_NUM_RE,
     render_issue_row, append_rows, sync_missing_rows,
     find_canonical_status_tables, CANONICAL_MARKER,
     render_canonical_table, strip_canonical_block, insert_canonical_block,
@@ -46,6 +46,36 @@ class FindStatusTableTest(unittest.TestCase):
 
     def test_returns_none_when_no_status_table(self):
         self.assertIsNone(find_status_table("# Just text"))
+
+    def test_splits_adjacent_tables_without_a_blank_line(self):
+        body = (
+            "| Promise | Status | Evidence |\n"
+            "|---|---|---|\n"
+            "| #11 | 🔲 Open | audit |\n"
+            "| #12 | 🔲 Open | audit |\n"
+            "| Issue | Title | Owner | Status |\n"
+            "|---|---|---|---|\n"
+            "| #9751 | preserve this title | @gm | 🔲 Open |\n"
+            "| #9785 | preserve this title too | @gm | 🔲 Open |"
+        )
+
+        tables = find_all_status_tables(body)
+
+        self.assertEqual([table["status_col_index"] for table in tables], [1, 3])
+        self.assertEqual([len(table["rows"]) for table in tables], [2, 2])
+
+    def test_marks_rows_with_wrong_column_count_as_malformed(self):
+        body = (
+            "| Promise | Status | Evidence |\n"
+            "|---|---|---|\n"
+            "| #9751 | title that must survive | @gm | 🔲 Open |"
+        )
+
+        table = find_all_status_tables(body)[0]
+
+        self.assertEqual(table["header_column_count"], 3)
+        self.assertFalse(table["row_shapes_valid"])
+        self.assertIsNone(find_status_table(body))
 
 
 class UpdateRowStatusTest(unittest.TestCase):

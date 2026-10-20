@@ -117,7 +117,7 @@ Run as `work-plan <subcommand>` (npm), `/work-plan <subcommand>` (install script
 
 ### Sync and audit against GitHub
 
-- `refresh-md <track> | --all | --repo=<key> [--yes]`: Sync issue STATE (open/closed, status labels) from GitHub into the track body's status table.
+- `refresh-md <track> | --all | --repo=<key> [--yes]`: Sync issue STATE (open/closed, status labels) from GitHub into the track body's status table. Adjacent tables are parsed separately. Rows whose cell count differs from their header are left untouched and reported as malformed; the command exits nonzero rather than risk overwriting a title with a status.
 - `reconcile <track> | --all | --repo=<key> [--draft] [--yes]`: Update track MEMBERSHIP (the `github.issues` list in frontmatter) by syncing it against a GitHub label.
 - `coverage [--repo=<key>] [--list] [--limit=N]`: Report how many open issues are not referenced by any track (per repo).
 - `duplicates [--min-similarity=0.7] [--limit=20] [--state=open] [--timeout=N]`: Find likely-duplicate issues by title similarity.

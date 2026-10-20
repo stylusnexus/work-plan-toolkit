@@ -76,6 +76,7 @@ def _refresh_many(tracks: list, yes: bool) -> int:
     """
     pending = []
     degraded = []  # (track, missing_nums) — fetch was incomplete; left untouched
+    malformed = []  # (track, row_count) — header/row widths disagree
     for i, track in enumerate(tracks, 1):
         print(f"  [{i}/{len(tracks)}] {track.path.name}...", flush=True)
         canonical = find_canonical_status_tables(track.body)
@@ -129,9 +130,11 @@ def _refresh_many(tracks: list, yes: bool) -> int:
                 track, canonical, frontmatter_nums, issues_by_num, state_by_num
             )
         else:
-            new_body, detail = _refresh_narrative(
+            new_body, detail, malformed_rows = _refresh_narrative(
                 track, tables, frontmatter_nums, issues_by_num, state_by_num
             )
+            if malformed_rows:
+                malformed.append((track, malformed_rows))
 
         if new_body == track.body:
             continue
@@ -140,6 +143,9 @@ def _refresh_many(tracks: list, yes: bool) -> int:
     if not pending:
         if degraded:
             _report_degraded(degraded)
+        if malformed:
+            _report_malformed(malformed)
+        if degraded or malformed:
             return 1
         print("All tracks in sync.")
         return 0
@@ -158,6 +164,9 @@ def _refresh_many(tracks: list, yes: bool) -> int:
 
     if degraded:
         _report_degraded(degraded)
+    if malformed:
+        _report_malformed(malformed)
+    if degraded or malformed:
         return 1
     return 0
 
@@ -176,6 +185,16 @@ def _report_degraded(degraded: list) -> None:
         print(f"    {track.path.name}: could not fetch {nums}")
     print("  Re-run once GitHub is reachable, or drop deleted issues from "
           "frontmatter (`/work-plan reconcile`).")
+
+
+def _report_malformed(malformed: list) -> None:
+    """Report rows left untouched because their width disagrees with the header."""
+    total = sum(count for _, count in malformed)
+    print(f"\n⚠ Skipped {total} malformed status row(s) — row column counts "
+          "do not match their table header, so they were left untouched:")
+    for track, count in malformed:
+        print(f"    {track.path.name}: {count} row(s)")
+    print("  Fix the table header/row shape, then run refresh-md again.")
 
 
 def _rederive_canonical(track, canonical_tables, frontmatter_nums,
@@ -229,12 +248,17 @@ def _refresh_narrative(track, tables, frontmatter_nums, issues_by_num, state_by_
     Conservative — never reorders or restructures a hand-written table."""
     lines = track.body.split("\n")
     cell_updates = 0
+    malformed_rows = 0
     for table in tables:
         sidx = table["status_col_index"]
         for row in table["rows"]:
             nums = []
             for cell in row["cells"]:
                 nums.extend(int(m) for m in ISSUE_NUM_RE.findall(cell))
+            if len(row["cells"]) != table["header_column_count"]:
+                if any(num in state_by_num for num in nums):
+                    malformed_rows += 1
+                continue
             for num in nums:
                 if num not in state_by_num:
                     continue
@@ -259,4 +283,4 @@ def _refresh_narrative(track, tables, frontmatter_nums, issues_by_num, state_by_
     new_body, rows_added = sync_missing_rows(new_body, frontmatter_nums, issues_by_num)
 
     added_str = f", {rows_added} row(s) added" if rows_added else ""
-    return new_body, f"{cell_updates} cell(s){added_str}"
+    return new_body, f"{cell_updates} cell(s){added_str}", malformed_rows
