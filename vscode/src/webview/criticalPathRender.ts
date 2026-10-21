@@ -49,6 +49,8 @@ const MAX_CHARS = 45_000;
 const MAX_TITLE = 40;
 /** Unlinked issues per row when they are shown as a grid. */
 const GRID_ROW = 8;
+/** Mermaid label wrapping width (px) for this view; its default 200 wraps a title into 4-5 lines. */
+const WRAP_WIDTH = 400;
 
 // Chip border colours, light / dark theme. Cycled by trackOrder index; the
 // track label printed on every node is what actually disambiguates (#244).
@@ -331,7 +333,11 @@ export function renderCriticalPath(
     trackKey: k, label: shown.get(k)!, color: chipColor(trackIdx(k), opts.dark),
   }));
 
-  const lines: string[] = ["graph LR", ...classDefLines(opts.dark)];
+  // Wider label wrapping: a shortened title fits on one line, so nodes are
+  // short and a column of them stays compact.
+  const lines: string[] = [
+    `%%{init: {"flowchart": {"wrappingWidth": ${WRAP_WIDTH}}}}%%`, "graph LR", ...classDefLines(opts.dark),
+  ];
   const neutral = opts.dark ? "fill:#1f2937,color:#e5e7eb" : "fill:#ffffff,color:#1f2937";
   legendKeys.forEach((k, n) => {
     lines.push(`  classDef chip${n} ${neutral},stroke:${chipColor(trackIdx(k), opts.dark)},stroke-width:3px`);

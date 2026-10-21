@@ -496,6 +496,11 @@ describe("unlinked issues collapse (display only)", () => {
     assert.ok(r.mermaid.indexOf('"Startable now"') < r.mermaid.indexOf('"1 step from startable"'));
   });
 
+  it("labels wrap wide so a shortened title stays on one line", () => {
+    const r = renderCriticalPath(model({ issues: [node(1, 0)] }), F, LIGHT);
+    assert.ok(r.mermaid.startsWith('%%{init: {"flowchart": {"wrappingWidth": 400}}}%%\ngraph LR'));
+  });
+
   it("the cap is judged on the collapsed graph", () => {
     const big = model({
       issues: [node(1, 0), node(2, 1), ...Array.from({ length: 700 }, (_, k) => node(1000 + k, 0))],
