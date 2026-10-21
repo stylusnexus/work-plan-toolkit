@@ -11,6 +11,32 @@
 // Public types
 // ---------------------------------------------------------------------------
 
+import type { GraphMode } from "./messages.ts";
+import { buildFlowText } from "./flowCopy.ts";
+
+/** Critical-path view state and pre-built (unescaped) strings from the host. */
+export interface CriticalViewOptions {
+  trackFilter: string | null;
+  focusIssueLabel: string | null;
+  showClosed: boolean;
+  /** Startable issues with no links are drawn (true) or collapsed into one node. */
+  showUnlinked: boolean;
+  /** How many such issues the current filter has. */
+  unlinkedCount: number;
+  banner: string | null;
+  legend: { label: string; color: string }[];
+  tooLargeMessage: string | null;
+  autoFilterNote: string | null;
+  emptyMessage: string | null;
+  trackOptions: { key: string; label: string }[];
+  /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
+  nodeTitles?: Record<string, string>;
+  /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
+  nodeLinks?: [string, string][];
+  /** Mermaid node id -> "blocked" | "waiting" for the text flow rows. */
+  nodeStatus?: Record<string, "blocked" | "waiting">;
+}
+
 export interface WebviewHtmlOptions {
   /** webview.cspSource — the VS Code webview origin, e.g. "vscode-resource:" */
   cspSource: string;
@@ -41,13 +67,10 @@ export interface WebviewHtmlOptions {
    * The flag is kept for forward-compatibility and test coverage.
    */
   isModule: boolean;
-  /**
-   * Whether the graph is currently in focused mode (showing only the selected
-   * track's dependency neighbourhood).
-   * true  → button label is "Show full map"  (click reveals full graph)
-   * false → button label is "Focus on track" (click zooms in on selection)
-   */
-  focused: boolean;
+  /** Current graph mode; the matching toolbar button is aria-pressed. */
+  mode: GraphMode;
+  /** Critical-path controls; rendered only when mode is "critical". */
+  critical?: CriticalViewOptions;
   /**
    * Whether the editor is on a dark (or high-contrast-dark) colour theme.
    * Drives the Mermaid theme so the graph follows the editor instead of being
@@ -73,8 +96,11 @@ export interface WebviewHtmlOptions {
  *  - trackName is escaped here at the call-site boundary.
  */
 export function buildHtml(o: WebviewHtmlOptions): string {
-  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused, isDark, hasTrackFile } = o;
+  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, mode, isDark, hasTrackFile } = o;
   const trackNameEsc = esc(o.trackName);
+  // Nothing to draw (too large, empty, no repo): an empty <pre class="mermaid">
+  // makes Mermaid paint its "Syntax error" picture, so emit no graph at all.
+  const hasGraph = graphDef.trim() !== "";
 
   // Header "Open file" button. Text label (not a $(codicon) — the codicon font
   // isn't loaded in this webview; the package.json command keeps the icon for
@@ -104,12 +130,17 @@ export function buildHtml(o: WebviewHtmlOptions): string {
   // UMD path: <script nonce> loads the bundle (exposes global `mermaid`), then
   // a second nonce'd inline script initialises it.
   // ESM path: import + initialize in a single module script.
-  let loaderScript: string;
+  let loaderScript = "";
   // After Mermaid renders the SVG, signal the controller (#216) so it can wire
-  // pan/zoom/export to the now-present <svg>. Promise.resolve() guards a mermaid
-  // build whose run() is synchronous; a render failure still must not throw.
-  const afterRun = `Promise.resolve(mermaid.run()).then(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); }).catch(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); });`;
-  if (isModule) {
+  // pan/zoom/export to the final <svg>. The flag is set first so a controller
+  // that attaches its listener late still knows the render is done.
+  // Promise.resolve() guards a mermaid build whose run() is synchronous; a
+  // render failure still must not throw.
+  const afterRun = `function workplanGraphRendered() { window.__workplanGraphRendered = true; document.dispatchEvent(new Event("workplan:graph-rendered")); }
+Promise.resolve(mermaid.run()).then(workplanGraphRendered, workplanGraphRendered);`;
+  if (!hasGraph) {
+    // No Mermaid load or run; the zoom/export buttons render disabled below.
+  } else if (isModule) {
     loaderScript = `${scriptOpenTag}
 import mermaid from "${mermaidUri}";
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "${mermaidTheme}" });
@@ -123,13 +154,54 @@ ${afterRun}
 </script>`;
   }
 
-  // Toggle button label depends on focused state.
-  const toggleLabel = focused ? "Show full map" : "Focus on track";
-  const nextFocus = focused ? "false" : "true";
+  const modeButtons = MODE_BUTTONS.map((b) =>
+    `<button type="button" id="work-plan-mode-${b.mode}" class="focus-toggle work-plan-mode-btn" data-mode="${b.mode}" aria-pressed="${b.mode === mode}">${b.label}</button>`,
+  ).join("\n    ");
+  const criticalScript = mode === "critical" && o.critical ? `
+  // Critical-path controls (present only in critical mode).
+  var critTrack = document.getElementById('work-plan-critical-track');
+  if (critTrack) {
+    critTrack.addEventListener('change', function () {
+      post({ type: 'setCriticalTrackFilter', key: critTrack.value === '' ? null : critTrack.value });
+    });
+  }
+  var focusIssueBtn = document.getElementById('work-plan-focus-issue');
+  if (focusIssueBtn) {
+    focusIssueBtn.addEventListener('click', function () { post({ type: 'pickFocusIssue' }); });
+  }
+  var clearFocusBtn = document.getElementById('work-plan-clear-focus');
+  if (clearFocusBtn) {
+    clearFocusBtn.addEventListener('click', function () { post({ type: 'clearFocusIssue' }); });
+  }
+  var showClosedBox = document.getElementById('work-plan-show-closed');
+  if (showClosedBox) {
+    showClosedBox.addEventListener('change', function () {
+      post({ type: 'setShowClosed', show: showClosedBox.checked });
+    });
+  }
+  var showUnlinkedBox = document.getElementById('work-plan-show-unlinked');
+  if (showUnlinkedBox) {
+    showUnlinkedBox.addEventListener('change', function () {
+      post({ type: 'setShowUnlinked', show: showUnlinkedBox.checked });
+    });
+  }
+` : "";
+  // Tooltip text reaches the script as JSON; scriptJson keeps it from closing
+  // the <script> element. Critical mode only.
+  const titlesJson = scriptJson(mode === "critical" && o.critical?.nodeTitles ? o.critical.nodeTitles : null);
+  const linksJson = scriptJson(mode === "critical" && o.critical?.nodeLinks ? o.critical.nodeLinks : null);
+  const statusJson = scriptJson(mode === "critical" && o.critical?.nodeStatus ? o.critical.nodeStatus : null);
+  const criticalPanel = mode === "critical" && o.critical
+    ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] })
+    : "";
+  // Zoom/export act on the drawn SVG; with no graph they are disabled so they
+  // can never post an export with empty data.
+  const ctlOff = hasGraph ? "" : ` disabled aria-disabled="true"`;
 
   // Message-passing script: click handlers → postMessage to extension host.
-  // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the focus
-  // toggle wiring lives here alongside the track/issue handlers.
+  // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the graph
+  // mode buttons and critical-path controls are wired here alongside the
+  // track/issue handlers.
   const messagingScript = `<script nonce="${nonce}">
 (function () {
   var vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
@@ -138,14 +210,15 @@ ${afterRun}
     if (vscode) { vscode.postMessage(msg); }
   }
 
-  // Focus toggle button
-  var btn = document.getElementById("work-plan-focus-toggle");
-  if (btn) {
-    btn.addEventListener("click", function () {
-      post({ type: "setFocus", focus: ${nextFocus} });
-    });
+  // Graph mode buttons: one generic handler; the mode comes from data-mode.
+  function onModeClick(ev) {
+    post({ type: 'setGraphMode', mode: ev.currentTarget.getAttribute('data-mode') });
   }
+  Array.prototype.forEach.call(document.querySelectorAll('.work-plan-mode-btn'), function (b) {
+    b.addEventListener('click', onModeClick);
+  });
 
+${criticalScript}
   // Open-file button (absent when disabled — no id, so no handler binds).
   var openFileBtn = document.getElementById("work-plan-open-file");
   if (openFileBtn) {
@@ -273,10 +346,247 @@ ${afterRun}
   // CSP-clean (this script already carries the nonce). Wired after Mermaid
   // finishes rendering (the loader dispatches "workplan:graph-rendered").
   // -------------------------------------------------------------------------
+  // Full-text hover tooltips for critical-graph nodes (their labels are
+  // shortened). Mermaid node group ids end in "-flowchart-<nodeId>-<n>".
+  var nodeTitles = ${titlesJson};
+  function applyNodeTitles(svg) {
+    if (!nodeTitles) { return; }
+    Array.prototype.forEach.call(svg.querySelectorAll("g.node"), function (g) {
+      var m = /(?:^|-)flowchart-(.+)-[0-9]+$/.exec(g.id || "");
+      if (!m || !Object.prototype.hasOwnProperty.call(nodeTitles, m[1])) { return; }
+      var t = document.createElementNS(svg.namespaceURI, "title");
+      t.setAttribute("class", "wp-tip");
+      t.textContent = nodeTitles[m[1]];
+      g.insertBefore(t, g.firstChild);
+    });
+  }
+
+  var nodeLinks = ${linksJson};
+  var nodeStatus = ${statusJson};
+  function critNodeId(g) {
+    var m = /(?:^|-)flowchart-(.+)-[0-9]+$/.exec(g.id || "");
+    return m ? m[1] : null;
+  }
+  // Everything reachable from start along links, forwards (dir true) or backwards.
+  function reach(start, dir) {
+    var seen = {}; seen[start] = true;
+    var queue = [start];
+    while (queue.length) {
+      var n = queue.pop();
+      nodeLinks.forEach(function (l) {
+        var a = dir ? l[0] : l[1], b = dir ? l[1] : l[0];
+        if (a === n && !seen[b]) { seen[b] = true; queue.push(b); }
+      });
+    }
+    return seen;
+  }
+  // The picked issue's flow as a tree: what it waits on above it, what it
+  // unblocks below. A node reached by several branches is drawn once; later
+  // arrivals are short "joins" rows and the node is tagged as a convergence.
+  var onFlowPick = null;
+  function neighbours(n, dir) {
+    var out = [];
+    nodeLinks.forEach(function (l) {
+      var a = dir ? l[0] : l[1], b = dir ? l[1] : l[0];
+      if (a === n && out.indexOf(b) < 0) { out.push(b); }
+    });
+    return out;
+  }
+  function flowParts(id) {
+    var full = nodeTitles && nodeTitles[id] ? String(nodeTitles[id]) : id;
+    var first = full.split(String.fromCharCode(10))[0];
+    var sp = first.indexOf(' ');
+    return { num: sp > 0 ? first.slice(0, sp) : first, title: sp > 0 ? first.slice(sp + 1) : '', full: full };
+  }
+  function flowTag(text) {
+    var t = document.createElement('span');
+    t.className = 'flow-tag';
+    t.textContent = text;
+    return t;
+  }
+  function flowStep(id, cls) {
+    var p = flowParts(id);
+    var row = document.createElement('div');
+    row.className = 'flow-step' + (cls ? ' ' + cls : '');
+    row.setAttribute('title', p.full);
+    if (cls === 'flow-pick') { row.setAttribute('aria-current', 'step'); }
+    var st = nodeStatus && Object.prototype.hasOwnProperty.call(nodeStatus, id) ? nodeStatus[id] : null;
+    if (st) { row.className += ' flow-' + st; }
+    var num = document.createElement('button');
+    num.type = 'button';
+    num.className = 'flow-num';
+    num.textContent = p.num;
+    num.setAttribute('aria-label', 'Trace ' + p.num);
+    num.addEventListener('click', function () { if (onFlowPick) { onFlowPick(id); } });
+    var title = document.createElement('span');
+    title.className = 'flow-title';
+    title.textContent = p.title;
+    if (st) {
+      var glyph = document.createElement('span');
+      glyph.className = 'flow-glyph';
+      glyph.textContent = st === 'blocked' ? '⛔' : '⏳';
+      glyph.setAttribute('title', st === 'blocked' ? 'Blocked' : 'Waiting');
+      row.appendChild(glyph);
+    }
+    row.appendChild(num);
+    row.appendChild(title);
+    return row;
+  }
+  function flowBranch(n, dir, trail, ctx) {
+    var out = [];
+    neighbours(n, dir).forEach(function (b) {
+      if (trail.indexOf(b) >= 0) { return; }
+      ctx.arrivals[b] = (ctx.arrivals[b] || 0) + 1;
+      if (ctx.seen[b]) { out.push({ id: b, join: true, kids: [] }); return; }
+      if (ctx.left <= 0) { ctx.skipped++; return; }
+      ctx.left--;
+      ctx.seen[b] = true;
+      out.push({ id: b, join: false, kids: flowBranch(b, dir, trail.concat([b]), ctx) });
+    });
+    return out;
+  }
+  function flowNodes(list, dir, ctx) {
+    var wrap = document.createElement('div');
+    wrap.className = 'flow-tree';
+    list.forEach(function (k) {
+      var node = document.createElement('div');
+      node.className = 'flow-node';
+      var row = flowStep(k.id, k.join ? 'flow-join' : '');
+      if (k.join) { row.appendChild(flowTag('also in another branch')); }
+      else if (ctx.arrivals[k.id] > 1) { row.appendChild(flowTag(ctx.arrivals[k.id] + ' branches converge')); }
+      var kids = k.kids.length ? flowNodes(k.kids, dir, ctx) : null;
+      if (dir) { node.appendChild(row); if (kids) { node.appendChild(kids); } }
+      else { if (kids) { node.appendChild(kids); } node.appendChild(row); }
+      wrap.appendChild(node);
+    });
+    return wrap;
+  }
+  function flowDiv(cls, text) {
+    var d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text;
+    return d;
+  }
+  var buildFlowText = ${buildFlowText.toString()};
+  var flowFocus = null;
+  function flowFormat() {
+    var sel = document.getElementById('flow-format');
+    return sel ? sel.value : 'paths';
+  }
+  function flowCopyState(id) {
+    flowFocus = id;
+    var btn = document.getElementById('flow-copy');
+    var count = document.getElementById('flow-count');
+    if (!btn) { return; }
+    btn.disabled = id === null || !nodeLinks;
+    btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
+    if (count) {
+      count.textContent = '';
+      if (id === null) { count.textContent = 'Pick an issue to copy its flow.'; }
+    }
+  }
+  function setupFlowCopy() {
+    var sel = document.getElementById('flow-format');
+    var btn = document.getElementById('flow-copy');
+    if (!sel || !btn) { return; }
+    var saved = vscode && vscode.getState ? vscode.getState() : null;
+    if (saved && saved.flowFormat) { sel.value = saved.flowFormat; }
+    sel.addEventListener('change', function () {
+      if (vscode) { vscode.setState({ flowFormat: sel.value }); }
+    });
+    var timer = null;
+    btn.addEventListener('click', function () {
+      if (flowFocus === null || !nodeLinks) { return; }
+      var text = buildFlowText(nodeLinks, nodeTitles || {}, flowFocus, sel.value);
+      if (!text) { return; }
+      post({ type: 'copyText', text: text });
+      var status = document.getElementById('flow-status');
+      if (status) { status.textContent = 'Copied flow as ' + sel.options[sel.selectedIndex].text; }
+      btn.textContent = 'Copied ✓';
+      if (timer) { clearTimeout(timer); }
+      timer = setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+    });
+    flowCopyState(null);
+  }
+  setupFlowCopy();
+  function showFlow(id) {
+    flowCopyState(id);
+    var box = document.getElementById('crit-flow');
+    if (!box) { return; }
+    box.textContent = '';
+    if (id === null) { box.textContent = 'Click an issue in the graph to see its flow as text.'; return; }
+    var upCtx = { seen: {}, left: 25, skipped: 0, arrivals: {} };
+    var dnCtx = { seen: {}, left: 25, skipped: 0, arrivals: {} };
+    upCtx.seen[id] = true;
+    dnCtx.seen[id] = true;
+    var ups = flowBranch(id, false, [id], upCtx);
+    var downs = flowBranch(id, true, [id], dnCtx);
+    var num = flowParts(id).num;
+    if (!ups.length && !downs.length) { box.textContent = num + ' has no links to other drawn issues.'; return; }
+    box.appendChild(flowDiv('flow-head', 'Flow through ' + num));
+    if (ups.length) {
+      box.appendChild(flowDiv('flow-label', 'Waits on (do these first)'));
+      box.appendChild(flowNodes(ups, false, upCtx));
+    }
+    var pick = document.createElement('div');
+    pick.className = 'flow-tree';
+    var pickRow = flowStep(id, 'flow-pick');
+    var fanIn = neighbours(id, false).length;
+    if (fanIn > 1) { pickRow.appendChild(flowTag(fanIn + ' branches converge here')); }
+    pick.appendChild(pickRow);
+    box.appendChild(pick);
+    if (downs.length) {
+      box.appendChild(flowDiv('flow-label', 'Unblocks (comes after)'));
+      box.appendChild(flowNodes(downs, true, dnCtx));
+    }
+    var skipped = upCtx.skipped + dnCtx.skipped;
+    if (skipped > 0) { box.appendChild(flowDiv('flow-more', '+ ' + skipped + ' more not shown')); }
+  }
+  // Fade everything outside one issue's chain (what it waits on + what it
+  // unblocks); null clears. No redraw: only classes change on the live svg.
+  function traceIssue(svg, id) {
+    var nodes = svg.querySelectorAll("g.node");
+    var edges = svg.querySelectorAll("path.flowchart-link");
+    Array.prototype.forEach.call(svg.querySelectorAll(".wp-faded, .wp-picked"), function (el) {
+      el.classList.remove("wp-faded"); el.classList.remove("wp-picked");
+    });
+    showFlow(id);
+    if (id === null) { return; }
+    var up = reach(id, false), down = reach(id, true);
+    Array.prototype.forEach.call(nodes, function (g) {
+      var nid = critNodeId(g);
+      if (nid === id) { g.classList.add("wp-picked"); }
+      else if (!(nid && (up[nid] || down[nid]))) { g.classList.add("wp-faded"); }
+    });
+    // Mermaid names each link path "L_<from>_<to>_<n>" (data-id); keep the links on the chain.
+    var keep = {};
+    nodeLinks.forEach(function (l) {
+      if ((up[l[0]] && up[l[1]]) || (down[l[0]] && down[l[1]])) { keep["L_" + l[0] + "_" + l[1]] = true; }
+    });
+    Array.prototype.forEach.call(edges, function (p) {
+      var key = (p.getAttribute("data-id") || "").replace(/_[0-9]+$/, "");
+      if (!keep[key]) { p.classList.add("wp-faded"); }
+    });
+  }
+
+  var graphBound = false;
   function setupGraphControls() {
     var figure = document.querySelector(".graph-figure");
-    var svg = figure ? figure.querySelector("svg") : null;
-    if (!figure || !svg) { return; }
+    var svg = figure ? (figure.querySelector(".mermaid > svg") || figure.querySelector("svg")) : null;
+    // Only the final, connected svg: Mermaid's temporary render svg is discarded.
+    if (!figure || !svg || !svg.isConnected) { return; }
+    graphBound = true;
+
+    // Scale 1 = natural size: size the svg to its viewBox in CSS px (Mermaid
+    // sizes it to the container width), so 100% and Fit share one base.
+    var vb0 = svg.viewBox && svg.viewBox.baseVal;
+    if (vb0 && vb0.width > 0 && vb0.height > 0) {
+      svg.setAttribute("width", String(vb0.width));
+      svg.setAttribute("height", String(vb0.height));
+      svg.style.maxWidth = "none";
+      svg.style.width = vb0.width + "px";
+      svg.style.height = vb0.height + "px";
+    }
 
     var state = { scale: 1, tx: 0, ty: 0 };
     function clamp(s) { return Math.min(8, Math.max(0.1, s)); }
@@ -303,7 +613,8 @@ ${afterRun}
       var box = figure.getBoundingClientRect();
       var g = graphSize();
       var pad = 24;
-      var s = clamp(Math.min((box.width - pad) / g.w, (box.height - pad) / g.h));
+      // Never enlarge past natural size; only shrink a graph larger than the view.
+      var s = clamp(Math.min(1, (box.width - pad) / g.w, (box.height - pad) / g.h));
       state.scale = s;
       state.tx = Math.max(pad / 2, (box.width - g.w * s) / 2);
       state.ty = pad / 2;
@@ -317,9 +628,10 @@ ${afterRun}
       zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - r.left, e.clientY - r.top);
     }, { passive: false });
 
-    var dragging = false, lastX = 0, lastY = 0;
+    var dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0, picked = null;
+    onFlowPick = function (id) { picked = id; traceIssue(svg, id); };
     figure.addEventListener("pointerdown", function (e) {
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      dragging = true; lastX = e.clientX; lastY = e.clientY; startX = lastX; startY = lastY;
       figure.classList.add("grabbing");
       try { figure.setPointerCapture(e.pointerId); } catch (err) {}
     });
@@ -329,7 +641,24 @@ ${afterRun}
       lastX = e.clientX; lastY = e.clientY; apply();
     });
     function endDrag() { dragging = false; figure.classList.remove("grabbing"); }
-    figure.addEventListener("pointerup", endDrag);
+    // A press that barely moved is a click: trace the issue under it, or clear.
+    // Pointer capture retargets events to the figure, so look the node up by point.
+    function pickAt(e) {
+      if (!nodeLinks) { return; }
+      var hit = document.elementFromPoint(e.clientX, e.clientY);
+      var g = hit && hit.closest ? hit.closest("g.node") : null;
+      var id = g ? critNodeId(g) : null;
+      picked = id !== null && id !== picked ? id : null;
+      traceIssue(svg, picked);
+    }
+    figure.addEventListener("pointerup", function (e) {
+      var moved = Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) > 4;
+      endDrag();
+      if (!moved) { pickAt(e); }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && picked !== null) { picked = null; traceIssue(svg, null); }
+    });
     figure.addEventListener("pointercancel", endDrag);
 
     function on(id, fn) {
@@ -346,6 +675,7 @@ ${afterRun}
     // the cloned SVG onto a canvas (self-contained SVG → canvas isn't tainted).
     function cleanSvg() {
       var clone = svg.cloneNode(true);
+      Array.prototype.forEach.call(clone.querySelectorAll("title.wp-tip"), function (t) { t.parentNode.removeChild(t); });
       clone.style.transform = "";
       clone.removeAttribute("style");
       var g = graphSize();
@@ -377,19 +707,21 @@ ${afterRun}
       img.src = url;
     });
 
-    fit(); // initial fit-to-width so a dense map is navigable from the start
+    fit(); // initial fit of the whole graph so a dense map is navigable from the start
+    // Last, so a tooltip failure cannot leave the zoom/pan controls unbound.
+    applyNodeTitles(svg);
   }
 
-  // The loader (an earlier script element) may dispatch "workplan:graph-rendered"
-  // BEFORE this script attaches the listener — mermaid.run() can resolve in a
-  // microtask that drains between the two script elements. So wire idempotently:
-  // if the SVG is already present the render finished, run setup now; otherwise
-  // wait for the event. Exactly one path fires, so setup never double-runs.
-  if (document.querySelector(".graph-figure svg")) {
-    setupGraphControls();
-  } else {
-    document.addEventListener("workplan:graph-rendered", setupGraphControls);
+  // An svg being present is no proof the render finished: mermaid.run() inserts
+  // a temporary svg and later replaces it. So bind on the loader's signal only.
+  // The listener covers a render that finishes after this script runs; the flag
+  // (set by the loader before it dispatches) covers one that finished earlier.
+  // graphBound keeps setup to exactly one run.
+  function onGraphRendered() {
+    if (!graphBound) { setupGraphControls(); }
   }
+  document.addEventListener("workplan:graph-rendered", onGraphRendered);
+  if (window.__workplanGraphRendered) { onGraphRendered(); }
 }());
 </script>`;
 
@@ -424,6 +756,8 @@ ${afterRun}
       --dep-blocking-fg: var(--vscode-charts-purple, #b267e6);
       --dep-blocking-bg: color-mix(in srgb, var(--dep-blocking-fg) 18%, transparent);
       --link: var(--vscode-textLink-foreground, #4fc1ff);
+      --status-blocked: var(--chip-fg);
+      --status-waiting: var(--depends-fg);
     }
     * { box-sizing: border-box; }
     body {
@@ -458,6 +792,37 @@ ${afterRun}
       padding-bottom: 4px;
     }
     .graph-header h2 { margin: 0; border: none; padding: 0; }
+    .mode-group { display: flex; gap: 4px; flex-wrap: wrap; }
+    .focus-toggle[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
+    .crit-panel { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px 0; font-size: 0.85em; }
+    .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+    .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .crit-flow { margin: 6px 0; max-height: 15em; overflow: auto; }
+    .crit-flow .flow-head { font-weight: bold; margin-bottom: 2px; }
+    .crit-flow .flow-label { opacity: 0.7; font-size: 0.9em; margin: 4px 0 2px; }
+    .crit-flow .flow-tree .flow-tree { margin-left: 14px; padding-left: 8px; border-left: 2px solid var(--border); }
+    .crit-flow .flow-step { display: flex; gap: 8px; align-items: baseline; padding: 1px 6px; border-radius: 4px; min-width: 0; }
+    .crit-flow .flow-num { flex: none; background: none; border: 0; padding: 0; cursor: pointer; color: var(--link); font-family: var(--vscode-editor-font-family, monospace); font-size: inherit; }
+    .crit-flow .flow-num:hover { text-decoration: underline; }
+    .crit-flow .flow-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+    .crit-flow .flow-tag { flex: none; font-size: 0.85em; padding: 0 6px; border-radius: 8px; background: var(--step-bg); color: var(--step-fg); }
+    .crit-flow .flow-join { opacity: 0.7; font-style: italic; }
+    .crit-flow .flow-pick { background: var(--card-bg); font-weight: bold; box-shadow: inset 3px 0 0 var(--link); }
+    .crit-flow .flow-pick .flow-title { opacity: 1; }
+    .crit-flow .flow-blocked { border-left: 3px solid var(--status-blocked); background: color-mix(in srgb, var(--status-blocked) 14%, transparent); }
+    .crit-flow .flow-waiting { border-left: 3px dashed var(--status-waiting); background: color-mix(in srgb, var(--status-waiting) 14%, transparent); }
+    .crit-flow .flow-glyph { flex: none; }
+    .crit-flow .flow-more { opacity: 0.7; }
+    .crit-legend { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+    .crit-legend li { display: inline-flex; gap: 4px; align-items: center; }
+    .crit-status { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 4px 0 0; padding: 0; }
+    .crit-status li { display: inline-flex; gap: 4px; align-items: center; }
+    .sw-blocked { background: color-mix(in srgb, var(--status-blocked) 35%, transparent); }
+    .sw-waiting { background: color-mix(in srgb, var(--status-waiting) 35%, transparent); }
+    .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
     .focus-toggle {
       font-size: 0.8em;
       padding: 2px 8px;
@@ -482,6 +847,7 @@ ${afterRun}
       cursor: pointer;
     }
     .graph-ctl:hover { color: var(--link); border-color: var(--link); }
+    .graph-ctl[disabled] { opacity: 0.5; cursor: default; color: var(--fg); border-color: var(--border); }
     .graph-ctl:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
     /* The graph-figure is the pan/zoom VIEWPORT (#216): fixed-height, clipped,
        grab cursor. The card chrome moved here from .mermaid so the SVG can be
@@ -499,10 +865,16 @@ ${afterRun}
     }
     .graph-figure.grabbing { cursor: grabbing; }
     .mermaid {
-      padding: 12px;
       /* svg is positioned + transformed by the pan/zoom controller; origin at
-         top-left so button/wheel zoom math is simple. */
+         top-left so button/wheel zoom math is simple. No padding or margin:
+         fit() supplies the gap, and any offset here pushed a fitted graph's
+         bottom edge out of the viewport. */
+      padding: 0;
+      margin: 0;
     }
+    .mermaid svg g.node, .mermaid svg path.flowchart-link { transition: opacity 0.15s; }
+    .mermaid svg .wp-faded { opacity: 0.1; }
+    .mermaid svg g.wp-picked rect, .mermaid svg g.wp-picked polygon { stroke-width: 3px; }
     .mermaid svg { transform-origin: 0 0; max-width: none; will-change: transform; }
     .detail-card {
       background: var(--card-bg);
@@ -749,19 +1121,22 @@ ${afterRun}
 
   <div class="graph-header">
     <h2>Dependency graph</h2>
-    <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
+    <div class="mode-group" role="group" aria-label="Graph mode">
+    ${modeButtons}
+    </div>
     <div class="graph-controls" role="group" aria-label="Graph zoom and export controls">
-      <button type="button" class="graph-ctl" id="graph-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
-      <button type="button" class="graph-ctl" id="graph-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-      <button type="button" class="graph-ctl" id="graph-fit" title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
-      <button type="button" class="graph-ctl" id="graph-reset" title="Reset to 100%" aria-label="Reset zoom to 100 percent">100%</button>
-      <button type="button" class="graph-ctl" id="graph-export-svg" title="Export graph as SVG" aria-label="Export graph as SVG">SVG</button>
-      <button type="button" class="graph-ctl" id="graph-export-png" title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
+      <button type="button" class="graph-ctl" id="graph-zoom-out"${ctlOff} title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <button type="button" class="graph-ctl" id="graph-zoom-in"${ctlOff} title="Zoom in" aria-label="Zoom in">+</button>
+      <button type="button" class="graph-ctl" id="graph-fit"${ctlOff} title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
+      <button type="button" class="graph-ctl" id="graph-reset"${ctlOff} title="Reset to 100%" aria-label="Reset zoom to 100 percent">100%</button>
+      <button type="button" class="graph-ctl" id="graph-export-svg"${ctlOff} title="Export graph as SVG" aria-label="Export graph as SVG">SVG</button>
+      <button type="button" class="graph-ctl" id="graph-export-png"${ctlOff} title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
     </div>
   </div>
-  <div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
+  ${criticalPanel}
+  ${hasGraph ? `<div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
     <pre class="mermaid">${graphDef}</pre>
-  </div>
+  </div>` : ""}
 
   <h2>Detail</h2>
   <div class="detail-card">
@@ -774,13 +1149,80 @@ ${afterRun}
 </html>`;
 }
 
+const MODE_BUTTONS: { mode: GraphMode; label: string }[] = [
+  { mode: "focus", label: "Focus on track" },
+  { mode: "full", label: "Show full map" },
+  { mode: "critical", label: "Show critical path" },
+];
+
+/**
+ * JSON for embedding in an inline <script>: `<`, `>`, `&` and the two JS line
+ * separators become \u escapes, so no data string can close the element.
+ */
+function scriptJson(v: unknown): string {
+  return JSON.stringify(v)
+    .replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
+
+/** Colours reach a style attribute, so accept only a hex or a plain keyword. */
+function safeColor(c: string): string | null {
+  return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/.test(c) ? c : null;
+}
+
+/** Every string here came from data, so every one goes through esc(). */
+function renderCriticalPanel(c: CriticalViewOptions): string {
+  const options = [
+    `<option value=""${c.trackFilter === null ? " selected" : ""}>All tracks</option>`,
+    ...c.trackOptions.map((t) =>
+      `<option value="${esc(t.key)}"${t.key === c.trackFilter ? " selected" : ""}>${esc(t.label)}</option>`),
+  ].join("");
+  const legendItems = c.legend.map((l) => {
+    const color = safeColor(l.color);
+    const style = color ? ` style="background:${esc(color)}"` : "";
+    return `<li><span class="legend-swatch"${style}></span> ${esc(l.label)}</li>`;
+  }).join("");
+  const note = (cls: string, s: string | null) => (s ? `<div class="${cls}">${esc(s)}</div>` : "");
+  return `<div class="crit-panel">
+    <div class="crit-row">
+      <label for="work-plan-critical-track">Track</label>
+      <select id="work-plan-critical-track" class="graph-ctl">${options}</select>
+      <button type="button" id="work-plan-focus-issue" class="graph-ctl">Focus on an issue…</button>
+      <button type="button" id="work-plan-clear-focus" class="graph-ctl">Clear focus</button>
+      ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
+      <label><input type="checkbox" id="work-plan-show-closed"${c.showClosed ? " checked" : ""}> Show closed</label>
+      <label><input type="checkbox" id="work-plan-show-unlinked"${c.showUnlinked ? " checked" : ""}> Show unlinked issues (${c.unlinkedCount})</label>
+    </div>
+    <div class="crit-note">Numbers = steps from startable, not priority.</div>
+    ${note("crit-banner", c.banner)}
+    ${note("crit-warn", c.tooLargeMessage)}
+    ${note("crit-note", c.autoFilterNote)}
+    ${note("crit-note", c.emptyMessage)}
+    <div class="crit-flowbar" role="group" aria-label="Copy flow">
+      <label for="flow-format">Format</label>
+      <select id="flow-format">
+        <option value="paths">Path (#1 → #2)</option>
+        <option value="tasks">Task list (markdown)</option>
+        <option value="order">Work order</option>
+      </select>
+      <button type="button" class="graph-ctl" id="flow-copy" disabled aria-disabled="true">Copy</button>
+      <span id="flow-count" class="crit-note"></span>
+      <span id="flow-status" class="sr-only" aria-live="polite"></span>
+    </div>
+    <div class="crit-flow" id="crit-flow" aria-live="polite">Click an issue in the graph to see its flow as text.</div>
+    ${legendItems ? `<ul class="crit-status" aria-label="Status"><li><span class="legend-swatch sw-blocked"></span> ⛔ Blocked: 2+ steps from startable, or in a loop</li><li><span class="legend-swatch sw-waiting"></span> ⏳ Waiting: 1 step from startable</li></ul>` : ""}
+    ${legendItems ? `<ul class="crit-legend" aria-label="Legend">${legendItems}</ul>` : ""}
+  </div>`;
+}
+
 /**
  * Change-aware wrapper around buildHtml (#423). Every render input except the
  * per-render nonce forms the key, so an export whose rendered content is
  * unchanged (e.g. a background poll where only generated_at moved) yields the
  * same key and returns null: the caller keeps the current document instead of
  * replacing webview.html and reloading Mermaid. Any change to the graph,
- * detail card, selected track, focus mode or theme changes the key.
+ * detail card, selected track, graph mode, critical-path filters or theme changes
+ * the key.
  */
 export function buildHtmlIfChanged(
   prevKey: string | null,

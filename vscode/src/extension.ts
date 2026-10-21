@@ -201,7 +201,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const panel = WorkPlanPanel.getCurrent();
     const exp = provider.currentExport;
     if (panel && exp && exp.tracks.length > 0) {
-      panel.render(exp, panel.currentTrackKey ?? trackKey(exp.tracks[0]));
+      panel.render(exp, panel.currentTrackKey ?? trackKey(exp.tracks[0]), provider.rawExport ?? undefined);
     }
   };
 
@@ -409,7 +409,7 @@ export function activate(context: vscode.ExtensionContext): void {
           ? currentTrack!
           : filteredExp.tracks[0] ? trackKey(filteredExp.tracks[0]) : null;
         if (trackToRender) {
-          panel.render(filteredExp, trackToRender);
+          panel.render(filteredExp, trackToRender, provider.rawExport ?? undefined);
         } else {
           // Lens filtered out every track — replace stale content with an empty state.
           panel.renderEmpty("No tracks match the selected view.");
@@ -509,7 +509,7 @@ export function activate(context: vscode.ExtensionContext): void {
               ? trackKey(track)
               : freshExp.tracks[0] ? trackKey(freshExp.tracks[0]) : null;
             if (selection) {
-              panel.render(freshExp, selection);
+              panel.render(freshExp, selection, provider.rawExport ?? undefined);
             }
           }).catch((err: unknown) => {
             const msg =
@@ -526,7 +526,7 @@ export function activate(context: vscode.ExtensionContext): void {
           ? trackKey(track)
           : exp.tracks[0] ? trackKey(exp.tracks[0]) : null;
         if (selection) {
-          panel.render(exp, selection);
+          panel.render(exp, selection, provider.rawExport ?? undefined);
         } else {
           vscode.window.showInformationMessage(
             "Work Plan: No tracks found in export.",
@@ -947,7 +947,7 @@ export function activate(context: vscode.ExtensionContext): void {
       ? currentTrack!
       : exp.tracks[0] ? trackKey(exp.tracks[0]) : null;
     if (trackToRender) {
-      panel.render(exp, trackToRender);
+      panel.render(exp, trackToRender, provider.rawExport ?? undefined);
     } else {
       panel.renderEmpty("No tracks match the selected view.");
     }

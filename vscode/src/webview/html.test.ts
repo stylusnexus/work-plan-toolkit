@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildHtml, buildHtmlIfChanged } from "./html.ts";
 import type { WebviewHtmlOptions } from "./html.ts";
+import type { GraphMode } from "./messages.ts";
 import type { Export, Track } from "../model.ts";
 import { trackKey } from "../model.ts";
 import { toMermaid } from "./graph.ts";
@@ -28,7 +29,7 @@ const BASE: WebviewHtmlOptions = {
   detailHtml: '<p class="rollup"><b>3</b> open &middot; <b>2</b> closed</p>',
   trackName: "alpha",
   isModule: false,
-  focused: false,
+  mode: "full",
   isDark: true,
   hasTrackFile: true,
 };
@@ -182,15 +183,230 @@ describe("buildHtml — graphDef embedding", () => {
     assert.ok(html.includes('addEventListener("workplan:graph-rendered"'), "controller must listen for render done");
   });
 
-  it("the controller wiring is idempotent against an early render event (#216 review)", () => {
+  it("the loader marks the render done before it signals", () => {
     const html = buildHtml(BASE);
-    // mermaid.run() can resolve before the messaging script attaches its
-    // listener; the controller must self-check for an already-present SVG and
-    // run setup directly instead of only relying on the (possibly-missed) event.
-    assert.ok(
-      html.includes('document.querySelector(".graph-figure svg")'),
-      "controller must run setup directly if the SVG already rendered",
-    );
+    const flag = html.indexOf("window.__workplanGraphRendered = true");
+    assert.ok(flag !== -1, "loader must set the done flag");
+    assert.ok(flag < html.indexOf('dispatchEvent(new Event("workplan:graph-rendered"))'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Graph controls, run against a minimal fake DOM (#216 race, zoom base, tooltips)
+// ---------------------------------------------------------------------------
+
+type Listener = (e?: unknown) => void;
+interface FakeEl {
+  id: string; isConnected: boolean; children: FakeEl[]; tag: string;
+  attrs: Record<string, string>; style: Record<string, string>; textContent: string;
+  listeners: Record<string, Listener[]>;
+  viewBox?: { baseVal: { width: number; height: number } };
+  namespaceURI?: string;
+}
+
+function fakeEl(tag: string, extra: Partial<FakeEl> = {}): FakeEl {
+  return { id: "", isConnected: true, children: [], tag, attrs: {}, style: {}, textContent: "", listeners: {}, ...extra };
+}
+
+/** Runs the messaging IIFE with a fake document; returns hooks to drive it. */
+function runControls(
+  html: string,
+  opts: { flagSetEarly?: boolean; vb?: [number, number]; nodeIds?: string[]; throwOnTitle?: boolean } = {},
+) {
+  const bodies = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+    .filter(m => !/\bsrc=/.test(m[1]) && m[2].includes("setupGraphControls"))
+    .map(m => m[2]);
+  assert.equal(bodies.length, 1, "messaging script not found");
+  const nodes = (opts.nodeIds ?? ["mermaid-1-flowchart-i_7-0", "mermaid-1-flowchart-i_8-1"]).map(id => fakeEl("g", { id }));
+  const [vbW, vbH] = opts.vb ?? [2000, 1000];
+  const finalSvg = fakeEl("svg", {
+    viewBox: { baseVal: { width: vbW, height: vbH } }, namespaceURI: "svg-ns", children: nodes,
+  });
+  const tempSvg = fakeEl("svg", { viewBox: { baseVal: { width: 0, height: 0 } } });
+  let current: FakeEl = tempSvg; // Mermaid's in-progress svg
+  const figure = fakeEl("div");
+  const docListeners: Record<string, Listener[]> = {};
+  const add = (el: FakeEl | null) => (type: string, fn: Listener) => {
+    const bag = el ? el.listeners : docListeners;
+    (bag[type] ??= []).push(fn);
+  };
+  const methods = (el: FakeEl): FakeEl => Object.assign(el, {
+    addEventListener: add(el),
+    setAttribute: (k: string, v: unknown) => { el.attrs[k] = String(v); },
+    getAttribute: (k: string) => el.attrs[k] ?? null,
+    removeAttribute: (k: string) => { delete el.attrs[k]; },
+    insertBefore: (c: FakeEl) => { el.children.unshift(c); },
+    appendChild: (c: FakeEl) => { el.children.push(c); },
+    classList: { add() {}, remove() {}, toggle() { return false; } },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 540 }),
+    setPointerCapture() {},
+    querySelectorAll: (sel: string) => (sel === "g.node" ? el.children.filter(c => c.tag === "g") : []),
+    querySelector: (sel: string) => {
+      if (el === figure && sel.includes("svg")) return methods(current);
+      return null;
+    },
+  });
+  methods(figure); methods(finalSvg); methods(tempSvg);
+  nodes.forEach(methods);
+  const doc = {
+    addEventListener: add(null),
+    querySelector: (sel: string) => (sel === ".graph-figure" ? figure : sel === ".graph-figure svg" ? current : null),
+    querySelectorAll: () => [],
+    getElementById: () => null,
+    createElementNS: (ns: string, tag: string) => {
+      if (opts.throwOnTitle) throw new Error("boom");
+      return methods(fakeEl(tag, { namespaceURI: ns }));
+    },
+    dispatchEvent: () => true,
+  };
+  const win: Record<string, unknown> = {};
+  if (opts.flagSetEarly) { current = finalSvg; win.__workplanGraphRendered = true; }
+  new Function("document", "window", bodies[0])(doc, win);
+  const errors: unknown[] = [];
+  return {
+    figure, finalSvg, tempSvg, nodes, errors,
+    bound: () => (figure.listeners.wheel ?? []).length,
+    wheelUp: () => figure.listeners.wheel[0]({ preventDefault() {}, deltaY: -1, clientX: 500, clientY: 270 }),
+    finishRender: () => {
+      tempSvg.isConnected = false;
+      current = finalSvg;
+      win.__workplanGraphRendered = true;
+      // Like a browser: a throwing listener is reported, not propagated.
+      for (const fn of docListeners["workplan:graph-rendered"] ?? []) {
+        try { fn(); } catch (e) { errors.push(e); }
+      }
+    },
+  };
+}
+
+describe("buildHtml — graph controls bind to the final svg", () => {
+  it("does not bind to Mermaid's temporary svg; binds once when the render finishes", () => {
+    const c = runControls(buildHtml(BASE));
+    assert.equal(c.bound(), 0, "bound before the render finished");
+    c.finishRender();
+    assert.equal(c.bound(), 1);
+    assert.ok(c.finalSvg.style.transform, "initial fit must transform the final svg");
+    assert.equal(c.tempSvg.style.transform, undefined);
+    c.finishRender(); // a second signal never binds twice
+    assert.equal(c.bound(), 1);
+  });
+
+  it("binds immediately when the render finished before the script ran", () => {
+    const c = runControls(buildHtml(BASE), { flagSetEarly: true });
+    assert.equal(c.bound(), 1);
+  });
+
+  it("the same wiring serves focus and full modes", () => {
+    for (const mode of ["focus", "full"] as const) {
+      const c = runControls(buildHtml({ ...BASE, mode }));
+      assert.equal(c.bound(), 0);
+      c.finishRender();
+      assert.equal(c.bound(), 1, mode);
+    }
+  });
+
+  it("scale 1 is the viewBox size, and the initial fit uses that same base", () => {
+    const c = runControls(buildHtml(BASE));
+    c.finishRender();
+    assert.equal(c.finalSvg.attrs.width, "2000");
+    assert.equal(c.finalSvg.attrs.height, "1000");
+    assert.equal(c.finalSvg.style.width, "2000px");
+    assert.equal(c.finalSvg.style.maxWidth, "none");
+    // figure 1000x540, pad 24: min(976/2000, 516/1000) = 0.488
+    assert.match(c.finalSvg.style.transform, /scale\(0\.488\)/);
+  });
+
+  it("the mermaid wrapper adds no offset, so Fit's padding is the only gap", () => {
+    const rule = buildHtml(BASE).match(/\.mermaid \{[^}]*\}/)?.[0] ?? "";
+    assert.match(rule, /padding: 0;/);
+    assert.match(rule, /margin: 0;/);
+  });
+
+  it("Fit never enlarges a graph smaller than the viewport", () => {
+    const c = runControls(buildHtml(BASE), { vb: [300, 200] });
+    c.finishRender();
+    assert.match(c.finalSvg.style.transform, /scale\(1\)/);
+  });
+});
+
+describe("buildHtml — critical node tooltips", () => {
+  const hostile = '#7 </script><b>"x"</b> & \u2028 it\'s';
+  const crit = (nodeTitles?: Record<string, string>): WebviewHtmlOptions => ({
+    ...BASE, mode: "critical", critical: { ...CRIT, ...(nodeTitles ? { nodeTitles } : {}) },
+  });
+
+  it("embeds the titles so no title text can break out of the script", () => {
+    const html = buildHtml(crit({ i_7: hostile }));
+    assert.ok(!html.includes("</script><b>"), "title closed the script");
+    assert.ok(html.includes("\\u003c/script\\u003e"));
+    const bodies = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+      .filter(m => !/\bsrc=/.test(m[1]) && m[2].trim() !== "");
+    for (const m of bodies) assert.doesNotThrow(() => { new Function(m[2]); });
+  });
+
+  it("puts the full text in an svg <title> on the matching node, as text", () => {
+    const c = runControls(buildHtml(crit({ i_7: hostile })));
+    c.finishRender();
+    const tip = c.nodes[0].children.find(x => x.tag === "title");
+    assert.ok(tip, "node i_7 has no <title>");
+    assert.equal(tip!.textContent, hostile);
+    assert.equal(tip!.namespaceURI, "svg-ns");
+    assert.ok(!c.nodes[1].children.some(x => x.tag === "title"), "i_8 has no title entry");
+  });
+
+  it("matches plain and prefixed Mermaid node ids", () => {
+    const c = runControls(buildHtml(crit({ i_7: "seven" })), {
+      nodeIds: ["flowchart-i_7-0", "x-flowchart-i_7-1", "notflowchart-i_7-2"],
+    });
+    c.finishRender();
+    const tip = (k: number) => c.nodes[k].children.find(x => x.tag === "title")?.textContent;
+    assert.equal(tip(0), "seven");
+    assert.equal(tip(1), "seven");
+    assert.equal(tip(2), undefined);
+  });
+
+  it("a tooltip error cannot leave the zoom controls dead", () => {
+    const c = runControls(buildHtml(crit({ i_7: "seven" })), { throwOnTitle: true });
+    c.finishRender();
+    assert.equal(c.bound(), 1, "controls not bound");
+    const fitted = c.finalSvg.style.transform;
+    assert.match(fitted, /scale\(0\.488\)/, "initial fit missing");
+    c.wheelUp();
+    assert.notEqual(c.finalSvg.style.transform, fitted, "wheel did nothing");
+  });
+
+  it("uses textContent, never innerHTML, and strips tooltips from exports", () => {
+    const html = buildHtml(crit({ i_7: "x" }));
+    assert.ok(html.includes("t.textContent = nodeTitles[m[1]]"));
+    assert.ok(!/innerHTML/.test(html));
+    assert.ok(html.includes('clone.querySelectorAll("title.wp-tip")'));
+  });
+
+  it("embeds the links for click-to-trace in critical mode only", () => {
+    const links: [string, string][] = [["i_1", "i_2"]];
+    const html = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, nodeLinks: links } });
+    assert.ok(html.includes('[["i_1","i_2"]]'));
+    assert.ok(html.includes("traceIssue(svg, picked)"));
+    for (const mode of ["focus", "full"] as const) {
+      assert.ok(!buildHtml({ ...BASE, mode, critical: { ...CRIT, nodeLinks: links } }).includes('[["i_1","i_2"]]'), mode);
+    }
+  });
+
+  it("critical panel has a text-flow line filled without innerHTML", () => {
+    const html = buildHtml(crit());
+    assert.ok(html.includes('id="crit-flow"'));
+    assert.ok(html.includes("showFlow(id)"));
+    assert.ok(html.includes("branches converge"));
+    assert.ok(html.includes("onFlowPick(id)"));
+    assert.ok(html.includes("flow-blocked") && html.includes("--status-waiting"));
+    assert.ok(!/innerHTML/.test(html));
+  });
+
+  it("focus and full modes carry no titles", () => {
+    for (const mode of ["focus", "full"] as const) {
+      const html = buildHtml({ ...BASE, mode, critical: { ...CRIT, nodeTitles: { i_7: "SECRET-T" } } });
+      assert.ok(!html.includes("SECRET-T"), mode);
+    }
   });
 });
 
@@ -390,96 +606,293 @@ describe("buildHtml — postMessage protocol", () => {
     // acquireVsCodeApi() may only be called ONCE per document; a second call
     // throws "already acquired" and aborts that script. Guard against regressions
     // (e.g. a separate toggle IIFE) by asserting a single invocation.
-    const html = buildHtml({ ...BASE, focused: true });
+    const html = buildHtml({ ...BASE, mode: "focus" });
     assert.equal((html.match(/acquireVsCodeApi\(/g) || []).length, 1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Focus toggle button
+// Graph mode buttons + critical-path controls
 // ---------------------------------------------------------------------------
 
-describe("buildHtml — focus toggle button", () => {
-  it("renders the toggle button element", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    assert.ok(
-      html.includes("work-plan-focus-toggle"),
-      `Expected focus toggle button in output`,
-    );
+const CRIT = {
+  trackFilter: null as string | null,
+  focusIssueLabel: null as string | null,
+  showClosed: false,
+  banner: null as string | null,
+  legend: [] as { label: string; color: string }[],
+  tooLargeMessage: null as string | null,
+  autoFilterNote: null as string | null,
+  emptyMessage: null as string | null,
+  trackOptions: [] as { key: string; label: string }[],
+  nodeTitles: undefined as Record<string, string> | undefined,
+  showUnlinked: false,
+  unlinkedCount: 0,
+};
+
+describe("buildHtml — graph mode buttons", () => {
+  const MODES = [
+    { mode: "focus", id: "work-plan-mode-focus", label: "Focus on track" },
+    { mode: "full", id: "work-plan-mode-full", label: "Show full map" },
+    { mode: "critical", id: "work-plan-mode-critical", label: "Show critical path" },
+  ] as const;
+
+  it("renders all three mode buttons with their labels", () => {
+    const html = buildHtml({ ...BASE, mode: "full" });
+    for (const m of MODES) {
+      assert.ok(html.includes(`id="${m.id}"`), `missing ${m.id}`);
+      assert.ok(html.includes(`>${m.label}</button>`), `missing label ${m.label}`);
+    }
   });
 
-  it("label is 'Focus on track' when focused is false", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    assert.ok(
-      html.includes("Focus on track"),
-      `Expected 'Focus on track' label when focused=false:\n${html.slice(0, 1000)}`,
-    );
+  it("the old single toggle is gone", () => {
+    const html = buildHtml(BASE);
+    assert.ok(!html.includes("work-plan-focus-toggle"));
+    assert.ok(!html.includes("setFocus"));
   });
 
-  it("label is 'Show full map' when focused is true", () => {
-    const html = buildHtml({ ...BASE, focused: true });
-    assert.ok(
-      html.includes("Show full map"),
-      `Expected 'Show full map' label when focused=true:\n${html.slice(0, 1000)}`,
-    );
+  for (const active of MODES) {
+    it(`mode=${active.mode} marks only that button aria-pressed=true`, () => {
+      const html = buildHtml({ ...BASE, mode: active.mode });
+      for (const m of MODES) {
+        const re = new RegExp(`<button[^>]*id="${m.id}"[^>]*>`);
+        const tag = html.match(re)?.[0] ?? "";
+        assert.ok(
+          tag.includes(`aria-pressed="${m.mode === active.mode}"`),
+          `${m.id} wrong aria-pressed in ${tag}`,
+        );
+      }
+    });
+  }
+
+  it("each button carries its mode and one generic handler posts setGraphMode", () => {
+    const html = buildHtml(BASE);
+    for (const m of MODES) {
+      assert.ok(
+        new RegExp(`id="${m.id}"[^>]*data-mode="${m.mode}"`).test(html),
+        `${m.id} lacks data-mode="${m.mode}"`,
+      );
+    }
+    assert.equal((html.match(/type: 'setGraphMode'/g) || []).length, 1, "handler must not be copied per button");
+    assert.ok(html.includes("type: 'setGraphMode', mode: "));
   });
 
-  it("does NOT show 'Focus on track' when focused is true", () => {
-    const html = buildHtml({ ...BASE, focused: true });
-    assert.ok(
-      !html.includes("Focus on track"),
-      `Should not show 'Focus on track' when already focused`,
-    );
+  it("scripts carry the nonce in both module modes", () => {
+    assertAllScriptsHaveNonce(buildHtml({ ...BASE, mode: "focus", isModule: false }), BASE.nonce);
+    assertAllScriptsHaveNonce(buildHtml({ ...BASE, mode: "critical", isModule: true }), BASE.nonce);
+  });
+});
+
+describe("buildHtml — critical-path controls", () => {
+  const critical = (c: Partial<typeof CRIT> = {}): WebviewHtmlOptions => ({
+    ...BASE,
+    mode: "critical",
+    critical: { ...CRIT, ...c },
   });
 
-  it("does NOT show 'Show full map' when focused is false", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    assert.ok(
-      !html.includes("Show full map"),
-      `Should not show 'Show full map' when not focused`,
-    );
+  it("absent in focus and full modes, even when critical data is passed", () => {
+    for (const mode of ["focus", "full"] as const) {
+      const html = buildHtml({
+        ...BASE,
+        mode,
+        critical: { ...CRIT, banner: "BANNER-X", legend: [{ label: "LEG-X", color: "#fff" }] },
+      });
+      for (const needle of [
+        "work-plan-critical-track", "work-plan-focus-issue", "work-plan-clear-focus",
+        "work-plan-show-closed", "setCriticalTrackFilter", "pickFocusIssue",
+        "clearFocusIssue", "setShowClosed", "BANNER-X", "LEG-X",
+      ]) {
+        assert.ok(!html.includes(needle), `${needle} leaked into mode=${mode}`);
+      }
+    }
   });
 
-  it("toggle click posts setFocus message (focused=false → posts focus:true)", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    // The script should post { type: "setFocus", focus: true } when clicked
-    assert.ok(
-      html.includes("setFocus"),
-      `Expected setFocus in toggle script`,
-    );
-    assert.ok(
-      html.includes('"setFocus"') || html.includes("'setFocus'") || html.includes("setFocus"),
-      `Expected setFocus message type in script`,
-    );
+  it("explains the numbers in critical mode only", () => {
+    const hint = "Numbers = steps from startable, not priority.";
+    assert.ok(buildHtml(critical()).includes(hint));
+    for (const mode of ["focus", "full"] as const) {
+      assert.ok(!buildHtml({ ...BASE, mode, critical: CRIT }).includes(hint), mode);
+    }
   });
 
-  it("toggle click posts setFocus with focus:false when currently focused", () => {
-    const html = buildHtml({ ...BASE, focused: true });
-    // When focused=true, clicking should post focus:false
-    assert.ok(
-      html.includes("false"),
-      `Expected focus: false in the setFocus script when focused=true`,
-    );
+  it("renders the track select, focus buttons and show-closed checkbox", () => {
+    const html = buildHtml(critical({
+      trackOptions: [{ key: "a/b#one", label: "One" }, { key: "a/b#two", label: "Two" }],
+      trackFilter: "a/b#two",
+      showClosed: true,
+    }));
+    assert.ok(html.includes('id="work-plan-critical-track"'));
+    assert.ok(html.includes('<option value="">All tracks</option>'));
+    assert.ok(html.includes('<option value="a/b#one">One</option>'));
+    assert.ok(html.includes('<option value="a/b#two" selected>Two</option>'));
+    assert.ok(html.includes("Focus on an issue…"));
+    assert.ok(html.includes(">Clear focus</button>"));
+    assert.ok(/id="work-plan-show-closed"[^>]*checked/.test(html));
   });
 
-  it("toggle click posts setFocus with focus:true when not focused", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    // When focused=false, clicking should post focus:true
-    assert.ok(
-      html.includes("true"),
-      `Expected focus: true in the setFocus script when focused=false`,
-    );
+  it("renders the show-unlinked checkbox with its count, off by default, and posts setShowUnlinked", () => {
+    const off = buildHtml(critical({ unlinkedCount: 87 }));
+    const tag = off.match(/<input[^>]*id="work-plan-show-unlinked"[^>]*>/)?.[0] ?? "";
+    assert.ok(tag && !tag.includes("checked"), tag);
+    assert.ok(off.includes("Show unlinked issues (87)"));
+    assert.ok(off.includes("type: 'setShowUnlinked', show: "));
+    assert.ok(/id="work-plan-show-unlinked"[^>]*checked/.test(buildHtml(critical({ showUnlinked: true, unlinkedCount: 3 }))));
+    for (const mode of ["focus", "full"] as const) {
+      assert.ok(!buildHtml({ ...BASE, mode, critical: CRIT }).includes("work-plan-show-unlinked"), mode);
+    }
   });
 
-  it("toggle script carries the nonce (UMD path)", () => {
-    const html = buildHtml({ ...BASE, focused: false, isModule: false });
-    // assertAllScriptsHaveNonce already covers all scripts, but let's be explicit
-    assertAllScriptsHaveNonce(html, BASE.nonce);
+  it("show-closed checkbox is unchecked when showClosed is false", () => {
+    const html = buildHtml(critical({ showClosed: false }));
+    const tag = html.match(/<input[^>]*id="work-plan-show-closed"[^>]*>/)?.[0] ?? "";
+    assert.ok(tag && !tag.includes("checked"), tag);
   });
 
-  it("toggle script carries the nonce (ESM path)", () => {
-    const html = buildHtml({ ...BASE, focused: true, isModule: true });
-    assertAllScriptsHaveNonce(html, BASE.nonce);
+  it("the controls post the four critical messages", () => {
+    const html = buildHtml(critical());
+    assert.ok(html.includes("type: 'setCriticalTrackFilter'"));
+    assert.ok(html.includes("type: 'pickFocusIssue'"));
+    assert.ok(html.includes("type: 'clearFocusIssue'"));
+    assert.ok(html.includes("type: 'setShowClosed'"));
+  });
+
+  it("shows the focused issue label escaped", () => {
+    const html = buildHtml(critical({ focusIssueLabel: "#5 <b>x</b>" }));
+    assert.ok(html.includes("#5 &lt;b&gt;x&lt;/b&gt;"));
+    assert.ok(!html.includes("<b>x</b>"));
+  });
+
+  it("banner, legend labels, notes and messages render escaped", () => {
+    const html = buildHtml(critical({
+      banner: "ban <i>ner</i>",
+      legend: [{ label: "Blocked <u>by</u>", color: "#ff0000" }],
+      tooLargeMessage: "too <s>big</s>",
+      autoFilterNote: "note <em>n</em>",
+      emptyMessage: "empty <o>",
+      trackOptions: [{ key: "k\"1", label: "L<1>" }],
+    }));
+    for (const raw of ["<i>ner</i>", "<u>by</u>", "<s>big</s>", "<em>n</em>", "<o>", "L<1>", 'value="k"1"']) {
+      assert.ok(!html.includes(raw), `unescaped: ${raw}`);
+    }
+    for (const safe of [
+      "ban &lt;i&gt;ner&lt;/i&gt;", "Blocked &lt;u&gt;by&lt;/u&gt;", "too &lt;s&gt;big&lt;/s&gt;",
+      "note &lt;em&gt;n&lt;/em&gt;", "empty &lt;o&gt;", "L&lt;1&gt;", 'value="k&quot;1"',
+    ]) {
+      assert.ok(html.includes(safe), `missing: ${safe}`);
+    }
+  });
+
+  it("legend shows each label as text next to its colour swatch", () => {
+    const html = buildHtml(critical({
+      legend: [{ label: "On the path", color: "#e5c07b" }, { label: "Closed", color: "#888888" }],
+    }));
+    assert.ok(/#e5c07b[^>]*><\/span>\s*On the path/.test(html));
+    assert.ok(/#888888[^>]*><\/span>\s*Closed/.test(html));
+  });
+
+  it("a colour that is not a plain hex/name is not injected into style", () => {
+    const html = buildHtml(critical({ legend: [{ label: "Bad", color: 'red;"><script>x</script>' }] }));
+    assert.ok(!html.includes("<script>x</script>"));
+  });
+
+  it("the inline scripts still parse with critical controls present", () => {
+    const html = buildHtml(critical({ trackOptions: [{ key: "k", label: "L" }] }));
+    const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      if (/\bsrc=/.test(m[1]) || m[2].trim() === "") continue;
+      assert.doesNotThrow(() => { new Function(m![2]); });
+    }
+  });
+
+  it("acquireVsCodeApi is still called exactly once", () => {
+    assert.equal((buildHtml(critical()).match(/acquireVsCodeApi\(/g) || []).length, 1);
+  });
+});
+
+describe("buildHtml — nothing to draw (empty graphDef)", () => {
+  const empty = (graphDef: string): WebviewHtmlOptions => ({
+    ...BASE, graphDef, mode: "critical",
+    critical: {
+      ...CRIT, tooLargeMessage: "Too large to draw (9 issues, 600 links).",
+      legend: [{ label: "LEG-X", color: "#ffffff" }],
+    },
+  });
+
+  for (const g of ["", "  \n "]) {
+    it(`graphDef ${JSON.stringify(g)}: no mermaid element and no mermaid.run`, () => {
+      const html = buildHtml(empty(g));
+      assert.ok(!/<\w+[^>]*class="mermaid"/.test(html), "mermaid element emitted");
+      assert.ok(!html.includes("mermaid.run()).then"), "mermaid.run still called");
+      assert.ok(!html.includes("mermaid.initialize("), "mermaid still initialised");
+      assert.ok(!html.includes(`src="${BASE.mermaidUri}"`), "mermaid bundle still loaded");
+      assert.ok(html.includes("Too large to draw"), "message must still show");
+    });
+  }
+
+  it("zoom and export controls are disabled, so nothing posts empty data", () => {
+    const html = buildHtml(empty(""));
+    for (const id of ["graph-zoom-out", "graph-zoom-in", "graph-fit", "graph-reset", "graph-export-svg", "graph-export-png"]) {
+      const tag = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+      assert.ok(/\sdisabled\b/.test(tag), `${id} not disabled: ${tag}`);
+    }
+  });
+
+  it("the legend is hidden when nothing is drawn", () => {
+    assert.ok(!buildHtml(empty("")).includes("LEG-X"));
+    assert.ok(buildHtml({ ...empty("graph LR\n  a --> b") }).includes("LEG-X"));
+  });
+
+  it("a non-empty graphDef still renders the mermaid element and runs mermaid", () => {
+    const html = buildHtml(empty("graph LR\n  a --> b"));
+    assert.ok(html.includes('<pre class="mermaid">graph LR'));
+    assert.ok(html.includes("mermaid.run()).then"));
+    const tag = html.match(/<button[^>]*id="graph-export-svg"[^>]*>/)?.[0] ?? "";
+    assert.ok(!/\sdisabled\b/.test(tag), tag);
+  });
+
+  it("inline scripts still parse with nothing to draw", () => {
+    const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+    const html = buildHtml(empty(""));
+    let m: RegExpExecArray | null;
+    let n = 0;
+    while ((m = re.exec(html)) !== null) {
+      if (/\bsrc=/.test(m[1]) || m[2].trim() === "") continue;
+      n++;
+      assert.doesNotThrow(() => { new Function(m![2]); });
+    }
+    assert.ok(n >= 1);
+  });
+});
+
+describe("buildHtmlIfChanged — critical-path inputs (#423)", () => {
+  const base: WebviewHtmlOptions = { ...BASE, mode: "critical", critical: { ...CRIT } };
+  const first = buildHtmlIfChanged(null, base)!;
+  const withCrit = (c: Partial<typeof CRIT>): WebviewHtmlOptions =>
+    ({ ...base, critical: { ...CRIT, ...c } });
+
+  it("same inputs, new nonce: no reload", () => {
+    assert.equal(buildHtmlIfChanged(first.key, { ...base, nonce: "n".repeat(32) }), null);
+  });
+
+  it("mode change re-renders", () => {
+    assert.ok(buildHtmlIfChanged(first.key, { ...base, mode: "full" }));
+  });
+
+  it("showUnlinked and unlinkedCount re-render", () => {
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ showUnlinked: true })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ unlinkedCount: 5 })));
+  });
+
+  it("nodeTitles change re-renders", () => {
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ nodeTitles: { i_1: "#1 a" } })));
+  });
+
+  it("trackFilter, focusIssueLabel, showClosed and tooLargeMessage each re-render", () => {
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ trackFilter: "a/b#t" })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ focusIssueLabel: "#1 x" })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ showClosed: true })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ tooLargeMessage: "too big" })));
   });
 });
 
@@ -730,7 +1143,7 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
   function optionsFor(
     exp: Export,
     selection: string,
-    view: { focused?: boolean; isDark?: boolean } = {},
+    view: { focused?: boolean; mode?: GraphMode; isDark?: boolean } = {},
   ): WebviewHtmlOptions {
     const sel = exp.tracks.find(t => t.name === selection)!;
     const focused = view.focused ?? true;
@@ -742,7 +1155,7 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
       graphDef: toMermaid(graphExp, trackKey(sel), { focus: focused, dark: isDark }),
       detailHtml: renderDetail(sel, { now: NOW }),
       trackName: sel.name,
-      focused,
+      mode: view.mode ?? (focused ? "focus" : "full"),
       isDark,
       hasTrackFile: !!sel.path,
     };
