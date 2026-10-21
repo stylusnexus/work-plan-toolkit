@@ -126,6 +126,8 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
       const tid = `${b.repo}#${b.number}`;
       if (seen.has(tid) || !isOpen(tid)) continue;
       seen.add(tid);
+      // Display-only: closed issues never feed rank, cycles or depth (no link()).
+      pushEdge(id, tid, "blocks");
       stubCount.set(tid, (stubCount.get(tid) ?? 0) + 1);
     }
   }

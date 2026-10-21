@@ -82,6 +82,14 @@ describe("computeCriticalPath", () => {
     assert.equal(m.issues.find(i => i.number === 1)!.rank, null);
   });
 
+  it("closed issue gets a display edge to the open issue it blocked", () => {
+    const closed = iss(1, [], { state: "closed", blocking: [dep(2)] });
+    const m = computeCriticalPath(exp(trk("A", [closed, iss(2)])), R);
+    assert.ok(m.edges.some(e => e.from === "r#1" && e.to === "r#2" && e.kind === "blocks"));
+    assert.equal(rankOf(m, 2), 0);
+    assert.equal(rankOf(m, 1), null);
+  });
+
   it("in-progress blocked issue keeps rank", () => {
     const m = computeCriticalPath(exp(trk("A", [iss(1), iss(2, [1], { in_progress: true })])), R);
     assert.equal(rankOf(m, 2), 1);
