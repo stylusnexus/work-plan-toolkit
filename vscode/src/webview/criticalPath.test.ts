@@ -198,9 +198,30 @@ describe("computeCriticalPath", () => {
     }
   });
 
-  it("criticalPickItems lists every issue node", () => {
+  it("criticalPickItems lists every open issue node", () => {
     const m = computeCriticalPath(exp(trk("A", [iss(1), iss(2, [1])])), R);
-    const items = criticalPickItems(m);
+    const items = criticalPickItems(m, { showClosed: false });
     assert.deepEqual(items.map(i => i.id), ["r#1", "r#2"]);
+  });
+
+  it("criticalPickItems lists closed issues only when Show closed is on", () => {
+    const m = computeCriticalPath(exp(trk("A", [iss(1), iss(2, [], { state: "closed" })])), R);
+    assert.deepEqual(criticalPickItems(m, { showClosed: false }).map(i => i.id), ["r#1"]);
+    const all = criticalPickItems(m, { showClosed: true });
+    assert.deepEqual(all.map(i => i.id), ["r#1", "r#2"]);
+    assert.equal(all[1].description, "A · closed");
+  });
+
+  it("a reference missing blocked_by and blocking does not throw", () => {
+    const bare = (n: number, state: "open" | "closed"): Issue => {
+      const i = iss(n, [], { state }) as Partial<Issue>;
+      delete i.blocked_by;
+      delete i.blocking;
+      return i as Issue;
+    };
+    const t = trk("A", [iss(1)], { references: [bare(2, "open"), bare(3, "closed")] });
+    const m = computeCriticalPath(exp(t), R);
+    assert.equal(rankOf(m, 2), 0);
+    assert.equal(m.issues.length, 3);
   });
 });

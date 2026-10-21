@@ -336,12 +336,16 @@ export function fitToCap(
   model: CriticalPathModel,
   f: CriticalFilter,
   selected: TrackKey,
-  opts: { dark: boolean; suppressAutoFit?: boolean; visibleTracks?: ReadonlySet<TrackKey> },
+  opts: {
+    dark: boolean; suppressAutoFit?: boolean; visibleTracks?: ReadonlySet<TrackKey>;
+    /** Display name of `selected` for the auto-fit note. */
+    selectedName?: string;
+  },
 ): { filter: CriticalFilter; render: CriticalRender; autoFiltered: string | null } {
   const first = renderCriticalPath(model, f, opts);
   if (!first.tooLarge || f.trackKey !== null || opts.suppressAutoFit) return { filter: f, render: first, autoFiltered: null };
   const filter = { ...f, trackKey: selected };
-  const name = model.issues.find(i => i.trackKey === selected)?.trackName ?? selected;
+  const name = opts.selectedName ?? model.issues.find(i => i.trackKey === selected)?.trackName ?? selected;
   return {
     filter,
     render: renderCriticalPath(model, filter, opts),

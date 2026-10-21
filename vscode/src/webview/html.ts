@@ -174,8 +174,9 @@ ${afterRun}
   const ctlOff = hasGraph ? "" : ` disabled aria-disabled="true"`;
 
   // Message-passing script: click handlers → postMessage to extension host.
-  // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the focus
-  // toggle wiring lives here alongside the track/issue handlers.
+  // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the graph
+  // mode buttons and critical-path controls are wired here alongside the
+  // track/issue handlers.
   const messagingScript = `<script nonce="${nonce}">
 (function () {
   var vscode = typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;

@@ -306,6 +306,8 @@ export class WorkPlanPanel {
       return { graphDef: "", critical: { ...base, emptyMessage: "This track has no GitHub repo" } };
     }
     const model = computeCriticalPath(raw, repo);
+    const nameOf = (k: TrackKey): string => exp.tracks.find(t => trackKey(t) === k)?.name
+      ?? raw.tracks.find(t => trackKey(t) === k)?.name ?? k;
     // Ranks come from `raw`; the sidebar lens (`exp`) only hides tracks (spec §4).
     const visibleTracks = new Set(exp.tracks.filter(t => t.repo === repo).map(t => trackKey(t)));
     const shownTracks = visibleTrackOrder(model, visibleTracks);
@@ -314,6 +316,7 @@ export class WorkPlanPanel {
     });
     const fit = fitToCap(model, this._critFilter, selected, {
       dark: isDark, suppressAutoFit: this._autoFitSuppressed, visibleTracks,
+      selectedName: nameOf(selected),
     });
     // Save the auto-applied track so a later explicit clear is distinguishable.
     if (fit.autoFiltered && fit.filter.trackKey) {
@@ -322,8 +325,6 @@ export class WorkPlanPanel {
     const focused = fit.filter.focusIssue
       ? model.issues.find(i => i.id === fit.filter.focusIssue)
       : undefined;
-    const nameOf = (k: TrackKey): string => exp.tracks.find(t => trackKey(t) === k)?.name
-      ?? raw.tracks.find(t => trackKey(t) === k)?.name ?? k;
     return {
       graphDef: fit.render.mermaid,
       critical: {
@@ -351,7 +352,9 @@ export class WorkPlanPanel {
   private async _pickFocusIssue(): Promise<void> {
     const track = this._currentTrack();
     if (!this._rawExport || !track || track.repo === null) return;
-    const items = criticalPickItems(computeCriticalPath(this._rawExport, track.repo));
+    const items = criticalPickItems(computeCriticalPath(this._rawExport, track.repo), {
+      showClosed: this._critFilter.showClosed,
+    });
     if (items.length === 0) {
       vscode.window.showInformationMessage("Work Plan: No issues to focus on in this repo.");
       return;
@@ -415,7 +418,11 @@ export class WorkPlanPanel {
         break;
       }
       case "pickFocusIssue": {
-        void this._pickFocusIssue();
+        this._pickFocusIssue().catch((err: unknown) => {
+          vscode.window.showErrorMessage(
+            `Work Plan: Failed to pick an issue to focus on — ${String(err)}`,
+          );
+        });
         break;
       }
       case "openIssue": {

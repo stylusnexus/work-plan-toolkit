@@ -42,10 +42,12 @@ export function nextUpGateAllows(issue: Issue): boolean {
   return issue.state === "open" && issue.blocked_by.length === 0;
 }
 
+/** Picker items; closed issues only when Show closed is on (else picking one empties the graph). */
 export function criticalPickItems(
   model: CriticalPathModel,
+  opts: { showClosed: boolean },
 ): { label: string; description?: string; id: string }[] {
-  return model.issues.map(n => ({
+  return model.issues.filter(n => opts.showClosed || n.state === "open").map(n => ({
     label: `#${n.number} ${n.title}`,
     description: n.state === "closed" ? `${n.trackName} · closed` : n.trackName,
     id: n.id,
@@ -114,7 +116,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
   const outsideIds = new Set<string>();
   for (const [id, node] of nodes) {
     if (node.state !== "open") continue;
-    for (const b of issueById.get(id)!.blocked_by) {
+    for (const b of issueById.get(id)!.blocked_by ?? []) {
       const bid = `${b.repo}#${b.number}`;
       if (nodes.has(bid)) {
         if (!isOpen(bid)) continue; // a closed blocker never blocks
@@ -134,7 +136,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
   for (const [id, node] of nodes) {
     if (node.state !== "closed") continue;
     const seen = new Set<string>();
-    for (const b of issueById.get(id)!.blocking) {
+    for (const b of issueById.get(id)!.blocking ?? []) {
       const tid = `${b.repo}#${b.number}`;
       if (seen.has(tid) || !isOpen(tid)) continue;
       seen.add(tid);

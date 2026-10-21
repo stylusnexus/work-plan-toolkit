@@ -383,6 +383,12 @@ describe("fitToCap", () => {
     assert.ok(r.autoFiltered!.includes("Alpha"));
   });
 
+  it("auto-fit note uses the given display name, never a raw track key", () => {
+    const r = fitToCap(star(460), F, "acme/app#ghost" as TrackKey, { ...LIGHT, selectedName: "Ghost" });
+    assert.ok(r.autoFiltered!.includes("Showing track Ghost —"), r.autoFiltered!);
+    assert.ok(!r.autoFiltered!.includes("acme/app#ghost"));
+  });
+
   it("still over cap after filtering: tooLarge stays true", () => {
     const r = fitToCap(star(460), F, TA, LIGHT);
     assert.equal(r.filter.trackKey, TA);
