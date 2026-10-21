@@ -17,6 +17,11 @@ import { toMermaid } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
 import { buildHtmlIfChanged, esc } from "./html.ts";
 import { isWebviewMessage } from "./messages.ts";
+import type { GraphMode } from "./messages.ts";
+import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
+import { fitToCap, nextCritState } from "./criticalPathRender.ts";
+import type { CriticalFilter } from "./criticalPathRender.ts";
+import type { CriticalViewOptions } from "./html.ts";
 
 // ---------------------------------------------------------------------------
 // Injected move handler
@@ -86,8 +91,14 @@ export class WorkPlanPanel {
   private readonly _extensionUri: vscode.Uri;
   private _currentExport: Export | null = null;
   private _currentTrackKey: TrackKey | null = null;
-  /** Whether the graph is in focused mode (show only selected track's neighbourhood). */
-  private _focused = true;
+  /** Raw (unfiltered) export — critical-path ranks are computed from this, not the lens-filtered one. */
+  private _rawExport: Export | null = null;
+  /** Graph mode: selected track's neighbourhood, whole repo, or the critical path. */
+  private _mode: GraphMode = "focus";
+  /** Critical-path filters; reset/cleared by nextCritState. */
+  private _critFilter: CriticalFilter = { trackKey: null, focusIssue: null, showClosed: false };
+  /** Repo the critical-path filters were set against. */
+  private _critRepo: string | null = null;
   /** Theme-change subscription — re-renders so the graph follows the editor (#207). */
   private _themeSub: vscode.Disposable | undefined;
   /** Content key of the graph document currently shown; null after an empty state (#423). */
@@ -165,7 +176,7 @@ export class WorkPlanPanel {
     // (which can't read CSS vars) follows light/dark instead of staying dark (#207).
     this._themeSub = vscode.window.onDidChangeActiveColorTheme(() => {
       if (this._currentExport && this._currentTrackKey) {
-        this.render(this._currentExport, this._currentTrackKey);
+        this.render(this._currentExport, this._currentTrackKey, this._rawExport ?? undefined);
       }
     });
   }
@@ -179,10 +190,12 @@ export class WorkPlanPanel {
    *
    * @param exp              - Full work-plan export (all tracks for the graph).
    * @param selection        - Canonical key, or a unique legacy display name.
+   * @param rawExp           - Unfiltered export for critical-path ranks (defaults to `exp`).
    */
-  render(exp: Export, selection: TrackKey | string): void {
+  render(exp: Export, selection: TrackKey | string, rawExp?: Export): void {
     const track = resolveTrack(exp.tracks, selection);
     this._currentExport = exp;
+    this._rawExport = rawExp ?? exp;
 
     if (!track) {
       this._currentTrackKey = null;
@@ -198,9 +211,15 @@ export class WorkPlanPanel {
     }
 
     const selectedTrackKey = trackKey(track);
-    // Reset focus to true whenever a new track is selected.
+    // A new track resets "full" to "focus" and clears filters from another repo.
     if (selectedTrackKey !== this._currentTrackKey) {
-      this._focused = true;
+      const next = nextCritState(
+        { mode: this._mode, filter: this._critFilter, repo: this._critRepo },
+        { type: "selectTrack", repo: track.repo },
+      );
+      this._mode = next.mode;
+      this._critFilter = next.filter;
+      this._critRepo = next.repo;
     }
     this._currentTrackKey = selectedTrackKey;
 
@@ -209,13 +228,22 @@ export class WorkPlanPanel {
       .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "dist", MERMAID_FILE))
       .toString();
 
-    // Full map is repo-scoped: only show tracks in the same repo as the
-    // selected track.  Focus mode is already scoped to the neighbourhood.
-    const graphExp = this._focused
-      ? exp
-      : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
     const isDark = isDarkTheme();
-    const graphDef = toMermaid(graphExp, selectedTrackKey, { focus: this._focused, dark: isDark });
+    let graphDef: string;
+    let critical: CriticalViewOptions | undefined;
+    if (this._mode === "critical") {
+      const built = this._buildCritical(this._rawExport, exp, selectedTrackKey, track.repo, isDark);
+      graphDef = built.graphDef;
+      critical = built.critical;
+    } else {
+      // Full map is repo-scoped: only show tracks in the same repo as the
+      // selected track.  Focus mode is already scoped to the neighbourhood.
+      const focus = this._mode === "focus";
+      const graphExp = focus
+        ? exp
+        : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
+      graphDef = toMermaid(graphExp, selectedTrackKey, { focus, dark: isDark });
+    }
     const showNextUpPreset = vscode.workspace
       .getConfiguration("workPlan")
       .get<boolean>("showNextUpPreset", true);
@@ -231,7 +259,8 @@ export class WorkPlanPanel {
       detailHtml,
       trackName: track.name,
       isModule: false, // UMD bundle → global mermaid
-      focused: this._focused,
+      mode: this._mode,
+      critical,
       isDark,
       hasTrackFile: !!track.path,
     });
@@ -239,6 +268,84 @@ export class WorkPlanPanel {
 
     this._htmlKey = next.key;
     webview.html = next.html;
+  }
+
+  /**
+   * Critical-path graph + control state for the selected track's repo. Clears
+   * stale filters (vanished track/issue) and surfaces why via autoFilterNote.
+   */
+  private _buildCritical(
+    raw: Export,
+    exp: Export,
+    selected: TrackKey,
+    repo: string | null,
+    isDark: boolean,
+  ): { graphDef: string; critical: CriticalViewOptions } {
+    const base: CriticalViewOptions = {
+      trackFilter: null,
+      focusIssueLabel: null,
+      showClosed: this._critFilter.showClosed,
+      banner: null,
+      legend: [],
+      tooLargeMessage: null,
+      autoFilterNote: null,
+      emptyMessage: null,
+      trackOptions: [],
+    };
+    if (repo === null) {
+      return { graphDef: "", critical: { ...base, emptyMessage: "This track has no GitHub repo" } };
+    }
+    const model = computeCriticalPath(raw, repo);
+    const refreshed = nextCritState(
+      { mode: this._mode, filter: this._critFilter, repo: this._critRepo },
+      { type: "refresh", knownTracks: model.trackOrder, knownIssues: model.issues.map(i => i.id) },
+    );
+    this._critFilter = refreshed.filter;
+    const fit = fitToCap(model, this._critFilter, selected, { dark: isDark });
+    const focused = fit.filter.focusIssue
+      ? model.issues.find(i => i.id === fit.filter.focusIssue)
+      : undefined;
+    const nameOf = (k: TrackKey): string => exp.tracks.find(t => trackKey(t) === k)?.name
+      ?? raw.tracks.find(t => trackKey(t) === k)?.name ?? k;
+    return {
+      graphDef: fit.render.mermaid,
+      critical: {
+        trackFilter: fit.filter.trackKey,
+        focusIssueLabel: focused ? `#${focused.number} ${focused.title}` : null,
+        showClosed: fit.filter.showClosed,
+        banner: fit.render.banner,
+        legend: fit.render.legend.map(l => ({ label: l.label, color: l.color })),
+        tooLargeMessage: fit.render.tooLargeMessage,
+        autoFilterNote: fit.autoFiltered ?? refreshed.note,
+        emptyMessage: fit.render.empty,
+        trackOptions: model.trackOrder.map(k => ({ key: k, label: nameOf(k) })),
+      },
+    };
+  }
+
+  /** Re-render the current track with the stored exports (state change from the webview). */
+  private _rerender(): void {
+    if (this._currentExport && this._currentTrackKey) {
+      this.render(this._currentExport, this._currentTrackKey, this._rawExport ?? undefined);
+    }
+  }
+
+  /** Host-side focus-issue picker; the issue id never comes from the webview. */
+  private async _pickFocusIssue(): Promise<void> {
+    const track = this._currentTrack();
+    if (!this._rawExport || !track || track.repo === null) return;
+    const items = criticalPickItems(computeCriticalPath(this._rawExport, track.repo));
+    if (items.length === 0) {
+      vscode.window.showInformationMessage("Work Plan: No issues to focus on in this repo.");
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: "Focus the critical path on which issue?",
+      matchOnDescription: true,
+    });
+    if (!picked) return;
+    this._critFilter = { ...this._critFilter, focusIssue: picked.id };
+    this._rerender();
   }
 
   /**
@@ -262,17 +369,36 @@ export class WorkPlanPanel {
     switch (raw.type) {
       case "selectTrack": {
         if (this._currentExport) {
-          this.render(this._currentExport, "key" in raw ? raw.key : raw.name);
+          this.render(
+            this._currentExport,
+            "key" in raw ? raw.key : raw.name,
+            this._rawExport ?? undefined,
+          );
         }
         break;
       }
-      case "setFocus": {
-        this._focused = raw.focus;
-        if (this._currentExport && this._currentTrackKey) {
-          // Re-render the current track. Safe to delegate: the track is
-          // unchanged, so render()'s _focused reset guard does not fire.
-          this.render(this._currentExport, this._currentTrackKey);
-        }
+      case "setGraphMode": {
+        this._mode = raw.mode;
+        this._rerender();
+        break;
+      }
+      case "setCriticalTrackFilter": {
+        this._critFilter = { ...this._critFilter, trackKey: raw.key };
+        this._rerender();
+        break;
+      }
+      case "setShowClosed": {
+        this._critFilter = { ...this._critFilter, showClosed: raw.show };
+        this._rerender();
+        break;
+      }
+      case "clearFocusIssue": {
+        this._critFilter = { ...this._critFilter, focusIssue: null };
+        this._rerender();
+        break;
+      }
+      case "pickFocusIssue": {
+        void this._pickFocusIssue();
         break;
       }
       case "openIssue": {

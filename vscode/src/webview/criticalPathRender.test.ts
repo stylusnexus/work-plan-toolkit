@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TrackKey } from "../model.ts";
 import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
-import { filterCriticalPath, fitToCap, renderCriticalPath } from "./criticalPathRender.ts";
+import { filterCriticalPath, fitToCap, nextCritState, renderCriticalPath } from "./criticalPathRender.ts";
 
 const R = "r";
 const TA = "ta" as TrackKey;
@@ -257,5 +257,53 @@ describe("fitToCap", () => {
     assert.equal(r.filter.trackKey, TA);
     assert.ok(r.autoFiltered !== null);
     assert.equal(r.render.tooLarge, true);
+  });
+});
+
+describe("nextCritState", () => {
+  const prev = (over: Record<string, unknown> = {}) => ({
+    mode: "critical" as const,
+    filter: { trackKey: TA, focusIssue: `${R}#1`, showClosed: true },
+    repo: R as string | null,
+    ...over,
+  });
+
+  it("refresh keeps mode and filter when everything still exists", () => {
+    const s = nextCritState(prev(), { type: "refresh", knownTracks: [TA, TB], knownIssues: [`${R}#1`] });
+    assert.equal(s.mode, "critical");
+    assert.deepEqual(s.filter, prev().filter);
+    assert.equal(s.note, null);
+  });
+
+  it("selectTrack in critical mode keeps critical", () => {
+    assert.equal(nextCritState(prev(), { type: "selectTrack", repo: R }).mode, "critical");
+  });
+
+  it("selecting a track in a different repo clears track and issue but keeps showClosed", () => {
+    const s = nextCritState(prev(), { type: "selectTrack", repo: "other" });
+    assert.deepEqual(s.filter, { trackKey: null, focusIssue: null, showClosed: true });
+    assert.equal(s.repo, "other");
+  });
+
+  it("selectTrack in the same repo keeps the filter", () => {
+    assert.deepEqual(nextCritState(prev(), { type: "selectTrack", repo: R }).filter, prev().filter);
+  });
+
+  it("selectTrack in full mode resets to focus", () => {
+    assert.equal(nextCritState(prev({ mode: "full" }), { type: "selectTrack", repo: R }).mode, "focus");
+  });
+
+  it("refresh clears a vanished filtered track and notes it", () => {
+    const s = nextCritState(prev(), { type: "refresh", knownTracks: [TB], knownIssues: [`${R}#1`] });
+    assert.equal(s.filter.trackKey, null);
+    assert.equal(s.filter.focusIssue, `${R}#1`);
+    assert.ok(s.note && !s.note.includes("\n"));
+  });
+
+  it("refresh clears a vanished focused issue and notes it", () => {
+    const s = nextCritState(prev(), { type: "refresh", knownTracks: [TA], knownIssues: [] });
+    assert.equal(s.filter.focusIssue, null);
+    assert.equal(s.filter.trackKey, TA);
+    assert.ok(s.note && !s.note.includes("\n"));
   });
 });
