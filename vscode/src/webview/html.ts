@@ -121,9 +121,12 @@ export function buildHtml(o: WebviewHtmlOptions): string {
   // ESM path: import + initialize in a single module script.
   let loaderScript = "";
   // After Mermaid renders the SVG, signal the controller (#216) so it can wire
-  // pan/zoom/export to the now-present <svg>. Promise.resolve() guards a mermaid
-  // build whose run() is synchronous; a render failure still must not throw.
-  const afterRun = `Promise.resolve(mermaid.run()).then(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); }).catch(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); });`;
+  // pan/zoom/export to the final <svg>. The flag is set first so a controller
+  // that attaches its listener late still knows the render is done.
+  // Promise.resolve() guards a mermaid build whose run() is synchronous; a
+  // render failure still must not throw.
+  const afterRun = `function workplanGraphRendered() { window.__workplanGraphRendered = true; document.dispatchEvent(new Event("workplan:graph-rendered")); }
+Promise.resolve(mermaid.run()).then(workplanGraphRendered, workplanGraphRendered);`;
   if (!hasGraph) {
     // No Mermaid load or run; the zoom/export buttons render disabled below.
   } else if (isModule) {
@@ -321,10 +324,13 @@ ${criticalScript}
   // CSP-clean (this script already carries the nonce). Wired after Mermaid
   // finishes rendering (the loader dispatches "workplan:graph-rendered").
   // -------------------------------------------------------------------------
+  var graphBound = false;
   function setupGraphControls() {
     var figure = document.querySelector(".graph-figure");
-    var svg = figure ? figure.querySelector("svg") : null;
-    if (!figure || !svg) { return; }
+    var svg = figure ? (figure.querySelector(".mermaid > svg") || figure.querySelector("svg")) : null;
+    // Only the final, connected svg: Mermaid's temporary render svg is discarded.
+    if (!figure || !svg || !svg.isConnected) { return; }
+    graphBound = true;
 
     var state = { scale: 1, tx: 0, ty: 0 };
     function clamp(s) { return Math.min(8, Math.max(0.1, s)); }
@@ -428,16 +434,16 @@ ${criticalScript}
     fit(); // initial fit-to-width so a dense map is navigable from the start
   }
 
-  // The loader (an earlier script element) may dispatch "workplan:graph-rendered"
-  // BEFORE this script attaches the listener — mermaid.run() can resolve in a
-  // microtask that drains between the two script elements. So wire idempotently:
-  // if the SVG is already present the render finished, run setup now; otherwise
-  // wait for the event. Exactly one path fires, so setup never double-runs.
-  if (document.querySelector(".graph-figure svg")) {
-    setupGraphControls();
-  } else {
-    document.addEventListener("workplan:graph-rendered", setupGraphControls);
+  // An svg being present is no proof the render finished: mermaid.run() inserts
+  // a temporary svg and later replaces it. So bind on the loader's signal only.
+  // The listener covers a render that finishes after this script runs; the flag
+  // (set by the loader before it dispatches) covers one that finished earlier.
+  // graphBound keeps setup to exactly one run.
+  function onGraphRendered() {
+    if (!graphBound) { setupGraphControls(); }
   }
+  document.addEventListener("workplan:graph-rendered", onGraphRendered);
+  if (window.__workplanGraphRendered) { onGraphRendered(); }
 }());
 </script>`;
 

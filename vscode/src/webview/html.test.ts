@@ -183,17 +183,118 @@ describe("buildHtml — graphDef embedding", () => {
     assert.ok(html.includes('addEventListener("workplan:graph-rendered"'), "controller must listen for render done");
   });
 
-  it("the controller wiring is idempotent against an early render event (#216 review)", () => {
+  it("the loader marks the render done before it signals", () => {
     const html = buildHtml(BASE);
-    // mermaid.run() can resolve before the messaging script attaches its
-    // listener; the controller must self-check for an already-present SVG and
-    // run setup directly instead of only relying on the (possibly-missed) event.
-    assert.ok(
-      html.includes('document.querySelector(".graph-figure svg")'),
-      "controller must run setup directly if the SVG already rendered",
-    );
+    const flag = html.indexOf("window.__workplanGraphRendered = true");
+    assert.ok(flag !== -1, "loader must set the done flag");
+    assert.ok(flag < html.indexOf('dispatchEvent(new Event("workplan:graph-rendered"))'));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Graph controls, run against a minimal fake DOM (#216 race, zoom base, tooltips)
+// ---------------------------------------------------------------------------
+
+type Listener = (e?: unknown) => void;
+interface FakeEl {
+  id: string; isConnected: boolean; children: FakeEl[]; tag: string;
+  attrs: Record<string, string>; style: Record<string, string>; textContent: string;
+  listeners: Record<string, Listener[]>;
+  viewBox?: { baseVal: { width: number; height: number } };
+  namespaceURI?: string;
+}
+
+function fakeEl(tag: string, extra: Partial<FakeEl> = {}): FakeEl {
+  return { id: "", isConnected: true, children: [], tag, attrs: {}, style: {}, textContent: "", listeners: {}, ...extra };
+}
+
+/** Runs the messaging IIFE with a fake document; returns hooks to drive it. */
+function runControls(html: string, opts: { flagSetEarly?: boolean } = {}) {
+  const bodies = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+    .filter(m => !/\bsrc=/.test(m[1]) && m[2].includes("setupGraphControls"))
+    .map(m => m[2]);
+  assert.equal(bodies.length, 1, "messaging script not found");
+  const nodes = [fakeEl("g", { id: "mermaid-1-flowchart-i_7-0" }), fakeEl("g", { id: "mermaid-1-flowchart-i_8-1" })];
+  const finalSvg = fakeEl("svg", {
+    viewBox: { baseVal: { width: 2000, height: 1000 } }, namespaceURI: "svg-ns", children: nodes,
+  });
+  const tempSvg = fakeEl("svg", { viewBox: { baseVal: { width: 0, height: 0 } } });
+  let current: FakeEl = tempSvg; // Mermaid's in-progress svg
+  const figure = fakeEl("div");
+  const docListeners: Record<string, Listener[]> = {};
+  const add = (el: FakeEl | null) => (type: string, fn: Listener) => {
+    const bag = el ? el.listeners : docListeners;
+    (bag[type] ??= []).push(fn);
+  };
+  const methods = (el: FakeEl): FakeEl => Object.assign(el, {
+    addEventListener: add(el),
+    setAttribute: (k: string, v: unknown) => { el.attrs[k] = String(v); },
+    getAttribute: (k: string) => el.attrs[k] ?? null,
+    removeAttribute: (k: string) => { delete el.attrs[k]; },
+    insertBefore: (c: FakeEl) => { el.children.unshift(c); },
+    appendChild: (c: FakeEl) => { el.children.push(c); },
+    classList: { add() {}, remove() {}, toggle() { return false; } },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 540 }),
+    setPointerCapture() {},
+    querySelectorAll: (sel: string) => (sel === "g.node" ? el.children.filter(c => c.tag === "g") : []),
+    querySelector: (sel: string) => {
+      if (el === figure && sel.includes("svg")) return methods(current);
+      return null;
+    },
+  });
+  methods(figure); methods(finalSvg); methods(tempSvg);
+  nodes.forEach(methods);
+  const doc = {
+    addEventListener: add(null),
+    querySelector: (sel: string) => (sel === ".graph-figure" ? figure : sel === ".graph-figure svg" ? current : null),
+    querySelectorAll: () => [],
+    getElementById: () => null,
+    createElementNS: (ns: string, tag: string) => methods(fakeEl(tag, { namespaceURI: ns })),
+    dispatchEvent: () => true,
+  };
+  const win: Record<string, unknown> = {};
+  if (opts.flagSetEarly) { current = finalSvg; win.__workplanGraphRendered = true; }
+  new Function("document", "window", bodies[0])(doc, win);
+  return {
+    figure, finalSvg, tempSvg, nodes,
+    bound: () => (figure.listeners.wheel ?? []).length,
+    finishRender: () => {
+      tempSvg.isConnected = false;
+      current = finalSvg;
+      win.__workplanGraphRendered = true;
+      for (const fn of docListeners["workplan:graph-rendered"] ?? []) fn();
+    },
+  };
+}
+
+describe("buildHtml — graph controls bind to the final svg", () => {
+  it("does not bind to Mermaid's temporary svg; binds once when the render finishes", () => {
+    const c = runControls(buildHtml(BASE));
+    assert.equal(c.bound(), 0, "bound before the render finished");
+    c.finishRender();
+    assert.equal(c.bound(), 1);
+    assert.ok(c.finalSvg.style.transform, "initial fit must transform the final svg");
+    assert.equal(c.tempSvg.style.transform, undefined);
+    c.finishRender(); // a second signal never binds twice
+    assert.equal(c.bound(), 1);
+  });
+
+  it("binds immediately when the render finished before the script ran", () => {
+    const c = runControls(buildHtml(BASE), { flagSetEarly: true });
+    assert.equal(c.bound(), 1);
+  });
+
+  it("the same wiring serves focus and full modes", () => {
+    for (const mode of ["focus", "full"] as const) {
+      const c = runControls(buildHtml({ ...BASE, mode }));
+      assert.equal(c.bound(), 0);
+      c.finishRender();
+      assert.equal(c.bound(), 1, mode);
+    }
+  });
+
+});
+
 
 // ---------------------------------------------------------------------------
 // Inline-script syntax (regression guard)
