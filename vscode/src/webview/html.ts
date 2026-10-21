@@ -335,7 +335,7 @@ ${criticalScript}
   function applyNodeTitles(svg) {
     if (!nodeTitles) { return; }
     Array.prototype.forEach.call(svg.querySelectorAll("g.node"), function (g) {
-      var m = /-flowchart-(.+)-[0-9]+$/.exec(g.id || "");
+      var m = /(?:^|-)flowchart-(.+)-[0-9]+$/.exec(g.id || "");
       if (!m || !Object.prototype.hasOwnProperty.call(nodeTitles, m[1])) { return; }
       var t = document.createElementNS(svg.namespaceURI, "title");
       t.setAttribute("class", "wp-tip");
@@ -362,7 +362,6 @@ ${criticalScript}
       svg.style.width = vb0.width + "px";
       svg.style.height = vb0.height + "px";
     }
-    applyNodeTitles(svg);
 
     var state = { scale: 1, tx: 0, ty: 0 };
     function clamp(s) { return Math.min(8, Math.max(0.1, s)); }
@@ -389,7 +388,8 @@ ${criticalScript}
       var box = figure.getBoundingClientRect();
       var g = graphSize();
       var pad = 24;
-      var s = clamp(Math.min((box.width - pad) / g.w, (box.height - pad) / g.h));
+      // Never enlarge past natural size; only shrink a graph larger than the view.
+      var s = clamp(Math.min(1, (box.width - pad) / g.w, (box.height - pad) / g.h));
       state.scale = s;
       state.tx = Math.max(pad / 2, (box.width - g.w * s) / 2);
       state.ty = pad / 2;
@@ -465,6 +465,8 @@ ${criticalScript}
     });
 
     fit(); // initial fit of the whole graph so a dense map is navigable from the start
+    // Last, so a tooltip failure cannot leave the zoom/pan controls unbound.
+    applyNodeTitles(svg);
   }
 
   // An svg being present is no proof the render finished: mermaid.run() inserts

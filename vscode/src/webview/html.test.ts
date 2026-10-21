@@ -209,14 +209,18 @@ function fakeEl(tag: string, extra: Partial<FakeEl> = {}): FakeEl {
 }
 
 /** Runs the messaging IIFE with a fake document; returns hooks to drive it. */
-function runControls(html: string, opts: { flagSetEarly?: boolean } = {}) {
+function runControls(
+  html: string,
+  opts: { flagSetEarly?: boolean; vb?: [number, number]; nodeIds?: string[]; throwOnTitle?: boolean } = {},
+) {
   const bodies = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
     .filter(m => !/\bsrc=/.test(m[1]) && m[2].includes("setupGraphControls"))
     .map(m => m[2]);
   assert.equal(bodies.length, 1, "messaging script not found");
-  const nodes = [fakeEl("g", { id: "mermaid-1-flowchart-i_7-0" }), fakeEl("g", { id: "mermaid-1-flowchart-i_8-1" })];
+  const nodes = (opts.nodeIds ?? ["mermaid-1-flowchart-i_7-0", "mermaid-1-flowchart-i_8-1"]).map(id => fakeEl("g", { id }));
+  const [vbW, vbH] = opts.vb ?? [2000, 1000];
   const finalSvg = fakeEl("svg", {
-    viewBox: { baseVal: { width: 2000, height: 1000 } }, namespaceURI: "svg-ns", children: nodes,
+    viewBox: { baseVal: { width: vbW, height: vbH } }, namespaceURI: "svg-ns", children: nodes,
   });
   const tempSvg = fakeEl("svg", { viewBox: { baseVal: { width: 0, height: 0 } } });
   let current: FakeEl = tempSvg; // Mermaid's in-progress svg
@@ -249,20 +253,28 @@ function runControls(html: string, opts: { flagSetEarly?: boolean } = {}) {
     querySelector: (sel: string) => (sel === ".graph-figure" ? figure : sel === ".graph-figure svg" ? current : null),
     querySelectorAll: () => [],
     getElementById: () => null,
-    createElementNS: (ns: string, tag: string) => methods(fakeEl(tag, { namespaceURI: ns })),
+    createElementNS: (ns: string, tag: string) => {
+      if (opts.throwOnTitle) throw new Error("boom");
+      return methods(fakeEl(tag, { namespaceURI: ns }));
+    },
     dispatchEvent: () => true,
   };
   const win: Record<string, unknown> = {};
   if (opts.flagSetEarly) { current = finalSvg; win.__workplanGraphRendered = true; }
   new Function("document", "window", bodies[0])(doc, win);
+  const errors: unknown[] = [];
   return {
-    figure, finalSvg, tempSvg, nodes,
+    figure, finalSvg, tempSvg, nodes, errors,
     bound: () => (figure.listeners.wheel ?? []).length,
+    wheelUp: () => figure.listeners.wheel[0]({ preventDefault() {}, deltaY: -1, clientX: 500, clientY: 270 }),
     finishRender: () => {
       tempSvg.isConnected = false;
       current = finalSvg;
       win.__workplanGraphRendered = true;
-      for (const fn of docListeners["workplan:graph-rendered"] ?? []) fn();
+      // Like a browser: a throwing listener is reported, not propagated.
+      for (const fn of docListeners["workplan:graph-rendered"] ?? []) {
+        try { fn(); } catch (e) { errors.push(e); }
+      }
     },
   };
 }
@@ -303,6 +315,12 @@ describe("buildHtml — graph controls bind to the final svg", () => {
     // figure 1000x540, pad 24: min(976/2000, 516/1000) = 0.488
     assert.match(c.finalSvg.style.transform, /scale\(0\.488\)/);
   });
+
+  it("Fit never enlarges a graph smaller than the viewport", () => {
+    const c = runControls(buildHtml(BASE), { vb: [300, 200] });
+    c.finishRender();
+    assert.match(c.finalSvg.style.transform, /scale\(1\)/);
+  });
 });
 
 describe("buildHtml — critical node tooltips", () => {
@@ -328,6 +346,27 @@ describe("buildHtml — critical node tooltips", () => {
     assert.equal(tip!.textContent, hostile);
     assert.equal(tip!.namespaceURI, "svg-ns");
     assert.ok(!c.nodes[1].children.some(x => x.tag === "title"), "i_8 has no title entry");
+  });
+
+  it("matches plain and prefixed Mermaid node ids", () => {
+    const c = runControls(buildHtml(crit({ i_7: "seven" })), {
+      nodeIds: ["flowchart-i_7-0", "x-flowchart-i_7-1", "notflowchart-i_7-2"],
+    });
+    c.finishRender();
+    const tip = (k: number) => c.nodes[k].children.find(x => x.tag === "title")?.textContent;
+    assert.equal(tip(0), "seven");
+    assert.equal(tip(1), "seven");
+    assert.equal(tip(2), undefined);
+  });
+
+  it("a tooltip error cannot leave the zoom controls dead", () => {
+    const c = runControls(buildHtml(crit({ i_7: "seven" })), { throwOnTitle: true });
+    c.finishRender();
+    assert.equal(c.bound(), 1, "controls not bound");
+    const fitted = c.finalSvg.style.transform;
+    assert.match(fitted, /scale\(0\.488\)/, "initial fit missing");
+    c.wheelUp();
+    assert.notEqual(c.finalSvg.style.transform, fitted, "wheel did nothing");
   });
 
   it("uses textContent, never innerHTML, and strips tooltips from exports", () => {
