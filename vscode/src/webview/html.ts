@@ -30,6 +30,8 @@ export interface CriticalViewOptions {
   trackOptions: { key: string; label: string }[];
   /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
   nodeTitles?: Record<string, string>;
+  /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
+  nodeLinks?: [string, string][];
 }
 
 export interface WebviewHtmlOptions {
@@ -184,6 +186,7 @@ ${afterRun}
   // Tooltip text reaches the script as JSON; scriptJson keeps it from closing
   // the <script> element. Critical mode only.
   const titlesJson = scriptJson(mode === "critical" && o.critical?.nodeTitles ? o.critical.nodeTitles : null);
+  const linksJson = scriptJson(mode === "critical" && o.critical?.nodeLinks ? o.critical.nodeLinks : null);
   const criticalPanel = mode === "critical" && o.critical
     ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] })
     : "";
@@ -354,6 +357,50 @@ ${criticalScript}
     });
   }
 
+  var nodeLinks = ${linksJson};
+  function critNodeId(g) {
+    var m = /(?:^|-)flowchart-(.+)-[0-9]+$/.exec(g.id || "");
+    return m ? m[1] : null;
+  }
+  // Everything reachable from start along links, forwards (dir true) or backwards.
+  function reach(start, dir) {
+    var seen = {}; seen[start] = true;
+    var queue = [start];
+    while (queue.length) {
+      var n = queue.pop();
+      nodeLinks.forEach(function (l) {
+        var a = dir ? l[0] : l[1], b = dir ? l[1] : l[0];
+        if (a === n && !seen[b]) { seen[b] = true; queue.push(b); }
+      });
+    }
+    return seen;
+  }
+  // Fade everything outside one issue's chain (what it waits on + what it
+  // unblocks); null clears. No redraw: only classes change on the live svg.
+  function traceIssue(svg, id) {
+    var nodes = svg.querySelectorAll("g.node");
+    var edges = svg.querySelectorAll("path.flowchart-link");
+    Array.prototype.forEach.call(svg.querySelectorAll(".wp-faded, .wp-picked"), function (el) {
+      el.classList.remove("wp-faded"); el.classList.remove("wp-picked");
+    });
+    if (id === null) { return; }
+    var up = reach(id, false), down = reach(id, true);
+    Array.prototype.forEach.call(nodes, function (g) {
+      var nid = critNodeId(g);
+      if (nid === id) { g.classList.add("wp-picked"); }
+      else if (!(nid && (up[nid] || down[nid]))) { g.classList.add("wp-faded"); }
+    });
+    // Mermaid names each link path "L_<from>_<to>_<n>" (data-id); keep the links on the chain.
+    var keep = {};
+    nodeLinks.forEach(function (l) {
+      if ((up[l[0]] && up[l[1]]) || (down[l[0]] && down[l[1]])) { keep["L_" + l[0] + "_" + l[1]] = true; }
+    });
+    Array.prototype.forEach.call(edges, function (p) {
+      var key = (p.getAttribute("data-id") || "").replace(/_[0-9]+$/, "");
+      if (!keep[key]) { p.classList.add("wp-faded"); }
+    });
+  }
+
   var graphBound = false;
   function setupGraphControls() {
     var figure = document.querySelector(".graph-figure");
@@ -413,9 +460,9 @@ ${criticalScript}
       zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - r.left, e.clientY - r.top);
     }, { passive: false });
 
-    var dragging = false, lastX = 0, lastY = 0;
+    var dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0, picked = null;
     figure.addEventListener("pointerdown", function (e) {
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      dragging = true; lastX = e.clientX; lastY = e.clientY; startX = lastX; startY = lastY;
       figure.classList.add("grabbing");
       try { figure.setPointerCapture(e.pointerId); } catch (err) {}
     });
@@ -425,7 +472,24 @@ ${criticalScript}
       lastX = e.clientX; lastY = e.clientY; apply();
     });
     function endDrag() { dragging = false; figure.classList.remove("grabbing"); }
-    figure.addEventListener("pointerup", endDrag);
+    // A press that barely moved is a click: trace the issue under it, or clear.
+    // Pointer capture retargets events to the figure, so look the node up by point.
+    function pickAt(e) {
+      if (!nodeLinks) { return; }
+      var hit = document.elementFromPoint(e.clientX, e.clientY);
+      var g = hit && hit.closest ? hit.closest("g.node") : null;
+      var id = g ? critNodeId(g) : null;
+      picked = id !== null && id !== picked ? id : null;
+      traceIssue(svg, picked);
+    }
+    figure.addEventListener("pointerup", function (e) {
+      var moved = Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) > 4;
+      endDrag();
+      if (!moved) { pickAt(e); }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && picked !== null) { picked = null; traceIssue(svg, null); }
+    });
     figure.addEventListener("pointercancel", endDrag);
 
     function on(id, fn) {
@@ -615,6 +679,9 @@ ${criticalScript}
       padding: 0;
       margin: 0;
     }
+    .mermaid svg g.node, .mermaid svg path.flowchart-link { transition: opacity 0.15s; }
+    .mermaid svg .wp-faded { opacity: 0.1; }
+    .mermaid svg g.wp-picked rect, .mermaid svg g.wp-picked polygon { stroke-width: 3px; }
     .mermaid svg { transform-origin: 0 0; max-width: none; will-change: transform; }
     .detail-card {
       background: var(--card-bg);

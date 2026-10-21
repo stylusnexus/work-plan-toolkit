@@ -181,6 +181,13 @@ describe("renderCriticalPath", () => {
     );
   });
 
+  it("nodeLinks: drawn links as Mermaid id pairs, none when nothing is drawn", () => {
+    const m = model({ issues: [node(1, 0), node(2, 1)], edges: [blocks(1, 2)] });
+    assert.deepEqual(renderCriticalPath(m, F, LIGHT).nodeLinks, [["i_1", "i_2"]]);
+    assert.deepEqual(renderCriticalPath(model(), F, LIGHT).nodeLinks, []);
+    assert.deepEqual(renderCriticalPath(star(460), F, LIGHT).nodeLinks, []);
+  });
+
   it("nodeTitles: Mermaid node id to the full, untruncated title with #N, track and state", () => {
     const long = "y".repeat(120);
     const m = model({

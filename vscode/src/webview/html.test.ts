@@ -382,6 +382,16 @@ describe("buildHtml — critical node tooltips", () => {
     assert.ok(html.includes('clone.querySelectorAll("title.wp-tip")'));
   });
 
+  it("embeds the links for click-to-trace in critical mode only", () => {
+    const links: [string, string][] = [["i_1", "i_2"]];
+    const html = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, nodeLinks: links } });
+    assert.ok(html.includes('[["i_1","i_2"]]'));
+    assert.ok(html.includes("traceIssue(svg, picked)"));
+    for (const mode of ["focus", "full"] as const) {
+      assert.ok(!buildHtml({ ...BASE, mode, critical: { ...CRIT, nodeLinks: links } }).includes('[["i_1","i_2"]]'), mode);
+    }
+  });
+
   it("focus and full modes carry no titles", () => {
     for (const mode of ["focus", "full"] as const) {
       const html = buildHtml({ ...BASE, mode, critical: { ...CRIT, nodeTitles: { i_7: "SECRET-T" } } });

@@ -40,6 +40,8 @@ export interface CriticalRender {
   tooLargeMessage: string | null;
   /** Mermaid node id -> full hover text for every drawn issue node; {} when nothing is drawn. */
   nodeTitles: Record<string, string>;
+  /** Drawn links as [from, to] Mermaid node ids, for the webview's click-to-trace; [] when nothing is drawn. */
+  nodeLinks: [string, string][];
   /** Open issues in the filtered set with no rank-carrying link (drawn or collapsed). */
   unlinkedCount: number;
 }
@@ -249,7 +251,7 @@ export function renderCriticalPath(
   const { dimmed } = filtered;
   const base: CriticalRender = {
     mermaid: "", edgeCount: 0, tooLarge: false, banner: null,
-    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, unlinkedCount: 0,
+    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, nodeLinks: [], unlinkedCount: 0,
   };
   let model = filtered.model;
 
@@ -375,9 +377,11 @@ export function renderCriticalPath(
 
   const outsideIds = new Set(model.outside.map(o => o.id));
   let edgeCount = 0;
+  const nodeLinks: [string, string][] = [];
   for (const e of model.edges) {
     const a = ids.get(e.from), b = ids.get(e.to);
     if (a === undefined || b === undefined) continue;
+    nodeLinks.push([a, b]);
     const arrow = e.kind === "track-dep" ? "==>" : e.kind === "done-stub" || outsideIds.has(e.from) ? "-.->" : "-->";
     lines.push(`  ${a} ${arrow} ${b}`);
     edgeCount++;
@@ -424,7 +428,7 @@ export function renderCriticalPath(
       nodeTitles[ids.get(m.id)!] = `#${m.number} ${m.title}\nTrack: ${track}\nState: ${state}`;
     }
   }
-  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, unlinkedCount: unlinked.length };
+  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, nodeLinks, unlinkedCount: unlinked.length };
 }
 
 // ---------------------------------------------------------------------------
