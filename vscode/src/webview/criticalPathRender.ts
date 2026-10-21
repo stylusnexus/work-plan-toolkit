@@ -147,6 +147,10 @@ const shorten = (s: string): string => {
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
+/** Rank means "steps from startable", never priority or order (spec anti-goal). */
+const columnLabel = (r: number): string =>
+  r === 0 ? "Startable now" : `${plural(r, "step", "steps")} from startable`;
+
 function bannerText(model: CriticalPathModel): string | null {
   if (model.cycles.length === 0) return null;
   const num = (id: string): string => `#${id.slice(id.lastIndexOf("#") + 1)}`;
@@ -210,7 +214,7 @@ export function renderCriticalPath(
     .sort((a, b) => a - b);
   for (const r of ranks) {
     columns.push({
-      id: `col_r${r}`, label: `Rank ${r}`,
+      id: `col_r${r}`, label: columnLabel(r),
       members: open.filter(i => !i.unranked && i.rank === r).sort(cmp),
     });
   }

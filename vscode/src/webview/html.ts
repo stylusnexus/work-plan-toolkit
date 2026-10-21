@@ -856,6 +856,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
       ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
       <label><input type="checkbox" id="work-plan-show-closed"${c.showClosed ? " checked" : ""}> Show closed</label>
     </div>
+    <div class="crit-note">Numbers = steps from startable, not priority.</div>
     ${note("crit-banner", c.banner)}
     ${note("crit-warn", c.tooLargeMessage)}
     ${note("crit-note", c.autoFilterNote)}

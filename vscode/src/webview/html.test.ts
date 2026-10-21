@@ -489,6 +489,14 @@ describe("buildHtml — critical-path controls", () => {
     }
   });
 
+  it("explains the numbers in critical mode only", () => {
+    const hint = "Numbers = steps from startable, not priority.";
+    assert.ok(buildHtml(critical()).includes(hint));
+    for (const mode of ["focus", "full"] as const) {
+      assert.ok(!buildHtml({ ...BASE, mode, critical: CRIT }).includes(hint), mode);
+    }
+  });
+
   it("renders the track select, focus buttons and show-closed checkbox", () => {
     const html = buildHtml(critical({
       trackOptions: [{ key: "a/b#one", label: "One" }, { key: "a/b#two", label: "Two" }],

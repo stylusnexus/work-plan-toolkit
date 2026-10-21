@@ -40,8 +40,8 @@ describe("renderCriticalPath", () => {
     assert.ok(!plain.includes("dependency loop"));
     const withClosed = renderCriticalPath(m, { ...F, showClosed: true }, LIGHT).mermaid;
     assert.ok(withClosed.includes('"Done"'));
-    assert.ok(withClosed.indexOf('"Done"') < withClosed.indexOf('"Rank 0"'));
-    assert.ok(withClosed.indexOf('"Rank 0"') < withClosed.indexOf('"Rank 1"'));
+    assert.ok(withClosed.indexOf('"Done"') < withClosed.indexOf('"Startable now"'));
+    assert.ok(withClosed.indexOf('"Startable now"') < withClosed.indexOf('"1 step from startable"'));
 
     const cyc = model({
       issues: [node(1, null), node(2, null)],
@@ -56,6 +56,21 @@ describe("renderCriticalPath", () => {
       assert.match(l, /^[0-9?] /);
     }
     for (const l of labels(out).filter(x => x.includes("#"))) assert.match(l, /^\? /);
+  });
+
+  it("column labels say steps from startable, never Rank", () => {
+    const m = model({
+      issues: [node(1, 0), node(2, 1), node(3, 2), node(4, 3)],
+      edges: [blocks(1, 2), blocks(2, 3), blocks(3, 4)],
+    });
+    const out = renderCriticalPath(m, F, LIGHT).mermaid;
+    const cols = [...out.matchAll(/subgraph \w+\["([^"]*)"\]/g)].map(x => x[1]);
+    assert.deepEqual(cols, [
+      "Startable now", "1 step from startable", "2 steps from startable", "3 steps from startable",
+    ]);
+    for (const c of cols) assert.ok(!/rank/i.test(c), c);
+    // the node keeps its number at the start
+    assert.ok(labels(out).some(l => l.startsWith("3 · #4")));
   });
 
   it("columns are chained with invisible links", () => {
