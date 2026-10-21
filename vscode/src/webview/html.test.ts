@@ -396,6 +396,8 @@ describe("buildHtml — critical node tooltips", () => {
     const html = buildHtml(crit());
     assert.ok(html.includes('id="crit-flow"'));
     assert.ok(html.includes("showFlow(id)"));
+    assert.ok(html.includes("branches converge"));
+    assert.ok(html.includes("onFlowPick(id)"));
     assert.ok(!/innerHTML/.test(html));
   });
 

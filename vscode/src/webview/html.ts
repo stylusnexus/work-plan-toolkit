@@ -375,59 +375,115 @@ ${criticalScript}
     }
     return seen;
   }
-  // One line per path through the picked issue: "#1 title → #2 title → ...".
-  function chainsFrom(id, dir, cap) {
+  // The picked issue's flow as a tree: what it waits on above it, what it
+  // unblocks below. A node reached by several branches is drawn once; later
+  // arrivals are short "joins" rows and the node is tagged as a convergence.
+  var onFlowPick = null;
+  function neighbours(n, dir) {
     var out = [];
-    function walk(n, path) {
-      if (out.length >= cap) { return; }
-      var next = [];
-      nodeLinks.forEach(function (l) {
-        var a = dir ? l[0] : l[1], b = dir ? l[1] : l[0];
-        if (a === n && path.indexOf(b) < 0 && next.indexOf(b) < 0) { next.push(b); }
-      });
-      if (!next.length) { out.push(path); return; }
-      next.forEach(function (b) { walk(b, path.concat([b])); });
-    }
-    walk(id, [id]);
+    nodeLinks.forEach(function (l) {
+      var a = dir ? l[0] : l[1], b = dir ? l[1] : l[0];
+      if (a === n && out.indexOf(b) < 0) { out.push(b); }
+    });
     return out;
   }
-  function flowLabel(id) {
-    var t = nodeTitles && nodeTitles[id] ? String(nodeTitles[id]).split(String.fromCharCode(10))[0] : id;
-    return t.length > 60 ? t.slice(0, 59) + '…' : t;
+  function flowParts(id) {
+    var full = nodeTitles && nodeTitles[id] ? String(nodeTitles[id]) : id;
+    var first = full.split(String.fromCharCode(10))[0];
+    var sp = first.indexOf(' ');
+    return { num: sp > 0 ? first.slice(0, sp) : first, title: sp > 0 ? first.slice(sp + 1) : '', full: full };
+  }
+  function flowTag(text) {
+    var t = document.createElement('span');
+    t.className = 'flow-tag';
+    t.textContent = text;
+    return t;
+  }
+  function flowStep(id, cls) {
+    var p = flowParts(id);
+    var row = document.createElement('div');
+    row.className = 'flow-step' + (cls ? ' ' + cls : '');
+    row.setAttribute('title', p.full);
+    if (cls === 'flow-pick') { row.setAttribute('aria-current', 'step'); }
+    var num = document.createElement('button');
+    num.type = 'button';
+    num.className = 'flow-num';
+    num.textContent = p.num;
+    num.setAttribute('aria-label', 'Trace ' + p.num);
+    num.addEventListener('click', function () { if (onFlowPick) { onFlowPick(id); } });
+    var title = document.createElement('span');
+    title.className = 'flow-title';
+    title.textContent = p.title;
+    row.appendChild(num);
+    row.appendChild(title);
+    return row;
+  }
+  function flowBranch(n, dir, trail, ctx) {
+    var out = [];
+    neighbours(n, dir).forEach(function (b) {
+      if (trail.indexOf(b) >= 0) { return; }
+      ctx.arrivals[b] = (ctx.arrivals[b] || 0) + 1;
+      if (ctx.seen[b]) { out.push({ id: b, join: true, kids: [] }); return; }
+      if (ctx.left <= 0) { ctx.skipped++; return; }
+      ctx.left--;
+      ctx.seen[b] = true;
+      out.push({ id: b, join: false, kids: flowBranch(b, dir, trail.concat([b]), ctx) });
+    });
+    return out;
+  }
+  function flowNodes(list, dir, ctx) {
+    var wrap = document.createElement('div');
+    wrap.className = 'flow-tree';
+    list.forEach(function (k) {
+      var node = document.createElement('div');
+      node.className = 'flow-node';
+      var row = flowStep(k.id, k.join ? 'flow-join' : '');
+      if (k.join) { row.appendChild(flowTag('also in another branch')); }
+      else if (ctx.arrivals[k.id] > 1) { row.appendChild(flowTag(ctx.arrivals[k.id] + ' branches converge')); }
+      var kids = k.kids.length ? flowNodes(k.kids, dir, ctx) : null;
+      if (dir) { node.appendChild(row); if (kids) { node.appendChild(kids); } }
+      else { if (kids) { node.appendChild(kids); } node.appendChild(row); }
+      wrap.appendChild(node);
+    });
+    return wrap;
+  }
+  function flowDiv(cls, text) {
+    var d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text;
+    return d;
   }
   function showFlow(id) {
     var box = document.getElementById('crit-flow');
     if (!box) { return; }
     box.textContent = '';
     if (id === null) { box.textContent = 'Click an issue in the graph to see its flow as text.'; return; }
-    var ups = chainsFrom(id, false, 20).map(function (p) { return p.slice().reverse(); });
-    var downs = chainsFrom(id, true, 20);
-    var shown = 0, total = ups.length * downs.length, maxLines = 6;
-    ups.forEach(function (u) {
-      downs.forEach(function (d) {
-        if (shown >= maxLines) { return; }
-        shown++;
-        var line = document.createElement('span');
-        line.className = 'flow-line';
-        u.concat(d.slice(1)).forEach(function (n, k) {
-          if (k > 0) { line.appendChild(document.createTextNode(' → ')); }
-          var part = document.createElement('span');
-          if (n === id) { part.className = 'flow-pick'; }
-          part.textContent = flowLabel(n);
-          line.appendChild(part);
-        });
-        box.appendChild(line);
-      });
-    });
-    if (total > shown) {
-      var more = document.createElement('span');
-      more.className = 'flow-line';
-      more.textContent = '+ ' + (total - shown) + ' more path' + (total - shown === 1 ? '' : 's');
-      box.appendChild(more);
+    var upCtx = { seen: {}, left: 25, skipped: 0, arrivals: {} };
+    var dnCtx = { seen: {}, left: 25, skipped: 0, arrivals: {} };
+    upCtx.seen[id] = true;
+    dnCtx.seen[id] = true;
+    var ups = flowBranch(id, false, [id], upCtx);
+    var downs = flowBranch(id, true, [id], dnCtx);
+    var num = flowParts(id).num;
+    if (!ups.length && !downs.length) { box.textContent = num + ' has no links to other drawn issues.'; return; }
+    box.appendChild(flowDiv('flow-head', 'Flow through ' + num));
+    if (ups.length) {
+      box.appendChild(flowDiv('flow-label', 'Waits on (do these first)'));
+      box.appendChild(flowNodes(ups, false, upCtx));
     }
-    if (total === 1 && ups[0].length === 1 && downs[0].length === 1) {
-      box.textContent = flowLabel(id) + ' has no links to other drawn issues.';
+    var pick = document.createElement('div');
+    pick.className = 'flow-tree';
+    var pickRow = flowStep(id, 'flow-pick');
+    var fanIn = neighbours(id, false).length;
+    if (fanIn > 1) { pickRow.appendChild(flowTag(fanIn + ' branches converge here')); }
+    pick.appendChild(pickRow);
+    box.appendChild(pick);
+    if (downs.length) {
+      box.appendChild(flowDiv('flow-label', 'Unblocks (comes after)'));
+      box.appendChild(flowNodes(downs, true, dnCtx));
     }
+    var skipped = upCtx.skipped + dnCtx.skipped;
+    if (skipped > 0) { box.appendChild(flowDiv('flow-more', '+ ' + skipped + ' more not shown')); }
   }
   // Fade everything outside one issue's chain (what it waits on + what it
   // unblocks); null clears. No redraw: only classes change on the live svg.
@@ -516,6 +572,7 @@ ${criticalScript}
     }, { passive: false });
 
     var dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0, picked = null;
+    onFlowPick = function (id) { picked = id; traceIssue(svg, id); };
     figure.addEventListener("pointerdown", function (e) {
       dragging = true; lastX = e.clientX; lastY = e.clientY; startX = lastX; startY = lastY;
       figure.classList.add("grabbing");
@@ -682,9 +739,19 @@ ${criticalScript}
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
     .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
-    .crit-flow { margin: 6px 0; line-height: 1.6; }
-    .crit-flow .flow-line { display: block; }
-    .crit-flow .flow-pick { font-weight: bold; }
+    .crit-flow { margin: 6px 0; max-height: 15em; overflow: auto; }
+    .crit-flow .flow-head { font-weight: bold; margin-bottom: 2px; }
+    .crit-flow .flow-label { opacity: 0.7; font-size: 0.9em; margin: 4px 0 2px; }
+    .crit-flow .flow-tree .flow-tree { margin-left: 14px; padding-left: 8px; border-left: 2px solid var(--border); }
+    .crit-flow .flow-step { display: flex; gap: 8px; align-items: baseline; padding: 1px 6px; border-radius: 4px; min-width: 0; }
+    .crit-flow .flow-num { flex: none; background: none; border: 0; padding: 0; cursor: pointer; color: var(--link); font-family: var(--vscode-editor-font-family, monospace); font-size: inherit; }
+    .crit-flow .flow-num:hover { text-decoration: underline; }
+    .crit-flow .flow-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+    .crit-flow .flow-tag { flex: none; font-size: 0.85em; padding: 0 6px; border-radius: 8px; background: var(--step-bg); color: var(--step-fg); }
+    .crit-flow .flow-join { opacity: 0.7; font-style: italic; }
+    .crit-flow .flow-pick { background: var(--card-bg); font-weight: bold; box-shadow: inset 3px 0 0 var(--link); }
+    .crit-flow .flow-pick .flow-title { opacity: 1; }
+    .crit-flow .flow-more { opacity: 0.7; }
     .crit-legend { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
     .crit-legend li { display: inline-flex; gap: 4px; align-items: center; }
     .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
