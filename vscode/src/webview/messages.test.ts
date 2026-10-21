@@ -379,3 +379,11 @@ describe("isWebviewMessage — rejects malformed payloads", () => {
     assert.equal(isWebviewMessage({ type: "exportGraph", format: "png" }), false);
   });
 });
+
+describe("copyText message", () => {
+  it("passes the guard with non-empty text only", () => {
+    assert.ok(isWebviewMessage({ type: "copyText", text: "#1 → #2" }));
+    assert.ok(!isWebviewMessage({ type: "copyText", text: "" }));
+    assert.ok(!isWebviewMessage({ type: "copyText", text: 5 }));
+  });
+});

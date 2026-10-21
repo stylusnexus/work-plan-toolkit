@@ -114,6 +114,12 @@ export interface ExportGraphMessage {
   data: string;
 }
 
+/** Copy the traced issue flow as text; the host writes it to the clipboard. */
+export interface CopyTextMessage {
+  type: "copyText";
+  text: string;
+}
+
 export type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
@@ -123,6 +129,7 @@ export type WebviewMessage =
   | ClearFocusIssueMessage
   | SetShowClosedMessage
   | SetShowUnlinkedMessage
+  | CopyTextMessage
   | MoveIssueMessage
   | FilterMilestoneMessage
   | OpenTrackFileMessage
@@ -204,6 +211,8 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
     case "exportGraph":
       return (msg["format"] === "svg" || msg["format"] === "png")
         && typeof msg["data"] === "string" && (msg["data"] as string).length > 0;
+    case "copyText":
+      return typeof msg["text"] === "string" && msg["text"].length > 0 && msg["text"].length < 200_000;
     default:
       return false;
   }

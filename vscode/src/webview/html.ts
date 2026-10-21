@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import type { GraphMode } from "./messages.ts";
+import { buildFlowText } from "./flowCopy.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
 export interface CriticalViewOptions {
@@ -466,7 +467,50 @@ ${criticalScript}
     d.textContent = text;
     return d;
   }
+  var buildFlowText = ${buildFlowText.toString()};
+  var flowFocus = null;
+  function flowFormat() {
+    var sel = document.getElementById('flow-format');
+    return sel ? sel.value : 'paths';
+  }
+  function flowCopyState(id) {
+    flowFocus = id;
+    var btn = document.getElementById('flow-copy');
+    var count = document.getElementById('flow-count');
+    if (!btn) { return; }
+    btn.disabled = id === null || !nodeLinks;
+    btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
+    if (count) {
+      count.textContent = '';
+      if (id === null) { count.textContent = 'Pick an issue to copy its flow.'; }
+    }
+  }
+  function setupFlowCopy() {
+    var sel = document.getElementById('flow-format');
+    var btn = document.getElementById('flow-copy');
+    if (!sel || !btn) { return; }
+    var saved = vscode && vscode.getState ? vscode.getState() : null;
+    if (saved && saved.flowFormat) { sel.value = saved.flowFormat; }
+    sel.addEventListener('change', function () {
+      if (vscode) { vscode.setState({ flowFormat: sel.value }); }
+    });
+    var timer = null;
+    btn.addEventListener('click', function () {
+      if (flowFocus === null || !nodeLinks) { return; }
+      var text = buildFlowText(nodeLinks, nodeTitles || {}, flowFocus, sel.value);
+      if (!text) { return; }
+      post({ type: 'copyText', text: text });
+      var status = document.getElementById('flow-status');
+      if (status) { status.textContent = 'Copied flow as ' + sel.options[sel.selectedIndex].text; }
+      btn.textContent = 'Copied ✓';
+      if (timer) { clearTimeout(timer); }
+      timer = setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+    });
+    flowCopyState(null);
+  }
+  setupFlowCopy();
   function showFlow(id) {
+    flowCopyState(id);
     var box = document.getElementById('crit-flow');
     if (!box) { return; }
     box.textContent = '';
@@ -754,6 +798,8 @@ ${criticalScript}
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
     .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .crit-flow { margin: 6px 0; max-height: 15em; overflow: auto; }
     .crit-flow .flow-head { font-weight: bold; margin-bottom: 2px; }
     .crit-flow .flow-label { opacity: 0.7; font-size: 0.9em; margin: 4px 0 2px; }
@@ -1152,6 +1198,17 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ${note("crit-warn", c.tooLargeMessage)}
     ${note("crit-note", c.autoFilterNote)}
     ${note("crit-note", c.emptyMessage)}
+    <div class="crit-flowbar" role="group" aria-label="Copy flow">
+      <label for="flow-format">Format</label>
+      <select id="flow-format">
+        <option value="paths">Path (#1 → #2)</option>
+        <option value="tasks">Task list (markdown)</option>
+        <option value="order">Work order</option>
+      </select>
+      <button type="button" class="graph-ctl" id="flow-copy" disabled aria-disabled="true">Copy</button>
+      <span id="flow-count" class="crit-note"></span>
+      <span id="flow-status" class="sr-only" aria-live="polite"></span>
+    </div>
     <div class="crit-flow" id="crit-flow" aria-live="polite">Click an issue in the graph to see its flow as text.</div>
     ${legendItems ? `<ul class="crit-status" aria-label="Status"><li><span class="legend-swatch sw-blocked"></span> ⛔ Blocked: 2+ steps from startable, or in a loop</li><li><span class="legend-swatch sw-waiting"></span> ⏳ Waiting: 1 step from startable</li></ul>` : ""}
     ${legendItems ? `<ul class="crit-legend" aria-label="Legend">${legendItems}</ul>` : ""}

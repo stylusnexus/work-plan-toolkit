@@ -535,6 +535,11 @@ export class WorkPlanPanel {
         void this._handleExportGraph(raw.format, raw.data);
         break;
       }
+      case "copyText": {
+        void vscode.env.clipboard.writeText(raw.text);
+        vscode.window.setStatusBarMessage("Copied the flow to the clipboard", 2000);
+        break;
+      }
     }
   }
 
