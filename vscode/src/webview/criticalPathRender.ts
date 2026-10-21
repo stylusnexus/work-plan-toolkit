@@ -261,7 +261,9 @@ export function renderCriticalPath(
     edgeCount++;
   }
 
+  // Mermaid's edge limit counts these invisible links too.
   for (let k = 0; k + 1 < columns.length; k++) lines.push(`  ${columns[k].id} ~~~ ${columns[k + 1].id}`);
+  edgeCount += Math.max(columns.length - 1, 0);
 
   legendKeys.forEach((k, n) => {
     const members = model.issues.filter(i => i.trackKey === k).map(i => ids.get(i.id)!);

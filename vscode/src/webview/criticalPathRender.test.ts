@@ -87,7 +87,7 @@ describe("renderCriticalPath", () => {
     const rc = renderCriticalPath(m, { ...F, showClosed: true }, LIGHT);
     assert.ok(!rc.mermaid.includes("done that blocked this"));
     assert.ok(rc.mermaid.includes("#8") && rc.mermaid.includes("#9"));
-    assert.equal(rc.edgeCount, 2);
+    assert.equal(rc.edgeCount, 3); // 2 edges + 1 column link
     assert.match(rc.mermaid, /class [^\n]*dimmed/);
   });
 
@@ -176,12 +176,29 @@ describe("renderCriticalPath", () => {
     assert.equal(r.mermaid, "");
   });
 
-  it("cap: 460 edges is too large, 450 is not", () => {
+  it("cap counts column links: long rank chain is too large", () => {
+    const chain = (n: number): CriticalPathModel => model({
+      issues: Array.from({ length: n }, (_, i) => node(i + 1, i)),
+      edges: Array.from({ length: n - 1 }, (_, i) => blocks(i + 1, i + 2)),
+    });
+    const big = renderCriticalPath(chain(300), F, LIGHT);
+    assert.equal(big.tooLarge, true);
+    assert.equal(big.edgeCount, 299 + 299);
+    assert.ok(big.tooLargeMessage!.startsWith("Too large to draw (300 issues, 598 links)"));
+    // 225 issues: 224 real + 224 links = 448 <= 450
+    const ok = renderCriticalPath(chain(225), F, LIGHT);
+    assert.equal(ok.tooLarge, false);
+    assert.equal(ok.edgeCount, 448);
+    // 227 issues: 226 + 226 = 452 > 450
+    assert.equal(renderCriticalPath(chain(227), F, LIGHT).tooLarge, true);
+  });
+
+  it("cap: 460 edges is too large, 450 total is not", () => {
     const big = renderCriticalPath(star(460), F, LIGHT);
     assert.equal(big.tooLarge, true);
     assert.ok(!big.mermaid.includes("i_1"));
-    assert.ok(big.tooLargeMessage!.startsWith("Too large to draw (461 issues, 460 links)"));
-    const ok = renderCriticalPath(star(450), F, LIGHT);
+    assert.ok(big.tooLargeMessage!.startsWith("Too large to draw (461 issues, 461 links)"));
+    const ok = renderCriticalPath(star(449), F, LIGHT); // 449 edges + 1 column link
     assert.equal(ok.tooLarge, false);
     assert.equal(ok.edgeCount, 450);
     assert.ok(ok.mermaid.includes("i_1"));
