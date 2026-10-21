@@ -227,7 +227,7 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.20.3 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`).
+**Published — v0.21.0 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`).
 
 - **v0.21.0** — **See what's blocking what, in order.** A third dependency-graph view, **Show critical path** (#445), lays open issues out in columns by steps from startable, from GitHub blocked-by/blocking links and track `depends_on`; unlinked issues collapse into one node, loops get their own column, and a track filter, focus-on-issue and show-closed controls narrow it. Red ⛔ marks issues 2+ steps out (or in a loop) and amber ⏳ marks issues 1 step out. Clicking an issue fades everything outside its chain and prints the chain as text (waits on → issue → unblocks, converging branches tagged), which **Copy** puts on the clipboard as numbered paths, a markdown task list or a work order. No CLI change is required.
 - **v0.20.3** — **Protect track titles during refresh.** Refresh Track now checks the CLI build before running and blocks earlier dates and the known unsafe same-day build `2026.10.20+6477802`, which can overwrite titles when a track table is malformed.
