@@ -152,6 +152,25 @@ describe("renderCriticalPath", () => {
     assert.equal(renderCriticalPath(model({ issues: [node(1, 0)] }), F, LIGHT).banner, null);
   });
 
+  it("banner: loops of three or more list members without arrows", () => {
+    const three = model({
+      issues: [node(1, null), node(2, null), node(3, null)],
+      edges: [blocks(1, 3), blocks(3, 2), blocks(2, 1)],
+      cycles: [{ members: ["r#1", "r#2", "r#3"], waiting: 2 }],
+    });
+    assert.equal(
+      renderCriticalPath(three, F, LIGHT).banner,
+      "These block each other: #1, #2, #3. 2 more issues wait on them. Fix the links on GitHub.",
+    );
+    const one = model({
+      issues: [node(4, null)], edges: [blocks(4, 4)], cycles: [{ members: ["r#4"], waiting: 1 }],
+    });
+    assert.equal(
+      renderCriticalPath(one, F, LIGHT).banner,
+      "These block each other: #4 → #4. 1 more issue waits on them. Fix the links on GitHub.",
+    );
+  });
+
   it("escaping: hostile and long titles", () => {
     const nasty = 'He said "hi" [x] | `y`';
     const long = "x".repeat(200);

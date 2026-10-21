@@ -172,7 +172,11 @@ function bannerText(model: CriticalPathModel): string | null {
   if (model.cycles.length === 0) return null;
   const num = (id: string): string => `#${id.slice(id.lastIndexOf("#") + 1)}`;
   const parts = model.cycles.map(c => {
-    const path = [...c.members, c.members[0]].map(num).join(" → ");
+    // Members are in export order, not path order: arrows are only honest for
+    // a self-block or a two-issue loop.
+    const path = c.members.length <= 2
+      ? [...c.members, c.members[0]].map(num).join(" → ")
+      : c.members.map(num).join(", ");
     const waiting = c.waiting === 0
       ? "No other issues wait on them"
       : c.waiting === 1 ? "1 more issue waits on them" : `${c.waiting} more issues wait on them`;
