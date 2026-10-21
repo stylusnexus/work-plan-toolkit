@@ -392,6 +392,13 @@ describe("buildHtml — critical node tooltips", () => {
     }
   });
 
+  it("critical panel has a text-flow line filled without innerHTML", () => {
+    const html = buildHtml(crit());
+    assert.ok(html.includes('id="crit-flow"'));
+    assert.ok(html.includes("showFlow(id)"));
+    assert.ok(!/innerHTML/.test(html));
+  });
+
   it("focus and full modes carry no titles", () => {
     for (const mode of ["focus", "full"] as const) {
       const html = buildHtml({ ...BASE, mode, critical: { ...CRIT, nodeTitles: { i_7: "SECRET-T" } } });

@@ -375,6 +375,60 @@ ${criticalScript}
     }
     return seen;
   }
+  // One line per path through the picked issue: "#1 title → #2 title → ...".
+  function chainsFrom(id, dir, cap) {
+    var out = [];
+    function walk(n, path) {
+      if (out.length >= cap) { return; }
+      var next = [];
+      nodeLinks.forEach(function (l) {
+        var a = dir ? l[0] : l[1], b = dir ? l[1] : l[0];
+        if (a === n && path.indexOf(b) < 0 && next.indexOf(b) < 0) { next.push(b); }
+      });
+      if (!next.length) { out.push(path); return; }
+      next.forEach(function (b) { walk(b, path.concat([b])); });
+    }
+    walk(id, [id]);
+    return out;
+  }
+  function flowLabel(id) {
+    var t = nodeTitles && nodeTitles[id] ? String(nodeTitles[id]).split(String.fromCharCode(10))[0] : id;
+    return t.length > 60 ? t.slice(0, 59) + '…' : t;
+  }
+  function showFlow(id) {
+    var box = document.getElementById('crit-flow');
+    if (!box) { return; }
+    box.textContent = '';
+    if (id === null) { box.textContent = 'Click an issue in the graph to see its flow as text.'; return; }
+    var ups = chainsFrom(id, false, 20).map(function (p) { return p.slice().reverse(); });
+    var downs = chainsFrom(id, true, 20);
+    var shown = 0, total = ups.length * downs.length, maxLines = 6;
+    ups.forEach(function (u) {
+      downs.forEach(function (d) {
+        if (shown >= maxLines) { return; }
+        shown++;
+        var line = document.createElement('span');
+        line.className = 'flow-line';
+        u.concat(d.slice(1)).forEach(function (n, k) {
+          if (k > 0) { line.appendChild(document.createTextNode(' → ')); }
+          var part = document.createElement('span');
+          if (n === id) { part.className = 'flow-pick'; }
+          part.textContent = flowLabel(n);
+          line.appendChild(part);
+        });
+        box.appendChild(line);
+      });
+    });
+    if (total > shown) {
+      var more = document.createElement('span');
+      more.className = 'flow-line';
+      more.textContent = '+ ' + (total - shown) + ' more path' + (total - shown === 1 ? '' : 's');
+      box.appendChild(more);
+    }
+    if (total === 1 && ups[0].length === 1 && downs[0].length === 1) {
+      box.textContent = flowLabel(id) + ' has no links to other drawn issues.';
+    }
+  }
   // Fade everything outside one issue's chain (what it waits on + what it
   // unblocks); null clears. No redraw: only classes change on the live svg.
   function traceIssue(svg, id) {
@@ -383,6 +437,7 @@ ${criticalScript}
     Array.prototype.forEach.call(svg.querySelectorAll(".wp-faded, .wp-picked"), function (el) {
       el.classList.remove("wp-faded"); el.classList.remove("wp-picked");
     });
+    showFlow(id);
     if (id === null) { return; }
     var up = reach(id, false), down = reach(id, true);
     Array.prototype.forEach.call(nodes, function (g) {
@@ -627,6 +682,9 @@ ${criticalScript}
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
     .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-flow { margin: 6px 0; line-height: 1.6; }
+    .crit-flow .flow-line { display: block; }
+    .crit-flow .flow-pick { font-weight: bold; }
     .crit-legend { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
     .crit-legend li { display: inline-flex; gap: 4px; align-items: center; }
     .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
@@ -1005,6 +1063,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ${note("crit-warn", c.tooLargeMessage)}
     ${note("crit-note", c.autoFilterNote)}
     ${note("crit-note", c.emptyMessage)}
+    <div class="crit-flow" id="crit-flow" aria-live="polite">Click an issue in the graph to see its flow as text.</div>
     ${legendItems ? `<ul class="crit-legend" aria-label="Legend">${legendItems}</ul>` : ""}
   </div>`;
 }
