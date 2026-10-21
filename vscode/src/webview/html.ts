@@ -608,9 +608,12 @@ ${criticalScript}
     }
     .graph-figure.grabbing { cursor: grabbing; }
     .mermaid {
-      padding: 12px;
       /* svg is positioned + transformed by the pan/zoom controller; origin at
-         top-left so button/wheel zoom math is simple. */
+         top-left so button/wheel zoom math is simple. No padding or margin:
+         fit() supplies the gap, and any offset here pushed a fitted graph's
+         bottom edge out of the viewport. */
+      padding: 0;
+      margin: 0;
     }
     .mermaid svg { transform-origin: 0 0; max-width: none; will-change: transform; }
     .detail-card {

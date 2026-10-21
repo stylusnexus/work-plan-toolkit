@@ -316,6 +316,12 @@ describe("buildHtml — graph controls bind to the final svg", () => {
     assert.match(c.finalSvg.style.transform, /scale\(0\.488\)/);
   });
 
+  it("the mermaid wrapper adds no offset, so Fit's padding is the only gap", () => {
+    const rule = buildHtml(BASE).match(/\.mermaid \{[^}]*\}/)?.[0] ?? "";
+    assert.match(rule, /padding: 0;/);
+    assert.match(rule, /margin: 0;/);
+  });
+
   it("Fit never enlarges a graph smaller than the viewport", () => {
     const c = runControls(buildHtml(BASE), { vb: [300, 200] });
     c.finishRender();
