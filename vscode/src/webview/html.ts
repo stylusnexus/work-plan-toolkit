@@ -11,6 +11,21 @@
 // Public types
 // ---------------------------------------------------------------------------
 
+import type { GraphMode } from "./messages.ts";
+
+/** Critical-path view state and pre-built (unescaped) strings from the host. */
+export interface CriticalViewOptions {
+  trackFilter: string | null;
+  focusIssueLabel: string | null;
+  showClosed: boolean;
+  banner: string | null;
+  legend: { label: string; color: string }[];
+  tooLargeMessage: string | null;
+  autoFilterNote: string | null;
+  emptyMessage: string | null;
+  trackOptions: { key: string; label: string }[];
+}
+
 export interface WebviewHtmlOptions {
   /** webview.cspSource — the VS Code webview origin, e.g. "vscode-resource:" */
   cspSource: string;
@@ -41,13 +56,10 @@ export interface WebviewHtmlOptions {
    * The flag is kept for forward-compatibility and test coverage.
    */
   isModule: boolean;
-  /**
-   * Whether the graph is currently in focused mode (showing only the selected
-   * track's dependency neighbourhood).
-   * true  → button label is "Show full map"  (click reveals full graph)
-   * false → button label is "Focus on track" (click zooms in on selection)
-   */
-  focused: boolean;
+  /** Current graph mode; the matching toolbar button is aria-pressed. */
+  mode: GraphMode;
+  /** Critical-path controls; rendered only when mode is "critical". */
+  critical?: CriticalViewOptions;
   /**
    * Whether the editor is on a dark (or high-contrast-dark) colour theme.
    * Drives the Mermaid theme so the graph follows the editor instead of being
@@ -73,7 +85,7 @@ export interface WebviewHtmlOptions {
  *  - trackName is escaped here at the call-site boundary.
  */
 export function buildHtml(o: WebviewHtmlOptions): string {
-  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, focused, isDark, hasTrackFile } = o;
+  const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, mode, isDark, hasTrackFile } = o;
   const trackNameEsc = esc(o.trackName);
 
   // Header "Open file" button. Text label (not a $(codicon) — the codicon font
@@ -123,9 +135,33 @@ ${afterRun}
 </script>`;
   }
 
-  // Toggle button label depends on focused state.
-  const toggleLabel = focused ? "Show full map" : "Focus on track";
-  const nextFocus = focused ? "false" : "true";
+  const modeButtons = MODE_BUTTONS.map((b) =>
+    `<button type="button" id="work-plan-mode-${b.mode}" class="focus-toggle work-plan-mode-btn" data-mode="${b.mode}" aria-pressed="${b.mode === mode}">${b.label}</button>`,
+  ).join("\n    ");
+  const criticalScript = mode === "critical" && o.critical ? `
+  // Critical-path controls (present only in critical mode).
+  var critTrack = document.getElementById('work-plan-critical-track');
+  if (critTrack) {
+    critTrack.addEventListener('change', function () {
+      post({ type: 'setCriticalTrackFilter', key: critTrack.value === '' ? null : critTrack.value });
+    });
+  }
+  var focusIssueBtn = document.getElementById('work-plan-focus-issue');
+  if (focusIssueBtn) {
+    focusIssueBtn.addEventListener('click', function () { post({ type: 'pickFocusIssue' }); });
+  }
+  var clearFocusBtn = document.getElementById('work-plan-clear-focus');
+  if (clearFocusBtn) {
+    clearFocusBtn.addEventListener('click', function () { post({ type: 'clearFocusIssue' }); });
+  }
+  var showClosedBox = document.getElementById('work-plan-show-closed');
+  if (showClosedBox) {
+    showClosedBox.addEventListener('change', function () {
+      post({ type: 'setShowClosed', show: showClosedBox.checked });
+    });
+  }
+` : "";
+  const criticalPanel = mode === "critical" && o.critical ? renderCriticalPanel(o.critical) : "";
 
   // Message-passing script: click handlers → postMessage to extension host.
   // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the focus
@@ -138,14 +174,15 @@ ${afterRun}
     if (vscode) { vscode.postMessage(msg); }
   }
 
-  // Focus toggle button
-  var btn = document.getElementById("work-plan-focus-toggle");
-  if (btn) {
-    btn.addEventListener("click", function () {
-      post({ type: "setFocus", focus: ${nextFocus} });
-    });
+  // Graph mode buttons: one generic handler; the mode comes from data-mode.
+  function onModeClick(ev) {
+    post({ type: 'setGraphMode', mode: ev.currentTarget.getAttribute('data-mode') });
   }
+  Array.prototype.forEach.call(document.querySelectorAll('.work-plan-mode-btn'), function (b) {
+    b.addEventListener('click', onModeClick);
+  });
 
+${criticalScript}
   // Open-file button (absent when disabled — no id, so no handler binds).
   var openFileBtn = document.getElementById("work-plan-open-file");
   if (openFileBtn) {
@@ -458,6 +495,15 @@ ${afterRun}
       padding-bottom: 4px;
     }
     .graph-header h2 { margin: 0; border: none; padding: 0; }
+    .mode-group { display: flex; gap: 4px; flex-wrap: wrap; }
+    .focus-toggle[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
+    .crit-panel { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px 0; font-size: 0.85em; }
+    .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+    .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-legend { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+    .crit-legend li { display: inline-flex; gap: 4px; align-items: center; }
+    .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
     .focus-toggle {
       font-size: 0.8em;
       padding: 2px 8px;
@@ -749,7 +795,9 @@ ${afterRun}
 
   <div class="graph-header">
     <h2>Dependency graph</h2>
-    <button id="work-plan-focus-toggle" class="focus-toggle">${toggleLabel}</button>
+    <div class="mode-group" role="group" aria-label="Graph mode">
+    ${modeButtons}
+    </div>
     <div class="graph-controls" role="group" aria-label="Graph zoom and export controls">
       <button type="button" class="graph-ctl" id="graph-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
       <button type="button" class="graph-ctl" id="graph-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
@@ -759,6 +807,7 @@ ${afterRun}
       <button type="button" class="graph-ctl" id="graph-export-png" title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
     </div>
   </div>
+  ${criticalPanel}
   <div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
     <pre class="mermaid">${graphDef}</pre>
   </div>
@@ -774,13 +823,55 @@ ${afterRun}
 </html>`;
 }
 
+const MODE_BUTTONS: { mode: GraphMode; label: string }[] = [
+  { mode: "focus", label: "Focus on track" },
+  { mode: "full", label: "Show full map" },
+  { mode: "critical", label: "Show critical path" },
+];
+
+/** Colours reach a style attribute, so accept only a hex or a plain keyword. */
+function safeColor(c: string): string | null {
+  return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/.test(c) ? c : null;
+}
+
+/** Every string here came from data, so every one goes through esc(). */
+function renderCriticalPanel(c: CriticalViewOptions): string {
+  const options = [
+    `<option value=""${c.trackFilter === null ? " selected" : ""}>All tracks</option>`,
+    ...c.trackOptions.map((t) =>
+      `<option value="${esc(t.key)}"${t.key === c.trackFilter ? " selected" : ""}>${esc(t.label)}</option>`),
+  ].join("");
+  const legendItems = c.legend.map((l) => {
+    const color = safeColor(l.color);
+    const style = color ? ` style="background:${esc(color)}"` : "";
+    return `<li><span class="legend-swatch"${style}></span> ${esc(l.label)}</li>`;
+  }).join("");
+  const note = (cls: string, s: string | null) => (s ? `<div class="${cls}">${esc(s)}</div>` : "");
+  return `<div class="crit-panel">
+    <div class="crit-row">
+      <label for="work-plan-critical-track">Track</label>
+      <select id="work-plan-critical-track" class="graph-ctl">${options}</select>
+      <button type="button" id="work-plan-focus-issue" class="graph-ctl">Focus on an issue…</button>
+      <button type="button" id="work-plan-clear-focus" class="graph-ctl">Clear focus</button>
+      ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
+      <label><input type="checkbox" id="work-plan-show-closed"${c.showClosed ? " checked" : ""}> Show closed</label>
+    </div>
+    ${note("crit-banner", c.banner)}
+    ${note("crit-warn", c.tooLargeMessage)}
+    ${note("crit-note", c.autoFilterNote)}
+    ${note("crit-note", c.emptyMessage)}
+    ${legendItems ? `<ul class="crit-legend" aria-label="Legend">${legendItems}</ul>` : ""}
+  </div>`;
+}
+
 /**
  * Change-aware wrapper around buildHtml (#423). Every render input except the
  * per-render nonce forms the key, so an export whose rendered content is
  * unchanged (e.g. a background poll where only generated_at moved) yields the
  * same key and returns null: the caller keeps the current document instead of
  * replacing webview.html and reloading Mermaid. Any change to the graph,
- * detail card, selected track, focus mode or theme changes the key.
+ * detail card, selected track, graph mode, critical-path filters or theme changes
+ * the key.
  */
 export function buildHtmlIfChanged(
   prevKey: string | null,

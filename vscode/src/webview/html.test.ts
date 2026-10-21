@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildHtml, buildHtmlIfChanged } from "./html.ts";
 import type { WebviewHtmlOptions } from "./html.ts";
+import type { GraphMode } from "./messages.ts";
 import type { Export, Track } from "../model.ts";
 import { trackKey } from "../model.ts";
 import { toMermaid } from "./graph.ts";
@@ -28,7 +29,7 @@ const BASE: WebviewHtmlOptions = {
   detailHtml: '<p class="rollup"><b>3</b> open &middot; <b>2</b> closed</p>',
   trackName: "alpha",
   isModule: false,
-  focused: false,
+  mode: "full",
   isDark: true,
   hasTrackFile: true,
 };
@@ -390,96 +391,206 @@ describe("buildHtml — postMessage protocol", () => {
     // acquireVsCodeApi() may only be called ONCE per document; a second call
     // throws "already acquired" and aborts that script. Guard against regressions
     // (e.g. a separate toggle IIFE) by asserting a single invocation.
-    const html = buildHtml({ ...BASE, focused: true });
+    const html = buildHtml({ ...BASE, mode: "focus" });
     assert.equal((html.match(/acquireVsCodeApi\(/g) || []).length, 1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Focus toggle button
+// Graph mode buttons + critical-path controls
 // ---------------------------------------------------------------------------
 
-describe("buildHtml — focus toggle button", () => {
-  it("renders the toggle button element", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    assert.ok(
-      html.includes("work-plan-focus-toggle"),
-      `Expected focus toggle button in output`,
-    );
+const CRIT = {
+  trackFilter: null as string | null,
+  focusIssueLabel: null as string | null,
+  showClosed: false,
+  banner: null as string | null,
+  legend: [] as { label: string; color: string }[],
+  tooLargeMessage: null as string | null,
+  autoFilterNote: null as string | null,
+  emptyMessage: null as string | null,
+  trackOptions: [] as { key: string; label: string }[],
+};
+
+describe("buildHtml — graph mode buttons", () => {
+  const MODES = [
+    { mode: "focus", id: "work-plan-mode-focus", label: "Focus on track" },
+    { mode: "full", id: "work-plan-mode-full", label: "Show full map" },
+    { mode: "critical", id: "work-plan-mode-critical", label: "Show critical path" },
+  ] as const;
+
+  it("renders all three mode buttons with their labels", () => {
+    const html = buildHtml({ ...BASE, mode: "full" });
+    for (const m of MODES) {
+      assert.ok(html.includes(`id="${m.id}"`), `missing ${m.id}`);
+      assert.ok(html.includes(`>${m.label}</button>`), `missing label ${m.label}`);
+    }
   });
 
-  it("label is 'Focus on track' when focused is false", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    assert.ok(
-      html.includes("Focus on track"),
-      `Expected 'Focus on track' label when focused=false:\n${html.slice(0, 1000)}`,
-    );
+  it("the old single toggle is gone", () => {
+    const html = buildHtml(BASE);
+    assert.ok(!html.includes("work-plan-focus-toggle"));
+    assert.ok(!html.includes("setFocus"));
   });
 
-  it("label is 'Show full map' when focused is true", () => {
-    const html = buildHtml({ ...BASE, focused: true });
-    assert.ok(
-      html.includes("Show full map"),
-      `Expected 'Show full map' label when focused=true:\n${html.slice(0, 1000)}`,
-    );
+  for (const active of MODES) {
+    it(`mode=${active.mode} marks only that button aria-pressed=true`, () => {
+      const html = buildHtml({ ...BASE, mode: active.mode });
+      for (const m of MODES) {
+        const re = new RegExp(`<button[^>]*id="${m.id}"[^>]*>`);
+        const tag = html.match(re)?.[0] ?? "";
+        assert.ok(
+          tag.includes(`aria-pressed="${m.mode === active.mode}"`),
+          `${m.id} wrong aria-pressed in ${tag}`,
+        );
+      }
+    });
+  }
+
+  it("each button carries its mode and one generic handler posts setGraphMode", () => {
+    const html = buildHtml(BASE);
+    for (const m of MODES) {
+      assert.ok(
+        new RegExp(`id="${m.id}"[^>]*data-mode="${m.mode}"`).test(html),
+        `${m.id} lacks data-mode="${m.mode}"`,
+      );
+    }
+    assert.equal((html.match(/type: 'setGraphMode'/g) || []).length, 1, "handler must not be copied per button");
+    assert.ok(html.includes("type: 'setGraphMode', mode: "));
   });
 
-  it("does NOT show 'Focus on track' when focused is true", () => {
-    const html = buildHtml({ ...BASE, focused: true });
-    assert.ok(
-      !html.includes("Focus on track"),
-      `Should not show 'Focus on track' when already focused`,
-    );
+  it("scripts carry the nonce in both module modes", () => {
+    assertAllScriptsHaveNonce(buildHtml({ ...BASE, mode: "focus", isModule: false }), BASE.nonce);
+    assertAllScriptsHaveNonce(buildHtml({ ...BASE, mode: "critical", isModule: true }), BASE.nonce);
+  });
+});
+
+describe("buildHtml — critical-path controls", () => {
+  const critical = (c: Partial<typeof CRIT> = {}): WebviewHtmlOptions => ({
+    ...BASE,
+    mode: "critical",
+    critical: { ...CRIT, ...c },
   });
 
-  it("does NOT show 'Show full map' when focused is false", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    assert.ok(
-      !html.includes("Show full map"),
-      `Should not show 'Show full map' when not focused`,
-    );
+  it("absent in focus and full modes, even when critical data is passed", () => {
+    for (const mode of ["focus", "full"] as const) {
+      const html = buildHtml({
+        ...BASE,
+        mode,
+        critical: { ...CRIT, banner: "BANNER-X", legend: [{ label: "LEG-X", color: "#fff" }] },
+      });
+      for (const needle of [
+        "work-plan-critical-track", "work-plan-focus-issue", "work-plan-clear-focus",
+        "work-plan-show-closed", "setCriticalTrackFilter", "pickFocusIssue",
+        "clearFocusIssue", "setShowClosed", "BANNER-X", "LEG-X",
+      ]) {
+        assert.ok(!html.includes(needle), `${needle} leaked into mode=${mode}`);
+      }
+    }
   });
 
-  it("toggle click posts setFocus message (focused=false → posts focus:true)", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    // The script should post { type: "setFocus", focus: true } when clicked
-    assert.ok(
-      html.includes("setFocus"),
-      `Expected setFocus in toggle script`,
-    );
-    assert.ok(
-      html.includes('"setFocus"') || html.includes("'setFocus'") || html.includes("setFocus"),
-      `Expected setFocus message type in script`,
-    );
+  it("renders the track select, focus buttons and show-closed checkbox", () => {
+    const html = buildHtml(critical({
+      trackOptions: [{ key: "a/b#one", label: "One" }, { key: "a/b#two", label: "Two" }],
+      trackFilter: "a/b#two",
+      showClosed: true,
+    }));
+    assert.ok(html.includes('id="work-plan-critical-track"'));
+    assert.ok(html.includes('<option value="">All tracks</option>'));
+    assert.ok(html.includes('<option value="a/b#one">One</option>'));
+    assert.ok(html.includes('<option value="a/b#two" selected>Two</option>'));
+    assert.ok(html.includes("Focus on an issue…"));
+    assert.ok(html.includes(">Clear focus</button>"));
+    assert.ok(/id="work-plan-show-closed"[^>]*checked/.test(html));
   });
 
-  it("toggle click posts setFocus with focus:false when currently focused", () => {
-    const html = buildHtml({ ...BASE, focused: true });
-    // When focused=true, clicking should post focus:false
-    assert.ok(
-      html.includes("false"),
-      `Expected focus: false in the setFocus script when focused=true`,
-    );
+  it("show-closed checkbox is unchecked when showClosed is false", () => {
+    const html = buildHtml(critical({ showClosed: false }));
+    const tag = html.match(/<input[^>]*id="work-plan-show-closed"[^>]*>/)?.[0] ?? "";
+    assert.ok(tag && !tag.includes("checked"), tag);
   });
 
-  it("toggle click posts setFocus with focus:true when not focused", () => {
-    const html = buildHtml({ ...BASE, focused: false });
-    // When focused=false, clicking should post focus:true
-    assert.ok(
-      html.includes("true"),
-      `Expected focus: true in the setFocus script when focused=false`,
-    );
+  it("the controls post the four critical messages", () => {
+    const html = buildHtml(critical());
+    assert.ok(html.includes("type: 'setCriticalTrackFilter'"));
+    assert.ok(html.includes("type: 'pickFocusIssue'"));
+    assert.ok(html.includes("type: 'clearFocusIssue'"));
+    assert.ok(html.includes("type: 'setShowClosed'"));
   });
 
-  it("toggle script carries the nonce (UMD path)", () => {
-    const html = buildHtml({ ...BASE, focused: false, isModule: false });
-    // assertAllScriptsHaveNonce already covers all scripts, but let's be explicit
-    assertAllScriptsHaveNonce(html, BASE.nonce);
+  it("shows the focused issue label escaped", () => {
+    const html = buildHtml(critical({ focusIssueLabel: "#5 <b>x</b>" }));
+    assert.ok(html.includes("#5 &lt;b&gt;x&lt;/b&gt;"));
+    assert.ok(!html.includes("<b>x</b>"));
   });
 
-  it("toggle script carries the nonce (ESM path)", () => {
-    const html = buildHtml({ ...BASE, focused: true, isModule: true });
-    assertAllScriptsHaveNonce(html, BASE.nonce);
+  it("banner, legend labels, notes and messages render escaped", () => {
+    const html = buildHtml(critical({
+      banner: "ban <i>ner</i>",
+      legend: [{ label: "Blocked <u>by</u>", color: "#ff0000" }],
+      tooLargeMessage: "too <s>big</s>",
+      autoFilterNote: "note <em>n</em>",
+      emptyMessage: "empty <o>",
+      trackOptions: [{ key: "k\"1", label: "L<1>" }],
+    }));
+    for (const raw of ["<i>ner</i>", "<u>by</u>", "<s>big</s>", "<em>n</em>", "<o>", "L<1>", 'value="k"1"']) {
+      assert.ok(!html.includes(raw), `unescaped: ${raw}`);
+    }
+    for (const safe of [
+      "ban &lt;i&gt;ner&lt;/i&gt;", "Blocked &lt;u&gt;by&lt;/u&gt;", "too &lt;s&gt;big&lt;/s&gt;",
+      "note &lt;em&gt;n&lt;/em&gt;", "empty &lt;o&gt;", "L&lt;1&gt;", 'value="k&quot;1"',
+    ]) {
+      assert.ok(html.includes(safe), `missing: ${safe}`);
+    }
+  });
+
+  it("legend shows each label as text next to its colour swatch", () => {
+    const html = buildHtml(critical({
+      legend: [{ label: "On the path", color: "#e5c07b" }, { label: "Closed", color: "#888888" }],
+    }));
+    assert.ok(/#e5c07b[^>]*><\/span>\s*On the path/.test(html));
+    assert.ok(/#888888[^>]*><\/span>\s*Closed/.test(html));
+  });
+
+  it("a colour that is not a plain hex/name is not injected into style", () => {
+    const html = buildHtml(critical({ legend: [{ label: "Bad", color: 'red;"><script>x</script>' }] }));
+    assert.ok(!html.includes("<script>x</script>"));
+  });
+
+  it("the inline scripts still parse with critical controls present", () => {
+    const html = buildHtml(critical({ trackOptions: [{ key: "k", label: "L" }] }));
+    const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      if (/\bsrc=/.test(m[1]) || m[2].trim() === "") continue;
+      assert.doesNotThrow(() => { new Function(m![2]); });
+    }
+  });
+
+  it("acquireVsCodeApi is still called exactly once", () => {
+    assert.equal((buildHtml(critical()).match(/acquireVsCodeApi\(/g) || []).length, 1);
+  });
+});
+
+describe("buildHtmlIfChanged — critical-path inputs (#423)", () => {
+  const base: WebviewHtmlOptions = { ...BASE, mode: "critical", critical: { ...CRIT } };
+  const first = buildHtmlIfChanged(null, base)!;
+  const withCrit = (c: Partial<typeof CRIT>): WebviewHtmlOptions =>
+    ({ ...base, critical: { ...CRIT, ...c } });
+
+  it("same inputs, new nonce: no reload", () => {
+    assert.equal(buildHtmlIfChanged(first.key, { ...base, nonce: "n".repeat(32) }), null);
+  });
+
+  it("mode change re-renders", () => {
+    assert.ok(buildHtmlIfChanged(first.key, { ...base, mode: "full" }));
+  });
+
+  it("trackFilter, focusIssueLabel, showClosed and tooLargeMessage each re-render", () => {
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ trackFilter: "a/b#t" })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ focusIssueLabel: "#1 x" })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ showClosed: true })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ tooLargeMessage: "too big" })));
   });
 });
 
@@ -730,7 +841,7 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
   function optionsFor(
     exp: Export,
     selection: string,
-    view: { focused?: boolean; isDark?: boolean } = {},
+    view: { focused?: boolean; mode?: GraphMode; isDark?: boolean } = {},
   ): WebviewHtmlOptions {
     const sel = exp.tracks.find(t => t.name === selection)!;
     const focused = view.focused ?? true;
@@ -742,7 +853,7 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
       graphDef: toMermaid(graphExp, trackKey(sel), { focus: focused, dark: isDark }),
       detailHtml: renderDetail(sel, { now: NOW }),
       trackName: sel.name,
-      focused,
+      mode: view.mode ?? (focused ? "focus" : "full"),
       isDark,
       hasTrackFile: !!sel.path,
     };
