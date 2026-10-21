@@ -25,6 +25,8 @@ export interface CriticalFilter {
   trackKey: TrackKey | null;
   focusIssue: string | null;
   showClosed: boolean;
+  /** Draw startable issues that have no links; off collapses them into one summary node. */
+  showUnlinked: boolean;
 }
 
 export interface CriticalRender {
@@ -38,11 +40,15 @@ export interface CriticalRender {
   tooLargeMessage: string | null;
   /** Mermaid node id -> full hover text for every drawn issue node; {} when nothing is drawn. */
   nodeTitles: Record<string, string>;
+  /** Open issues in the filtered set with no rank-carrying link (drawn or collapsed). */
+  unlinkedCount: number;
 }
 
 const MAX_EDGES = 450;
 const MAX_CHARS = 45_000;
 const MAX_TITLE = 40;
+/** Unlinked issues per row when they are shown as a grid. */
+const GRID_ROW = 8;
 
 // Chip border colours, light / dark theme. Cycled by trackOrder index; the
 // track label printed on every node is what actually disambiguates (#244).
@@ -206,6 +212,24 @@ function bannerText(model: CriticalPathModel): string | null {
   return `${parts.join(" ")} Fix the links on GitHub.`;
 }
 
+/**
+ * Issues (and connectors / outside nodes) on a rank-carrying edge of the full
+ * model: an open-to-open or outside-to-open `blocks` edge, or a track-dependency
+ * edge. A done stub or a closed issue's display edge does not count: neither
+ * affects rank, so an issue with only those is still startable with no links.
+ */
+function linkedIds(full: CriticalPathModel): Set<string> {
+  const open = new Set(full.issues.filter(i => i.state === "open").map(i => i.id));
+  const outside = new Set(full.outside.map(o => o.id));
+  const linked = new Set<string>();
+  for (const e of full.edges) {
+    const rankEdge = e.kind === "track-dep" ||
+      (e.kind === "blocks" && (open.has(e.from) || outside.has(e.from)) && open.has(e.to));
+    if (rankEdge) { linked.add(e.from); linked.add(e.to); }
+  }
+  return linked;
+}
+
 /** Tracks the sidebar lens leaves visible, in export order (the track dropdown). */
 export function visibleTrackOrder(
   model: CriticalPathModel,
@@ -219,11 +243,13 @@ export function renderCriticalPath(
   f: CriticalFilter,
   opts: { dark: boolean; visibleTracks?: ReadonlySet<TrackKey> },
 ): CriticalRender {
-  const { model, dimmed } = filterCriticalPath(full, f, opts.visibleTracks);
+  const filtered = filterCriticalPath(full, f, opts.visibleTracks);
+  const { dimmed } = filtered;
   const base: CriticalRender = {
     mermaid: "", edgeCount: 0, tooLarge: false, banner: null,
-    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {},
+    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, unlinkedCount: 0,
   };
+  let model = filtered.model;
 
   const openCount = model.issues.filter(i => i.state === "open").length;
   if (openCount === 0) {
@@ -233,6 +259,23 @@ export function renderCriticalPath(
       empty: full.repo === null
         ? "No repo selected — pick a repo to see its critical path."
         : hadOpen ? "No open issues match the current filter." : "No open issues in this repo — nothing to chart.",
+    };
+  }
+
+  // Unlinked: open, rank 0 by definition, no rank-carrying link in the full
+  // model. Collapsed after filtering, display only (ranks never change). The
+  // focused issue is never collapsed.
+  const linked = linkedIds(full);
+  const unlinked = model.issues.filter(i =>
+    i.state === "open" && !i.unranked && !linked.has(i.id) && i.id !== f.focusIssue);
+  const unlinkedIds = new Set(unlinked.map(i => i.id));
+  const hiddenCount = f.showUnlinked ? 0 : unlinked.length;
+  if (hiddenCount > 0) {
+    model = {
+      ...model,
+      issues: model.issues.filter(i => !unlinkedIds.has(i.id)),
+      stubs: model.stubs.filter(s => !unlinkedIds.has(s.target)),
+      edges: model.edges.filter(e => !unlinkedIds.has(e.to) && !unlinkedIds.has(e.from)),
     };
   }
 
@@ -255,18 +298,24 @@ export function renderCriticalPath(
   model.connectors.forEach((c, k) => ids.set(c.id, `k_${k}`));
   model.stubs.forEach((s, k) => ids.set(`done:${s.target}`, `s_${k}`));
 
-  // Columns.
+  // Rank columns hold linked issues only. Collapsed unlinked issues become one
+  // summary node in "Startable now". Shown ones go in their own block as a
+  // wrapped grid: inside a column Mermaid stacks them into one tall strip, so
+  // each row is chained with invisible links to lay it out across instead.
   const columns: { id: string; label: string; members: CritIssueNode[] }[] = [];
   const done = model.issues.filter(i => i.state === "closed").sort(cmp);
   if (done.length) columns.push({ id: "col_done", label: "Done", members: done });
   const open = model.issues.filter(i => i.state === "open");
-  const ranks = [...new Set(open.filter(i => !i.unranked && i.rank !== null).map(i => i.rank!))]
-    .sort((a, b) => a - b);
+  const grid = f.showUnlinked ? open.filter(i => unlinkedIds.has(i.id)).sort(cmp) : [];
+  const rows: CritIssueNode[][] = [];
+  for (let k = 0; k < grid.length; k += GRID_ROW) rows.push(grid.slice(k, k + GRID_ROW));
+  const rankSet = new Set(open.filter(i => !i.unranked && i.rank !== null).map(i => i.rank!));
+  const ranks = [...rankSet].sort((a, b) => a - b);
+  if (hiddenCount > 0 && !rankSet.has(0)) ranks.unshift(0);
   for (const r of ranks) {
-    columns.push({
-      id: `col_r${r}`, label: columnLabel(r),
-      members: open.filter(i => !i.unranked && i.rank === r).sort(cmp),
-    });
+    const members = open.filter(i => !i.unranked && i.rank === r && !unlinkedIds.has(i.id)).sort(cmp);
+    if (members.length === 0 && !(r === 0 && hiddenCount > 0)) continue;
+    columns.push({ id: `col_r${r}`, label: columnLabel(r), members });
   }
   const unranked = open.filter(i => i.unranked).sort(cmp);
   if (unranked.length) {
@@ -290,18 +339,30 @@ export function renderCriticalPath(
   lines.push("  classDef dimmed stroke-dasharray:4 3,opacity:0.55");
   lines.push("  classDef outside stroke-dasharray:2 3");
 
+  const SUMMARY = "u_hidden";
   for (const c of columns) {
     lines.push(`  subgraph ${c.id}["${text(c.label)}"]`, "    direction TB");
     for (const m of c.members) lines.push(`    ${ids.get(m.id)}`);
+    if (c.id === "col_r0" && hiddenCount > 0) lines.push(`    ${SUMMARY}`);
     lines.push("  end");
   }
+  const GRID = "col_unlinked";
+  if (grid.length) {
+    lines.push(`  subgraph ${GRID}["${text(`Startable now — no links (${grid.length})`)}"]`, "    direction LR");
+    for (const m of grid) lines.push(`    ${ids.get(m.id)}`);
+    lines.push("  end");
+  }
+  const drawnIssues = [...columns.flatMap(c => c.members), ...grid];
 
   const label = (i: CritIssueNode): string => {
     const head = i.state === "closed" ? "✓" : i.unranked || i.rank === null ? "?" : String(i.rank);
     const chip = `${i.trackBlocked ? "⛔ " : ""}${text(i.trackName)}${i.isRef ? " (ref)" : ""}`;
     return `${head} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chip}`;
   };
-  for (const c of columns) for (const m of c.members) lines.push(`  ${ids.get(m.id)}["${label(m)}"]`);
+  for (const m of drawnIssues) lines.push(`  ${ids.get(m.id)}["${label(m)}"]`);
+  if (hiddenCount > 0) {
+    lines.push(`  ${SUMMARY}(["${plural(hiddenCount, "startable issue", "startable issues")} with no links (hidden)"])`);
+  }
   model.outside.forEach(o => lines.push(`  ${ids.get(o.id)}["${text(o.label)}"]`));
   model.connectors.forEach(c => lines.push(`  ${ids.get(c.id)}(["track ${text(c.dependencyTrack)} done"])`));
   model.stubs.forEach(s => lines.push(`  ${ids.get(`done:${s.target}`)}(["✓ ${s.count} done that blocked this"])`));
@@ -319,6 +380,10 @@ export function renderCriticalPath(
   // Mermaid's edge limit counts these invisible links too.
   for (let k = 0; k + 1 < columns.length; k++) lines.push(`  ${columns[k].id} ~~~ ${columns[k + 1].id}`);
   edgeCount += Math.max(columns.length - 1, 0);
+  for (const row of rows) {
+    if (row.length > 1) lines.push(`  ${row.map(m => ids.get(m.id)).join(" ~~~ ")}`);
+    edgeCount += row.length - 1;
+  }
 
   legendKeys.forEach((k, n) => {
     const members = model.issues.filter(i => i.trackKey === k).map(i => ids.get(i.id)!);
@@ -328,6 +393,7 @@ export function renderCriticalPath(
     ...[...dimmed].map(id => ids.get(id)).filter((x): x is string => x !== undefined),
     ...(f.showClosed ? done.map(i => ids.get(i.id)!) : []),
   ].filter((x, k, a) => a.indexOf(x) === k);
+  if (hiddenCount > 0) dimIds.push(SUMMARY);
   if (dimIds.length) lines.push(`  class ${dimIds.join(",")} dimmed`);
   if (model.outside.length) lines.push(`  class ${model.outside.map(o => ids.get(o.id)).join(",")} outside`);
   if (f.focusIssue !== null && ids.has(f.focusIssue)) lines.push(`  class ${ids.get(f.focusIssue)} selected`);
@@ -336,7 +402,7 @@ export function renderCriticalPath(
   const mermaid = lines.join("\n");
   if (edgeCount > MAX_EDGES || mermaid.length > MAX_CHARS) {
     return {
-      ...base, edgeCount, tooLarge: true, banner, legend,
+      ...base, edgeCount, tooLarge: true, banner, legend, unlinkedCount: unlinked.length,
       tooLargeMessage:
         `Too large to draw (${plural(model.issues.length, "issue", "issues")}, ` +
         `${plural(edgeCount, "link", "links")}). Filter by track or focus on an issue.`,
@@ -345,14 +411,14 @@ export function renderCriticalPath(
   // Labels are shortened; the hover text carries the full title (raw text: the
   // webview sets it with textContent).
   const nodeTitles: Record<string, string> = {};
-  for (const c of columns) {
-    for (const m of c.members) {
+  {
+    for (const m of drawnIssues) {
       const track = `${m.trackName}${m.isRef ? " (ref)" : ""}${m.trackBlocked ? " ⛔" : ""}`;
       const state = m.state === "closed" ? "closed" : m.inProgress ? "open, in progress" : "open";
       nodeTitles[ids.get(m.id)!] = `#${m.number} ${m.title}\nTrack: ${track}\nState: ${state}`;
     }
   }
-  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles };
+  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, unlinkedCount: unlinked.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +475,7 @@ export type CritEvent =
   | { type: "setTrackFilter"; key: TrackKey | null }
   | { type: "autoFit"; trackKey: TrackKey }
   | { type: "setShowClosed"; show: boolean }
+  | { type: "setShowUnlinked"; show: boolean }
   | { type: "setFocusIssue"; id: string | null };
 
 /**
@@ -444,6 +511,8 @@ export function nextCritState(
       return out({ filter: { ...prev.filter, trackKey: ev.trackKey } });
     case "setShowClosed":
       return out({ filter: { ...prev.filter, showClosed: ev.show } });
+    case "setShowUnlinked":
+      return out({ filter: { ...prev.filter, showUnlinked: ev.show } });
     case "setFocusIssue":
       return out({ filter: { ...prev.filter, focusIssue: ev.id } });
     case "refresh": {

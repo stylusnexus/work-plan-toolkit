@@ -62,6 +62,11 @@ describe("isWebviewMessage — valid messages", () => {
     assert.equal(isWebviewMessage({ type: "setShowClosed", show: false }), true);
   });
 
+  it("accepts setShowUnlinked with a boolean", () => {
+    assert.equal(isWebviewMessage({ type: "setShowUnlinked", show: true }), true);
+    assert.equal(isWebviewMessage({ type: "setShowUnlinked", show: false }), true);
+  });
+
   it("accepts a valid moveIssue message", () => {
     assert.equal(isWebviewMessage({ type: "moveIssue", number: 7 }), true);
   });
@@ -277,6 +282,11 @@ describe("isWebviewMessage — rejects malformed payloads", () => {
 
   it("rejects setShowClosed with a non-boolean", () => {
     assert.equal(isWebviewMessage({ type: "setShowClosed", show: "yes" }), false);
+  });
+
+  it("rejects setShowUnlinked with a non-boolean or missing show", () => {
+    assert.equal(isWebviewMessage({ type: "setShowUnlinked", show: "yes" }), false);
+    assert.equal(isWebviewMessage({ type: "setShowUnlinked" }), false);
   });
 
   it("rejects the removed setFocus message", () => {

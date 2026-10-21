@@ -600,6 +600,8 @@ const CRIT = {
   emptyMessage: null as string | null,
   trackOptions: [] as { key: string; label: string }[],
   nodeTitles: undefined as Record<string, string> | undefined,
+  showUnlinked: false,
+  unlinkedCount: 0,
 };
 
 describe("buildHtml — graph mode buttons", () => {
@@ -700,6 +702,18 @@ describe("buildHtml — critical-path controls", () => {
     assert.ok(html.includes("Focus on an issue…"));
     assert.ok(html.includes(">Clear focus</button>"));
     assert.ok(/id="work-plan-show-closed"[^>]*checked/.test(html));
+  });
+
+  it("renders the show-unlinked checkbox with its count, off by default, and posts setShowUnlinked", () => {
+    const off = buildHtml(critical({ unlinkedCount: 87 }));
+    const tag = off.match(/<input[^>]*id="work-plan-show-unlinked"[^>]*>/)?.[0] ?? "";
+    assert.ok(tag && !tag.includes("checked"), tag);
+    assert.ok(off.includes("Show unlinked issues (87)"));
+    assert.ok(off.includes("type: 'setShowUnlinked', show: "));
+    assert.ok(/id="work-plan-show-unlinked"[^>]*checked/.test(buildHtml(critical({ showUnlinked: true, unlinkedCount: 3 }))));
+    for (const mode of ["focus", "full"] as const) {
+      assert.ok(!buildHtml({ ...BASE, mode, critical: CRIT }).includes("work-plan-show-unlinked"), mode);
+    }
   });
 
   it("show-closed checkbox is unchecked when showClosed is false", () => {
@@ -837,6 +851,11 @@ describe("buildHtmlIfChanged — critical-path inputs (#423)", () => {
 
   it("mode change re-renders", () => {
     assert.ok(buildHtmlIfChanged(first.key, { ...base, mode: "full" }));
+  });
+
+  it("showUnlinked and unlinkedCount re-render", () => {
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ showUnlinked: true })));
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ unlinkedCount: 5 })));
   });
 
   it("nodeTitles change re-renders", () => {

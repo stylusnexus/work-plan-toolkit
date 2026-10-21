@@ -53,6 +53,11 @@ export interface SetShowClosedMessage {
   show: boolean;
 }
 
+export interface SetShowUnlinkedMessage {
+  type: "setShowUnlinked";
+  show: boolean;
+}
+
 export interface MoveIssueMessage {
   type: "moveIssue";
   number: number;
@@ -117,6 +122,7 @@ export type WebviewMessage =
   | PickFocusIssueMessage
   | ClearFocusIssueMessage
   | SetShowClosedMessage
+  | SetShowUnlinkedMessage
   | MoveIssueMessage
   | FilterMilestoneMessage
   | OpenTrackFileMessage
@@ -171,6 +177,8 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
     case "clearFocusIssue":
       return true; // no payload to validate
     case "setShowClosed":
+      return typeof msg["show"] === "boolean";
+    case "setShowUnlinked":
       return typeof msg["show"] === "boolean";
     case "moveIssue":
       return typeof msg["number"] === "number"

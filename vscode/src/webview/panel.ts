@@ -96,7 +96,7 @@ export class WorkPlanPanel {
   /** Graph mode: selected track's neighbourhood, whole repo, or the critical path. */
   private _mode: GraphMode = "focus";
   /** Critical-path filters; reset/cleared by nextCritState. */
-  private _critFilter: CriticalFilter = { trackKey: null, focusIssue: null, showClosed: false };
+  private _critFilter: CriticalFilter = { trackKey: null, focusIssue: null, showClosed: false, showUnlinked: false };
   /** Repo the critical-path filters were set against. */
   private _critRepo: string | null = null;
   /** True after the user explicitly cleared the track filter (skips auto-fit). */
@@ -295,6 +295,8 @@ export class WorkPlanPanel {
       trackFilter: null,
       focusIssueLabel: null,
       showClosed: this._critFilter.showClosed,
+      showUnlinked: this._critFilter.showUnlinked,
+      unlinkedCount: 0,
       banner: null,
       legend: [],
       tooLargeMessage: null,
@@ -334,6 +336,8 @@ export class WorkPlanPanel {
         trackFilter: fit.filter.trackKey,
         focusIssueLabel: focused ? `#${focused.number} ${focused.title}` : null,
         showClosed: fit.filter.showClosed,
+        showUnlinked: fit.filter.showUnlinked,
+        unlinkedCount: fit.render.unlinkedCount,
         banner: fit.render.banner,
         legend: fit.render.legend.map(l => ({ label: l.label, color: l.color })),
         tooLargeMessage: fit.render.tooLargeMessage,
@@ -416,6 +420,11 @@ export class WorkPlanPanel {
       }
       case "setShowClosed": {
         this._apply({ type: "setShowClosed", show: raw.show });
+        this._rerender();
+        break;
+      }
+      case "setShowUnlinked": {
+        this._apply({ type: "setShowUnlinked", show: raw.show });
         this._rerender();
         break;
       }

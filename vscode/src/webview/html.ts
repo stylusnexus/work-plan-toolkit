@@ -18,6 +18,10 @@ export interface CriticalViewOptions {
   trackFilter: string | null;
   focusIssueLabel: string | null;
   showClosed: boolean;
+  /** Startable issues with no links are drawn (true) or collapsed into one node. */
+  showUnlinked: boolean;
+  /** How many such issues the current filter has. */
+  unlinkedCount: number;
   banner: string | null;
   legend: { label: string; color: string }[];
   tooLargeMessage: string | null;
@@ -168,6 +172,12 @@ ${afterRun}
   if (showClosedBox) {
     showClosedBox.addEventListener('change', function () {
       post({ type: 'setShowClosed', show: showClosedBox.checked });
+    });
+  }
+  var showUnlinkedBox = document.getElementById('work-plan-show-unlinked');
+  if (showUnlinkedBox) {
+    showUnlinkedBox.addEventListener('change', function () {
+      post({ type: 'setShowUnlinked', show: showUnlinkedBox.checked });
     });
   }
 ` : "";
@@ -918,6 +928,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
       <button type="button" id="work-plan-clear-focus" class="graph-ctl">Clear focus</button>
       ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
       <label><input type="checkbox" id="work-plan-show-closed"${c.showClosed ? " checked" : ""}> Show closed</label>
+      <label><input type="checkbox" id="work-plan-show-unlinked"${c.showUnlinked ? " checked" : ""}> Show unlinked issues (${c.unlinkedCount})</label>
     </div>
     <div class="crit-note">Numbers = steps from startable, not priority.</div>
     ${note("crit-banner", c.banner)}
