@@ -43,6 +43,39 @@ A loading bar shows while the CLI fetch runs, and concurrent refreshes are coale
 ![Critical-path view with a traced issue](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/critical-path.png)
 *The critical-path view (example data): columns by steps from startable, red ⛔ blocked and amber ⏳ waiting issues, and a clicked issue's chain faded in and printed as text with a Copy button.*
 
+**Copy formats.** With an issue clicked, the **Format** dropdown and **Copy** button above the flow put the chain on the clipboard. Closed issues and status marks are left out, and the extension remembers your format. Shown for #120 in the example above:
+
+*Path* — numbers only, one line per path in work order, plus an `Order:` line (with more than 30 paths it falls back to the work order list):
+
+```
+#101 → #110 → #120 → #130
+#102 → #110 → #120 → #130
+#103 → #120 → #130
+Order: #101, #102, #103, #110, #120, #130
+```
+
+*Task list (markdown)* — for a GitHub issue or PR body; marks the clicked issue and work in progress:
+
+```
+- [ ] #101 fix(landing): pricing copy matches waitlist mode
+- [ ] #102 fix(landing): name the product on the first screen (in progress)
+- [ ] #103 feat(growth): capture signup source
+- [ ] #110 chore(launch): open signup to the public
+- [ ] #120 chore(marketing): send the launch-day email (this)
+- [ ] #130 feat(feedback): collect first-week feedback
+```
+
+*Work order* — a numbered list with titles, for Slack, notes or an AI prompt:
+
+```
+1. #101 fix(landing): pricing copy matches waitlist mode
+2. #102 fix(landing): name the product on the first screen (in progress)
+3. #103 feat(growth): capture signup source
+4. #110 chore(launch): open signup to the public
+5. #120 chore(marketing): send the launch-day email (this)
+6. #130 feat(feedback): collect first-week feedback
+```
+
 ![Public-repo confirm modal](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/write-confirm-modal.png)
 *The "Write anyway / Keep private" modal before any write into a public repo.*
 
