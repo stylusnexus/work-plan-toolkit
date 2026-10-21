@@ -19,7 +19,7 @@ import { buildHtmlIfChanged, esc } from "./html.ts";
 import { isWebviewMessage } from "./messages.ts";
 import type { GraphMode } from "./messages.ts";
 import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
-import { fitToCap, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
+import { fitToCap, lensVisibleIssues, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
 import type { CriticalFilter, CritEvent } from "./criticalPathRender.ts";
 import type { CriticalViewOptions } from "./html.ts";
 
@@ -309,10 +309,13 @@ export class WorkPlanPanel {
     const nameOf = (k: TrackKey): string => exp.tracks.find(t => trackKey(t) === k)?.name
       ?? raw.tracks.find(t => trackKey(t) === k)?.name ?? k;
     // Ranks come from `raw`; the sidebar lens (`exp`) only hides tracks (spec §4).
-    const visibleTracks = new Set(exp.tracks.filter(t => t.repo === repo).map(t => trackKey(t)));
+    const visibleTracks = repoTrackKeys(exp, repo);
     const shownTracks = visibleTrackOrder(model, visibleTracks);
+    const shownIssues = lensVisibleIssues(model, visibleTracks).map(i => i.id);
     const refreshNote = this._apply({
-      type: "refresh", knownTracks: shownTracks, knownIssues: model.issues.map(i => i.id),
+      type: "refresh", knownTracks: shownTracks, knownIssues: shownIssues,
+      hiddenTracks: model.trackOrder.filter(k => !shownTracks.includes(k)),
+      hiddenIssues: model.issues.map(i => i.id).filter(id => !shownIssues.includes(id)),
     });
     const fit = fitToCap(model, this._critFilter, selected, {
       dark: isDark, suppressAutoFit: this._autoFitSuppressed, visibleTracks,
@@ -352,7 +355,10 @@ export class WorkPlanPanel {
   private async _pickFocusIssue(): Promise<void> {
     const track = this._currentTrack();
     if (!this._rawExport || !track || track.repo === null) return;
-    const items = criticalPickItems(computeCriticalPath(this._rawExport, track.repo), {
+    // Same lens rule as the graph: an issue only in lens-hidden tracks can't be focused.
+    const model = computeCriticalPath(this._rawExport, track.repo);
+    const visible = this._currentExport ? repoTrackKeys(this._currentExport, track.repo) : undefined;
+    const items = criticalPickItems({ ...model, issues: lensVisibleIssues(model, visible) }, {
       showClosed: this._critFilter.showClosed,
     });
     if (items.length === 0) {
@@ -633,6 +639,11 @@ export function nonce(): string {
   const buf = new Uint8Array(32);
   globalThis.crypto.getRandomValues(buf);
   return Array.from(buf, (b) => chars[b % chars.length]).join("");
+}
+
+/** Keys of the tracks in `repo` that the (possibly lens-filtered) export still shows. */
+function repoTrackKeys(exp: Export, repo: string): Set<TrackKey> {
+  return new Set(exp.tracks.filter(t => t.repo === repo).map(t => trackKey(t)));
 }
 
 /**

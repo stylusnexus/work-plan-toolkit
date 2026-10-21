@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TrackKey } from "../model.ts";
 import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
-import { filterCriticalPath, fitToCap, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
+import { filterCriticalPath, fitToCap, lensVisibleIssues, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
 
 const R = "r";
 const TA = "ta" as TrackKey;
@@ -358,6 +358,22 @@ describe("sidebar lens (visibleTracks)", () => {
     assert.deepEqual([...byTrack.dimmed], ["track:Alpha>Beta"]);
   });
 
+  it("lensVisibleIssues: hidden-track-only issues excluded, any visible member kept, no lens = all", () => {
+    const mm = model({
+      issues: [
+        node(1, 0),
+        node(2, 0, { trackKey: TB, trackName: "Beta" }),
+        node(5, 0, { trackKey: TB, trackName: "Beta", memberTrackKeys: [TB, TA] }),
+      ],
+    });
+    assert.deepEqual(lensVisibleIssues(mm, onlyA).map(i => i.number), [1, 5]);
+    assert.deepEqual(lensVisibleIssues(mm, undefined).map(i => i.number), [1, 2, 5]);
+    assert.deepEqual(lensVisibleIssues(mm, new Set([TA, TB])).map(i => i.number), [1, 2, 5]);
+    // same rule the filter uses: every issue the lens keeps is drawn (or a dimmed blocker)
+    const drawn = filterCriticalPath(mm, F, onlyA).model.issues.map(i => i.number);
+    for (const i of lensVisibleIssues(mm, onlyA)) assert.ok(drawn.includes(i.number));
+  });
+
   it("combines with the track filter and passes through fitToCap", () => {
     const f = filterCriticalPath(m, { ...F, trackKey: TB }, onlyA);
     assert.deepEqual(f.model.issues.map(i => i.number), []);
@@ -435,6 +451,26 @@ describe("nextCritState", () => {
     assert.equal(s.filter.trackKey, null);
     assert.equal(s.filter.focusIssue, `${R}#1`);
     assert.ok(s.note && !s.note.includes("\n"));
+  });
+
+  it("refresh: a track hidden by the lens gets its own sentence", () => {
+    const gone = nextCritState(prev(), { type: "refresh", knownTracks: [TB], knownIssues: [`${R}#1`] });
+    assert.equal(gone.note, "The filtered track no longer exists; showing all tracks.");
+    const hidden = nextCritState(prev(), {
+      type: "refresh", knownTracks: [TB], knownIssues: [`${R}#1`], hiddenTracks: [TA],
+    });
+    assert.equal(hidden.filter.trackKey, null);
+    assert.equal(hidden.note, "The filtered track is hidden by the sidebar filter; showing all tracks.");
+  });
+
+  it("refresh: a focused issue hidden by the lens gets its own sentence", () => {
+    const gone = nextCritState(prev(), { type: "refresh", knownTracks: [TA], knownIssues: [] });
+    assert.equal(gone.note, "The focused issue no longer exists; focus cleared.");
+    const hidden = nextCritState(prev(), {
+      type: "refresh", knownTracks: [TA], knownIssues: [], hiddenIssues: [`${R}#1`],
+    });
+    assert.equal(hidden.filter.focusIssue, null);
+    assert.equal(hidden.note, "The focused issue is hidden by the sidebar filter; focus cleared.");
   });
 
   it("refresh clears a vanished focused issue and notes it", () => {

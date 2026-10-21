@@ -56,6 +56,27 @@ const chipColor = (idx: number, dark: boolean): string =>
 // Filtering
 // ---------------------------------------------------------------------------
 
+/** The sidebar lens in effect, or null when absent or every repo track is visible. */
+function activeLens(
+  model: CriticalPathModel,
+  visibleTracks: ReadonlySet<TrackKey> | undefined,
+): ReadonlySet<TrackKey> | null {
+  return visibleTracks && model.trackOrder.some(k => !visibleTracks.has(k)) ? visibleTracks : null;
+}
+
+/** The lens keeps an issue when any of its member tracks is visible. */
+const lensKeeps = (i: CritIssueNode, lens: ReadonlySet<TrackKey> | null): boolean =>
+  lens === null || i.memberTrackKeys.some(k => lens.has(k));
+
+/** Issues the sidebar lens keeps (all of them with no lens): picker items and the stale-focus check. */
+export function lensVisibleIssues(
+  model: CriticalPathModel,
+  visibleTracks: ReadonlySet<TrackKey> | undefined,
+): CritIssueNode[] {
+  const lens = activeLens(model, visibleTracks);
+  return model.issues.filter(i => lensKeeps(i, lens));
+}
+
 /**
  * Narrow the drawn graph; never re-rank. The track filter and the sidebar lens
  * (`visibleTracks`, the tracks the lens left in this repo) work the same way:
@@ -101,14 +122,12 @@ export function filterCriticalPath(
     keep = new Set([...keep].filter(id => seen.has(id)));
   }
 
-  // A lens that leaves every track visible is no lens.
-  const lens = visibleTracks && model.trackOrder.some(k => !visibleTracks.has(k)) ? visibleTracks : null;
+  const lens = activeLens(model, visibleTracks);
   const dimmed = new Set<string>();
   const tk = f.trackKey;
   if (tk !== null || lens !== null) {
     const matches = (i: CritIssueNode): boolean =>
-      (tk === null || i.memberTrackKeys.includes(tk)) &&
-      (lens === null || i.memberTrackKeys.some(k => lens.has(k)));
+      (tk === null || i.memberTrackKeys.includes(tk)) && lensKeeps(i, lens);
     const own = new Set(model.issues.filter(i => keep.has(i.id) && matches(i)).map(i => i.id));
     const next = new Set(own);
     const connectorIds = new Set(model.connectors.map(c => c.id));
@@ -369,7 +388,11 @@ export interface CritState {
 
 export type CritEvent =
   | { type: "selectTrack"; repo: string | null }
-  | { type: "refresh"; knownTracks: TrackKey[]; knownIssues: string[] }
+  | {
+      type: "refresh"; knownTracks: TrackKey[]; knownIssues: string[];
+      /** Still in the data but hidden by the sidebar lens: changes the note, not the clearing. */
+      hiddenTracks?: TrackKey[]; hiddenIssues?: string[];
+    }
   | { type: "setMode"; mode: GraphMode }
   | { type: "setTrackFilter"; key: TrackKey | null }
   | { type: "autoFit"; trackKey: TrackKey }
@@ -415,12 +438,18 @@ export function nextCritState(
       let filter = prev.filter;
       const notes: string[] = [];
       if (filter.trackKey !== null && !ev.knownTracks.includes(filter.trackKey)) {
+        const hidden = ev.hiddenTracks?.includes(filter.trackKey) ?? false;
         filter = { ...filter, trackKey: null };
-        notes.push("The filtered track no longer exists; showing all tracks.");
+        notes.push(hidden
+          ? "The filtered track is hidden by the sidebar filter; showing all tracks."
+          : "The filtered track no longer exists; showing all tracks.");
       }
       if (filter.focusIssue !== null && !ev.knownIssues.includes(filter.focusIssue)) {
+        const hidden = ev.hiddenIssues?.includes(filter.focusIssue) ?? false;
         filter = { ...filter, focusIssue: null };
-        notes.push("The focused issue no longer exists; focus cleared.");
+        notes.push(hidden
+          ? "The focused issue is hidden by the sidebar filter; focus cleared."
+          : "The focused issue no longer exists; focus cleared.");
       }
       return out({ filter }, notes.length ? notes.join(" ") : null);
     }
