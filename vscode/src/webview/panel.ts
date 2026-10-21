@@ -19,7 +19,7 @@ import { buildHtmlIfChanged, esc } from "./html.ts";
 import { isWebviewMessage } from "./messages.ts";
 import type { GraphMode } from "./messages.ts";
 import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
-import { fitToCap, nextCritState } from "./criticalPathRender.ts";
+import { fitToCap, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
 import type { CriticalFilter, CritEvent } from "./criticalPathRender.ts";
 import type { CriticalViewOptions } from "./html.ts";
 
@@ -306,11 +306,14 @@ export class WorkPlanPanel {
       return { graphDef: "", critical: { ...base, emptyMessage: "This track has no GitHub repo" } };
     }
     const model = computeCriticalPath(raw, repo);
+    // Ranks come from `raw`; the sidebar lens (`exp`) only hides tracks (spec §4).
+    const visibleTracks = new Set(exp.tracks.filter(t => t.repo === repo).map(t => trackKey(t)));
+    const shownTracks = visibleTrackOrder(model, visibleTracks);
     const refreshNote = this._apply({
-      type: "refresh", knownTracks: model.trackOrder, knownIssues: model.issues.map(i => i.id),
+      type: "refresh", knownTracks: shownTracks, knownIssues: model.issues.map(i => i.id),
     });
     const fit = fitToCap(model, this._critFilter, selected, {
-      dark: isDark, suppressAutoFit: this._autoFitSuppressed,
+      dark: isDark, suppressAutoFit: this._autoFitSuppressed, visibleTracks,
     });
     // Save the auto-applied track so a later explicit clear is distinguishable.
     if (fit.autoFiltered && fit.filter.trackKey) {
@@ -332,7 +335,7 @@ export class WorkPlanPanel {
         tooLargeMessage: fit.render.tooLargeMessage,
         autoFilterNote: fit.autoFiltered ?? refreshNote,
         emptyMessage: fit.render.empty,
-        trackOptions: model.trackOrder.map(k => ({ key: k, label: nameOf(k) })),
+        trackOptions: shownTracks.map(k => ({ key: k, label: nameOf(k) })),
       },
     };
   }

@@ -56,9 +56,16 @@ const chipColor = (idx: number, dark: boolean): string =>
 // Filtering
 // ---------------------------------------------------------------------------
 
+/**
+ * Narrow the drawn graph; never re-rank. The track filter and the sidebar lens
+ * (`visibleTracks`, the tracks the lens left in this repo) work the same way:
+ * keep issues whose member tracks match, plus their direct blockers and
+ * connectors from elsewhere, dimmed.
+ */
 export function filterCriticalPath(
   model: CriticalPathModel,
   f: CriticalFilter,
+  visibleTracks?: ReadonlySet<TrackKey>,
 ): { model: CriticalPathModel; dimmed: Set<string> } {
   const byId = new Map(model.issues.map(i => [i.id, i]));
   const closed = (id: string): boolean => byId.get(id)?.state === "closed";
@@ -94,11 +101,15 @@ export function filterCriticalPath(
     keep = new Set([...keep].filter(id => seen.has(id)));
   }
 
+  // A lens that leaves every track visible is no lens.
+  const lens = visibleTracks && model.trackOrder.some(k => !visibleTracks.has(k)) ? visibleTracks : null;
   const dimmed = new Set<string>();
-  if (f.trackKey !== null) {
-    const own = new Set(
-      model.issues.filter(i => keep.has(i.id) && i.memberTrackKeys.includes(f.trackKey!)).map(i => i.id),
-    );
+  const tk = f.trackKey;
+  if (tk !== null || lens !== null) {
+    const matches = (i: CritIssueNode): boolean =>
+      (tk === null || i.memberTrackKeys.includes(tk)) &&
+      (lens === null || i.memberTrackKeys.some(k => lens.has(k)));
+    const own = new Set(model.issues.filter(i => keep.has(i.id) && matches(i)).map(i => i.id));
     const next = new Set(own);
     const connectorIds = new Set(model.connectors.map(c => c.id));
     for (const e of edges) {
@@ -110,6 +121,12 @@ export function filterCriticalPath(
       if (own.has(e.from) && connectorIds.has(e.to)) {
         next.add(e.to);
         dimmed.add(e.to);
+      }
+    }
+    // A connector between two kept tracks is not from elsewhere: undim it.
+    for (const c of connectorIds) {
+      if (edges.some(e => e.to === c && own.has(e.from)) && edges.some(e => e.from === c && own.has(e.to))) {
+        dimmed.delete(c);
       }
     }
     keep = next;
@@ -164,12 +181,20 @@ function bannerText(model: CriticalPathModel): string | null {
   return `${parts.join(" ")} Fix the links on GitHub.`;
 }
 
+/** Tracks the sidebar lens leaves visible, in export order (the track dropdown). */
+export function visibleTrackOrder(
+  model: CriticalPathModel,
+  visibleTracks: ReadonlySet<TrackKey> | undefined,
+): TrackKey[] {
+  return visibleTracks ? model.trackOrder.filter(k => visibleTracks.has(k)) : [...model.trackOrder];
+}
+
 export function renderCriticalPath(
   full: CriticalPathModel,
   f: CriticalFilter,
-  opts: { dark: boolean },
+  opts: { dark: boolean; visibleTracks?: ReadonlySet<TrackKey> },
 ): CriticalRender {
-  const { model, dimmed } = filterCriticalPath(full, f);
+  const { model, dimmed } = filterCriticalPath(full, f, opts.visibleTracks);
   const base: CriticalRender = {
     mermaid: "", edgeCount: 0, tooLarge: false, banner: null,
     legend: [], empty: null, tooLargeMessage: null,
@@ -307,7 +332,7 @@ export function fitToCap(
   model: CriticalPathModel,
   f: CriticalFilter,
   selected: TrackKey,
-  opts: { dark: boolean; suppressAutoFit?: boolean },
+  opts: { dark: boolean; suppressAutoFit?: boolean; visibleTracks?: ReadonlySet<TrackKey> },
 ): { filter: CriticalFilter; render: CriticalRender; autoFiltered: string | null } {
   const first = renderCriticalPath(model, f, opts);
   if (!first.tooLarge || f.trackKey !== null || opts.suppressAutoFit) return { filter: f, render: first, autoFiltered: null };

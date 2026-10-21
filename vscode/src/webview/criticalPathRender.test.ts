@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TrackKey } from "../model.ts";
 import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
-import { filterCriticalPath, fitToCap, nextCritState, renderCriticalPath } from "./criticalPathRender.ts";
+import { filterCriticalPath, fitToCap, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
 
 const R = "r";
 const TA = "ta" as TrackKey;
@@ -269,6 +269,74 @@ describe("filterCriticalPath", () => {
     const f = filterCriticalPath(chain, { ...F, focusIssue: "r#5" });
     assert.deepEqual(f.model.issues.map(i => i.number).sort(), [1, 2, 5, 6, 7]);
     assert.equal(f.model.edges.length, 4);
+  });
+});
+
+describe("sidebar lens (visibleTracks)", () => {
+  // A: #1 (rank 0), #3 blocked by B's #2 (rank 1). B: #2 (rank 0), #4 (rank 0).
+  const m = model({
+    issues: [
+      node(1, 0),
+      node(2, 0, { trackKey: TB, trackName: "Beta" }),
+      node(3, 1),
+      node(4, 0, { trackKey: TB, trackName: "Beta" }),
+    ],
+    edges: [blocks(2, 3)],
+  });
+  const onlyA: ReadonlySet<TrackKey> = new Set([TA]);
+  const aLabels = (mermaid: string) => labels(mermaid).filter(l => l.includes("Alpha"));
+
+  it("hides the lensed-out track's issues; ranks of the rest are unchanged", () => {
+    const plain = renderCriticalPath(m, F, LIGHT);
+    const lens = renderCriticalPath(m, F, { ...LIGHT, visibleTracks: onlyA });
+    assert.ok(!lens.mermaid.includes("#4"), "B's #4 should be hidden");
+    assert.deepEqual(aLabels(lens.mermaid), aLabels(plain.mermaid));
+    assert.ok(labels(lens.mermaid).some(l => l.startsWith("1 · #3")));
+  });
+
+  it("keeps the other track's direct blocker of a visible issue, dimmed", () => {
+    const f = filterCriticalPath(m, F, onlyA);
+    assert.deepEqual(f.model.issues.map(i => i.number), [1, 2, 3]);
+    assert.deepEqual([...f.dimmed], ["r#2"]);
+    assert.match(renderCriticalPath(m, F, { ...LIGHT, visibleTracks: onlyA }).mermaid, /class i_2 dimmed/);
+  });
+
+  it("the track dropdown lists only visible tracks", () => {
+    assert.deepEqual(visibleTrackOrder(m, onlyA), [TA]);
+    assert.deepEqual(visibleTrackOrder(m, undefined), [TA, TB]);
+  });
+
+  it("no lens (every track visible) renders exactly as without one", () => {
+    const all: ReadonlySet<TrackKey> = new Set([TA, TB]);
+    assert.equal(
+      renderCriticalPath(m, F, { ...LIGHT, visibleTracks: all }).mermaid,
+      renderCriticalPath(m, F, LIGHT).mermaid,
+    );
+  });
+
+  it("a connector between two visible tracks is not dimmed; one from a filtered-out track is", () => {
+    const TC = "tc" as TrackKey;
+    const cm = model({
+      trackOrder: [TA, TB, TC],
+      issues: [node(1, 0), node(2, 1, { trackKey: TB, trackName: "Beta" }), node(5, 0, { trackKey: TC, trackName: "Gamma" })],
+      connectors: [{ id: "track:Alpha>Beta", dependencyTrack: "Alpha", dependentTrack: "Beta" }],
+      edges: [
+        { from: "r#1", to: "track:Alpha>Beta", kind: "track-dep" },
+        { from: "track:Alpha>Beta", to: "r#2", kind: "track-dep" },
+      ],
+    });
+    const lensed = filterCriticalPath(cm, F, new Set([TA, TB]));
+    assert.deepEqual(lensed.model.issues.map(i => i.number), [1, 2]);
+    assert.equal(lensed.dimmed.size, 0);
+    const byTrack = filterCriticalPath(cm, { ...F, trackKey: TB });
+    assert.deepEqual([...byTrack.dimmed], ["track:Alpha>Beta"]);
+  });
+
+  it("combines with the track filter and passes through fitToCap", () => {
+    const f = filterCriticalPath(m, { ...F, trackKey: TB }, onlyA);
+    assert.deepEqual(f.model.issues.map(i => i.number), []);
+    const r = fitToCap(m, F, TA, { ...LIGHT, visibleTracks: onlyA });
+    assert.ok(!r.render.mermaid.includes("#4"));
   });
 });
 
