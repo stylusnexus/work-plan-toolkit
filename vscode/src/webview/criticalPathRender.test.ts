@@ -307,3 +307,53 @@ describe("nextCritState", () => {
     assert.ok(s.note && !s.note.includes("\n"));
   });
 });
+
+describe("auto-fit then explicit clear", () => {
+  const big = () => {
+    const m = star(460);
+    m.issues.forEach((i, idx) => { if (idx > 230) { i.trackKey = TB; i.trackName = "Beta"; } });
+    return m;
+  };
+  const start = { mode: "critical" as const, filter: F, repo: R as string | null, autoFitSuppressed: false };
+
+  it("open over cap saves auto-fit; clear shows too-large with no auto filter; pick re-applies; repo change resets", () => {
+    // open: auto-fit applies the selected track and the host saves it
+    const fit1 = fitToCap(big(), start.filter, TA, { ...LIGHT, suppressAutoFit: start.autoFitSuppressed });
+    assert.equal(fit1.filter.trackKey, TA);
+    const s1 = nextCritState(start, { type: "autoFit", trackKey: TA });
+    assert.equal(s1.filter.trackKey, TA);
+    assert.equal(s1.autoFitSuppressed, false);
+
+    // user clears -> suppressed; no auto filter; too-large message
+    const s2 = nextCritState(s1, { type: "setTrackFilter", key: null });
+    assert.equal(s2.filter.trackKey, null);
+    assert.equal(s2.autoFitSuppressed, true);
+    const fit2 = fitToCap(star(460), s2.filter, TA, { ...LIGHT, suppressAutoFit: s2.autoFitSuppressed });
+    assert.equal(fit2.autoFiltered, null);
+    assert.equal(fit2.filter.trackKey, null);
+    assert.equal(fit2.render.tooLarge, true);
+    assert.ok(fit2.render.tooLargeMessage!.startsWith("Too large to draw (461 issues"));
+
+    // user picks another track -> applied, suppression off
+    const s3 = nextCritState(s2, { type: "setTrackFilter", key: TB });
+    assert.equal(s3.filter.trackKey, TB);
+    assert.equal(s3.autoFitSuppressed, false);
+
+    // clear again, then a repo change resets suppression
+    const s4 = nextCritState(s3, { type: "setTrackFilter", key: null });
+    assert.equal(s4.autoFitSuppressed, true);
+    assert.equal(nextCritState(s4, { type: "selectTrack", repo: "other" }).autoFitSuppressed, false);
+    // same-repo select keeps it; leaving and re-entering critical resets it
+    assert.equal(nextCritState(s4, { type: "selectTrack", repo: R }).autoFitSuppressed, true);
+    const out = nextCritState(s4, { type: "setMode", mode: "focus" });
+    assert.equal(nextCritState(out, { type: "setMode", mode: "critical" }).autoFitSuppressed, false);
+  });
+
+  it("showClosed and focus events update only their field", () => {
+    const a = nextCritState(start, { type: "setShowClosed", show: true });
+    assert.equal(a.filter.showClosed, true);
+    const b = nextCritState(a, { type: "setFocusIssue", id: `${R}#1` });
+    assert.equal(b.filter.focusIssue, `${R}#1`);
+    assert.equal(b.filter.showClosed, true);
+  });
+});

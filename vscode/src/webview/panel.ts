@@ -20,7 +20,7 @@ import { isWebviewMessage } from "./messages.ts";
 import type { GraphMode } from "./messages.ts";
 import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
 import { fitToCap, nextCritState } from "./criticalPathRender.ts";
-import type { CriticalFilter } from "./criticalPathRender.ts";
+import type { CriticalFilter, CritEvent } from "./criticalPathRender.ts";
 import type { CriticalViewOptions } from "./html.ts";
 
 // ---------------------------------------------------------------------------
@@ -99,6 +99,22 @@ export class WorkPlanPanel {
   private _critFilter: CriticalFilter = { trackKey: null, focusIssue: null, showClosed: false };
   /** Repo the critical-path filters were set against. */
   private _critRepo: string | null = null;
+  /** True after the user explicitly cleared the track filter (skips auto-fit). */
+  private _autoFitSuppressed = false;
+
+  /** Run a view-state transition through the pure reducer and store the result. */
+  private _apply(ev: CritEvent): string | null {
+    const next = nextCritState(
+      { mode: this._mode, filter: this._critFilter, repo: this._critRepo,
+        autoFitSuppressed: this._autoFitSuppressed },
+      ev,
+    );
+    this._mode = next.mode;
+    this._critFilter = next.filter;
+    this._critRepo = next.repo;
+    this._autoFitSuppressed = next.autoFitSuppressed;
+    return next.note;
+  }
   /** Theme-change subscription — re-renders so the graph follows the editor (#207). */
   private _themeSub: vscode.Disposable | undefined;
   /** Content key of the graph document currently shown; null after an empty state (#423). */
@@ -213,13 +229,7 @@ export class WorkPlanPanel {
     const selectedTrackKey = trackKey(track);
     // A new track resets "full" to "focus" and clears filters from another repo.
     if (selectedTrackKey !== this._currentTrackKey) {
-      const next = nextCritState(
-        { mode: this._mode, filter: this._critFilter, repo: this._critRepo },
-        { type: "selectTrack", repo: track.repo },
-      );
-      this._mode = next.mode;
-      this._critFilter = next.filter;
-      this._critRepo = next.repo;
+      this._apply({ type: "selectTrack", repo: track.repo });
     }
     this._currentTrackKey = selectedTrackKey;
 
@@ -296,12 +306,16 @@ export class WorkPlanPanel {
       return { graphDef: "", critical: { ...base, emptyMessage: "This track has no GitHub repo" } };
     }
     const model = computeCriticalPath(raw, repo);
-    const refreshed = nextCritState(
-      { mode: this._mode, filter: this._critFilter, repo: this._critRepo },
-      { type: "refresh", knownTracks: model.trackOrder, knownIssues: model.issues.map(i => i.id) },
-    );
-    this._critFilter = refreshed.filter;
-    const fit = fitToCap(model, this._critFilter, selected, { dark: isDark });
+    const refreshNote = this._apply({
+      type: "refresh", knownTracks: model.trackOrder, knownIssues: model.issues.map(i => i.id),
+    });
+    const fit = fitToCap(model, this._critFilter, selected, {
+      dark: isDark, suppressAutoFit: this._autoFitSuppressed,
+    });
+    // Save the auto-applied track so a later explicit clear is distinguishable.
+    if (fit.autoFiltered && fit.filter.trackKey) {
+      this._apply({ type: "autoFit", trackKey: fit.filter.trackKey });
+    }
     const focused = fit.filter.focusIssue
       ? model.issues.find(i => i.id === fit.filter.focusIssue)
       : undefined;
@@ -316,7 +330,7 @@ export class WorkPlanPanel {
         banner: fit.render.banner,
         legend: fit.render.legend.map(l => ({ label: l.label, color: l.color })),
         tooLargeMessage: fit.render.tooLargeMessage,
-        autoFilterNote: fit.autoFiltered ?? refreshed.note,
+        autoFilterNote: fit.autoFiltered ?? refreshNote,
         emptyMessage: fit.render.empty,
         trackOptions: model.trackOrder.map(k => ({ key: k, label: nameOf(k) })),
       },
@@ -344,7 +358,7 @@ export class WorkPlanPanel {
       matchOnDescription: true,
     });
     if (!picked) return;
-    this._critFilter = { ...this._critFilter, focusIssue: picked.id };
+    this._apply({ type: "setFocusIssue", id: picked.id });
     this._rerender();
   }
 
@@ -378,22 +392,22 @@ export class WorkPlanPanel {
         break;
       }
       case "setGraphMode": {
-        this._mode = raw.mode;
+        this._apply({ type: "setMode", mode: raw.mode });
         this._rerender();
         break;
       }
       case "setCriticalTrackFilter": {
-        this._critFilter = { ...this._critFilter, trackKey: raw.key };
+        this._apply({ type: "setTrackFilter", key: raw.key });
         this._rerender();
         break;
       }
       case "setShowClosed": {
-        this._critFilter = { ...this._critFilter, showClosed: raw.show };
+        this._apply({ type: "setShowClosed", show: raw.show });
         this._rerender();
         break;
       }
       case "clearFocusIssue": {
-        this._critFilter = { ...this._critFilter, focusIssue: null };
+        this._apply({ type: "setFocusIssue", id: null });
         this._rerender();
         break;
       }

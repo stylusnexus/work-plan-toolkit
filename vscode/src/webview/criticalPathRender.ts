@@ -303,10 +303,10 @@ export function fitToCap(
   model: CriticalPathModel,
   f: CriticalFilter,
   selected: TrackKey,
-  opts: { dark: boolean },
+  opts: { dark: boolean; suppressAutoFit?: boolean },
 ): { filter: CriticalFilter; render: CriticalRender; autoFiltered: string | null } {
   const first = renderCriticalPath(model, f, opts);
-  if (!first.tooLarge || f.trackKey !== null) return { filter: f, render: first, autoFiltered: null };
+  if (!first.tooLarge || f.trackKey !== null || opts.suppressAutoFit) return { filter: f, render: first, autoFiltered: null };
   const filter = { ...f, trackKey: selected };
   const name = model.issues.find(i => i.trackKey === selected)?.trackName ?? selected;
   return {
@@ -322,34 +322,70 @@ export function fitToCap(
 // View state transitions (kept pure so panel.ts stays glue-only)
 // ---------------------------------------------------------------------------
 
+export interface CritState {
+  mode: GraphMode;
+  filter: CriticalFilter;
+  repo: string | null;
+  /** True once the user explicitly cleared the track filter: skip auto-fit so the too-large message shows. */
+  autoFitSuppressed?: boolean;
+}
+
+export type CritEvent =
+  | { type: "selectTrack"; repo: string | null }
+  | { type: "refresh"; knownTracks: TrackKey[]; knownIssues: string[] }
+  | { type: "setMode"; mode: GraphMode }
+  | { type: "setTrackFilter"; key: TrackKey | null }
+  | { type: "autoFit"; trackKey: TrackKey }
+  | { type: "setShowClosed"; show: boolean }
+  | { type: "setFocusIssue"; id: string | null };
+
 /**
- * Next graph mode / critical filter / repo after a track selection or a data
+ * Next view state after a track selection, mode change, filter edit or data
  * refresh. Selecting in "full" resets to "focus" (today's behaviour); "critical"
- * survives. A new repo clears the track and issue filters (showClosed stays).
- * A refresh clears any filter whose target vanished and says so in `note`.
+ * survives. A new repo clears the track and issue filters (showClosed stays) and
+ * the auto-fit suppression. A refresh clears any filter whose target vanished and
+ * says so in `note`. An explicit track-filter clear sets autoFitSuppressed; any
+ * mode change or repo change resets it so auto-fit works on a fresh open.
  */
 export function nextCritState(
-  prev: { mode: GraphMode; filter: CriticalFilter; repo: string | null },
-  ev:
-    | { type: "selectTrack"; repo: string | null }
-    | { type: "refresh"; knownTracks: TrackKey[]; knownIssues: string[] },
-): { mode: GraphMode; filter: CriticalFilter; repo: string | null; note: string | null } {
-  if (ev.type === "selectTrack") {
-    const mode: GraphMode = prev.mode === "full" ? "focus" : prev.mode;
-    const filter = ev.repo === prev.repo
-      ? prev.filter
-      : { ...prev.filter, trackKey: null, focusIssue: null };
-    return { mode, filter, repo: ev.repo, note: null };
+  prev: CritState,
+  ev: CritEvent,
+): Required<CritState> & { note: string | null } {
+  const sup = prev.autoFitSuppressed ?? false;
+  const out = (p: Partial<CritState>, note: string | null = null) => ({
+    mode: prev.mode, filter: prev.filter, repo: prev.repo, autoFitSuppressed: sup, ...p, note,
+  });
+  switch (ev.type) {
+    case "selectTrack": {
+      const mode: GraphMode = prev.mode === "full" ? "focus" : prev.mode;
+      if (ev.repo === prev.repo) return out({ mode });
+      return out({
+        mode, repo: ev.repo, autoFitSuppressed: false,
+        filter: { ...prev.filter, trackKey: null, focusIssue: null },
+      });
+    }
+    case "setMode":
+      return out({ mode: ev.mode, autoFitSuppressed: false });
+    case "setTrackFilter":
+      return out({ filter: { ...prev.filter, trackKey: ev.key }, autoFitSuppressed: ev.key === null });
+    case "autoFit":
+      return out({ filter: { ...prev.filter, trackKey: ev.trackKey } });
+    case "setShowClosed":
+      return out({ filter: { ...prev.filter, showClosed: ev.show } });
+    case "setFocusIssue":
+      return out({ filter: { ...prev.filter, focusIssue: ev.id } });
+    case "refresh": {
+      let filter = prev.filter;
+      const notes: string[] = [];
+      if (filter.trackKey !== null && !ev.knownTracks.includes(filter.trackKey)) {
+        filter = { ...filter, trackKey: null };
+        notes.push("The filtered track no longer exists; showing all tracks.");
+      }
+      if (filter.focusIssue !== null && !ev.knownIssues.includes(filter.focusIssue)) {
+        filter = { ...filter, focusIssue: null };
+        notes.push("The focused issue no longer exists; focus cleared.");
+      }
+      return out({ filter }, notes.length ? notes.join(" ") : null);
+    }
   }
-  let filter = prev.filter;
-  const notes: string[] = [];
-  if (filter.trackKey !== null && !ev.knownTracks.includes(filter.trackKey)) {
-    filter = { ...filter, trackKey: null };
-    notes.push("The filtered track no longer exists; showing all tracks.");
-  }
-  if (filter.focusIssue !== null && !ev.knownIssues.includes(filter.focusIssue)) {
-    filter = { ...filter, focusIssue: null };
-    notes.push("The focused issue no longer exists; focus cleared.");
-  }
-  return { mode: prev.mode, filter, repo: prev.repo, note: notes.length ? notes.join(" ") : null };
 }
