@@ -40,6 +40,9 @@ A loading bar shows while the CLI fetch runs, and concurrent refreshes are coale
 ![Mermaid dependency graph and track detail](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/dependency-graph.png)
 *The dependency/flow graph and per-track detail panel — showing blockers, cross-track dependency chips, next-up flow, and per-issue move buttons.*
 
+![Critical-path view with a traced issue](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/critical-path.png)
+*The critical-path view (example data): columns by steps from startable, red ⛔ blocked and amber ⏳ waiting issues, and a clicked issue's chain faded in and printed as text with a Copy button.*
+
 ![Public-repo confirm modal](https://raw.githubusercontent.com/stylusnexus/work-plan-toolkit/main/vscode/media/screenshots/write-confirm-modal.png)
 *The "Write anyway / Keep private" modal before any write into a public repo.*
 

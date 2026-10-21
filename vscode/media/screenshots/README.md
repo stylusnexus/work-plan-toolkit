@@ -8,6 +8,7 @@ your dark theme is great, crop tight to the relevant UI.
 |---|---|
 | `sidebar-tree.png` | The **Work Plan sidebar** — repos → tracks, status dots, open counts, the ⚠ badge on the public repo. (You basically already have this.) |
 | `dependency-graph.png` | The **Mermaid dependency/flow graph + detail panel** — click a track so it's highlighted, with the issue table/blockers/next-up visible. |
+| `critical-path.png` | The **Show critical path** view with an issue clicked: columns by steps from startable, the text flow with Copy, red ⛔ / amber ⏳ marks. Captured from example data (`your-org/myapp`), not a real repo. |
 | `write-confirm-modal.png` | The **public-repo confirm modal** — right-click `work-plan-viewer` → Edit Track Fields → change status, capture the "Write anyway / Keep private" dialog. |
 | `untracked-bucket.png` | A repo's **⊘ Untracked (N)** node expanded, showing open issues in no track (right-click → Slot into a track). |
 | `onboarding.png` | The **empty-state welcome** — "No work-plan repos yet" with the **Add a repo** / **Set notes location** buttons. (Point `cliPath` at a fresh config to reproduce, or you already have it.) |
