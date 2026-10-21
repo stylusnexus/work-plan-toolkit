@@ -24,6 +24,8 @@ export interface CriticalViewOptions {
   autoFilterNote: string | null;
   emptyMessage: string | null;
   trackOptions: { key: string; label: string }[];
+  /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
+  nodeTitles?: Record<string, string>;
 }
 
 export interface WebviewHtmlOptions {
@@ -169,6 +171,9 @@ ${afterRun}
     });
   }
 ` : "";
+  // Tooltip text reaches the script as JSON; scriptJson keeps it from closing
+  // the <script> element. Critical mode only.
+  const titlesJson = scriptJson(mode === "critical" && o.critical?.nodeTitles ? o.critical.nodeTitles : null);
   const criticalPanel = mode === "critical" && o.critical
     ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] })
     : "";
@@ -324,6 +329,21 @@ ${criticalScript}
   // CSP-clean (this script already carries the nonce). Wired after Mermaid
   // finishes rendering (the loader dispatches "workplan:graph-rendered").
   // -------------------------------------------------------------------------
+  // Full-text hover tooltips for critical-graph nodes (their labels are
+  // shortened). Mermaid node group ids end in "-flowchart-<nodeId>-<n>".
+  var nodeTitles = ${titlesJson};
+  function applyNodeTitles(svg) {
+    if (!nodeTitles) { return; }
+    Array.prototype.forEach.call(svg.querySelectorAll("g.node"), function (g) {
+      var m = /-flowchart-(.+)-[0-9]+$/.exec(g.id || "");
+      if (!m || !Object.prototype.hasOwnProperty.call(nodeTitles, m[1])) { return; }
+      var t = document.createElementNS(svg.namespaceURI, "title");
+      t.setAttribute("class", "wp-tip");
+      t.textContent = nodeTitles[m[1]];
+      g.insertBefore(t, g.firstChild);
+    });
+  }
+
   var graphBound = false;
   function setupGraphControls() {
     var figure = document.querySelector(".graph-figure");
@@ -342,6 +362,7 @@ ${criticalScript}
       svg.style.width = vb0.width + "px";
       svg.style.height = vb0.height + "px";
     }
+    applyNodeTitles(svg);
 
     var state = { scale: 1, tx: 0, ty: 0 };
     function clamp(s) { return Math.min(8, Math.max(0.1, s)); }
@@ -411,6 +432,7 @@ ${criticalScript}
     // the cloned SVG onto a canvas (self-contained SVG → canvas isn't tainted).
     function cleanSvg() {
       var clone = svg.cloneNode(true);
+      Array.prototype.forEach.call(clone.querySelectorAll("title.wp-tip"), function (t) { t.parentNode.removeChild(t); });
       clone.style.transform = "";
       clone.removeAttribute("style");
       var g = graphSize();
@@ -857,6 +879,16 @@ const MODE_BUTTONS: { mode: GraphMode; label: string }[] = [
   { mode: "full", label: "Show full map" },
   { mode: "critical", label: "Show critical path" },
 ];
+
+/**
+ * JSON for embedding in an inline <script>: `<`, `>`, `&` and the two JS line
+ * separators become \u escapes, so no data string can close the element.
+ */
+function scriptJson(v: unknown): string {
+  return JSON.stringify(v)
+    .replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
 
 /** Colours reach a style attribute, so accept only a hex or a plain keyword. */
 function safeColor(c: string): string | null {

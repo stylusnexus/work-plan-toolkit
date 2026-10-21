@@ -305,6 +305,45 @@ describe("buildHtml — graph controls bind to the final svg", () => {
   });
 });
 
+describe("buildHtml — critical node tooltips", () => {
+  const hostile = '#7 </script><b>"x"</b> & \u2028 it\'s';
+  const crit = (nodeTitles?: Record<string, string>): WebviewHtmlOptions => ({
+    ...BASE, mode: "critical", critical: { ...CRIT, ...(nodeTitles ? { nodeTitles } : {}) },
+  });
+
+  it("embeds the titles so no title text can break out of the script", () => {
+    const html = buildHtml(crit({ i_7: hostile }));
+    assert.ok(!html.includes("</script><b>"), "title closed the script");
+    assert.ok(html.includes("\\u003c/script\\u003e"));
+    const bodies = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+      .filter(m => !/\bsrc=/.test(m[1]) && m[2].trim() !== "");
+    for (const m of bodies) assert.doesNotThrow(() => { new Function(m[2]); });
+  });
+
+  it("puts the full text in an svg <title> on the matching node, as text", () => {
+    const c = runControls(buildHtml(crit({ i_7: hostile })));
+    c.finishRender();
+    const tip = c.nodes[0].children.find(x => x.tag === "title");
+    assert.ok(tip, "node i_7 has no <title>");
+    assert.equal(tip!.textContent, hostile);
+    assert.equal(tip!.namespaceURI, "svg-ns");
+    assert.ok(!c.nodes[1].children.some(x => x.tag === "title"), "i_8 has no title entry");
+  });
+
+  it("uses textContent, never innerHTML, and strips tooltips from exports", () => {
+    const html = buildHtml(crit({ i_7: "x" }));
+    assert.ok(html.includes("t.textContent = nodeTitles[m[1]]"));
+    assert.ok(!/innerHTML/.test(html));
+    assert.ok(html.includes('clone.querySelectorAll("title.wp-tip")'));
+  });
+
+  it("focus and full modes carry no titles", () => {
+    for (const mode of ["focus", "full"] as const) {
+      const html = buildHtml({ ...BASE, mode, critical: { ...CRIT, nodeTitles: { i_7: "SECRET-T" } } });
+      assert.ok(!html.includes("SECRET-T"), mode);
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Inline-script syntax (regression guard)
@@ -521,6 +560,7 @@ const CRIT = {
   autoFilterNote: null as string | null,
   emptyMessage: null as string | null,
   trackOptions: [] as { key: string; label: string }[],
+  nodeTitles: undefined as Record<string, string> | undefined,
 };
 
 describe("buildHtml — graph mode buttons", () => {
@@ -758,6 +798,10 @@ describe("buildHtmlIfChanged — critical-path inputs (#423)", () => {
 
   it("mode change re-renders", () => {
     assert.ok(buildHtmlIfChanged(first.key, { ...base, mode: "full" }));
+  });
+
+  it("nodeTitles change re-renders", () => {
+    assert.ok(buildHtmlIfChanged(first.key, withCrit({ nodeTitles: { i_1: "#1 a" } })));
   });
 
   it("trackFilter, focusIssueLabel, showClosed and tooLargeMessage each re-render", () => {

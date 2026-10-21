@@ -36,6 +36,8 @@ export interface CriticalRender {
   empty: string | null;
   /** "Too large to draw (N issues, M links)…" when tooLarge, else null. */
   tooLargeMessage: string | null;
+  /** Mermaid node id -> full hover text for every drawn issue node; {} when nothing is drawn. */
+  nodeTitles: Record<string, string>;
 }
 
 const MAX_EDGES = 450;
@@ -220,7 +222,7 @@ export function renderCriticalPath(
   const { model, dimmed } = filterCriticalPath(full, f, opts.visibleTracks);
   const base: CriticalRender = {
     mermaid: "", edgeCount: 0, tooLarge: false, banner: null,
-    legend: [], empty: null, tooLargeMessage: null,
+    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {},
   };
 
   const openCount = model.issues.filter(i => i.state === "open").length;
@@ -340,7 +342,17 @@ export function renderCriticalPath(
         `${plural(edgeCount, "link", "links")}). Filter by track or focus on an issue.`,
     };
   }
-  return { ...base, mermaid, edgeCount, banner, legend };
+  // Labels are shortened; the hover text carries the full title (raw text: the
+  // webview sets it with textContent).
+  const nodeTitles: Record<string, string> = {};
+  for (const c of columns) {
+    for (const m of c.members) {
+      const track = `${m.trackName}${m.isRef ? " (ref)" : ""}${m.trackBlocked ? " ⛔" : ""}`;
+      const state = m.state === "closed" ? "closed" : m.inProgress ? "open, in progress" : "open";
+      nodeTitles[ids.get(m.id)!] = `#${m.number} ${m.title}\nTrack: ${track}\nState: ${state}`;
+    }
+  }
+  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles };
 }
 
 // ---------------------------------------------------------------------------

@@ -178,6 +178,26 @@ describe("renderCriticalPath", () => {
     );
   });
 
+  it("nodeTitles: Mermaid node id to the full, untruncated title with #N, track and state", () => {
+    const long = "y".repeat(120);
+    const m = model({
+      issues: [
+        node(1, 0, { title: long }),
+        node(2, 1, { trackKey: TB, trackName: "Beta", isRef: true, trackBlocked: true, inProgress: true }),
+        node(9, null, { state: "closed", unranked: false }),
+      ],
+      edges: [blocks(1, 2)],
+    });
+    const r = renderCriticalPath(m, F, LIGHT);
+    assert.deepEqual(Object.keys(r.nodeTitles).sort(), ["i_1", "i_2"]); // closed #9 not drawn
+    assert.equal(r.nodeTitles.i_1, `#1 ${long}\nTrack: Alpha\nState: open`);
+    assert.equal(r.nodeTitles.i_2, "#2 issue 2\nTrack: Beta (ref) ⛔\nState: open, in progress");
+    const rc = renderCriticalPath(m, { ...F, showClosed: true }, LIGHT);
+    assert.equal(rc.nodeTitles.i_9, "#9 issue 9\nTrack: Alpha\nState: closed");
+    assert.deepEqual(renderCriticalPath(model(), F, LIGHT).nodeTitles, {});
+    assert.deepEqual(renderCriticalPath(star(460), F, LIGHT).nodeTitles, {}); // too large: nothing drawn
+  });
+
   it("escaping: hostile and long titles", () => {
     const nasty = 'He said "hi" [x] | `y`';
     const long = "x".repeat(200);

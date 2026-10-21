@@ -340,6 +340,7 @@ export class WorkPlanPanel {
         autoFilterNote: fit.autoFiltered ?? refreshNote,
         emptyMessage: fit.render.empty,
         trackOptions: shownTracks.map(k => ({ key: k, label: nameOf(k) })),
+        nodeTitles: fit.render.nodeTitles,
       },
     };
   }
