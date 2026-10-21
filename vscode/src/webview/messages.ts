@@ -28,9 +28,34 @@ export interface OpenIssueMessage {
   number: number;
 }
 
-export interface SetFocusMessage {
-  type: "setFocus";
-  focus: boolean;
+export type GraphMode = "focus" | "full" | "critical";
+
+export interface SetGraphModeMessage {
+  type: "setGraphMode";
+  mode: GraphMode;
+}
+
+export interface SetCriticalTrackFilterMessage {
+  type: "setCriticalTrackFilter";
+  key: TrackKey | null;
+}
+
+export interface PickFocusIssueMessage {
+  type: "pickFocusIssue";
+}
+
+export interface ClearFocusIssueMessage {
+  type: "clearFocusIssue";
+}
+
+export interface SetShowClosedMessage {
+  type: "setShowClosed";
+  show: boolean;
+}
+
+export interface SetShowUnlinkedMessage {
+  type: "setShowUnlinked";
+  show: boolean;
 }
 
 export interface MoveIssueMessage {
@@ -89,10 +114,22 @@ export interface ExportGraphMessage {
   data: string;
 }
 
+/** Copy the traced issue flow as text; the host writes it to the clipboard. */
+export interface CopyTextMessage {
+  type: "copyText";
+  text: string;
+}
+
 export type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
-  | SetFocusMessage
+  | SetGraphModeMessage
+  | SetCriticalTrackFilterMessage
+  | PickFocusIssueMessage
+  | ClearFocusIssueMessage
+  | SetShowClosedMessage
+  | SetShowUnlinkedMessage
+  | CopyTextMessage
   | MoveIssueMessage
   | FilterMilestoneMessage
   | OpenTrackFileMessage
@@ -138,8 +175,18 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
         && (msg["number"] as number) > 0;
-    case "setFocus":
-      return typeof msg["focus"] === "boolean";
+    case "setGraphMode":
+      return msg["mode"] === "focus" || msg["mode"] === "full" || msg["mode"] === "critical";
+    case "setCriticalTrackFilter":
+      return msg["key"] === null || isTrackKey(msg["key"]);
+    case "pickFocusIssue":
+      return true; // no payload to validate
+    case "clearFocusIssue":
+      return true; // no payload to validate
+    case "setShowClosed":
+      return typeof msg["show"] === "boolean";
+    case "setShowUnlinked":
+      return typeof msg["show"] === "boolean";
     case "moveIssue":
       return typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
@@ -164,6 +211,8 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
     case "exportGraph":
       return (msg["format"] === "svg" || msg["format"] === "png")
         && typeof msg["data"] === "string" && (msg["data"] as string).length > 0;
+    case "copyText":
+      return typeof msg["text"] === "string" && msg["text"].length > 0 && msg["text"].length < 200_000;
     default:
       return false;
   }

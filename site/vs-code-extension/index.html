@@ -178,6 +178,7 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
 <ul>
 <li><strong>Tracks tree.</strong> Repos and their tracks with a status dot, open and closed counts, blocked and next-up hints, a public-repo badge, and a visibility and tier badge that flags a plan committed to a public repo's shared tier.</li>
 <li><strong>Dependency graph and detail panel.</strong> A Mermaid graph of next-up, depends-on, owns and blocks edges, including GitHub-native blocked-by links, with zoom, pan, fit-to-width and export as SVG or PNG. The detail panel lists issues by milestone with a progress bar, blockers, depends-on chips and next-up order.</li>
+<li><strong>Critical-path view.</strong> A third graph view that lays open issues out left to right by how many steps each is from startable, from GitHub blocked-by links and track <code>depends_on</code>. Issues two or more steps out are marked blocked and issues one step out waiting. Click an issue to fade everything outside its chain and read the chain as text, then copy it as numbered paths, a markdown task list or a work order.</li>
 <li><strong>Untracked bucket.</strong> Open issues that no track references, with a right-click action to slot one into a track and optional auto-slot suggestions, including an offline heuristic.</li>
 <li><strong>Lenses and sorting.</strong> Filter by milestone, status, blocked or stale tracks, and sort by blocked first, most open, name or least recently touched.</li>
 <li><strong>Search Issues.</strong> Title search with <code>%</code> wildcards, and label search with a <code>label:</code> prefix such as <code>label:security</code>.</li>
@@ -186,6 +187,10 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
 <figure>
 <img src="../assets/dependency-graph.png" width="1400" height="494" alt="Dependency graph for the track platform-health showing next-up issues #487 and #1556, a depends-on edge to the idea-mode track and blocking issue #4821, above the detail panel's issue table grouped by milestone.">
 <figcaption>The dependency graph and track detail panel.</figcaption>
+</figure>
+<figure>
+<img src="../assets/critical-path.png" width="1500" height="982" loading="lazy" alt="The critical-path view on example data: issues in columns labelled Startable now and 1, 2 and 3 steps from startable, a red blocked marker on issue #120 and #130, an amber waiting marker on #110, and above the graph the chain through #120 printed as text with a Copy button.">
+<figcaption>The critical-path view: columns by steps from startable, with one issue's chain traced and printed as text.</figcaption>
 </figure>
 <figure>
 <img src="../assets/untracked-bucket.png" width="776" height="210" loading="lazy" alt="The Untracked node in the Work Plan sidebar with three open issues and a context menu item reading Work Plan: Slot Untracked Issue into Track.">

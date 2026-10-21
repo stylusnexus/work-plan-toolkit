@@ -6,6 +6,30 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.21.0] - 2026-10-21
+
+### Added
+
+- **Critical-path view in the dependency graph (#445).** A third button,
+  **Show critical path**, lays open issues out left to right in columns by how
+  many steps each is from startable, using GitHub blocked-by/blocking links and
+  track `depends_on`. Numbers are steps, not priority, and only links that
+  exist on GitHub count. Issues in a loop get their own column. Issues with no
+  links collapse into one node (a checkbox draws them). A track filter,
+  focus-on-issue and show-closed narrow the view.
+- **Blocked and waiting marks.** Issues 2+ steps from startable, or in a loop,
+  are red with ⛔. Issues 1 step out are amber with ⏳. The track colour stays
+  on the border.
+- **Click an issue to trace its chain.** Everything outside what it waits on
+  and what it unblocks fades. Click it again, click empty space, or press Esc
+  to clear.
+- **The chain as text.** Above the graph: what the issue waits on, the issue,
+  what it unblocks, one issue per row. Issues reached by two branches are
+  drawn once and tagged. Click an issue number to trace from it.
+- **Copy the flow.** Pick numbers-only paths with an order line, a markdown
+  task list, or a numbered work order. The extension remembers the format.
+  Closed issues and status marks are left out of the copy.
+
 ## [0.20.3] - 2026-10-20
 
 ### Fixed

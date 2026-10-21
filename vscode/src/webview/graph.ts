@@ -35,7 +35,7 @@ export interface ToMermaidOptions {
  * classDef lines for the blocked / selected node classes, picked to read on the
  * editor's light or dark theme. Returned as Mermaid source lines.
  */
-function classDefLines(dark: boolean): string[] {
+export function classDefLines(dark: boolean): string[] {
   if (dark) {
     return [
       "  classDef blocked fill:#5b1d1d,stroke:#f87171,color:#fecaca",
@@ -574,7 +574,7 @@ function issueScope(track: Pick<Track, "repo" | "folder">): string {
  * titles are single-line in practice, but a crafted title on a tracked
  * public repo could embed one — so neutralise it defensively (#197).
  */
-function mermaidLabel(s: string): string {
+export function mermaidLabel(s: string): string {
   return s
     .replace(/[\r\n]+/g, " ")
     .replace(/&/g, "&amp;")
