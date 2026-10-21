@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.10.21+91a8a0b — 2026-10-21 (#558)
+
+feat(vscode): critical-path graph view
+
+### Added
+
+- **Critical-path view in the VS Code dependency graph (#445).** A third graph button, "Show critical path", lays open issues out left to right by how many steps each is from startable, using GitHub blocked-by/blocking links and track `depends_on`. Loops get their own column, unlinked issues collapse into one node, and a track filter, focus-on-issue and show-closed narrow the view.
+- **Blocked and waiting marks.** Issues 2+ steps from startable (or in a loop) are red with ⛔; issues 1 step out are amber with ⏳. The track colour stays on the border.
+- **Click an issue to trace its chain.** Everything outside what it waits on and what it unblocks fades. The chain is also printed as text above the graph, with converging branches tagged.
+- **Copy the flow.** A format dropdown and Copy button put the chain on the clipboard as numbers-only paths with an order line, a markdown task list, or a numbered work order.
+
+### Changed
+
+- Bump `@vscode` dependencies (#548).
+
+### Docs
+
+- `vscode/README.md`, `vscode/CHANGELOG.md` (0.21.0), the root README and the site pages describe the new view, with a screenshot and the three copy formats.
+
+### Verification
+
+- Extension 0.21.0: typecheck clean, 1073 tests pass, build and package succeed. CLI unchanged.
+- Follow-ups filed: #554 owner, #555 status, #556 milestone, #557 roll-up view.
+
+Refs #445
+
 ## 2026.10.20+24b316a — 2026-10-20 (#552)
 
 fix: block unsafe same-day CLI refresh build
