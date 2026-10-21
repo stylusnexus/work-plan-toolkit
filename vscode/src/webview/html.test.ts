@@ -580,6 +580,61 @@ describe("buildHtml — critical-path controls", () => {
   });
 });
 
+describe("buildHtml — nothing to draw (empty graphDef)", () => {
+  const empty = (graphDef: string): WebviewHtmlOptions => ({
+    ...BASE, graphDef, mode: "critical",
+    critical: {
+      ...CRIT, tooLargeMessage: "Too large to draw (9 issues, 600 links).",
+      legend: [{ label: "LEG-X", color: "#ffffff" }],
+    },
+  });
+
+  for (const g of ["", "  \n "]) {
+    it(`graphDef ${JSON.stringify(g)}: no mermaid element and no mermaid.run`, () => {
+      const html = buildHtml(empty(g));
+      assert.ok(!/<\w+[^>]*class="mermaid"/.test(html), "mermaid element emitted");
+      assert.ok(!html.includes("mermaid.run()).then"), "mermaid.run still called");
+      assert.ok(!html.includes("mermaid.initialize("), "mermaid still initialised");
+      assert.ok(!html.includes(`src="${BASE.mermaidUri}"`), "mermaid bundle still loaded");
+      assert.ok(html.includes("Too large to draw"), "message must still show");
+    });
+  }
+
+  it("zoom and export controls are disabled, so nothing posts empty data", () => {
+    const html = buildHtml(empty(""));
+    for (const id of ["graph-zoom-out", "graph-zoom-in", "graph-fit", "graph-reset", "graph-export-svg", "graph-export-png"]) {
+      const tag = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+      assert.ok(/\sdisabled\b/.test(tag), `${id} not disabled: ${tag}`);
+    }
+  });
+
+  it("the legend is hidden when nothing is drawn", () => {
+    assert.ok(!buildHtml(empty("")).includes("LEG-X"));
+    assert.ok(buildHtml({ ...empty("graph LR\n  a --> b") }).includes("LEG-X"));
+  });
+
+  it("a non-empty graphDef still renders the mermaid element and runs mermaid", () => {
+    const html = buildHtml(empty("graph LR\n  a --> b"));
+    assert.ok(html.includes('<pre class="mermaid">graph LR'));
+    assert.ok(html.includes("mermaid.run()).then"));
+    const tag = html.match(/<button[^>]*id="graph-export-svg"[^>]*>/)?.[0] ?? "";
+    assert.ok(!/\sdisabled\b/.test(tag), tag);
+  });
+
+  it("inline scripts still parse with nothing to draw", () => {
+    const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
+    const html = buildHtml(empty(""));
+    let m: RegExpExecArray | null;
+    let n = 0;
+    while ((m = re.exec(html)) !== null) {
+      if (/\bsrc=/.test(m[1]) || m[2].trim() === "") continue;
+      n++;
+      assert.doesNotThrow(() => { new Function(m![2]); });
+    }
+    assert.ok(n >= 1);
+  });
+});
+
 describe("buildHtmlIfChanged — critical-path inputs (#423)", () => {
   const base: WebviewHtmlOptions = { ...BASE, mode: "critical", critical: { ...CRIT } };
   const first = buildHtmlIfChanged(null, base)!;

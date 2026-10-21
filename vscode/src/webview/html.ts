@@ -87,6 +87,9 @@ export interface WebviewHtmlOptions {
 export function buildHtml(o: WebviewHtmlOptions): string {
   const { cspSource, nonce, mermaidUri, graphDef, detailHtml, isModule, mode, isDark, hasTrackFile } = o;
   const trackNameEsc = esc(o.trackName);
+  // Nothing to draw (too large, empty, no repo): an empty <pre class="mermaid">
+  // makes Mermaid paint its "Syntax error" picture, so emit no graph at all.
+  const hasGraph = graphDef.trim() !== "";
 
   // Header "Open file" button. Text label (not a $(codicon) — the codicon font
   // isn't loaded in this webview; the package.json command keeps the icon for
@@ -116,12 +119,14 @@ export function buildHtml(o: WebviewHtmlOptions): string {
   // UMD path: <script nonce> loads the bundle (exposes global `mermaid`), then
   // a second nonce'd inline script initialises it.
   // ESM path: import + initialize in a single module script.
-  let loaderScript: string;
+  let loaderScript = "";
   // After Mermaid renders the SVG, signal the controller (#216) so it can wire
   // pan/zoom/export to the now-present <svg>. Promise.resolve() guards a mermaid
   // build whose run() is synchronous; a render failure still must not throw.
   const afterRun = `Promise.resolve(mermaid.run()).then(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); }).catch(function () { document.dispatchEvent(new Event("workplan:graph-rendered")); });`;
-  if (isModule) {
+  if (!hasGraph) {
+    // No Mermaid load or run; the zoom/export buttons render disabled below.
+  } else if (isModule) {
     loaderScript = `${scriptOpenTag}
 import mermaid from "${mermaidUri}";
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "${mermaidTheme}" });
@@ -161,7 +166,12 @@ ${afterRun}
     });
   }
 ` : "";
-  const criticalPanel = mode === "critical" && o.critical ? renderCriticalPanel(o.critical) : "";
+  const criticalPanel = mode === "critical" && o.critical
+    ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] })
+    : "";
+  // Zoom/export act on the drawn SVG; with no graph they are disabled so they
+  // can never post an export with empty data.
+  const ctlOff = hasGraph ? "" : ` disabled aria-disabled="true"`;
 
   // Message-passing script: click handlers → postMessage to extension host.
   // acquireVsCodeApi() must be called EXACTLY ONCE per document, so the focus
@@ -528,6 +538,7 @@ ${criticalScript}
       cursor: pointer;
     }
     .graph-ctl:hover { color: var(--link); border-color: var(--link); }
+    .graph-ctl[disabled] { opacity: 0.5; cursor: default; color: var(--fg); border-color: var(--border); }
     .graph-ctl:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
     /* The graph-figure is the pan/zoom VIEWPORT (#216): fixed-height, clipped,
        grab cursor. The card chrome moved here from .mermaid so the SVG can be
@@ -799,18 +810,18 @@ ${criticalScript}
     ${modeButtons}
     </div>
     <div class="graph-controls" role="group" aria-label="Graph zoom and export controls">
-      <button type="button" class="graph-ctl" id="graph-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
-      <button type="button" class="graph-ctl" id="graph-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-      <button type="button" class="graph-ctl" id="graph-fit" title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
-      <button type="button" class="graph-ctl" id="graph-reset" title="Reset to 100%" aria-label="Reset zoom to 100 percent">100%</button>
-      <button type="button" class="graph-ctl" id="graph-export-svg" title="Export graph as SVG" aria-label="Export graph as SVG">SVG</button>
-      <button type="button" class="graph-ctl" id="graph-export-png" title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
+      <button type="button" class="graph-ctl" id="graph-zoom-out"${ctlOff} title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <button type="button" class="graph-ctl" id="graph-zoom-in"${ctlOff} title="Zoom in" aria-label="Zoom in">+</button>
+      <button type="button" class="graph-ctl" id="graph-fit"${ctlOff} title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
+      <button type="button" class="graph-ctl" id="graph-reset"${ctlOff} title="Reset to 100%" aria-label="Reset zoom to 100 percent">100%</button>
+      <button type="button" class="graph-ctl" id="graph-export-svg"${ctlOff} title="Export graph as SVG" aria-label="Export graph as SVG">SVG</button>
+      <button type="button" class="graph-ctl" id="graph-export-png"${ctlOff} title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
     </div>
   </div>
   ${criticalPanel}
-  <div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
+  ${hasGraph ? `<div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
     <pre class="mermaid">${graphDef}</pre>
-  </div>
+  </div>` : ""}
 
   <h2>Detail</h2>
   <div class="detail-card">
