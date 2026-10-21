@@ -7,7 +7,7 @@
  */
 
 import type { Export, Issue, Track, TrackKey } from "../model.ts";
-import { trackKey } from "../model.ts";
+import { isBlocked, trackKey } from "../model.ts";
 
 export interface CritIssueNode {
   id: string;                 // `${repo}#${number}`
@@ -16,6 +16,8 @@ export interface CritIssueNode {
   trackKey: TrackKey; trackName: string; isRef: boolean; // chip: owner, or first referencer with isRef
   /** Every in-scope track that owns or references this issue, export order. Filters match on this. */
   memberTrackKeys: TrackKey[];
+  /** Chip track has any `blockers` entry: shows ⛔ on the chip, never affects rank. */
+  trackBlocked: boolean;
   rank: number | null;        // null for closed and for unranked
   unranked: boolean;          // in or downstream of a cycle
   inProgress: boolean;
@@ -74,6 +76,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
     nodes.set(id, {
       id, repo, number: issue.number, title: issue.title, state: issue.state,
       trackKey: trackKey(t), trackName: t.name, isRef, memberTrackKeys: [],
+      trackBlocked: isBlocked(t),
       rank: null, unranked: false, inProgress: issue.in_progress,
       downstreamDepth: 0, nextUpIndex: idx >= 0 ? idx : null,
     });

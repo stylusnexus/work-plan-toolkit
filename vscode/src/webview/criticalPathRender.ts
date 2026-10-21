@@ -277,7 +277,7 @@ export function renderCriticalPath(
 
   const label = (i: CritIssueNode): string => {
     const head = i.state === "closed" ? "✓" : i.unranked || i.rank === null ? "?" : String(i.rank);
-    const chip = `${text(i.trackName)}${i.isRef ? " (ref)" : ""}`;
+    const chip = `${i.trackBlocked ? "⛔ " : ""}${text(i.trackName)}${i.isRef ? " (ref)" : ""}`;
     return `${head} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chip}`;
   };
   for (const c of columns) for (const m of c.members) lines.push(`  ${ids.get(m.id)}["${label(m)}"]`);

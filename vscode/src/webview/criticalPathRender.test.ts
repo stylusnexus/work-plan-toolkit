@@ -13,7 +13,7 @@ const LIGHT = { dark: false };
 const node = (number: number, rank: number | null, extra: Partial<CritIssueNode> = {}): CritIssueNode => ({
   id: `${R}#${number}`, repo: R, number, title: `issue ${number}`,
   state: "open", trackKey: TA, trackName: "Alpha", isRef: false,
-  memberTrackKeys: [extra.trackKey ?? TA],
+  memberTrackKeys: [extra.trackKey ?? TA], trackBlocked: false,
   rank, unranked: rank === null, inProgress: false,
   downstreamDepth: 0, nextUpIndex: null, ...extra,
 });
@@ -87,6 +87,13 @@ describe("renderCriticalPath", () => {
     assert.ok(ls.some(l => l.includes("#2") && l.includes("Beta") && l.includes("ref")));
     assert.deepEqual(r.legend.map(l => l.label), ["Alpha", "Beta"]);
     assert.notEqual(r.legend[0].color, r.legend[1].color);
+  });
+
+  it("a blocked track's chip shows ⛔ next to the track label", () => {
+    const m = model({ issues: [node(1, 0, { trackBlocked: true }), node(2, 0, { trackKey: TB, trackName: "Beta" })] });
+    const ls = labels(renderCriticalPath(m, F, LIGHT).mermaid);
+    assert.ok(ls.some(l => l.includes("#1") && l.endsWith("▪ ⛔ Alpha")), ls.join(" | "));
+    assert.ok(ls.some(l => l.includes("#2") && l.endsWith("▪ Beta") && !l.includes("⛔")));
   });
 
   it("stub: one node and one edge; replaced by dimmed closed nodes with showClosed", () => {

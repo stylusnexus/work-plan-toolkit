@@ -170,6 +170,15 @@ describe("computeCriticalPath", () => {
     assert.equal(m.issues[0].trackName, "B");
   });
 
+  it("trackBlocked: set when the chip track has any blocker; rank unaffected", () => {
+    const a = trk("A", [iss(1)], { blockers: ["gated on go/no-go"] });
+    const b = trk("B", [iss(2)]);
+    const m = computeCriticalPath(exp(a, b), R);
+    assert.equal(m.issues.find(i => i.number === 1)!.trackBlocked, true);
+    assert.equal(m.issues.find(i => i.number === 2)!.trackBlocked, false);
+    assert.equal(rankOf(m, 1), 0);
+  });
+
   it("null repo returns an empty model", () => {
     const m = computeCriticalPath(exp(trk("A", [iss(1)])), null);
     assert.equal(m.issues.length, 0);
