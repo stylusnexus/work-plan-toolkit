@@ -38,12 +38,28 @@ describe("isWebviewMessage — valid messages", () => {
     );
   });
 
-  it("accepts a valid setFocus message (true)", () => {
-    assert.equal(isWebviewMessage({ type: "setFocus", focus: true }), true);
+  it("accepts setGraphMode with a valid mode", () => {
+    for (const mode of ["focus", "full", "critical"]) {
+      assert.equal(isWebviewMessage({ type: "setGraphMode", mode }), true);
+    }
   });
 
-  it("accepts a valid setFocus message (false)", () => {
-    assert.equal(isWebviewMessage({ type: "setFocus", focus: false }), true);
+  it("accepts setCriticalTrackFilter with null and with a track key", () => {
+    assert.equal(isWebviewMessage({ type: "setCriticalTrackFilter", key: null }), true);
+    assert.equal(
+      isWebviewMessage({ type: "setCriticalTrackFilter", key: '["repo-key","api-core"]' }),
+      true,
+    );
+  });
+
+  it("accepts pickFocusIssue and clearFocusIssue with no payload", () => {
+    assert.equal(isWebviewMessage({ type: "pickFocusIssue" }), true);
+    assert.equal(isWebviewMessage({ type: "clearFocusIssue" }), true);
+  });
+
+  it("accepts setShowClosed with a boolean", () => {
+    assert.equal(isWebviewMessage({ type: "setShowClosed", show: true }), true);
+    assert.equal(isWebviewMessage({ type: "setShowClosed", show: false }), true);
   });
 
   it("accepts a valid moveIssue message", () => {
@@ -248,13 +264,23 @@ describe("isWebviewMessage — rejects malformed payloads", () => {
     );
   });
 
-  // setFocus
-  it("rejects setFocus without focus field", () => {
-    assert.equal(isWebviewMessage({ type: "setFocus" }), false);
+  // setGraphMode / setCriticalTrackFilter / setShowClosed / removed setFocus
+  it("rejects setGraphMode with a bogus or missing mode", () => {
+    assert.equal(isWebviewMessage({ type: "setGraphMode", mode: "bogus" }), false);
+    assert.equal(isWebviewMessage({ type: "setGraphMode" }), false);
   });
 
-  it("rejects setFocus with string focus", () => {
-    assert.equal(isWebviewMessage({ type: "setFocus", focus: "true" }), false);
+  it("rejects setCriticalTrackFilter with a non-key string or number", () => {
+    assert.equal(isWebviewMessage({ type: "setCriticalTrackFilter", key: "not a key" }), false);
+    assert.equal(isWebviewMessage({ type: "setCriticalTrackFilter", key: 5 }), false);
+  });
+
+  it("rejects setShowClosed with a non-boolean", () => {
+    assert.equal(isWebviewMessage({ type: "setShowClosed", show: "yes" }), false);
+  });
+
+  it("rejects the removed setFocus message", () => {
+    assert.equal(isWebviewMessage({ type: "setFocus", focus: true }), false);
   });
 
   // moveIssue

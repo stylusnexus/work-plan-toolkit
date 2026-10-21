@@ -28,9 +28,29 @@ export interface OpenIssueMessage {
   number: number;
 }
 
-export interface SetFocusMessage {
-  type: "setFocus";
-  focus: boolean;
+export type GraphMode = "focus" | "full" | "critical";
+
+export interface SetGraphModeMessage {
+  type: "setGraphMode";
+  mode: GraphMode;
+}
+
+export interface SetCriticalTrackFilterMessage {
+  type: "setCriticalTrackFilter";
+  key: TrackKey | null;
+}
+
+export interface PickFocusIssueMessage {
+  type: "pickFocusIssue";
+}
+
+export interface ClearFocusIssueMessage {
+  type: "clearFocusIssue";
+}
+
+export interface SetShowClosedMessage {
+  type: "setShowClosed";
+  show: boolean;
 }
 
 export interface MoveIssueMessage {
@@ -92,7 +112,11 @@ export interface ExportGraphMessage {
 export type WebviewMessage =
   | SelectTrackMessage
   | OpenIssueMessage
-  | SetFocusMessage
+  | SetGraphModeMessage
+  | SetCriticalTrackFilterMessage
+  | PickFocusIssueMessage
+  | ClearFocusIssueMessage
+  | SetShowClosedMessage
   | MoveIssueMessage
   | FilterMilestoneMessage
   | OpenTrackFileMessage
@@ -138,8 +162,16 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         && typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
         && (msg["number"] as number) > 0;
-    case "setFocus":
-      return typeof msg["focus"] === "boolean";
+    case "setGraphMode":
+      return msg["mode"] === "focus" || msg["mode"] === "full" || msg["mode"] === "critical";
+    case "setCriticalTrackFilter":
+      return msg["key"] === null || isTrackKey(msg["key"]);
+    case "pickFocusIssue":
+      return true; // no payload to validate
+    case "clearFocusIssue":
+      return true; // no payload to validate
+    case "setShowClosed":
+      return typeof msg["show"] === "boolean";
     case "moveIssue":
       return typeof msg["number"] === "number"
         && Number.isInteger(msg["number"])
