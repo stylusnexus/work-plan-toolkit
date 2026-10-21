@@ -42,8 +42,23 @@ export interface CriticalRender {
   nodeTitles: Record<string, string>;
   /** Drawn links as [from, to] Mermaid node ids, for the webview's click-to-trace; [] when nothing is drawn. */
   nodeLinks: [string, string][];
+  /** Mermaid node id -> status of drawn open issues that are not startable; absent when startable, in progress or closed. */
+  nodeStatus: Record<string, IssueStatus>;
   /** Open issues in the filtered set with no rank-carrying link (drawn or collapsed). */
   unlinkedCount: number;
+}
+
+/**
+ * "blocked": two or more steps from startable (a blocker is itself blocked) or
+ * stuck in a loop; "waiting": one step from startable. Startable, in-progress
+ * and closed issues carry none.
+ */
+export type IssueStatus = "blocked" | "waiting";
+
+export function issueStatus(i: Pick<CritIssueNode, "state" | "rank" | "unranked" | "inProgress">): IssueStatus | null {
+  if (i.state === "closed" || i.inProgress) return null;
+  if (i.unranked || i.rank === null) return "blocked";
+  return i.rank >= 2 ? "blocked" : i.rank === 1 ? "waiting" : null;
 }
 
 const MAX_EDGES = 450;
@@ -251,7 +266,7 @@ export function renderCriticalPath(
   const { dimmed } = filtered;
   const base: CriticalRender = {
     mermaid: "", edgeCount: 0, tooLarge: false, banner: null,
-    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, nodeLinks: [], unlinkedCount: 0,
+    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, nodeLinks: [], nodeStatus: {}, unlinkedCount: 0,
   };
   let model = filtered.model;
 
@@ -344,6 +359,13 @@ export function renderCriticalPath(
   legendKeys.forEach((k, n) => {
     lines.push(`  classDef chip${n} ${neutral},stroke:${chipColor(trackIdx(k), opts.dark)},stroke-width:3px`);
   });
+  // Status tints the fill only: the stroke stays the track colour.
+  lines.push(opts.dark
+    ? "  classDef statBlocked fill:#5b1d1d,color:#fecaca"
+    : "  classDef statBlocked fill:#fee2e2,color:#7f1d1d");
+  lines.push(opts.dark
+    ? "  classDef statWaiting fill:#4d3a06,color:#fde68a"
+    : "  classDef statWaiting fill:#fef3c7,color:#78350f");
   lines.push("  classDef dimmed stroke-dasharray:4 3,opacity:0.55");
   lines.push("  classDef outside stroke-dasharray:2 3");
 
@@ -365,7 +387,8 @@ export function renderCriticalPath(
   const label = (i: CritIssueNode): string => {
     const head = i.state === "closed" ? "✓" : i.unranked || i.rank === null ? "?" : String(i.rank);
     const chip = `${i.trackBlocked ? "⛔ " : ""}${text(i.trackName)}${i.isRef ? " (ref)" : ""}`;
-    return `${head} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chip}`;
+    const st = issueStatus(i);
+    return `${head}${st === "blocked" ? " ⛔" : st === "waiting" ? " ⏳" : ""} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chip}`;
   };
   for (const m of drawnIssues) lines.push(`  ${ids.get(m.id)}["${label(m)}"]`);
   if (hiddenCount > 0) {
@@ -399,6 +422,10 @@ export function renderCriticalPath(
     const members = model.issues.filter(i => i.trackKey === k).map(i => ids.get(i.id)!);
     lines.push(`  class ${members.join(",")} chip${n}`);
   });
+  for (const st of ["blocked", "waiting"] as const) {
+    const members = drawnIssues.filter(m => issueStatus(m) === st).map(m => ids.get(m.id)!);
+    if (members.length) lines.push(`  class ${members.join(",")} ${st === "blocked" ? "statBlocked" : "statWaiting"}`);
+  }
   const dimIds = [
     ...[...dimmed].map(id => ids.get(id)).filter((x): x is string => x !== undefined),
     ...(f.showClosed ? done.map(i => ids.get(i.id)!) : []),
@@ -428,7 +455,12 @@ export function renderCriticalPath(
       nodeTitles[ids.get(m.id)!] = `#${m.number} ${m.title}\nTrack: ${track}\nState: ${state}`;
     }
   }
-  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, nodeLinks, unlinkedCount: unlinked.length };
+  const nodeStatus: Record<string, IssueStatus> = {};
+  for (const m of drawnIssues) {
+    const st = issueStatus(m);
+    if (st) nodeStatus[ids.get(m.id)!] = st;
+  }
+  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, nodeLinks, nodeStatus, unlinkedCount: unlinked.length };
 }
 
 // ---------------------------------------------------------------------------

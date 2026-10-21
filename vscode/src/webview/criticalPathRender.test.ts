@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TrackKey } from "../model.ts";
 import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
-import { filterCriticalPath, fitToCap, lensVisibleIssues, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
+import { filterCriticalPath, fitToCap, issueStatus, lensVisibleIssues, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
 
 const R = "r";
 const TA = "ta" as TrackKey;
@@ -73,7 +73,7 @@ describe("renderCriticalPath", () => {
     ]);
     for (const c of cols) assert.ok(!/rank/i.test(c), c);
     // the node keeps its number at the start
-    assert.ok(labels(out).some(l => l.startsWith("3 · #4")));
+    assert.ok(labels(out).some(l => l.startsWith("3 ⛔ · #4")));
   });
 
   it("columns are chained with invisible links", () => {
@@ -179,6 +179,28 @@ describe("renderCriticalPath", () => {
       renderCriticalPath(one, F, LIGHT).banner,
       "These block each other: #4 → #4. 1 more issue waits on them. Fix the links on GitHub.",
     );
+  });
+
+  it("status: rank 1 waiting, rank 2+ or loop blocked; startable, in progress and closed carry none", () => {
+    const m = model({
+      issues: [
+        node(1, 0), node(2, 1), node(3, 2), node(4, null, { unranked: true }),
+        node(5, 3, { inProgress: true }), node(9, null, { state: "closed", unranked: false }),
+      ],
+      edges: [blocks(1, 2), blocks(2, 3)],
+    });
+    assert.equal(issueStatus(m.issues[0]), null);
+    assert.equal(issueStatus(m.issues[1]), "waiting");
+    assert.equal(issueStatus(m.issues[2]), "blocked");
+    assert.equal(issueStatus(m.issues[3]), "blocked");
+    assert.equal(issueStatus(m.issues[4]), null);
+    assert.equal(issueStatus(m.issues[5]), null);
+    const r = renderCriticalPath(m, { ...F, showClosed: true }, LIGHT);
+    assert.deepEqual(r.nodeStatus, { i_2: "waiting", i_3: "blocked", i_4: "blocked" });
+    assert.match(r.mermaid, /classDef statBlocked fill:#fee2e2/);
+    assert.match(r.mermaid, /class i_3,i_4 statBlocked/);
+    assert.match(r.mermaid, /class i_2 statWaiting/);
+    assert.deepEqual(renderCriticalPath(star(460), F, LIGHT).nodeStatus, {});
   });
 
   it("nodeLinks: drawn links as Mermaid id pairs, none when nothing is drawn", () => {
@@ -347,7 +369,7 @@ describe("sidebar lens (visibleTracks)", () => {
     const lens = renderCriticalPath(m, F, { ...LIGHT, visibleTracks: onlyA });
     assert.ok(!lens.mermaid.includes("#4"), "B's #4 should be hidden");
     assert.deepEqual(aLabels(lens.mermaid), aLabels(plain.mermaid));
-    assert.ok(labels(lens.mermaid).some(l => l.startsWith("1 · #3")));
+    assert.ok(labels(lens.mermaid).some(l => l.startsWith("1 ⏳ · #3")));
   });
 
   it("keeps the other track's direct blocker of a visible issue, dimmed", () => {
@@ -425,7 +447,7 @@ describe("unlinked issues collapse (display only)", () => {
     const r = renderCriticalPath(m(), COLLAPSED, LIGHT);
     assert.deepEqual(drawn(r.mermaid).sort(), ["#1", "#2", "#5"]);
     assert.ok(labels(r.mermaid).some(l => l.startsWith("0 · #1")));
-    assert.ok(labels(r.mermaid).some(l => l.startsWith("1 · #2")));
+    assert.ok(labels(r.mermaid).some(l => l.startsWith("1 ⏳ · #2")));
     assert.ok(labels(r.mermaid).includes("2 startable issues with no links (hidden)"));
     assert.equal(r.unlinkedCount, 2);
     // the summary sits in the Startable now column and carries no number

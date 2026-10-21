@@ -32,6 +32,8 @@ export interface CriticalViewOptions {
   nodeTitles?: Record<string, string>;
   /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
   nodeLinks?: [string, string][];
+  /** Mermaid node id -> "blocked" | "waiting" for the text flow rows. */
+  nodeStatus?: Record<string, "blocked" | "waiting">;
 }
 
 export interface WebviewHtmlOptions {
@@ -187,6 +189,7 @@ ${afterRun}
   // the <script> element. Critical mode only.
   const titlesJson = scriptJson(mode === "critical" && o.critical?.nodeTitles ? o.critical.nodeTitles : null);
   const linksJson = scriptJson(mode === "critical" && o.critical?.nodeLinks ? o.critical.nodeLinks : null);
+  const statusJson = scriptJson(mode === "critical" && o.critical?.nodeStatus ? o.critical.nodeStatus : null);
   const criticalPanel = mode === "critical" && o.critical
     ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] })
     : "";
@@ -358,6 +361,7 @@ ${criticalScript}
   }
 
   var nodeLinks = ${linksJson};
+  var nodeStatus = ${statusJson};
   function critNodeId(g) {
     var m = /(?:^|-)flowchart-(.+)-[0-9]+$/.exec(g.id || "");
     return m ? m[1] : null;
@@ -405,6 +409,8 @@ ${criticalScript}
     row.className = 'flow-step' + (cls ? ' ' + cls : '');
     row.setAttribute('title', p.full);
     if (cls === 'flow-pick') { row.setAttribute('aria-current', 'step'); }
+    var st = nodeStatus && Object.prototype.hasOwnProperty.call(nodeStatus, id) ? nodeStatus[id] : null;
+    if (st) { row.className += ' flow-' + st; }
     var num = document.createElement('button');
     num.type = 'button';
     num.className = 'flow-num';
@@ -414,6 +420,13 @@ ${criticalScript}
     var title = document.createElement('span');
     title.className = 'flow-title';
     title.textContent = p.title;
+    if (st) {
+      var glyph = document.createElement('span');
+      glyph.className = 'flow-glyph';
+      glyph.textContent = st === 'blocked' ? '⛔' : '⏳';
+      glyph.setAttribute('title', st === 'blocked' ? 'Blocked' : 'Waiting');
+      row.appendChild(glyph);
+    }
     row.appendChild(num);
     row.appendChild(title);
     return row;
@@ -699,6 +712,8 @@ ${criticalScript}
       --dep-blocking-fg: var(--vscode-charts-purple, #b267e6);
       --dep-blocking-bg: color-mix(in srgb, var(--dep-blocking-fg) 18%, transparent);
       --link: var(--vscode-textLink-foreground, #4fc1ff);
+      --status-blocked: var(--chip-fg);
+      --status-waiting: var(--depends-fg);
     }
     * { box-sizing: border-box; }
     body {
@@ -751,9 +766,16 @@ ${criticalScript}
     .crit-flow .flow-join { opacity: 0.7; font-style: italic; }
     .crit-flow .flow-pick { background: var(--card-bg); font-weight: bold; box-shadow: inset 3px 0 0 var(--link); }
     .crit-flow .flow-pick .flow-title { opacity: 1; }
+    .crit-flow .flow-blocked { border-left: 3px solid var(--status-blocked); background: color-mix(in srgb, var(--status-blocked) 14%, transparent); }
+    .crit-flow .flow-waiting { border-left: 3px dashed var(--status-waiting); background: color-mix(in srgb, var(--status-waiting) 14%, transparent); }
+    .crit-flow .flow-glyph { flex: none; }
     .crit-flow .flow-more { opacity: 0.7; }
     .crit-legend { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
     .crit-legend li { display: inline-flex; gap: 4px; align-items: center; }
+    .crit-status { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; margin: 4px 0 0; padding: 0; }
+    .crit-status li { display: inline-flex; gap: 4px; align-items: center; }
+    .sw-blocked { background: color-mix(in srgb, var(--status-blocked) 35%, transparent); }
+    .sw-waiting { background: color-mix(in srgb, var(--status-waiting) 35%, transparent); }
     .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
     .focus-toggle {
       font-size: 0.8em;
@@ -1131,6 +1153,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ${note("crit-note", c.autoFilterNote)}
     ${note("crit-note", c.emptyMessage)}
     <div class="crit-flow" id="crit-flow" aria-live="polite">Click an issue in the graph to see its flow as text.</div>
+    ${legendItems ? `<ul class="crit-status" aria-label="Status"><li><span class="legend-swatch sw-blocked"></span> ⛔ Blocked: 2+ steps from startable, or in a loop</li><li><span class="legend-swatch sw-waiting"></span> ⏳ Waiting: 1 step from startable</li></ul>` : ""}
     ${legendItems ? `<ul class="crit-legend" aria-label="Legend">${legendItems}</ul>` : ""}
   </div>`;
 }

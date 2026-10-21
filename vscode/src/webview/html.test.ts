@@ -398,6 +398,7 @@ describe("buildHtml — critical node tooltips", () => {
     assert.ok(html.includes("showFlow(id)"));
     assert.ok(html.includes("branches converge"));
     assert.ok(html.includes("onFlowPick(id)"));
+    assert.ok(html.includes("flow-blocked") && html.includes("--status-waiting"));
     assert.ok(!/innerHTML/.test(html));
   });
 

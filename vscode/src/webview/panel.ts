@@ -346,6 +346,7 @@ export class WorkPlanPanel {
         trackOptions: shownTracks.map(k => ({ key: k, label: nameOf(k) })),
         nodeTitles: fit.render.nodeTitles,
         nodeLinks: fit.render.nodeLinks,
+        nodeStatus: fit.render.nodeStatus,
       },
     };
   }
