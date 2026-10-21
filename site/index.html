@@ -215,7 +215,7 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
    "name": "Is there a VS Code extension?",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "Yes. Work Plan Viewer (stylusnexus.work-plan-viewer) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write."
+    "text": "Yes. Work Plan Viewer (stylusnexus.work-plan-viewer) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph with a critical-path view, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write."
    }
   },
   {
@@ -353,7 +353,7 @@ cd work-plan-toolkit &amp;&amp; ./install.sh   # Windows PowerShell: .\install.p
 <dt>Can a team share tracks?</dt>
 <dd><p>Yes. Shared tracks live inside the repository at <code>.work-plan/&lt;slug&gt;.md</code> and travel with <code>git pull</code> and <code>git push</code>. The <code>plan-branch</code> command can pin them to one canonical branch, by default an orphan <code>work-plan/plan</code> branch, so planning stays out of code branches and pull requests. Private tracks stay in your local <code>notes_root</code>.</p></dd>
 <dt>Is there a VS Code extension?</dt>
-<dd><p>Yes. Work Plan Viewer (<code>stylusnexus.work-plan-viewer</code>) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write.</p></dd>
+<dd><p>Yes. Work Plan Viewer (<code>stylusnexus.work-plan-viewer</code>) is on the VS Code Marketplace and Open VSX. It adds a sidebar tree of repos and tracks, a Mermaid dependency graph with a critical-path view, issue search and confirm-gated writes, and it runs the work-plan CLI for every read and write.</p></dd>
 <dt>Does the CLI call an AI model?</dt>
 <dd><p>No. The AI-assisted subcommands <code>group</code>, <code>suggest-priorities</code> and <code>auto-triage</code> print a prompt for your agent session, the agent saves a JSON answer, and you re-run the command with <code>--apply</code>. <code>auto-triage --heuristic</code> works offline with no model at all.</p></dd>
 </dl>
