@@ -332,6 +332,17 @@ ${criticalScript}
     if (!figure || !svg || !svg.isConnected) { return; }
     graphBound = true;
 
+    // Scale 1 = natural size: size the svg to its viewBox in CSS px (Mermaid
+    // sizes it to the container width), so 100% and Fit share one base.
+    var vb0 = svg.viewBox && svg.viewBox.baseVal;
+    if (vb0 && vb0.width > 0 && vb0.height > 0) {
+      svg.setAttribute("width", String(vb0.width));
+      svg.setAttribute("height", String(vb0.height));
+      svg.style.maxWidth = "none";
+      svg.style.width = vb0.width + "px";
+      svg.style.height = vb0.height + "px";
+    }
+
     var state = { scale: 1, tx: 0, ty: 0 };
     function clamp(s) { return Math.min(8, Math.max(0.1, s)); }
     function apply() {
@@ -431,7 +442,7 @@ ${criticalScript}
       img.src = url;
     });
 
-    fit(); // initial fit-to-width so a dense map is navigable from the start
+    fit(); // initial fit of the whole graph so a dense map is navigable from the start
   }
 
   // An svg being present is no proof the render finished: mermaid.run() inserts

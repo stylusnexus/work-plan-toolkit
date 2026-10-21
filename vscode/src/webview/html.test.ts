@@ -293,6 +293,16 @@ describe("buildHtml — graph controls bind to the final svg", () => {
     }
   });
 
+  it("scale 1 is the viewBox size, and the initial fit uses that same base", () => {
+    const c = runControls(buildHtml(BASE));
+    c.finishRender();
+    assert.equal(c.finalSvg.attrs.width, "2000");
+    assert.equal(c.finalSvg.attrs.height, "1000");
+    assert.equal(c.finalSvg.style.width, "2000px");
+    assert.equal(c.finalSvg.style.maxWidth, "none");
+    // figure 1000x540, pad 24: min(976/2000, 516/1000) = 0.488
+    assert.match(c.finalSvg.style.transform, /scale\(0\.488\)/);
+  });
 });
 
 
