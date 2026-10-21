@@ -97,7 +97,7 @@ export function filterCriticalPath(
   const dimmed = new Set<string>();
   if (f.trackKey !== null) {
     const own = new Set(
-      model.issues.filter(i => keep.has(i.id) && i.trackKey === f.trackKey).map(i => i.id),
+      model.issues.filter(i => keep.has(i.id) && i.memberTrackKeys.includes(f.trackKey!)).map(i => i.id),
     );
     const next = new Set(own);
     const connectorIds = new Set(model.connectors.map(c => c.id));

@@ -13,6 +13,7 @@ const LIGHT = { dark: false };
 const node = (number: number, rank: number | null, extra: Partial<CritIssueNode> = {}): CritIssueNode => ({
   id: `${R}#${number}`, repo: R, number, title: `issue ${number}`,
   state: "open", trackKey: TA, trackName: "Alpha", isRef: false,
+  memberTrackKeys: [extra.trackKey ?? TA],
   rank, unranked: rank === null, inProgress: false,
   downstreamDepth: 0, nextUpIndex: null, ...extra,
 });
@@ -237,6 +238,27 @@ describe("filterCriticalPath", () => {
     assert.deepEqual([...f.dimmed], ["r#1"]);
     assert.deepEqual(f.model.issues.map(i => i.rank), [0, 1, 2]);
     assert.equal(f.model.edges.length, 2);
+  });
+
+  it("by track: matches referenced issues and every owner, chip unchanged", () => {
+    const TX = "tx" as TrackKey;
+    const mm = model({
+      trackOrder: [TA, TB, TX],
+      issues: [
+        // owned by B, referenced by X
+        node(1, 0, { trackKey: TB, trackName: "Beta", memberTrackKeys: [TB, TX] }),
+        // owned by A and B
+        node(2, 0, { trackKey: TA, trackName: "Alpha", memberTrackKeys: [TA, TB] }),
+        node(3, 0, { trackKey: TA, trackName: "Alpha" }),
+      ],
+    });
+    const ids = (k: TrackKey) => filterCriticalPath(mm, { ...F, trackKey: k }).model.issues.map(i => i.number);
+    assert.deepEqual(ids(TX), [1]);
+    assert.deepEqual(ids(TB), [1, 2]);
+    assert.deepEqual(ids(TA), [2, 3]);
+    assert.deepEqual(filterCriticalPath(mm, { ...F, trackKey: TX }).dimmed.size, 0);
+    const out = renderCriticalPath(mm, { ...F, trackKey: TX }, LIGHT).mermaid;
+    assert.ok(labels(out).some(l => l.includes("#1") && l.includes("Beta")));
   });
 
   it("focus issue: full upstream and downstream closure only", () => {

@@ -14,6 +14,8 @@ export interface CritIssueNode {
   repo: string; number: number; title: string;
   state: "open" | "closed";
   trackKey: TrackKey; trackName: string; isRef: boolean; // chip: owner, or first referencer with isRef
+  /** Every in-scope track that owns or references this issue, export order. Filters match on this. */
+  memberTrackKeys: TrackKey[];
   rank: number | null;        // null for closed and for unranked
   unranked: boolean;          // in or downstream of a cycle
   inProgress: boolean;
@@ -71,7 +73,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
     const idx = t.next_up.indexOf(issue.number);
     nodes.set(id, {
       id, repo, number: issue.number, title: issue.title, state: issue.state,
-      trackKey: trackKey(t), trackName: t.name, isRef,
+      trackKey: trackKey(t), trackName: t.name, isRef, memberTrackKeys: [],
       rank: null, unranked: false, inProgress: issue.in_progress,
       downstreamDepth: 0, nextUpIndex: idx >= 0 ? idx : null,
     });
@@ -79,6 +81,13 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
   };
   for (const t of scope) for (const i of t.issues) add(t, i, false);
   for (const t of scope) for (const i of t.references ?? []) add(t, i, true);
+  for (const t of scope) {
+    const k = trackKey(t);
+    for (const i of [...t.issues, ...(t.references ?? [])]) {
+      const members = nodes.get(`${repo}#${i.number}`)!.memberTrackKeys;
+      if (!members.includes(k)) members.push(k);
+    }
+  }
   const isOpen = (id: string): boolean => nodes.get(id)?.state === "open";
 
   // preds: blocker -> dependent edges stored as dependent -> blockers.

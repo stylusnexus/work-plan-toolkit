@@ -142,6 +142,27 @@ describe("computeCriticalPath", () => {
     assert.equal(m.issues[0].isRef, false);
   });
 
+  it("memberTrackKeys: owner and referencers in export order; chip stays the owner", () => {
+    const shared = iss(1);
+    const x = trk("X", [], { references: [shared] });
+    const y = trk("Y", [shared]);
+    const m = computeCriticalPath(exp(x, y), R);
+    const n = m.issues[0];
+    assert.deepEqual(n.memberTrackKeys, [trackKey(x), trackKey(y)]);
+    assert.equal(n.trackKey, trackKey(y));
+    assert.equal(n.trackName, "Y");
+    assert.equal(n.isRef, false);
+  });
+
+  it("memberTrackKeys: an issue owned by two tracks lists both, no duplicates", () => {
+    const shared = iss(1);
+    const a = trk("A", [shared], { references: [shared] });
+    const b = trk("B", [shared]);
+    const m = computeCriticalPath(exp(a, b), R);
+    assert.deepEqual(m.issues[0].memberTrackKeys, [trackKey(a), trackKey(b)]);
+    assert.equal(m.issues[0].trackName, "A");
+  });
+
   it("referenced only gets ref chip", () => {
     const b = trk("B", [], { references: [iss(1)] });
     const m = computeCriticalPath(exp(b), R);
