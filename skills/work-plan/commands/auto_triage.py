@@ -97,6 +97,34 @@ Rules:
 """
 
 
+def _batch_body(batch_id, active_tracks, untracked, limit):
+    """The data section the prompt refers to as "below": batch_id, existing
+    tracks, untracked issues. Shared by the terminal flow and --json so the
+    prompt handed to an agent is always self-contained."""
+    lines = [f"batch_id: {batch_id}  (copy into the answers JSON)", "",
+             "Existing tracks:"]
+    for t in active_tracks:
+        slug = t.meta.get("track", t.name)
+        milestone = t.meta.get("milestone_alignment", "—")
+        priority = t.meta.get("launch_priority", "—")
+        scope = t.meta.get("scope") or t.meta.get("description") or ""
+        scope_txt = f" — {scope}" if scope else ""
+        lines.append(f"  {slug}  [{priority}, {milestone}]{scope_txt}")
+    lines += ["", "Untracked issues to assign:"]
+    shown = untracked[:limit]
+    for i in shown:
+        num = i.get("number", "?")
+        title = i.get("title", "")
+        milestone = i.get("milestone") or {}
+        m_title = milestone.get("title", "—") if isinstance(milestone, dict) else "—"
+        labels = [lb["name"] for lb in (i.get("labels") or [])]
+        lines.append(f"  #{num} [{m_title}] [{','.join(labels) or 'no-labels'}] {title}")
+    remainder = len(untracked) - len(shown)
+    if remainder > 0:
+        lines.append(f"  … and {remainder} more issues (use --limit=N to show more)")
+    return "\n".join(lines) + "\n"
+
+
 def run(args: list[str]) -> int:
     apply_mode = "--apply" in args
     heuristic = "--heuristic" in args
@@ -238,7 +266,7 @@ def run(args: list[str]) -> int:
     # answers a Claude session writes back (#241). No human prose on stdout.
     if "--json" in args:
         print(json.dumps({**batch_obj,
-                          "prompt": PROMPT_TEMPLATE,
+                          "prompt": PROMPT_TEMPLATE + _batch_body(batch_id, active_tracks, untracked, limit),
                           "answers_path": str(_answers_path(repo))}))
         return 0
 
@@ -247,31 +275,7 @@ def run(args: list[str]) -> int:
     print("=" * 60)
     print(PROMPT_TEMPLATE)
 
-    print(f"batch_id: {batch_id}  (copy into the answers JSON)")
-    print()
-    print("Existing tracks:")
-    for t in active_tracks:
-        slug = t.meta.get("track", t.name)
-        milestone = t.meta.get("milestone_alignment", "—")
-        priority = t.meta.get("launch_priority", "—")
-        scope = t.meta.get("scope") or t.meta.get("description") or ""
-        scope_txt = f" — {scope}" if scope else ""
-        print(f"  {slug}  [{priority}, {milestone}]{scope_txt}")
-
-    print()
-    print("Untracked issues to assign:")
-    shown = untracked[:limit]
-    for i in shown:
-        num = i.get("number", "?")
-        title = i.get("title", "")
-        milestone = i.get("milestone") or {}
-        m_title = milestone.get("title", "—") if isinstance(milestone, dict) else "—"
-        labels = [lb["name"] for lb in (i.get("labels") or [])]
-        print(f"  #{num} [{m_title}] [{','.join(labels) or 'no-labels'}] {title}")
-    remainder = len(untracked) - len(shown)
-    if remainder > 0:
-        print(f"  … and {remainder} more issues (use --limit=N to show more)")
-
+    print(_batch_body(batch_id, active_tracks, untracked, limit))
     print("=" * 60)
     print()
     if heuristic:

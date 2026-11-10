@@ -362,6 +362,12 @@ class AutoTriageJsonScanTest(unittest.TestCase):
         self.assertEqual({i["number"] for i in data["untracked"]}, {4501, 4502})
         self.assertIn("prompt", data)
         self.assertIn("answers_path", data)
+        # The prompt must be self-contained: the viewer hands ONLY this text to
+        # the agent, so batch_id, track slugs and issues have to be inside it.
+        self.assertIn(data["batch_id"], data["prompt"])
+        self.assertIn("auth-flow", data["prompt"])
+        self.assertIn("#4501", data["prompt"])
+        self.assertIn("#4502", data["prompt"])
         # Track entries carry scope text for grounded matching.
         self.assertIn("scope", data["tracks"][0])
 
