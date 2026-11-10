@@ -121,6 +121,50 @@ class GuardedWriteTest(unittest.TestCase):
         self.assertIn("written", res)
 
 
+class OrderAndCommentsTest(unittest.TestCase):
+    """#568: slot must not re-sort a hand-ordered, commented issues list."""
+
+    SEED = (
+        "---\ntrack: alpha\nrepo: org/r\ngithub:\n  issues:\n"
+        "    # TIER 1 \u2014 launch blockers\n    - 9   # why 9\n"
+        "    # TIER 2 \u2014 later\n    - 2   # why 2\n---\nbody\n"
+    )
+
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "alpha.md"
+        self.path.write_text(self.SEED, encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_add_appends_and_keeps_existing_lines(self):
+        res = guarded_membership_write(self.path, add_nums=[5])
+        self.assertEqual(res, {"written": [2, 5, 9]})
+        meta, _ = parse_file(self.path)
+        self.assertEqual(meta["github"]["issues"], [9, 2, 5])
+        text = self.path.read_text(encoding="utf-8")
+        self.assertLess(text.index("# TIER 1"), text.index("- 9"))
+        self.assertLess(text.index("- 9"), text.index("# TIER 2"))
+        self.assertLess(text.index("# TIER 2"), text.index("- 2"))
+        self.assertIn("# why 9", text)
+        self.assertIn("# why 2", text)
+
+    def test_remove_keeps_order_of_the_rest(self):
+        guarded_membership_write(self.path, add_nums=[5])
+        guarded_membership_write(self.path, remove_nums=[2])
+        meta, _ = parse_file(self.path)
+        self.assertEqual(meta["github"]["issues"], [9, 5])
+        self.assertNotIn("why 2", self.path.read_text(encoding="utf-8"))
+
+    def test_demote_keeps_order_of_the_rest(self):
+        guarded_membership_write(self.path, add_nums=[5])
+        guarded_demote_write(self.path, nums=[2])
+        meta, _ = parse_file(self.path)
+        self.assertEqual(meta["github"]["issues"], [9, 5])
+        self.assertEqual(meta["github"]["references"], [2])
+
+
 class ReferenceFingerprintTest(unittest.TestCase):
 
     def test_order_independent(self):
