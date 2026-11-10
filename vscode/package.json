@@ -798,9 +798,18 @@
           "command": "workPlan.plans.clearConfirmation",
           "when": "false"
         },
-        { "command": "workPlan.plans.archive", "when": "false" },
-        { "command": "workPlan.plans.unarchive", "when": "false" },
-        { "command": "workPlan.plans.archiveAllShipped", "when": "false" },
+        {
+          "command": "workPlan.plans.archive",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.unarchive",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.plans.archiveAllShipped",
+          "when": "false"
+        },
         {
           "command": "workPlan.openTrackFile",
           "when": "false"
@@ -986,5 +995,8 @@
   },
   "dependencies": {
     "mermaid": "^12.2.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.5"
   }
 }
