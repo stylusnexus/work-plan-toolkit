@@ -6,6 +6,25 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.10+fc506de — 2026-11-10 (#565)
+
+fix(auto-triage): send full batch in AI prompt
+
+### Fixed
+
+- **Suggest Tracks (with AI) sends the agent the whole batch (#563).** The prompt from `auto-triage --json` held only the instructions, so the agent replied that the batch id, existing tracks and untracked issues were missing. The prompt now includes all three. Needs this CLI release; the terminal flow is unchanged.
+
+### Security
+
+- Cleared the four open Dependabot alerts: bundled dompurify 3.4.16 → 3.4.17 (one critical, one high, one low) and @azure/msal-node 6.0.1 → 7.2.1.
+- Cleared the remaining `npm audit` warnings: qs 6.17.1, and minimatch overridden to ^11.0.5. `npm audit` now reports 0.
+
+### Release
+
+- VS Code extension 0.21.1 (Marketplace + Open VSX) and the npm CLI.
+
+Source: 4970993c880f598c1a883008546ef6d0262596ca · Refs #563
+
 ## 2026.10.21+91a8a0b — 2026-10-21 (#558)
 
 feat(vscode): critical-path graph view
