@@ -6,6 +6,22 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.21.1] - 2026-11-09
+
+### Fixed
+
+- **Suggest Tracks (with AI) sends the agent everything it needs (#563).** The
+  prompt used to carry only the instructions, so the agent answered that the
+  batch id, the existing tracks and the untracked issues were missing. The
+  prompt now includes all three. Needs a CLI from this release; an older CLI
+  still sends the short prompt.
+
+### Security
+
+- Updated bundled dompurify to 3.4.17 (three advisories, one critical) and the
+  packaging tools' qs, minimatch and msal-node dependencies. `npm audit` now
+  reports no vulnerabilities.
+
 ## [0.21.0] - 2026-10-21
 
 ### Added
