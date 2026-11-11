@@ -60,7 +60,7 @@ class BuildExportTest(unittest.TestCase):
         self.assertEqual(t["folder"], "o/r")
         self.assertEqual(t["blockers"], [9]); self.assertEqual(t["next_up"], [1])
         self.assertEqual(t["rollup"], {"open": 1, "closed": 1})
-        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "blocked_by": [], "blocking": [], "labels": []})
+        self.assertEqual(t["issues"][0], {"number": 1, "title": "a", "state": "open", "assignee": "@eve", "milestone": None, "in_progress": False, "in_progress_label": False, "in_review": False, "blocked_by": [], "blocking": [], "labels": []})
         # Phase 2: next_up_preset must be present in every track
         self.assertIn("next_up_preset", t)
         self.assertEqual(t["next_up_preset"], "flow")  # default when no next_up_order in meta

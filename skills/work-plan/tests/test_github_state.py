@@ -352,6 +352,22 @@ class NormalizeGqlNodeTest(unittest.TestCase):
     def test_none_node_returns_none(self):
         self.assertIsNone(_normalize_gql_node(None))
 
+    def _in_review(self, *events):
+        return _normalize_gql_node({"number": 1, "timelineItems": {"nodes": list(events)}})["in_review"]
+
+    def test_in_review_from_open_non_draft_pr_cross_reference(self):
+        pr = lambda **kw: {"__typename": "CrossReferencedEvent", "source": {"__typename": "PullRequest", **kw}}
+        self.assertTrue(self._in_review(pr(state="OPEN", isDraft=False)))
+        self.assertFalse(self._in_review(pr(state="OPEN", isDraft=True)))
+        self.assertFalse(self._in_review(pr(state="MERGED", isDraft=False)))
+        self.assertFalse(self._in_review(
+            {"__typename": "CrossReferencedEvent", "source": {"__typename": "Issue"}}))
+        self.assertFalse(self._in_review())
+
+    def test_in_review_from_connected_pr(self):
+        self.assertTrue(self._in_review({"__typename": "ConnectedEvent", "subject": {
+            "__typename": "PullRequest", "state": "OPEN", "isDraft": False}}))
+
     def test_issue_node_normalized(self):
         out = _normalize_gql_node(_GQL_NODES["i487"])
         self.assertEqual(out["number"], 487)

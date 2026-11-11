@@ -243,10 +243,20 @@ def _normalize_gql_node(node) -> Optional[dict]:
     blocking, _bl_trunc = _deps("blocking")
     deps_truncated = _bb_trunc or _bl_trunc
 
+    in_review = False
+    for ev in (node.get("timelineItems") or {}).get("nodes") or []:
+        pr = ev.get("source") or ev.get("subject") or {}
+        if (pr.get("__typename") == "PullRequest"
+                and (pr.get("state") or "").upper() == "OPEN"
+                and not pr.get("isDraft")):
+            in_review = True
+            break
+
     return {
         "number": node.get("number"),
         "title": node.get("title", ""),
         "state": node.get("state", "OPEN"),
+        "in_review": in_review,
         "labels": labels,
         "milestone": {"title": ms["title"]} if ms and ms.get("title") else None,
         "closedAt": node.get("closedAt"),
@@ -285,6 +295,13 @@ _GQL_FIELDS_LEAN = (
 _GQL_ISSUE_DEPS = (
     " blockedBy(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
     " blocking(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
+    # Open PRs that mention or link the issue, for the viewer's "in review" status
+    # (#555). Timeline cross-references, not closedByPullRequestsReferences: that
+    # field only counts PRs targeting the default branch, and PRs here target dev.
+    " timelineItems(first: 50, itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT]) {"
+    " nodes { __typename"
+    " ... on CrossReferencedEvent { source { __typename ... on PullRequest { state isDraft } } }"
+    " ... on ConnectedEvent { subject { __typename ... on PullRequest { state isDraft } } } } }"
 )
 
 
