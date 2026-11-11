@@ -35,8 +35,8 @@ describe("computeRollup", () => {
       node(1, 0), node(2, 1), node(3, 2), node(4, null), node(5, 2, { inProgress: true }),
     ]));
     const t = r.tracks[0];
-    assert.deepEqual([t.startable, t.waiting, t.blocked], [2, 1, 2]);
-    assert.equal(t.startable + t.waiting + t.blocked, t.open);
+    assert.deepEqual([t.startable, t.inProgress, t.waiting, t.blocked], [1, 1, 1, 2]);
+    assert.equal(t.startable + t.inProgress + t.waiting + t.blocked, t.open);
   });
 
   it("next startable: rank 0, not started, graph work order, at most 3", () => {
@@ -70,11 +70,18 @@ describe("computeRollup", () => {
     assert.deepEqual(r.tracks.map(t => [t.label, t.open]), [["Alpha", 1]]);
   });
 
-  it("the sidebar lens hides tracks but not milestones", () => {
+  it("the sidebar lens narrows tracks and milestones alike", () => {
     const m = model([node(1, 0, { milestone: "v1" }), node(2, 0, { trackKey: TB, trackName: "Beta", milestone: "v1" })]);
     const r = computeRollup(m, new Set([TB]));
     assert.deepEqual(r.tracks.map(t => t.label), ["Beta"]);
-    assert.equal(r.milestones[0].open, 2);
+    assert.equal(r.milestones[0].open, 1);
+  });
+
+  it("milestones sort numerically: v2 before v10", () => {
+    const r = computeRollup(model([
+      node(1, 0, { milestone: "v10" }), node(2, 0, { milestone: "v2" }),
+    ]));
+    assert.deepEqual(r.milestones.map(x => x.label), ["v2", "v10"]);
   });
 
   it("milestones: sorted, with No milestone last", () => {

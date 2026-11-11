@@ -1230,24 +1230,48 @@ describe("buildHtml — critical owner, milestone, status controls", () => {
 describe("buildHtml — critical roll-up (#557)", () => {
   const rollup = {
     tracks: [{
-      label: "Alpha <b>x</b>", open: 1, closed: 3, startable: 1, waiting: 0, blocked: 0,
+      label: "Alpha <b>x</b>", open: 2, closed: 2, startable: 1, inProgress: 0, waiting: 1, blocked: 0,
       next: [{ number: 4, title: "do <i>it</i>" }],
       gating: [{ number: 9, title: "big", blocks: 5 }],
+    }, {
+      label: "Beta", open: 0, closed: 3, startable: 0, inProgress: 0, waiting: 0, blocked: 0, next: [], gating: [],
     }],
-    milestones: [{ label: "No milestone", open: 1, closed: 0, startable: 0, waiting: 1, blocked: 0, next: [], gating: [] }],
+    milestones: [{ label: "No milestone", open: 1, closed: 0, startable: 0, inProgress: 1, waiting: 0, blocked: 0, next: [], gating: [] }],
   };
   const html = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup } });
-  it("shows progress, counts, next and gating, escaping data", () => {
-    assert.match(html, /class="crit-rollup"/);
-    assert.ok(html.includes("3 of 4 closed (75%)"));
-    assert.ok(html.includes("#9 big (holds up 5)"));
-    assert.ok(html.includes("#4 do &lt;i&gt;it&lt;/i&gt;"));
-    assert.ok(!html.includes("Alpha <b>x</b>"));
-    assert.match(html, /<progress max="4" value="3"/);
+  it("headline in the summary, open by default, above the filters", () => {
+    assert.match(html, /<details class="crit-rollup" open>\s*<summary>Progress by track and milestone: 5 of 7 done \(71%\), 1 ready, 1 waiting, 0 stuck/);
+    assert.ok(html.indexOf('class="crit-rollup"') < html.indexOf('id="work-plan-critical-track"'));
   });
-  it("is absent when there is nothing to summarise", () => {
+  it("friendly column names that match the graph legend", () => {
+    for (const w of ["Ready to start", "In progress", "⏳ Waiting (1 step)", "⛔ Stuck (2+ steps)", "Pick up next", "Biggest blockers"]) {
+      assert.ok(html.includes(w), w);
+    }
+  });
+  it("lists, escaping, scroll region and decorative bar", () => {
+    assert.ok(html.includes("#9 <span title=\"big\">big</span>, blocks 5 issues"));
+    assert.ok(html.includes("#4 <span title=\"do &lt;i&gt;it&lt;/i&gt;\">do &lt;i&gt;it&lt;/i&gt;</span>"));
+    assert.ok(!html.includes("Alpha <b>x</b>"));
+    assert.match(html, /role="region" aria-labelledby="rollup-by-track" tabindex="0"/);
+    assert.match(html, /<progress max="4" value="2" aria-hidden="true"/);
+    assert.ok(html.includes("2 of 4 done (50%)"));
+  });
+  it("zero and empty states say something", () => {
+    assert.ok(html.includes("All done"));
+    assert.match(html, /crit-zero">0</);
+    assert.ok(html.includes("Nothing to start; all in progress"), "milestone row with only in-progress work");
+  });
+  it("explains its scope in plain text", () => {
+    assert.ok(html.includes("change only the graph"));
+    assert.ok(html.includes("Stuck: two or more steps away"));
+  });
+  it("an empty roll-up says so; a missing one adds nothing", () => {
     const none = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup: { tracks: [], milestones: [] } } });
-    assert.ok(!none.includes("crit-rollup\""));
-    assert.ok(!buildHtml({ ...BASE, mode: "critical", critical: CRIT }).includes("crit-rollup\""));
+    assert.ok(none.includes("Nothing to summarise yet"));
+    assert.ok(!buildHtml({ ...BASE, mode: "critical", critical: CRIT }).includes('class="crit-rollup"'));
+  });
+  it("an empty total never gives the bar max 0", () => {
+    const z = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup: { tracks: [{ label: "Z", open: 0, closed: 0, startable: 0, inProgress: 0, waiting: 0, blocked: 0, next: [], gating: [] }], milestones: [] } } });
+    assert.match(z, /<progress max="1" value="0"/);
   });
 });

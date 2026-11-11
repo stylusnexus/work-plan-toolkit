@@ -3,8 +3,9 @@
  * critical-path model — no new CLI data. Pure: no vscode imports.
  *
  * Counts follow the graph's marks (`issueStatus`): waiting is one step from
- * startable, blocked is two or more steps or in a loop, and every other open
- * issue counts as startable (an issue already in progress included).
+ * startable, blocked is two or more steps or in a loop. An issue already in
+ * progress is counted on its own, so startable + inProgress + waiting + blocked
+ * always equals open.
  */
 
 import type { TrackKey } from "../model.ts";
@@ -17,7 +18,9 @@ export interface RollupRow {
   label: string;
   open: number;
   closed: number;
+  /** Open, not started, and nothing in the way. */
   startable: number;
+  inProgress: number;
   waiting: number;
   blocked: number;
   /** Next issues to start, in the graph's work order. */
@@ -65,6 +68,7 @@ function row(
   const status = (i: CritIssueNode) => issueStatus(i);
   const waiting = open.filter(i => status(i) === "waiting").length;
   const blocked = open.filter(i => status(i) === "blocked").length;
+  const inProgress = open.filter(i => i.inProgress).length;
   const next = open
     .filter(i => !i.unranked && i.rank === 0 && !i.inProgress)
     .sort(cmp).slice(0, TOP).map(i => ({ number: i.number, title: i.title }));
@@ -74,7 +78,7 @@ function row(
     .slice(0, TOP).map(i => ({ number: i.number, title: i.title, blocks: blocks.get(i.id)! }));
   return {
     label, open: open.length, closed: issues.length - open.length,
-    startable: open.length - waiting - blocked, waiting, blocked, next, gating,
+    startable: open.length - waiting - blocked - inProgress, inProgress, waiting, blocked, next, gating,
   };
 }
 
@@ -102,10 +106,14 @@ export function computeRollup(
     .filter(t => t.own.length > 0)
     .map(t => row(model.issues.find(i => i.trackKey === t.k)!.trackName, t.own, cmp, blocks));
 
-  const labels = [...new Set(model.issues.map(i => i.milestone))];
+  // Milestones follow the same sidebar lens as tracks, so the two tables agree.
+  const inLens = (i: CritIssueNode): boolean =>
+    !visibleTracks || i.memberTrackKeys.some(k => visibleTracks.has(k));
+  const scoped = model.issues.filter(inLens);
+  const labels = [...new Set(scoped.map(i => i.milestone))];
   const milestones = labels
-    .sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
-    .map(m => row(m ?? NO_MILESTONE_LABEL, model.issues.filter(i => i.milestone === m), cmp, blocks));
+    .sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b, undefined, { numeric: true })))
+    .map(m => row(m ?? NO_MILESTONE_LABEL, scoped.filter(i => i.milestone === m), cmp, blocks));
 
   return { tracks, milestones };
 }
