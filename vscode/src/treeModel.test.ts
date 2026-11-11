@@ -987,6 +987,16 @@ describe("badgeCounts", () => {
   test("empty tracks", () => {
     assert.deepEqual(badgeCounts([]), { blocked: 0, open: 0 });
   });
+
+  test("repo scope counts only that repo's tracks", () => {
+    const tracks = [
+      t({ repo: "o/a", status: "blocked", rollup: { open: 3, closed: 0 } }),
+      t({ repo: "o/b", rollup: { open: 5, closed: 0 } }),
+    ];
+    assert.deepEqual(badgeCounts(tracks, "o/b"), { blocked: 0, open: 5 });
+    assert.deepEqual(badgeCounts(tracks, "o/a"), { blocked: 1, open: 3 });
+    assert.deepEqual(badgeCounts(tracks), { blocked: 1, open: 8 });
+  });
 });
 
 describe("buildTree — TrackNode.closed (#220)", () => {
