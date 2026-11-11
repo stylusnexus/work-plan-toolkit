@@ -352,6 +352,37 @@ class NormalizeGqlNodeTest(unittest.TestCase):
     def test_none_node_returns_none(self):
         self.assertIsNone(_normalize_gql_node(None))
 
+    def _in_review(self, *events):
+        return _normalize_gql_node({
+            "number": 5, "repository": {"nameWithOwner": "o/r"},
+            "timelineItems": {"nodes": list(events)},
+        })["in_review"]
+
+    @staticmethod
+    def _xref(body="Fixes #5", state="OPEN", draft=False, repo="o/r"):
+        return {"__typename": "CrossReferencedEvent", "source": {
+            "__typename": "PullRequest", "state": state, "isDraft": draft,
+            "body": body, "repository": {"nameWithOwner": repo}}}
+
+    def test_in_review_needs_open_non_draft_pr_with_closing_keyword(self):
+        self.assertTrue(self._in_review(self._xref("Fixes #5")))
+        self.assertTrue(self._in_review(self._xref("closes o/r#5")))
+        self.assertTrue(self._in_review(self._xref("Resolved: #5")))
+        self.assertFalse(self._in_review(self._xref("see #5")))
+        self.assertFalse(self._in_review(self._xref("Fixes #55")))
+        self.assertFalse(self._in_review(self._xref("Fixes #5", draft=True)))
+        self.assertFalse(self._in_review(self._xref("Fixes #5", state="MERGED")))
+        self.assertFalse(self._in_review(self._xref("Fixes #5", repo="x/y")))
+        self.assertFalse(self._in_review(
+            {"__typename": "CrossReferencedEvent", "source": {"__typename": "Issue"}}))
+        self.assertFalse(self._in_review())
+
+    def test_in_review_from_hand_linked_open_pr(self):
+        pr = lambda **kw: {"__typename": "ConnectedEvent", "subject": {
+            "__typename": "PullRequest", **kw}}
+        self.assertTrue(self._in_review(pr(state="OPEN", isDraft=False)))
+        self.assertFalse(self._in_review(pr(state="OPEN", isDraft=True)))
+
     def test_issue_node_normalized(self):
         out = _normalize_gql_node(_GQL_NODES["i487"])
         self.assertEqual(out["number"], 487)

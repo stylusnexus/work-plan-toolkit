@@ -387,3 +387,20 @@ describe("copyText message", () => {
     assert.ok(!isWebviewMessage({ type: "copyText", text: 5 }));
   });
 });
+
+describe("isWebviewMessage — critical-path owner, milestone, status filters", () => {
+  it("accepts a value or null", () => {
+    assert.ok(isWebviewMessage({ type: "setCriticalOwnerFilter", owner: "@eve" }));
+    assert.ok(isWebviewMessage({ type: "setCriticalOwnerFilter", owner: null }));
+    assert.ok(isWebviewMessage({ type: "setCriticalMilestoneFilter", milestone: "v1" }));
+    assert.ok(isWebviewMessage({ type: "setCriticalMilestoneFilter", milestone: null }));
+    assert.ok(isWebviewMessage({ type: "setCriticalStatusFilter", status: "in-review" }));
+    assert.ok(isWebviewMessage({ type: "setCriticalStatusFilter", status: null }));
+  });
+  it("rejects empty, wrong-type and unknown values", () => {
+    assert.ok(!isWebviewMessage({ type: "setCriticalOwnerFilter", owner: "" }));
+    assert.ok(!isWebviewMessage({ type: "setCriticalOwnerFilter", owner: 3 }));
+    assert.ok(!isWebviewMessage({ type: "setCriticalMilestoneFilter" }));
+    assert.ok(!isWebviewMessage({ type: "setCriticalStatusFilter", status: "blocked" }));
+  });
+});

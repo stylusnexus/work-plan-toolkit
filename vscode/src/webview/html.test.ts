@@ -617,6 +617,12 @@ describe("buildHtml — postMessage protocol", () => {
 
 const CRIT = {
   trackFilter: null as string | null,
+  owner: null as string | null,
+  milestone: null as string | null,
+  status: null as string | null,
+  ownerOptions: [] as string[],
+  milestoneOptions: [] as string[],
+  filterNote: null as string | null,
   focusIssueLabel: null as string | null,
   showClosed: false,
   banner: null as string | null,
@@ -1200,5 +1206,99 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
   it("the returned html is exactly buildHtml's output for the same options", () => {
     const o = optionsFor(first, "beta");
     assert.equal(buildHtmlIfChanged(null, o)!.html, buildHtml(o));
+  });
+});
+
+describe("buildHtml — critical owner, milestone, status controls", () => {
+  const html = buildHtml({
+    ...BASE, mode: "critical",
+    critical: { ...CRIT, ownerOptions: ["@eve"], milestoneOptions: ["v1"], owner: "@eve", status: "in-review", filterNote: "Left before v1 can close: 2" },
+  });
+  it("draws the three filters with Unassigned and No milestone choices, selection kept", () => {
+    assert.match(html, /id="work-plan-critical-owner"[\s\S]*value="__unassigned__"[\s\S]*value="@eve" selected/);
+    assert.match(html, /id="work-plan-critical-milestone"[\s\S]*value="__none__"[\s\S]*value="v1"/);
+    assert.match(html, /id="work-plan-critical-status"[\s\S]*value="in-review" selected/);
+    assert.ok(html.includes("Left before v1 can close: 2"));
+  });
+  it("posts the matching message types", () => {
+    for (const t of ["setCriticalOwnerFilter", "setCriticalMilestoneFilter", "setCriticalStatusFilter"]) {
+      assert.ok(html.includes(t), t);
+    }
+  });
+});
+
+describe("buildHtml — critical roll-up (#557)", () => {
+  const rollup = {
+    tracks: [{
+      label: "Alpha <b>x</b>", open: 2, closed: 2, startable: 1, inProgress: 0, waiting: 1, blocked: 0,
+      next: [{ number: 4, title: "do <i>it</i>" }],
+      gating: [{ number: 9, title: "big", blocks: 5 }],
+    }, {
+      label: "Beta", open: 0, closed: 3, startable: 0, inProgress: 0, waiting: 0, blocked: 0, next: [], gating: [],
+    }],
+    milestones: [{ label: "No milestone", open: 1, closed: 0, startable: 0, inProgress: 1, waiting: 0, blocked: 0, next: [], gating: [] }],
+  };
+  const html = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup } });
+  it("headline in the summary, open by default, above the filters", () => {
+    assert.match(html, /<details class="crit-rollup" open>\s*<summary>Progress by track and milestone: 5 of 7 done \(71%\), 1 ready, 1 waiting, 0 stuck/);
+    assert.ok(html.indexOf('class="crit-rollup"') < html.indexOf('id="work-plan-critical-track"'));
+  });
+  it("friendly column names that match the graph legend", () => {
+    for (const w of ["Ready to start", "In progress", "⏳ Waiting (1 step)", "⛔ Stuck (2+ steps)", "Pick up next", "Biggest blockers"]) {
+      assert.ok(html.includes(w), w);
+    }
+  });
+  it("lists, escaping, scroll region and decorative bar", () => {
+    assert.ok(html.includes("#9 <span title=\"big\">big</span>, blocks 5 issues"));
+    assert.ok(html.includes("#4 <span title=\"do &lt;i&gt;it&lt;/i&gt;\">do &lt;i&gt;it&lt;/i&gt;</span>"));
+    assert.ok(!html.includes("Alpha <b>x</b>"));
+    assert.match(html, /role="region" aria-labelledby="rollup-by-track" tabindex="0"/);
+    assert.match(html, /<div class="progress" aria-hidden="true"><div class="progress-fill" style="width:50%">/);
+    assert.ok(html.includes("2 of 4 done (50%)"));
+  });
+  it("zero and empty states say something", () => {
+    assert.ok(html.includes("All done"));
+    assert.match(html, /crit-zero">0</);
+    assert.ok(html.includes("Nothing to start; all in progress"), "milestone row with only in-progress work");
+  });
+  it("headers wrap at spaces only; the bar reuses the themed div bar (#573)", () => {
+    const rule = (sel: string): string => html.slice(html.indexOf(sel), html.indexOf("}", html.indexOf(sel)));
+    assert.ok(!rule(".crit-rollup-table th, .crit-rollup-table td").includes("overflow-wrap"));
+    assert.ok(rule('.crit-rollup-table th[scope="row"], .crit-rollup-table td:nth-child(7)').includes("overflow-wrap: anywhere"));
+    assert.ok(rule(".crit-rollup-table thead th").includes("min-width: 5.5em"));
+    assert.ok(!html.includes("<progress"), "no native progress element");
+    assert.ok(html.includes("--vscode-progressBar-background"));
+  });
+  it("explains its scope in plain text", () => {
+    assert.ok(html.includes("change only the graph"));
+    assert.ok(html.includes("Stuck: two or more steps away"));
+  });
+  it("an empty roll-up says so; a missing one adds nothing", () => {
+    const none = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup: { tracks: [], milestones: [] } } });
+    assert.ok(none.includes("Nothing to summarise yet"));
+    assert.ok(!buildHtml({ ...BASE, mode: "critical", critical: CRIT }).includes('class="crit-rollup"'));
+  });
+  it("an empty total gives a 0% bar, not NaN", () => {
+    const z = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup: { tracks: [{ label: "Z", open: 0, closed: 0, startable: 0, inProgress: 0, waiting: 0, blocked: 0, next: [], gating: [] }], milestones: [] } } });
+    assert.match(z, /class="progress-fill" style="width:0%"/);
+  });
+});
+
+describe("buildHtml — status filter on an older CLI (#555)", () => {
+  const page = (reviewSupported?: boolean): string => buildHtml({
+    ...BASE, mode: "critical",
+    critical: { ...CRIT, ...(reviewSupported === undefined ? {} : { reviewSupported }) },
+  });
+  it("disables In review and says why when the CLI cannot report it", () => {
+    const html = page(false);
+    assert.match(html, /<option value="in-review" disabled>In review \(needs a newer CLI\)<\/option>/);
+    assert.ok(html.includes("too old to report pull requests"));
+    assert.ok(html.includes("those issues show as not started"));
+  });
+  it("leaves In review alone when the CLI supports it, or support is unknown", () => {
+    for (const html of [page(true), page(undefined)]) {
+      assert.match(html, /<option value="in-review">In review<\/option>/);
+      assert.ok(!html.includes("too old to report pull requests"));
+    }
   });
 });

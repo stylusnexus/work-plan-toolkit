@@ -21,6 +21,12 @@ export interface CritIssueNode {
   rank: number | null;        // null for closed and for unranked
   unranked: boolean;          // in or downstream of a cycle
   inProgress: boolean;
+  /** An open, non-draft PR is linked (#555). */
+  inReview: boolean;
+  /** "@login", "@a, @b", or "—" when nobody is assigned (#554). */
+  assignee: string;
+  /** Short milestone label, or null (#556). */
+  milestone: string | null;
   downstreamDepth: number;    // longest open chain after this issue
   nextUpIndex: number | null; // position in its track's next_up
 }
@@ -35,6 +41,12 @@ export interface CriticalPathModel {
   edges: CritEdge[]; stubs: CritStub[]; cycles: CritCycle[];
   notes: string[];            // e.g. missing dependency track
   trackOrder: TrackKey[];
+  /**
+   * False when issues exist but none carries `in_review`: the CLI is too old to
+   * report pull requests, so "in review" can't be told from "not started" (#555).
+   * Absent reads as true.
+   */
+  reviewKnown?: boolean;
 }
 
 /** Same check as next_up.py's blocked_by gate: open and no open blockers. */
@@ -80,6 +92,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
       trackKey: trackKey(t), trackName: t.name, isRef, memberTrackKeys: [],
       trackBlocked: isBlocked(t),
       rank: null, unranked: false, inProgress: issue.in_progress,
+      inReview: issue.in_review === true, assignee: issue.assignee, milestone: issue.milestone,
       downstreamDepth: 0, nextUpIndex: idx >= 0 ? idx : null,
     });
     issueById.set(id, issue);
@@ -93,6 +106,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
       if (!members.includes(k)) members.push(k);
     }
   }
+  model.reviewKnown = issueById.size === 0 || [...issueById.values()].some(i => i.in_review !== undefined);
   const isOpen = (id: string): boolean => nodes.get(id)?.state === "open";
 
   // preds: blocker -> dependent edges stored as dependent -> blockers.

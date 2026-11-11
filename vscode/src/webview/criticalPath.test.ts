@@ -225,3 +225,16 @@ describe("computeCriticalPath", () => {
     assert.equal(m.issues.length, 3);
   });
 });
+
+describe("computeCriticalPath — review support (#555)", () => {
+  const without = (n: number): Issue => { const i = iss(n); delete (i as Partial<Issue>).in_review; return i; };
+  it("reviewKnown is false when issues exist but none carries in_review (an older CLI)", () => {
+    assert.equal(computeCriticalPath(exp(trk("a", [without(1), without(2)])), R).reviewKnown, false);
+  });
+  it("reviewKnown is true as soon as one issue carries the field, even as false", () => {
+    assert.equal(computeCriticalPath(exp(trk("a", [without(1), iss(2, [], { in_review: false })])), R).reviewKnown, true);
+  });
+  it("reviewKnown is true when there are no issues to judge by", () => {
+    assert.equal(computeCriticalPath(exp(trk("a", [])), R).reviewKnown, true);
+  });
+});

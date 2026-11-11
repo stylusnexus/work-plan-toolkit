@@ -21,8 +21,38 @@ import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
 import { classDefLines, mermaidLabel } from "./graph.ts";
 import type { GraphMode } from "./messages.ts";
 
+/** Owner filter value for issues nobody is assigned to (#554). */
+export const UNASSIGNED = "__unassigned__";
+/** Milestone filter value for issues with no milestone (#556). */
+export const NO_MILESTONE = "__none__";
+
+/** Where an issue is in its own lifecycle (#555); separate from blocked / waiting. */
+export type WorkStatus = "not-started" | "in-progress" | "in-review" | "done";
+/** The status filter: one status, or the open, startable ones nobody has begun. */
+export type StatusFilter = WorkStatus | "startable-not-started";
+
+export const STATUS_LABELS: Record<WorkStatus, string> = {
+  "not-started": "Not started", "in-progress": "In progress", "in-review": "In review", "done": "Done",
+};
+
+/** In review wins over in progress: an open PR is the later stage. */
+export function workStatus(i: Pick<CritIssueNode, "state" | "inProgress" | "inReview">): WorkStatus {
+  if (i.state === "closed") return "done";
+  if (i.inReview) return "in-review";
+  return i.inProgress ? "in-progress" : "not-started";
+}
+
+/** Logins in an assignee string ("@a, @b" or "—"). */
+export const assigneeLogins = (a: string): string[] =>
+  a === "—" ? [] : a.split(",").map(x => x.trim()).filter(x => x.length > 0);
+
 export interface CriticalFilter {
   trackKey: TrackKey | null;
+  /** An "@login", UNASSIGNED, or null for everyone. */
+  owner: string | null;
+  /** A milestone label, NO_MILESTONE, or null for all. */
+  milestone: string | null;
+  status: StatusFilter | null;
   focusIssue: string | null;
   showClosed: boolean;
   /** Draw startable issues that have no links; off collapses them into one summary node. */
@@ -46,6 +76,8 @@ export interface CriticalRender {
   nodeStatus: Record<string, IssueStatus>;
   /** Open issues in the filtered set with no rank-carrying link (drawn or collapsed). */
   unlinkedCount: number;
+  /** For a milestone filter: what is left before it can close; else null. */
+  filterNote: string | null;
 }
 
 /**
@@ -82,6 +114,21 @@ const chipColor = (idx: number, dark: boolean): string =>
 // ---------------------------------------------------------------------------
 // Filtering
 // ---------------------------------------------------------------------------
+
+/** Owner, milestone and status filters (#554-#556); each null = no restriction. */
+function attrKeeps(i: CritIssueNode, f: CriticalFilter): boolean {
+  if (f.owner !== null) {
+    const logins = assigneeLogins(i.assignee);
+    if (f.owner === UNASSIGNED ? logins.length > 0 : !logins.includes(f.owner)) return false;
+  }
+  if (f.milestone !== null && (f.milestone === NO_MILESTONE ? i.milestone !== null : i.milestone !== f.milestone)) {
+    return false;
+  }
+  if (f.status === "startable-not-started") {
+    return workStatus(i) === "not-started" && !i.unranked && i.rank === 0;
+  }
+  return f.status === null || workStatus(i) === f.status;
+}
 
 /** The sidebar lens in effect, or null when absent or every repo track is visible. */
 function activeLens(
@@ -152,9 +199,10 @@ export function filterCriticalPath(
   const lens = activeLens(model, visibleTracks);
   const dimmed = new Set<string>();
   const tk = f.trackKey;
-  if (tk !== null || lens !== null) {
+  const attrFilter = f.owner !== null || f.milestone !== null || f.status !== null;
+  if (tk !== null || lens !== null || attrFilter) {
     const matches = (i: CritIssueNode): boolean =>
-      (tk === null || i.memberTrackKeys.includes(tk)) && lensKeeps(i, lens);
+      (tk === null || i.memberTrackKeys.includes(tk)) && lensKeeps(i, lens) && attrKeeps(i, f);
     const own = new Set(model.issues.filter(i => keep.has(i.id) && matches(i)).map(i => i.id));
     const next = new Set(own);
     const connectorIds = new Set(model.connectors.map(c => c.id));
@@ -167,6 +215,19 @@ export function filterCriticalPath(
       if (own.has(e.from) && connectorIds.has(e.to)) {
         next.add(e.to);
         dimmed.add(e.to);
+      }
+    }
+    // A milestone filter also keeps everything upstream that still gates it (#556).
+    if (f.milestone !== null && f.milestone !== NO_MILESTONE) {
+      const todo = [...own];
+      while (todo.length) {
+        const cur = todo.pop()!;
+        for (const e of edges) {
+          if (e.to !== cur || !keep.has(e.from) || next.has(e.from)) continue;
+          next.add(e.from);
+          if (byId.has(e.from) || connectorIds.has(e.from)) dimmed.add(e.from);
+          todo.push(e.from);
+        }
       }
     }
     // A connector between two kept tracks is not from elsewhere: undim it.
@@ -266,7 +327,7 @@ export function renderCriticalPath(
   const { dimmed } = filtered;
   const base: CriticalRender = {
     mermaid: "", edgeCount: 0, tooLarge: false, banner: null,
-    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, nodeLinks: [], nodeStatus: {}, unlinkedCount: 0,
+    legend: [], empty: null, tooLargeMessage: null, nodeTitles: {}, nodeLinks: [], nodeStatus: {}, unlinkedCount: 0, filterNote: null,
   };
   let model = filtered.model;
 
@@ -388,7 +449,17 @@ export function renderCriticalPath(
     const head = i.state === "closed" ? "✓" : i.unranked || i.rank === null ? "?" : String(i.rank);
     const chip = `${i.trackBlocked ? "⛔ " : ""}${text(i.trackName)}${i.isRef ? " (ref)" : ""}`;
     const st = issueStatus(i);
-    return `${head}${st === "blocked" ? " ⛔" : st === "waiting" ? " ⏳" : ""} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chip}`;
+    const ws = workStatus(i);
+    const meta = [
+      ...(ws === "in-progress" || ws === "in-review" ? [STATUS_LABELS[ws].toLowerCase()] : []),
+      // Only what is set: an unassigned, milestone-less issue keeps today's short
+      // label (Mermaid's text cap bounds how many nodes fit). The hover text and
+      // the Owner / Milestone filters cover the empty cases.
+      ...(i.assignee === "—" ? [] : [i.assignee]),
+      ...(i.milestone === null ? [] : [i.milestone]),
+    ];
+    const chipLine = meta.length ? `${chip} · ${text(meta.join(" · "))}` : chip;
+    return `${head}${st === "blocked" ? " ⛔" : st === "waiting" ? " ⏳" : ""} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chipLine}`;
   };
   for (const m of drawnIssues) lines.push(`  ${ids.get(m.id)}["${label(m)}"]`);
   if (hiddenCount > 0) {
@@ -452,7 +523,8 @@ export function renderCriticalPath(
     for (const m of drawnIssues) {
       const track = `${m.trackName}${m.isRef ? " (ref)" : ""}${m.trackBlocked ? " ⛔" : ""}`;
       const state = m.state === "closed" ? "closed" : m.inProgress ? "open, in progress" : "open";
-      nodeTitles[ids.get(m.id)!] = `#${m.number} ${m.title}\nTrack: ${track}\nState: ${state}`;
+      nodeTitles[ids.get(m.id)!] = `#${m.number} ${m.title}\nTrack: ${track}\nState: ${state}` +
+        `\nOwner: ${m.assignee}\nMilestone: ${m.milestone ?? "none"}\nWork: ${STATUS_LABELS[workStatus(m)].toLowerCase()}`;
     }
   }
   const nodeStatus: Record<string, IssueStatus> = {};
@@ -460,7 +532,15 @@ export function renderCriticalPath(
     const st = issueStatus(m);
     if (st) nodeStatus[ids.get(m.id)!] = st;
   }
-  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, nodeLinks, nodeStatus, unlinkedCount: unlinked.length };
+  let filterNote: string | null = null;
+  if (f.milestone !== null && f.milestone !== NO_MILESTONE) {
+    const left = model.issues.filter(i => i.state === "open");
+    const own = left.filter(i => i.milestone === f.milestone).length;
+    const other = left.length - own;
+    filterNote = `Left before ${f.milestone} can close: ${plural(own, "open issue", "open issues")}` +
+      (other > 0 ? `, plus ${other} from other milestones that still gate ${other === 1 ? "it" : "them"} (dashed).` : ".");
+  }
+  return { ...base, mermaid, edgeCount, banner, legend, nodeTitles, nodeLinks, nodeStatus, unlinkedCount: unlinked.length, filterNote };
 }
 
 // ---------------------------------------------------------------------------
@@ -512,9 +592,14 @@ export type CritEvent =
       type: "refresh"; knownTracks: TrackKey[]; knownIssues: string[];
       /** Still in the data but hidden by the sidebar lens: changes the note, not the clearing. */
       hiddenTracks?: TrackKey[]; hiddenIssues?: string[];
+      /** When given, an owner / milestone filter whose value vanished from the data is cleared. */
+      knownOwners?: string[]; knownMilestones?: string[];
     }
   | { type: "setMode"; mode: GraphMode }
   | { type: "setTrackFilter"; key: TrackKey | null }
+  | { type: "setOwnerFilter"; owner: string | null }
+  | { type: "setMilestoneFilter"; milestone: string | null }
+  | { type: "setStatusFilter"; status: StatusFilter | null }
   | { type: "autoFit"; trackKey: TrackKey }
   | { type: "setShowClosed"; show: boolean }
   | { type: "setShowUnlinked"; show: boolean }
@@ -542,13 +627,19 @@ export function nextCritState(
       if (ev.repo === prev.repo) return out({ mode });
       return out({
         mode, repo: ev.repo, autoFitSuppressed: false,
-        filter: { ...prev.filter, trackKey: null, focusIssue: null },
+        filter: { ...prev.filter, trackKey: null, focusIssue: null, owner: null, milestone: null, status: null },
       });
     }
     case "setMode":
       return out({ mode: ev.mode, autoFitSuppressed: false });
     case "setTrackFilter":
       return out({ filter: { ...prev.filter, trackKey: ev.key }, autoFitSuppressed: ev.key === null });
+    case "setOwnerFilter":
+      return out({ filter: { ...prev.filter, owner: ev.owner } });
+    case "setMilestoneFilter":
+      return out({ filter: { ...prev.filter, milestone: ev.milestone } });
+    case "setStatusFilter":
+      return out({ filter: { ...prev.filter, status: ev.status } });
     case "autoFit":
       return out({ filter: { ...prev.filter, trackKey: ev.trackKey } });
     case "setShowClosed":
@@ -573,6 +664,15 @@ export function nextCritState(
         notes.push(hidden
           ? "The focused issue is hidden by the sidebar filter; focus cleared."
           : "The focused issue no longer exists; focus cleared.");
+      }
+      if (filter.owner !== null && filter.owner !== UNASSIGNED && ev.knownOwners && !ev.knownOwners.includes(filter.owner)) {
+        filter = { ...filter, owner: null };
+        notes.push("The filtered owner no longer has issues here; showing everyone.");
+      }
+      if (filter.milestone !== null && filter.milestone !== NO_MILESTONE && ev.knownMilestones
+          && !ev.knownMilestones.includes(filter.milestone)) {
+        filter = { ...filter, milestone: null };
+        notes.push("The filtered milestone no longer exists here; showing all milestones.");
       }
       return out({ filter }, notes.length ? notes.join(" ") : null);
     }

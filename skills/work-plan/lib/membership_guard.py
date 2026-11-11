@@ -37,9 +37,11 @@ Scope of the guarantee (deliberately narrow — don't oversell it):
     pushing between the rebase and the eventual (separate) push is reconciled by
     the non-fast-forward push being rejected + rebase-on-next-write, not by this
     write path.
-  - `frontmatter.write_file` re-serializes the frontmatter via yq on every
-    write, so body-only edits round-trip verbatim but YAML comments / key order
-    are normalized (a pre-existing property, not introduced here).
+  - `frontmatter.write_file` keeps YAML comments and key order (#497): it
+    patches only the changed keys in place with yq. It falls back to a full
+    re-dump, which drops comments, only if the patch cannot be verified, and
+    then warns how many comment lines were lost. `github.issues` keeps its
+    existing order; new numbers are appended (#568).
 """
 import hashlib
 import json
@@ -90,6 +92,32 @@ def references_fingerprint(meta: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def _merged_list(meta: dict, field: str, add=(), remove=()) -> list:
+    """The on-disk github.<field> with `remove` dropped and `add` appended.
+
+    Existing entries keep their order (#568): the list is hand-ordered (tier
+    groups, priority) and carries comments that sit next to specific entries, so
+    re-sorting it would scramble both. New numbers are appended in ascending
+    order. Duplicates and malformed entries are dropped, as in `_field_set`.
+    """
+    drop = {int(n) for n in remove}
+    out, seen = [], set()
+    for n in (meta.get("github", {}).get(field) or []):
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            continue
+        if n in drop or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+    for n in sorted({int(n) for n in add}):
+        if n not in seen and n not in drop:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
 def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
     """Re-read `path`, apply the membership delta to the fresh frontmatter, and
     write back the fresh body unchanged.
@@ -115,13 +143,10 @@ def guarded_membership_write(path, *, add_nums=(), remove_nums=(), expect=None):
             "current": sorted(_issue_set(fresh_meta)),
         }
 
-    issues = _issue_set(fresh_meta)
-    issues |= {int(n) for n in add_nums}
-    issues -= {int(n) for n in remove_nums}
-    final = sorted(issues)
-    fresh_meta.setdefault("github", {})["issues"] = final
+    on_disk = _merged_list(fresh_meta, "issues", add_nums, remove_nums)
+    fresh_meta.setdefault("github", {})["issues"] = on_disk
     write_file(Path(path), fresh_meta, fresh_body)
-    return {"written": final}
+    return {"written": sorted(on_disk)}
 
 
 def guarded_reference_write(path, *, add_nums=(), expect=None):
@@ -193,15 +218,14 @@ def guarded_demote_write(path, *, nums=(), expect=None):
         }
 
     move_nums = {int(n) for n in nums}
-    issues = _issue_set(fresh_meta) - move_nums
-    references = _reference_set(fresh_meta) | move_nums
-    final_issues = sorted(issues)
-    final_references = sorted(references)
+    issues = _merged_list(fresh_meta, "issues", remove=move_nums)
+    # references stay sorted (documented contract, #568 only covers `issues`)
+    references = sorted(_reference_set(fresh_meta) | move_nums)
     github = fresh_meta.setdefault("github", {})
-    github["issues"] = final_issues
-    github["references"] = final_references
+    github["issues"] = issues
+    github["references"] = references
     write_file(Path(path), fresh_meta, fresh_body)
-    return {"written": {"issues": final_issues, "references": final_references}}
+    return {"written": {"issues": sorted(issues), "references": references}}
 
 
 def shared_rebase_guard(target, cfg):

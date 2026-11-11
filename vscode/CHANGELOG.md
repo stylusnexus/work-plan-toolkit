@@ -6,6 +6,36 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.22.0] - 2026-11-11
+
+### Added
+
+- **Owner, status and milestone in the critical path (#554, #555, #556).** Each
+  issue shows who owns it, where it is (not started, in progress, in review,
+  done) and its milestone, on the graph and in the text flow and copied flows.
+  Three new filters sit beside Track: Owner (with Unassigned), Status (with "Not
+  started and startable") and Milestone (with No milestone). A milestone filter
+  keeps the open issues upstream that still gate it, drawn dashed, and says how
+  many are left. Status is written out, separate from the blocked and waiting
+  marks. "In review" means an open, non-draft pull request in the same repo that
+  says Fixes, Closes or Resolves for the issue, or one linked by hand. Needs a
+  CLI from this release for "in review". With an older CLI the In review filter
+  is greyed out, and a note says the CLI is too old.
+- **Progress summary per track and milestone (#557).** A collapsible section at
+  the top of the critical-path panel shows closed of total with a bar, how many
+  issues are ready to start, in progress, waiting (1 step) and stuck (2+ steps),
+  the next issues to pick up, and the issues that hold up the most other work.
+  The headline in the summary line answers "how far along are we".
+- **Sync Shared Plan (#426).** Right-click a repo, choose **Sync Shared Plan**,
+  and the shared plan branch fast-forwards to a teammate's pushed changes. It
+  never touches a worktree with uncommitted changes or one that has diverged; it
+  says what to run instead. Needs a CLI from this release.
+
+### Fixed
+
+- **Roll-up headers wrap at spaces (#573).** "In progress" no longer breaks
+  mid-word in narrow panels.
+
 ## [0.21.1] - 2026-11-09
 
 ### Fixed

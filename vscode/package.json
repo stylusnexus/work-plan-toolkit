@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.21.1",
+  "version": "0.22.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -151,6 +151,12 @@
         "title": "Close Issue on GitHub…",
         "category": "Work Plan",
         "icon": "$(issue-closed)"
+      },
+      {
+        "command": "workPlan.syncSharedPlan",
+        "title": "Sync Shared Plan",
+        "category": "Work Plan",
+        "icon": "$(sync)"
       },
       {
         "command": "workPlan.pushTrack",
@@ -532,6 +538,11 @@
           "group": "0_workPlanRepo@2"
         },
         {
+          "command": "workPlan.syncSharedPlan",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@4"
+        },
+        {
           "command": "workPlan.clearRepoLocal",
           "when": "view == workPlan.tree && viewItem == workPlanRepo",
           "group": "9_workPlanRepoDanger@1"
@@ -772,6 +783,10 @@
         },
         {
           "command": "workPlan.pushTrack",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.syncSharedPlan",
           "when": "false"
         },
         {

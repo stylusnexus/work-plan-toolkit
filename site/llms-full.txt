@@ -142,7 +142,7 @@ Run as `work-plan <subcommand>` (npm), `/work-plan <subcommand>` (install script
 
 ### Shared tracks
 
-- `plan-branch <init|status|push> <repo> [--branch=<name>] [--confirm=<token>] [--dry-run] [--json]`: Set up and share a repo's canonical SHARED-tier plan branch.
+- `plan-branch <init|status|sync|push> <repo> [--branch=<name>] [--confirm=<token>] [--dry-run] [--json]`: Set up and share a repo's canonical SHARED-tier plan branch.
 - `push-track <track | track@repo> [--repo=<key>] [--no-push] [--confirm=<token>]`: Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it.
 
 ### Plan and spec documents

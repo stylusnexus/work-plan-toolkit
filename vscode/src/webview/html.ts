@@ -13,6 +13,8 @@
 
 import type { GraphMode } from "./messages.ts";
 import { buildFlowText } from "./flowCopy.ts";
+import { NO_MILESTONE, UNASSIGNED } from "./criticalPathRender.ts";
+import type { Rollup, RollupRow } from "./rollup.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
 export interface CriticalViewOptions {
@@ -29,6 +31,19 @@ export interface CriticalViewOptions {
   autoFilterNote: string | null;
   emptyMessage: string | null;
   trackOptions: { key: string; label: string }[];
+  /** Selected owner ("@login", the unassigned sentinel) or null for everyone. */
+  owner: string | null;
+  milestone: string | null;
+  status: string | null;
+  /** "@login" values present in the repo's issues. */
+  ownerOptions: string[];
+  milestoneOptions: string[];
+  /** What is left before the filtered milestone can close. */
+  filterNote: string | null;
+  /** False when the CLI is too old to report in-review pull requests (#555); absent reads as true. */
+  reviewSupported?: boolean;
+  /** Per-track and per-milestone summary (#557); omitted when there is nothing to show. */
+  rollup?: Rollup;
   /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
   nodeTitles?: Record<string, string>;
   /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
@@ -173,6 +188,17 @@ ${afterRun}
   if (clearFocusBtn) {
     clearFocusBtn.addEventListener('click', function () { post({ type: 'clearFocusIssue' }); });
   }
+  [['work-plan-critical-owner', 'setCriticalOwnerFilter', 'owner'],
+   ['work-plan-critical-milestone', 'setCriticalMilestoneFilter', 'milestone'],
+   ['work-plan-critical-status', 'setCriticalStatusFilter', 'status']].forEach(function (c) {
+    var el = document.getElementById(c[0]);
+    if (!el) { return; }
+    el.addEventListener('change', function () {
+      var msg = { type: c[1] };
+      msg[c[2]] = el.value === '' ? null : el.value;
+      post(msg);
+    });
+  });
   var showClosedBox = document.getElementById('work-plan-show-closed');
   if (showClosedBox) {
     showClosedBox.addEventListener('change', function () {
@@ -398,6 +424,16 @@ ${criticalScript}
     var sp = first.indexOf(' ');
     return { num: sp > 0 ? first.slice(0, sp) : first, title: sp > 0 ? first.slice(sp + 1) : '', full: full };
   }
+  // Owner, milestone and work status, from the hover text's Owner / Milestone / Work lines.
+  function flowMeta(full) {
+    var out = [];
+    full.split(String.fromCharCode(10)).forEach(function (line) {
+      if (line.indexOf('Owner: ') === 0 && line !== 'Owner: ' + String.fromCharCode(8212)) { out.push(line.slice(7)); }
+      if (line.indexOf('Milestone: ') === 0 && line !== 'Milestone: none') { out.push(line.slice(11)); }
+      if (line === 'Work: in progress' || line === 'Work: in review') { out.push(line.slice(6)); }
+    });
+    return out.join(' · ');
+  }
   function flowTag(text) {
     var t = document.createElement('span');
     t.className = 'flow-tag';
@@ -430,6 +466,8 @@ ${criticalScript}
     }
     row.appendChild(num);
     row.appendChild(title);
+    var meta = flowMeta(p.full);
+    if (meta) { row.appendChild(flowTag(meta)); }
     return row;
   }
   function flowBranch(n, dir, trail, ctx) {
@@ -798,6 +836,33 @@ ${criticalScript}
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
     .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-rollup { margin: 8px 0; }
+    .crit-rollup summary { cursor: pointer; font-weight: bold; padding: 4px 0; min-height: 24px; }
+    .crit-rollup summary:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 2px; }
+    .crit-rollup-scroll { overflow-x: auto; margin: 6px 0; }
+    .crit-rollup-scroll:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
+    .crit-rollup-table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+    .crit-rollup-table caption { text-align: left; font-weight: bold; padding: 4px 0; }
+    .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid var(--vscode-contrastBorder, var(--border)); padding: 3px 8px; text-align: left; vertical-align: top; }
+    /* Headers and counts wrap at spaces only; long issue titles may break anywhere. */
+    .crit-rollup-table thead th { font-weight: bold; background: var(--card-bg); min-width: 5.5em; }
+    .crit-rollup-table th[scope="row"], .crit-rollup-table td:nth-child(7), .crit-rollup-table td:nth-child(8) { overflow-wrap: anywhere; }
+    .crit-rollup-table th[scope="row"] { min-width: 8em; }
+    .crit-rollup-table td:nth-child(2) { min-width: 9em; }
+    .crit-rollup-table td:nth-child(7), .crit-rollup-table td:nth-child(8) { min-width: 12em; }
+    /* The same div bar the detail panel uses: the browser's native progress element would not take the theme colour in a webview. */
+    .crit-rollup-table .progress { width: 5em; margin: 0 0 2px 0; }
+    .crit-rollup-table td > span { display: block; }
+    .crit-rollup-table .crit-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .crit-rollup-table .crit-zero { opacity: 0.55; }
+    .crit-rollup-table .crit-waiting, .crit-rollup-table .crit-stuck { font-weight: 600; }
+    .crit-rollup-table .crit-waiting { color: var(--status-waiting); }
+    .crit-rollup-table .crit-stuck { color: var(--status-blocked); }
+    .crit-rollup-list { list-style: none; margin: 0; padding: 0; }
+    @media (forced-colors: active) {
+      .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid CanvasText; }
+      .crit-rollup-table .crit-waiting, .crit-rollup-table .crit-stuck { color: CanvasText; }
+    }
     .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .crit-flow { margin: 6px 0; max-height: 15em; overflow: auto; }
@@ -1170,6 +1235,65 @@ function safeColor(c: string): string | null {
   return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/.test(c) ? c : null;
 }
 
+/** Longest issue title shown in a roll-up cell; the full title is on hover. */
+const ROLLUP_TITLE = 40;
+
+/**
+ * Progress summary tables (#557, reviewed by the design team). Every string came
+ * from data, so it goes through esc(). Column words match the graph's legend.
+ */
+function renderRollup(r: Rollup | undefined): string {
+  if (!r) return "";
+  const short = (t: string): string => {
+    const chars = [...t];
+    return chars.length > ROLLUP_TITLE ? chars.slice(0, ROLLUP_TITLE).join("") + "…" : t;
+  };
+  const issues = (list: { number: number; title: string; blocks?: number }[], none: string): string =>
+    list.length === 0 ? none : `<ul class="crit-rollup-list" role="list">${list.map((i) =>
+      `<li>#${i.number} <span title="${esc(i.title)}">${esc(short(i.title))}</span>${
+        i.blocks === undefined ? "" : `, blocks ${i.blocks} ${i.blocks === 1 ? "issue" : "issues"}`}</li>`).join("")}</ul>`;
+  // A count: muted at zero, bold with its glyph otherwise (the glyph, not the colour, carries meaning).
+  const num = (n: number, cls: string, glyph = ""): string =>
+    `<td class="crit-num ${n === 0 ? "crit-zero" : cls}">${n === 0 || !glyph ? "" : `${glyph} `}${n}</td>`;
+  const table = (id: string, title: string, rows: RollupRow[]): string => {
+    if (rows.length === 0) return "";
+    const body = rows.map((row) => {
+      const total = row.open + row.closed;
+      const pct = total === 0 ? 0 : Math.round((row.closed / total) * 100);
+      const next = row.open === 0 ? "All done"
+        : issues(row.next, row.startable === 0 && row.inProgress > 0 ? "Nothing to start; all in progress" : "None");
+      return `<tr>
+        <th scope="row">${esc(row.label)}</th>
+        <td><div class="progress" aria-hidden="true"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <span>${row.closed} of ${total} done (${pct}%)</span></td>
+        ${num(row.startable, "")}${num(row.inProgress, "")}${num(row.waiting, "crit-waiting", "⏳")}${num(row.blocked, "crit-stuck", "⛔")}
+        <td>${next}</td><td>${issues(row.gating, "None")}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="crit-rollup-scroll" role="region" aria-labelledby="${id}" tabindex="0">
+      <table class="crit-rollup-table"><caption id="${id}">${esc(title)}</caption>
+      <thead><tr><th scope="col">Name</th><th scope="col">Progress</th><th scope="col">Ready to start</th>
+      <th scope="col">In progress</th><th scope="col">⏳ Waiting (1 step)</th><th scope="col">⛔ Stuck (2+ steps)</th>
+      <th scope="col">Pick up next</th><th scope="col">Biggest blockers</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  };
+  const rows = r.tracks.length > 0 ? r.tracks : r.milestones;
+  if (rows.length === 0) {
+    return `<details class="crit-rollup"><summary>Progress by track and milestone</summary>
+      <p class="crit-note">Nothing to summarise yet: no issues in view.</p></details>`;
+  }
+  const sum = (f: (x: RollupRow) => number): number => rows.reduce((n, x) => n + f(x), 0);
+  const done = sum((x) => x.closed), total = done + sum((x) => x.open);
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const headline = `${done} of ${total} done (${pct}%), ${sum((x) => x.startable)} ready, ` +
+    `${sum((x) => x.waiting)} waiting, ${sum((x) => x.blocked)} stuck`;
+  return `<details class="crit-rollup"${r.tracks.length + r.milestones.length > 2 ? " open" : ""}>
+    <summary>Progress by track and milestone: ${esc(headline)}</summary>
+    ${table("rollup-by-track", "By track", r.tracks)}${table("rollup-by-milestone", "By milestone", r.milestones)}
+    <p class="crit-note">Counts every issue in the repo (the sidebar track filter applies); the Track, Owner, Milestone and Status filters above change only the graph.
+    Ready to start: not begun and nothing in the way. Waiting: one step from startable. Stuck: two or more steps away, or in a dependency loop.</p>
+  </details>`;
+}
+
 /** Every string here came from data, so every one goes through esc(). */
 function renderCriticalPanel(c: CriticalViewOptions): string {
   const options = [
@@ -1177,6 +1301,24 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ...c.trackOptions.map((t) =>
       `<option value="${esc(t.key)}"${t.key === c.trackFilter ? " selected" : ""}>${esc(t.label)}</option>`),
   ].join("");
+  const select = (id: string, label: string, all: string, current: string | null, items: [string, string, boolean?][]) =>
+    `<label for="${id}">${label}</label>
+      <select id="${id}" class="graph-ctl"><option value=""${current === null ? " selected" : ""}>${all}</option>${
+        items.map(([v, t, off]) => `<option value="${esc(v)}"${v === current ? " selected" : ""}${off ? " disabled" : ""}>${esc(t)}</option>`).join("")
+      }</select>`;
+  const ownerSelect = select("work-plan-critical-owner", "Owner", "Everyone", c.owner,
+    [[UNASSIGNED, "Unassigned"], ...c.ownerOptions.map((o): [string, string] => [o, o])]);
+  const milestoneSelect = select("work-plan-critical-milestone", "Milestone", "All milestones", c.milestone,
+    [[NO_MILESTONE, "No milestone"], ...c.milestoneOptions.map((m): [string, string] => [m, m])]);
+  const statusSelect = select("work-plan-critical-status", "Status", "Any status", c.status, [
+    ["not-started", "Not started"], ["startable-not-started", "Not started and startable"],
+    ["in-progress", "In progress"],
+    c.reviewSupported === false ? ["in-review", "In review (needs a newer CLI)", true] : ["in-review", "In review"],
+    ["done", "Done (needs Show closed)"],
+  ]);
+  const reviewNote = c.reviewSupported === false
+    ? "Your work-plan CLI is too old to report pull requests, so \"In review\" is unavailable and those issues show as not started. Update the CLI to turn it on."
+    : null;
   const legendItems = c.legend.map((l) => {
     const color = safeColor(l.color);
     const style = color ? ` style="background:${esc(color)}"` : "";
@@ -1184,9 +1326,13 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
   }).join("");
   const note = (cls: string, s: string | null) => (s ? `<div class="${cls}">${esc(s)}</div>` : "");
   return `<div class="crit-panel">
+    ${renderRollup(c.rollup)}
     <div class="crit-row">
       <label for="work-plan-critical-track">Track</label>
       <select id="work-plan-critical-track" class="graph-ctl">${options}</select>
+      ${ownerSelect}
+      ${milestoneSelect}
+      ${statusSelect}
       <button type="button" id="work-plan-focus-issue" class="graph-ctl">Focus on an issue…</button>
       <button type="button" id="work-plan-clear-focus" class="graph-ctl">Clear focus</button>
       ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
@@ -1197,6 +1343,8 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ${note("crit-banner", c.banner)}
     ${note("crit-warn", c.tooLargeMessage)}
     ${note("crit-note", c.autoFilterNote)}
+    ${note("crit-note", c.filterNote)}
+    ${note("crit-note", reviewNote)}
     ${note("crit-note", c.emptyMessage)}
     <div class="crit-flowbar" role="group" aria-label="Copy flow">
       <label for="flow-format">Format</label>

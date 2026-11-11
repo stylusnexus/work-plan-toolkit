@@ -29,6 +29,9 @@ export interface Issue {
    *  (label-only signal, independent of hot-branch state). Drives the toggle
    *  button so Mark/Clear accurately reflects label presence, not the union. */
   in_progress_label: boolean;
+  /** An open, non-draft PR mentions or links this issue (#555). Optional on the
+   *  wire: an older CLI omits it, and the viewer then treats it as false. */
+  in_review?: boolean;
   /** Open issues this issue is blocked by (GitHub-native dependency edges, #257). */
   blocked_by: IssueDep[];
   /** Open issues this issue is blocking (GitHub-native dependency edges, #257). */

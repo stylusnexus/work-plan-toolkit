@@ -41,6 +41,14 @@ export function buildFlowText(
   }
   function closed(id: string): boolean { return text(id).indexOf('State: closed') >= 0; }
   function inProgress(id: string): boolean { return text(id).indexOf('in progress') >= 0; }
+  // A hover-text line "Name: value" for the given name, or ''.
+  function field(id: string, name: string): string {
+    var lines = text(id).split(String.fromCharCode(10));
+    for (var q = 1; q < lines.length; q++) {
+      if (lines[q].indexOf(name + ': ') === 0) { return lines[q].slice(name.length + 2); }
+    }
+    return '';
+  }
   function reach(start: string, dir: boolean): Record<string, boolean> {
     var seen: Record<string, boolean> = {};
     seen[start] = true;
@@ -115,7 +123,12 @@ export function buildFlowText(
   function titled(id: string): string {
     var t = num(id) + ' ' + title(id);
     if (id === focus) { t += ' (this)'; }
-    if (inProgress(id)) { t += ' (in progress)'; }
+    if (field(id, 'Work') === 'in review') { t += ' (in review)'; }
+    else if (inProgress(id)) { t += ' (in progress)'; }
+    var owner = field(id, 'Owner');
+    if (owner && owner !== String.fromCharCode(8212)) { t += ' ' + owner; }
+    var ms = field(id, 'Milestone');
+    if (ms && ms !== 'none') { t += ' [' + ms + ']'; }
     return t;
   }
   var pathCount = ups.length * downs.length;
