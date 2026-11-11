@@ -70,7 +70,7 @@ def normalize_issue(i: dict, in_progress: bool = False,
                     blocked_by=None, blocking=None) -> dict:
     """Reshape a raw gh issue row into the viewer's `Issue` shape
     ({number,title,state,assignee,milestone,in_progress,in_progress_label,
-    blocked_by,blocking,labels}).
+    in_review,blocked_by,blocking,labels}).
     Shared by the export and the `list-open-issues` command (#282) so both
     emit an identical issue surface.
 
@@ -90,6 +90,8 @@ def normalize_issue(i: dict, in_progress: bool = False,
         "milestone": short_milestone(i.get("milestone")) or None,
         "in_progress": bool(in_progress),
         "in_progress_label": bool(in_progress_label),
+        # An open, non-draft PR mentions or links the issue (#555).
+        "in_review": bool(i.get("in_review")),
         "blocked_by": list(blocked_by or []),
         "blocking": list(blocking or []),
         # GitHub label names, so the viewer can search by label (#429). Taken

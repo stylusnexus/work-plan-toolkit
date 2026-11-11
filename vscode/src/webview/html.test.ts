@@ -617,6 +617,12 @@ describe("buildHtml — postMessage protocol", () => {
 
 const CRIT = {
   trackFilter: null as string | null,
+  owner: null as string | null,
+  milestone: null as string | null,
+  status: null as string | null,
+  ownerOptions: [] as string[],
+  milestoneOptions: [] as string[],
+  filterNote: null as string | null,
   focusIssueLabel: null as string | null,
   showClosed: false,
   banner: null as string | null,
@@ -1200,5 +1206,23 @@ describe("buildHtmlIfChanged — change-aware panel render (#423)", () => {
   it("the returned html is exactly buildHtml's output for the same options", () => {
     const o = optionsFor(first, "beta");
     assert.equal(buildHtmlIfChanged(null, o)!.html, buildHtml(o));
+  });
+});
+
+describe("buildHtml — critical owner, milestone, status controls", () => {
+  const html = buildHtml({
+    ...BASE, mode: "critical",
+    critical: { ...CRIT, ownerOptions: ["@eve"], milestoneOptions: ["v1"], owner: "@eve", status: "in-review", filterNote: "Left before v1 can close: 2" },
+  });
+  it("draws the three filters with Unassigned and No milestone choices, selection kept", () => {
+    assert.match(html, /id="work-plan-critical-owner"[\s\S]*value="__unassigned__"[\s\S]*value="@eve" selected/);
+    assert.match(html, /id="work-plan-critical-milestone"[\s\S]*value="__none__"[\s\S]*value="v1"/);
+    assert.match(html, /id="work-plan-critical-status"[\s\S]*value="in-review" selected/);
+    assert.ok(html.includes("Left before v1 can close: 2"));
+  });
+  it("posts the matching message types", () => {
+    for (const t of ["setCriticalOwnerFilter", "setCriticalMilestoneFilter", "setCriticalStatusFilter"]) {
+      assert.ok(html.includes(t), t);
+    }
   });
 });
