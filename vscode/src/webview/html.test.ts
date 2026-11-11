@@ -1253,13 +1253,21 @@ describe("buildHtml — critical roll-up (#557)", () => {
     assert.ok(html.includes("#4 <span title=\"do &lt;i&gt;it&lt;/i&gt;\">do &lt;i&gt;it&lt;/i&gt;</span>"));
     assert.ok(!html.includes("Alpha <b>x</b>"));
     assert.match(html, /role="region" aria-labelledby="rollup-by-track" tabindex="0"/);
-    assert.match(html, /<progress max="4" value="2" aria-hidden="true"/);
+    assert.match(html, /<div class="progress" aria-hidden="true"><div class="progress-fill" style="width:50%">/);
     assert.ok(html.includes("2 of 4 done (50%)"));
   });
   it("zero and empty states say something", () => {
     assert.ok(html.includes("All done"));
     assert.match(html, /crit-zero">0</);
     assert.ok(html.includes("Nothing to start; all in progress"), "milestone row with only in-progress work");
+  });
+  it("headers wrap at spaces only; the bar reuses the themed div bar (#573)", () => {
+    const rule = (sel: string): string => html.slice(html.indexOf(sel), html.indexOf("}", html.indexOf(sel)));
+    assert.ok(!rule(".crit-rollup-table th, .crit-rollup-table td").includes("overflow-wrap"));
+    assert.ok(rule('.crit-rollup-table th[scope="row"], .crit-rollup-table td:nth-child(7)').includes("overflow-wrap: anywhere"));
+    assert.ok(rule(".crit-rollup-table thead th").includes("min-width: 5.5em"));
+    assert.ok(!html.includes("<progress"), "no native progress element");
+    assert.ok(html.includes("--vscode-progressBar-background"));
   });
   it("explains its scope in plain text", () => {
     assert.ok(html.includes("change only the graph"));
@@ -1270,8 +1278,8 @@ describe("buildHtml — critical roll-up (#557)", () => {
     assert.ok(none.includes("Nothing to summarise yet"));
     assert.ok(!buildHtml({ ...BASE, mode: "critical", critical: CRIT }).includes('class="crit-rollup"'));
   });
-  it("an empty total never gives the bar max 0", () => {
+  it("an empty total gives a 0% bar, not NaN", () => {
     const z = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup: { tracks: [{ label: "Z", open: 0, closed: 0, startable: 0, inProgress: 0, waiting: 0, blocked: 0, next: [], gating: [] }], milestones: [] } } });
-    assert.match(z, /<progress max="1" value="0"/);
+    assert.match(z, /class="progress-fill" style="width:0%"/);
   });
 });
