@@ -6,6 +6,32 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.11+27e1306 — 2026-11-11 (#578)
+
+feat: owner, status, roll-up, plan sync
+
+Promotes `dev` at 4c49b93 to `main`. Extension 0.22.0.
+
+### Added
+
+- **Owner, status and milestone in the critical-path view** (#554, #555, #556). Each issue shows its owner, where it is (not started, in progress, in review, done) and its milestone, with a filter for each: Owner (with Unassigned), Status (with "Not started and startable") and Milestone (with No milestone). A milestone filter keeps the open issues upstream that still gate it. "In review" means an open, non-draft pull request in the same repo that says Fixes, Closes or Resolves for the issue, or one linked by hand. The export gains an `in_review` field.
+- **Progress summary per track and milestone** (#557). A collapsible section at the top of the critical-path panel: closed of total with a bar, ready / in progress / waiting / stuck counts, what to pick up next, and the biggest blockers. Reviewed by UX, dashboard and accessibility reviewers.
+- **`plan-branch sync`** (#426) and **Sync Shared Plan** in VS Code. Fetches origin and fast-forwards the shared plan worktree to a teammate's pushed changes. Never touches uncommitted or diverged work; `--dry-run` and `--json` supported.
+
+### Fixed
+
+- **`slot` keeps issue order and comments** (#568). Slot, move and demote no longer re-sort `github.issues`, which scrambled hand-ordered lists and their comments.
+- **Roll-up headers wrap at spaces** (#573).
+- **Older CLI** (#575). With a CLI that cannot report pull requests, the In review filter is greyed out with a note instead of silently showing nothing.
+
+### Verification
+
+- Python 1670 tests and extension 1113 tests pass on the frozen commit; typecheck clean; site check passes.
+- Export on a 1,820-issue repo: about +3s (15s to 18s) from the pull-request lookup.
+- Needs a CLI from this release for "in review" and Sync Shared Plan. `MIN_CLI_VERSION` is unchanged; older CLIs degrade with a message.
+
+Refs #575
+
 ## 2026.11.10+fc506de — 2026-11-10 (#565)
 
 fix(auto-triage): send full batch in AI prompt
