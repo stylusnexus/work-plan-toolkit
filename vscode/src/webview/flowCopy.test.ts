@@ -12,6 +12,25 @@ const titles: Record<string, string> = {
 const links: [string, string][] = [["a", "c"], ["b", "c"], ["c", "d"], ["e", "d"], ["x", "x2"]];
 const T = { ...titles, x2: t(2, "also unrelated") };
 
+describe("buildFlowText — owner, milestone, review (#554 #555 #556)", () => {
+  const meta = (n: number, title: string, owner: string, ms: string, work: string) =>
+    `#${n} ${title}\nTrack: A\nState: open\nOwner: ${owner}\nMilestone: ${ms}\nWork: ${work}`;
+  const M: Record<string, string> = {
+    p: meta(1, "first", "@eve", "v1", "in review"),
+    q: meta(2, "second", "\u2014", "none", "not started"),
+  };
+  it("titled formats add owner, milestone and review; unset values add nothing", () => {
+    assert.equal(
+      buildFlowText([["p", "q"]], M, "q", "order"),
+      "1. #1 first (in review) @eve [v1]\n2. #2 second (this)",
+    );
+    assert.equal(
+      buildFlowText([["p", "q"]], M, "q", "tasks"),
+      "- [ ] #1 first (in review) @eve [v1]\n- [ ] #2 second (this)",
+    );
+  });
+});
+
 describe("buildFlowText", () => {
   it("paths: one numbers-only chain per path plus a work-order line", () => {
     assert.equal(
@@ -75,7 +94,8 @@ describe("buildFlowText", () => {
       cspSource: "x:", nonce: "n".repeat(32), mermaidUri: "x:/m.js", graphDef: "graph LR\n a --> b", detailHtml: "",
       trackName: "t", isModule: false, mode: "critical", isDark: true, hasTrackFile: true,
       critical: {
-        trackFilter: null, focusIssueLabel: null, showClosed: false, showUnlinked: false, unlinkedCount: 0, banner: null,
+        trackFilter: null, owner: null, milestone: null, status: null, ownerOptions: [], milestoneOptions: [], filterNote: null,
+        focusIssueLabel: null, showClosed: false, showUnlinked: false, unlinkedCount: 0, banner: null,
         legend: [], tooLargeMessage: null, autoFilterNote: null, emptyMessage: null, trackOptions: [],
       },
     });

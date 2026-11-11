@@ -13,6 +13,7 @@
 
 import type { GraphMode } from "./messages.ts";
 import { buildFlowText } from "./flowCopy.ts";
+import { NO_MILESTONE, UNASSIGNED } from "./criticalPathRender.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
 export interface CriticalViewOptions {
@@ -29,6 +30,15 @@ export interface CriticalViewOptions {
   autoFilterNote: string | null;
   emptyMessage: string | null;
   trackOptions: { key: string; label: string }[];
+  /** Selected owner ("@login", the unassigned sentinel) or null for everyone. */
+  owner: string | null;
+  milestone: string | null;
+  status: string | null;
+  /** "@login" values present in the repo's issues. */
+  ownerOptions: string[];
+  milestoneOptions: string[];
+  /** What is left before the filtered milestone can close. */
+  filterNote: string | null;
   /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
   nodeTitles?: Record<string, string>;
   /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
@@ -173,6 +183,17 @@ ${afterRun}
   if (clearFocusBtn) {
     clearFocusBtn.addEventListener('click', function () { post({ type: 'clearFocusIssue' }); });
   }
+  [['work-plan-critical-owner', 'setCriticalOwnerFilter', 'owner'],
+   ['work-plan-critical-milestone', 'setCriticalMilestoneFilter', 'milestone'],
+   ['work-plan-critical-status', 'setCriticalStatusFilter', 'status']].forEach(function (c) {
+    var el = document.getElementById(c[0]);
+    if (!el) { return; }
+    el.addEventListener('change', function () {
+      var msg = { type: c[1] };
+      msg[c[2]] = el.value === '' ? null : el.value;
+      post(msg);
+    });
+  });
   var showClosedBox = document.getElementById('work-plan-show-closed');
   if (showClosedBox) {
     showClosedBox.addEventListener('change', function () {
@@ -398,6 +419,16 @@ ${criticalScript}
     var sp = first.indexOf(' ');
     return { num: sp > 0 ? first.slice(0, sp) : first, title: sp > 0 ? first.slice(sp + 1) : '', full: full };
   }
+  // Owner, milestone and work status, from the hover text's Owner / Milestone / Work lines.
+  function flowMeta(full) {
+    var out = [];
+    full.split(String.fromCharCode(10)).forEach(function (line) {
+      if (line.indexOf('Owner: ') === 0 && line !== 'Owner: ' + String.fromCharCode(8212)) { out.push(line.slice(7)); }
+      if (line.indexOf('Milestone: ') === 0 && line !== 'Milestone: none') { out.push(line.slice(11)); }
+      if (line === 'Work: in progress' || line === 'Work: in review') { out.push(line.slice(6)); }
+    });
+    return out.join(' · ');
+  }
   function flowTag(text) {
     var t = document.createElement('span');
     t.className = 'flow-tag';
@@ -430,6 +461,8 @@ ${criticalScript}
     }
     row.appendChild(num);
     row.appendChild(title);
+    var meta = flowMeta(p.full);
+    if (meta) { row.appendChild(flowTag(meta)); }
     return row;
   }
   function flowBranch(n, dir, trail, ctx) {
@@ -1177,6 +1210,19 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ...c.trackOptions.map((t) =>
       `<option value="${esc(t.key)}"${t.key === c.trackFilter ? " selected" : ""}>${esc(t.label)}</option>`),
   ].join("");
+  const select = (id: string, label: string, all: string, current: string | null, items: [string, string][]) =>
+    `<label for="${id}">${label}</label>
+      <select id="${id}" class="graph-ctl"><option value=""${current === null ? " selected" : ""}>${all}</option>${
+        items.map(([v, t]) => `<option value="${esc(v)}"${v === current ? " selected" : ""}>${esc(t)}</option>`).join("")
+      }</select>`;
+  const ownerSelect = select("work-plan-critical-owner", "Owner", "Everyone", c.owner,
+    [[UNASSIGNED, "Unassigned"], ...c.ownerOptions.map((o): [string, string] => [o, o])]);
+  const milestoneSelect = select("work-plan-critical-milestone", "Milestone", "All milestones", c.milestone,
+    [[NO_MILESTONE, "No milestone"], ...c.milestoneOptions.map((m): [string, string] => [m, m])]);
+  const statusSelect = select("work-plan-critical-status", "Status", "Any status", c.status, [
+    ["not-started", "Not started"], ["startable-not-started", "Not started and startable"],
+    ["in-progress", "In progress"], ["in-review", "In review"], ["done", "Done (needs Show closed)"],
+  ]);
   const legendItems = c.legend.map((l) => {
     const color = safeColor(l.color);
     const style = color ? ` style="background:${esc(color)}"` : "";
@@ -1187,6 +1233,9 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     <div class="crit-row">
       <label for="work-plan-critical-track">Track</label>
       <select id="work-plan-critical-track" class="graph-ctl">${options}</select>
+      ${ownerSelect}
+      ${milestoneSelect}
+      ${statusSelect}
       <button type="button" id="work-plan-focus-issue" class="graph-ctl">Focus on an issue…</button>
       <button type="button" id="work-plan-clear-focus" class="graph-ctl">Clear focus</button>
       ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
@@ -1197,6 +1246,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ${note("crit-banner", c.banner)}
     ${note("crit-warn", c.tooLargeMessage)}
     ${note("crit-note", c.autoFilterNote)}
+    ${note("crit-note", c.filterNote)}
     ${note("crit-note", c.emptyMessage)}
     <div class="crit-flowbar" role="group" aria-label="Copy flow">
       <label for="flow-format">Format</label>

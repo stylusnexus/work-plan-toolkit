@@ -21,6 +21,12 @@ export interface CritIssueNode {
   rank: number | null;        // null for closed and for unranked
   unranked: boolean;          // in or downstream of a cycle
   inProgress: boolean;
+  /** An open, non-draft PR is linked (#555). */
+  inReview: boolean;
+  /** "@login", "@a, @b", or "—" when nobody is assigned (#554). */
+  assignee: string;
+  /** Short milestone label, or null (#556). */
+  milestone: string | null;
   downstreamDepth: number;    // longest open chain after this issue
   nextUpIndex: number | null; // position in its track's next_up
 }
@@ -80,6 +86,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
       trackKey: trackKey(t), trackName: t.name, isRef, memberTrackKeys: [],
       trackBlocked: isBlocked(t),
       rank: null, unranked: false, inProgress: issue.in_progress,
+      inReview: issue.in_review === true, assignee: issue.assignee, milestone: issue.milestone,
       downstreamDepth: 0, nextUpIndex: idx >= 0 ? idx : null,
     });
     issueById.set(id, issue);

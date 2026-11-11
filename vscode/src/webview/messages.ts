@@ -40,6 +40,22 @@ export interface SetCriticalTrackFilterMessage {
   key: TrackKey | null;
 }
 
+export interface SetCriticalOwnerFilterMessage {
+  type: "setCriticalOwnerFilter";
+  /** "@login", the unassigned sentinel, or null for everyone. */
+  owner: string | null;
+}
+
+export interface SetCriticalMilestoneFilterMessage {
+  type: "setCriticalMilestoneFilter";
+  milestone: string | null;
+}
+
+export interface SetCriticalStatusFilterMessage {
+  type: "setCriticalStatusFilter";
+  status: "not-started" | "in-progress" | "in-review" | "done" | "startable-not-started" | null;
+}
+
 export interface PickFocusIssueMessage {
   type: "pickFocusIssue";
 }
@@ -125,6 +141,9 @@ export type WebviewMessage =
   | OpenIssueMessage
   | SetGraphModeMessage
   | SetCriticalTrackFilterMessage
+  | SetCriticalOwnerFilterMessage
+  | SetCriticalMilestoneFilterMessage
+  | SetCriticalStatusFilterMessage
   | PickFocusIssueMessage
   | ClearFocusIssueMessage
   | SetShowClosedMessage
@@ -179,6 +198,15 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
       return msg["mode"] === "focus" || msg["mode"] === "full" || msg["mode"] === "critical";
     case "setCriticalTrackFilter":
       return msg["key"] === null || isTrackKey(msg["key"]);
+    case "setCriticalOwnerFilter":
+      return msg["owner"] === null
+        || (typeof msg["owner"] === "string" && msg["owner"].length > 0 && msg["owner"].length < 200);
+    case "setCriticalMilestoneFilter":
+      return msg["milestone"] === null
+        || (typeof msg["milestone"] === "string" && msg["milestone"].length > 0 && msg["milestone"].length < 200);
+    case "setCriticalStatusFilter":
+      return msg["status"] === null
+        || ["not-started", "in-progress", "in-review", "done", "startable-not-started"].includes(msg["status"] as string);
     case "pickFocusIssue":
       return true; // no payload to validate
     case "clearFocusIssue":

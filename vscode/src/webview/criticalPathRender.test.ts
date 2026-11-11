@@ -2,13 +2,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TrackKey } from "../model.ts";
 import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
-import { filterCriticalPath, fitToCap, issueStatus, lensVisibleIssues, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
+import type { CriticalFilter } from "./criticalPathRender.ts";
+import { NO_MILESTONE, UNASSIGNED, filterCriticalPath, workStatus, fitToCap, issueStatus, lensVisibleIssues, nextCritState, renderCriticalPath, visibleTrackOrder } from "./criticalPathRender.ts";
 
 const R = "r";
 const TA = "ta" as TrackKey;
 const TB = "tb" as TrackKey;
 // Existing tests draw every issue; the collapse of unlinked issues has its own suite.
-const F = { trackKey: null, focusIssue: null, showClosed: false, showUnlinked: true };
+const F: CriticalFilter = { trackKey: null, owner: null, milestone: null, status: null, focusIssue: null, showClosed: false, showUnlinked: true };
 const COLLAPSED = { ...F, showUnlinked: false };
 const LIGHT = { dark: false };
 
@@ -16,7 +17,7 @@ const node = (number: number, rank: number | null, extra: Partial<CritIssueNode>
   id: `${R}#${number}`, repo: R, number, title: `issue ${number}`,
   state: "open", trackKey: TA, trackName: "Alpha", isRef: false,
   memberTrackKeys: [extra.trackKey ?? TA], trackBlocked: false,
-  rank, unranked: rank === null, inProgress: false,
+  rank, unranked: rank === null, inProgress: false, inReview: false, assignee: "—", milestone: null,
   downstreamDepth: 0, nextUpIndex: null, ...extra,
 });
 const model = (extra: Partial<CriticalPathModel> = {}): CriticalPathModel => ({
@@ -222,10 +223,10 @@ describe("renderCriticalPath", () => {
     });
     const r = renderCriticalPath(m, F, LIGHT);
     assert.deepEqual(Object.keys(r.nodeTitles).sort(), ["i_1", "i_2"]); // closed #9 not drawn
-    assert.equal(r.nodeTitles.i_1, `#1 ${long}\nTrack: Alpha\nState: open`);
-    assert.equal(r.nodeTitles.i_2, "#2 issue 2\nTrack: Beta (ref) ⛔\nState: open, in progress");
+    assert.equal(r.nodeTitles.i_1, `#1 ${long}\nTrack: Alpha\nState: open\nOwner: —\nMilestone: none\nWork: not started`);
+    assert.equal(r.nodeTitles.i_2, "#2 issue 2\nTrack: Beta (ref) ⛔\nState: open, in progress\nOwner: —\nMilestone: none\nWork: in progress");
     const rc = renderCriticalPath(m, { ...F, showClosed: true }, LIGHT);
-    assert.equal(rc.nodeTitles.i_9, "#9 issue 9\nTrack: Alpha\nState: closed");
+    assert.equal(rc.nodeTitles.i_9, "#9 issue 9\nTrack: Alpha\nState: closed\nOwner: —\nMilestone: none\nWork: done");
     assert.deepEqual(renderCriticalPath(model(), F, LIGHT).nodeTitles, {});
     assert.deepEqual(renderCriticalPath(star(460), F, LIGHT).nodeTitles, {}); // too large: nothing drawn
   });
@@ -578,7 +579,7 @@ describe("fitToCap", () => {
 describe("nextCritState", () => {
   const prev = (over: Record<string, unknown> = {}) => ({
     mode: "critical" as const,
-    filter: { trackKey: TA, focusIssue: `${R}#1`, showClosed: true, showUnlinked: true },
+    filter: { ...F, trackKey: TA, focusIssue: `${R}#1`, showClosed: true, showUnlinked: true },
     repo: R as string | null,
     ...over,
   });
@@ -596,7 +597,7 @@ describe("nextCritState", () => {
 
   it("selecting a track in a different repo clears track and issue but keeps showClosed", () => {
     const s = nextCritState(prev(), { type: "selectTrack", repo: "other" });
-    assert.deepEqual(s.filter, { trackKey: null, focusIssue: null, showClosed: true, showUnlinked: true });
+    assert.deepEqual(s.filter, { ...F, trackKey: null, focusIssue: null, showClosed: true, showUnlinked: true });
     assert.equal(s.repo, "other");
   });
 
@@ -698,5 +699,78 @@ describe("auto-fit then explicit clear", () => {
     const b = nextCritState(a, { type: "setFocusIssue", id: `${R}#1` });
     assert.equal(b.filter.focusIssue, `${R}#1`);
     assert.equal(b.filter.showClosed, true);
+  });
+});
+
+describe("owner, milestone and status (#554 #555 #556)", () => {
+  const ids = (r: ReturnType<typeof renderCriticalPath>): string[] =>
+    [...r.mermaid.matchAll(/^\s+(i_\d+)\["/gm)].map(m => m[1]).sort();
+  // #1 (alice, v1) blocks #2 (bob, v2) blocks #3 (unassigned, v2, in review); #4 stands alone.
+  const m = model({
+    issues: [
+      node(1, 0, { assignee: "@alice", milestone: "v1", inProgress: true }),
+      node(2, 1, { assignee: "@bob", milestone: "v2" }),
+      node(3, 2, { milestone: "v2", inReview: true }),
+      node(4, 0, {}),
+    ],
+    edges: [blocks(1, 2), blocks(2, 3)],
+  });
+
+  it("labels carry owner, milestone and work status only when set", () => {
+    const l = labels(renderCriticalPath(m, F, LIGHT).mermaid);
+    assert.ok(l.some(x => x.includes("#1 issue 1<br/>▪ Alpha · in progress · @alice · v1")));
+    assert.ok(l.some(x => x.includes("#4 issue 4<br/>▪ Alpha") && !x.includes(" · @") ));
+    const inReview = renderCriticalPath(m, F, LIGHT);
+    assert.match(inReview.nodeTitles.i_3, /Owner: —\nMilestone: v2\nWork: in review$/);
+  });
+
+  it("work status: review beats progress, closed is done", () => {
+    assert.equal(workStatus(node(1, 0, { inProgress: true, inReview: true })), "in-review");
+    assert.equal(workStatus(node(1, 0, { inProgress: true })), "in-progress");
+    assert.equal(workStatus(node(1, 0, { state: "closed", unranked: false })), "done");
+    assert.equal(workStatus(node(1, 0)), "not-started");
+  });
+
+  it("owner filter: a login, and Unassigned", () => {
+    assert.deepEqual(ids(renderCriticalPath(m, { ...F, owner: "@bob" }, LIGHT)), ["i_1", "i_2"]); // #1 blocks #2: dimmed
+    assert.deepEqual(ids(renderCriticalPath(m, { ...F, owner: UNASSIGNED }, LIGHT)), ["i_2", "i_3", "i_4"]);
+  });
+
+  it("owner filter matches any of several assignees", () => {
+    const two = model({ issues: [node(1, 0, { assignee: "@a, @b" })] });
+    assert.deepEqual(ids(renderCriticalPath(two, { ...F, owner: "@b" }, LIGHT)), ["i_1"]);
+  });
+
+  it("milestone filter keeps the whole upstream chain and says what is left", () => {
+    const r = renderCriticalPath(m, { ...F, milestone: "v2" }, LIGHT);
+    assert.deepEqual(ids(r), ["i_1", "i_2", "i_3"]);
+    assert.match(r.mermaid, /class i_1 dimmed/);
+    assert.equal(r.filterNote, "Left before v2 can close: 2 open issues, plus 1 from other milestones that still gate it (dashed).");
+    assert.equal(renderCriticalPath(m, F, LIGHT).filterNote, null);
+  });
+
+  it("No milestone choice", () => {
+    assert.deepEqual(ids(renderCriticalPath(m, { ...F, milestone: NO_MILESTONE }, LIGHT)), ["i_4"]);
+  });
+
+  it("status filter: in review, and not started and startable", () => {
+    assert.deepEqual(ids(renderCriticalPath(m, { ...F, status: "in-review" }, LIGHT)), ["i_2", "i_3"]);
+    assert.deepEqual(ids(renderCriticalPath(m, { ...F, status: "startable-not-started" }, LIGHT)), ["i_4"]);
+  });
+
+  it("filter events set the value; a new repo clears them; refresh drops vanished values", () => {
+    const base = { mode: "critical" as const, repo: "r", filter: F };
+    let s = nextCritState(base, { type: "setOwnerFilter", owner: "@bob" });
+    s = nextCritState(s, { type: "setMilestoneFilter", milestone: "v2" });
+    s = nextCritState(s, { type: "setStatusFilter", status: "in-review" });
+    assert.deepEqual([s.filter.owner, s.filter.milestone, s.filter.status], ["@bob", "v2", "in-review"]);
+    const gone = nextCritState(s, { type: "refresh", knownTracks: [], knownIssues: [], knownOwners: ["@alice"], knownMilestones: ["v1"] });
+    assert.deepEqual([gone.filter.owner, gone.filter.milestone], [null, null]);
+    assert.match(gone.note!, /owner/);
+    const kept = nextCritState(nextCritState(base, { type: "setOwnerFilter", owner: UNASSIGNED }),
+      { type: "refresh", knownTracks: [], knownIssues: [], knownOwners: [], knownMilestones: [] });
+    assert.equal(kept.filter.owner, UNASSIGNED);
+    const moved = nextCritState(s, { type: "selectTrack", repo: "other" });
+    assert.deepEqual([moved.filter.owner, moved.filter.milestone, moved.filter.status], [null, null, null]);
   });
 });

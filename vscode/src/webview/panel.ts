@@ -19,7 +19,7 @@ import { buildHtmlIfChanged, esc } from "./html.ts";
 import { isWebviewMessage } from "./messages.ts";
 import type { GraphMode } from "./messages.ts";
 import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
-import { fitToCap, lensVisibleIssues, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
+import { assigneeLogins, fitToCap, lensVisibleIssues, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
 import type { CriticalFilter, CritEvent } from "./criticalPathRender.ts";
 import type { CriticalViewOptions } from "./html.ts";
 
@@ -96,7 +96,7 @@ export class WorkPlanPanel {
   /** Graph mode: selected track's neighbourhood, whole repo, or the critical path. */
   private _mode: GraphMode = "focus";
   /** Critical-path filters; reset/cleared by nextCritState. */
-  private _critFilter: CriticalFilter = { trackKey: null, focusIssue: null, showClosed: false, showUnlinked: false };
+  private _critFilter: CriticalFilter = { trackKey: null, owner: null, milestone: null, status: null, focusIssue: null, showClosed: false, showUnlinked: false };
   /** Repo the critical-path filters were set against. */
   private _critRepo: string | null = null;
   /** True after the user explicitly cleared the track filter (skips auto-fit). */
@@ -303,6 +303,8 @@ export class WorkPlanPanel {
       autoFilterNote: null,
       emptyMessage: null,
       trackOptions: [],
+      owner: null, milestone: null, status: null,
+      ownerOptions: [], milestoneOptions: [], filterNote: null,
     };
     if (repo === null) {
       return { graphDef: "", critical: { ...base, emptyMessage: "This track has no GitHub repo" } };
@@ -314,8 +316,11 @@ export class WorkPlanPanel {
     const visibleTracks = repoTrackKeys(exp, repo);
     const shownTracks = visibleTrackOrder(model, visibleTracks);
     const shownIssues = lensVisibleIssues(model, visibleTracks).map(i => i.id);
+    const owners = [...new Set(model.issues.flatMap(i => assigneeLogins(i.assignee)))].sort();
+    const milestones = [...new Set(model.issues.flatMap(i => (i.milestone === null ? [] : [i.milestone])))].sort();
     const refreshNote = this._apply({
       type: "refresh", knownTracks: shownTracks, knownIssues: shownIssues,
+      knownOwners: owners, knownMilestones: milestones,
       hiddenTracks: model.trackOrder.filter(k => !shownTracks.includes(k)),
       hiddenIssues: model.issues.map(i => i.id).filter(id => !shownIssues.includes(id)),
     });
@@ -344,6 +349,12 @@ export class WorkPlanPanel {
         autoFilterNote: fit.autoFiltered ?? refreshNote,
         emptyMessage: fit.render.empty,
         trackOptions: shownTracks.map(k => ({ key: k, label: nameOf(k) })),
+        owner: fit.filter.owner,
+        milestone: fit.filter.milestone,
+        status: fit.filter.status,
+        ownerOptions: owners,
+        milestoneOptions: milestones,
+        filterNote: fit.render.filterNote,
         nodeTitles: fit.render.nodeTitles,
         nodeLinks: fit.render.nodeLinks,
         nodeStatus: fit.render.nodeStatus,
@@ -417,6 +428,21 @@ export class WorkPlanPanel {
       }
       case "setCriticalTrackFilter": {
         this._apply({ type: "setTrackFilter", key: raw.key });
+        this._rerender();
+        break;
+      }
+      case "setCriticalOwnerFilter": {
+        this._apply({ type: "setOwnerFilter", owner: raw.owner });
+        this._rerender();
+        break;
+      }
+      case "setCriticalMilestoneFilter": {
+        this._apply({ type: "setMilestoneFilter", milestone: raw.milestone });
+        this._rerender();
+        break;
+      }
+      case "setCriticalStatusFilter": {
+        this._apply({ type: "setStatusFilter", status: raw.status });
         this._rerender();
         break;
       }
