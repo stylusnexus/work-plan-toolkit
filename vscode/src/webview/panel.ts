@@ -356,6 +356,7 @@ export class WorkPlanPanel {
         ownerOptions: owners,
         milestoneOptions: milestones,
         filterNote: fit.render.filterNote,
+        reviewSupported: model.reviewKnown !== false,
         rollup: computeRollup(model, visibleTracks),
         nodeTitles: fit.render.nodeTitles,
         nodeLinks: fit.render.nodeLinks,

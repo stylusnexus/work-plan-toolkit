@@ -19,7 +19,8 @@ line in `README.md`.
   many are left. Status is written out, separate from the blocked and waiting
   marks. "In review" means an open, non-draft pull request in the same repo that
   says Fixes, Closes or Resolves for the issue, or one linked by hand. Needs a
-  CLI from this release for "in review"; an older CLI shows it as not started.
+  CLI from this release for "in review". With an older CLI the In review filter
+  is greyed out, and a note says the CLI is too old.
 - **Progress summary per track and milestone (#557).** A collapsible section at
   the top of the critical-path panel shows closed of total with a bar, how many
   issues are ready to start, in progress, waiting (1 step) and stuck (2+ steps),
