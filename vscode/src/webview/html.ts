@@ -841,12 +841,18 @@ ${criticalScript}
     .crit-rollup-scroll:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
     .crit-rollup-table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
     .crit-rollup-table caption { text-align: left; font-weight: bold; padding: 4px 0; }
-    .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid var(--vscode-contrastBorder, var(--border)); padding: 3px 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
-    .crit-rollup-table thead th { font-weight: bold; background: var(--card-bg); }
+    .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid var(--vscode-contrastBorder, var(--border)); padding: 3px 8px; text-align: left; vertical-align: top; }
+    /* Headers and counts wrap at spaces only; long issue titles may break anywhere. */
+    .crit-rollup-table thead th { font-weight: bold; background: var(--card-bg); min-width: 5.5em; }
+    .crit-rollup-table th[scope="row"], .crit-rollup-table td:nth-child(7), .crit-rollup-table td:nth-child(8) { overflow-wrap: anywhere; }
     .crit-rollup-table th[scope="row"] { min-width: 8em; }
     .crit-rollup-table td:nth-child(2) { min-width: 9em; }
     .crit-rollup-table td:nth-child(7), .crit-rollup-table td:nth-child(8) { min-width: 12em; }
-    .crit-rollup-table progress { width: 5em; vertical-align: middle; accent-color: var(--vscode-progressBar-background, var(--link)); }
+    /* Styled by hand: accent-color does not reach the bar in a webview, so it fell back to grey. */
+    .crit-rollup-table progress { width: 5em; height: 0.6em; vertical-align: middle; appearance: none; -webkit-appearance: none; border: 0; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--fg) 22%, transparent); color: var(--vscode-progressBar-background, #0e70c0); }
+    .crit-rollup-table progress::-webkit-progress-bar { background: color-mix(in srgb, var(--fg) 22%, transparent); }
+    .crit-rollup-table progress::-webkit-progress-value { background: var(--vscode-progressBar-background, #0e70c0); border-radius: 3px; }
+    .crit-rollup-table progress::-moz-progress-bar { background: var(--vscode-progressBar-background, #0e70c0); }
     .crit-rollup-table td > span { display: block; }
     .crit-rollup-table .crit-num { text-align: right; font-variant-numeric: tabular-nums; }
     .crit-rollup-table .crit-zero { opacity: 0.55; }
@@ -857,6 +863,7 @@ ${criticalScript}
     @media (forced-colors: active) {
       .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid CanvasText; }
       .crit-rollup-table progress { forced-color-adjust: auto; border: 1px solid CanvasText; }
+      .crit-rollup-table progress::-webkit-progress-value { background: Highlight; }
       .crit-rollup-table .crit-waiting, .crit-rollup-table .crit-stuck { color: CanvasText; }
     }
     .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }

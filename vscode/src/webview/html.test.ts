@@ -1261,6 +1261,14 @@ describe("buildHtml — critical roll-up (#557)", () => {
     assert.match(html, /crit-zero">0</);
     assert.ok(html.includes("Nothing to start; all in progress"), "milestone row with only in-progress work");
   });
+  it("headers wrap at spaces only; the bar is coloured by hand (#573)", () => {
+    const rule = (sel: string): string => html.slice(html.indexOf(sel), html.indexOf("}", html.indexOf(sel)));
+    assert.ok(!rule(".crit-rollup-table th, .crit-rollup-table td").includes("overflow-wrap"));
+    assert.ok(rule('.crit-rollup-table th[scope="row"], .crit-rollup-table td:nth-child(7)').includes("overflow-wrap: anywhere"));
+    assert.ok(rule(".crit-rollup-table thead th").includes("min-width: 5.5em"));
+    assert.ok(html.includes("::-webkit-progress-value { background: var(--vscode-progressBar-background"));
+    assert.ok(!html.includes("accent-color: var(--vscode-progressBar-background"));
+  });
   it("explains its scope in plain text", () => {
     assert.ok(html.includes("change only the graph"));
     assert.ok(html.includes("Stuck: two or more steps away"));
