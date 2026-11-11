@@ -14,6 +14,7 @@
 import type { GraphMode } from "./messages.ts";
 import { buildFlowText } from "./flowCopy.ts";
 import { NO_MILESTONE, UNASSIGNED } from "./criticalPathRender.ts";
+import type { Rollup, RollupRow } from "./rollup.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
 export interface CriticalViewOptions {
@@ -39,6 +40,8 @@ export interface CriticalViewOptions {
   milestoneOptions: string[];
   /** What is left before the filtered milestone can close. */
   filterNote: string | null;
+  /** Per-track and per-milestone summary (#557); omitted when there is nothing to show. */
+  rollup?: Rollup;
   /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
   nodeTitles?: Record<string, string>;
   /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
@@ -831,6 +834,31 @@ ${criticalScript}
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
     .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-rollup { margin: 8px 0; }
+    .crit-rollup summary { cursor: pointer; font-weight: bold; padding: 4px 0; min-height: 24px; }
+    .crit-rollup summary:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 2px; }
+    .crit-rollup-scroll { overflow-x: auto; margin: 6px 0; }
+    .crit-rollup-scroll:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
+    .crit-rollup-table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+    .crit-rollup-table caption { text-align: left; font-weight: bold; padding: 4px 0; }
+    .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid var(--vscode-contrastBorder, var(--border)); padding: 3px 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    .crit-rollup-table thead th { font-weight: bold; background: var(--card-bg); }
+    .crit-rollup-table th[scope="row"] { min-width: 8em; }
+    .crit-rollup-table td:nth-child(2) { min-width: 9em; }
+    .crit-rollup-table td:nth-child(7), .crit-rollup-table td:nth-child(8) { min-width: 12em; }
+    .crit-rollup-table progress { width: 5em; vertical-align: middle; accent-color: var(--vscode-progressBar-background, var(--link)); }
+    .crit-rollup-table td > span { display: block; }
+    .crit-rollup-table .crit-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .crit-rollup-table .crit-zero { opacity: 0.55; }
+    .crit-rollup-table .crit-waiting, .crit-rollup-table .crit-stuck { font-weight: 600; }
+    .crit-rollup-table .crit-waiting { color: var(--status-waiting); }
+    .crit-rollup-table .crit-stuck { color: var(--status-blocked); }
+    .crit-rollup-list { list-style: none; margin: 0; padding: 0; }
+    @media (forced-colors: active) {
+      .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid CanvasText; }
+      .crit-rollup-table progress { forced-color-adjust: auto; border: 1px solid CanvasText; }
+      .crit-rollup-table .crit-waiting, .crit-rollup-table .crit-stuck { color: CanvasText; }
+    }
     .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .crit-flow { margin: 6px 0; max-height: 15em; overflow: auto; }
@@ -1203,6 +1231,65 @@ function safeColor(c: string): string | null {
   return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/.test(c) ? c : null;
 }
 
+/** Longest issue title shown in a roll-up cell; the full title is on hover. */
+const ROLLUP_TITLE = 40;
+
+/**
+ * Progress summary tables (#557, reviewed by the design team). Every string came
+ * from data, so it goes through esc(). Column words match the graph's legend.
+ */
+function renderRollup(r: Rollup | undefined): string {
+  if (!r) return "";
+  const short = (t: string): string => {
+    const chars = [...t];
+    return chars.length > ROLLUP_TITLE ? chars.slice(0, ROLLUP_TITLE).join("") + "…" : t;
+  };
+  const issues = (list: { number: number; title: string; blocks?: number }[], none: string): string =>
+    list.length === 0 ? none : `<ul class="crit-rollup-list" role="list">${list.map((i) =>
+      `<li>#${i.number} <span title="${esc(i.title)}">${esc(short(i.title))}</span>${
+        i.blocks === undefined ? "" : `, blocks ${i.blocks} ${i.blocks === 1 ? "issue" : "issues"}`}</li>`).join("")}</ul>`;
+  // A count: muted at zero, bold with its glyph otherwise (the glyph, not the colour, carries meaning).
+  const num = (n: number, cls: string, glyph = ""): string =>
+    `<td class="crit-num ${n === 0 ? "crit-zero" : cls}">${n === 0 || !glyph ? "" : `${glyph} `}${n}</td>`;
+  const table = (id: string, title: string, rows: RollupRow[]): string => {
+    if (rows.length === 0) return "";
+    const body = rows.map((row) => {
+      const total = row.open + row.closed;
+      const pct = total === 0 ? 0 : Math.round((row.closed / total) * 100);
+      const next = row.open === 0 ? "All done"
+        : issues(row.next, row.startable === 0 && row.inProgress > 0 ? "Nothing to start; all in progress" : "None");
+      return `<tr>
+        <th scope="row">${esc(row.label)}</th>
+        <td><progress max="${Math.max(total, 1)}" value="${row.closed}" aria-hidden="true" tabindex="-1"></progress>
+          <span>${row.closed} of ${total} done (${pct}%)</span></td>
+        ${num(row.startable, "")}${num(row.inProgress, "")}${num(row.waiting, "crit-waiting", "⏳")}${num(row.blocked, "crit-stuck", "⛔")}
+        <td>${next}</td><td>${issues(row.gating, "None")}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="crit-rollup-scroll" role="region" aria-labelledby="${id}" tabindex="0">
+      <table class="crit-rollup-table"><caption id="${id}">${esc(title)}</caption>
+      <thead><tr><th scope="col">Name</th><th scope="col">Progress</th><th scope="col">Ready to start</th>
+      <th scope="col">In progress</th><th scope="col">⏳ Waiting (1 step)</th><th scope="col">⛔ Stuck (2+ steps)</th>
+      <th scope="col">Pick up next</th><th scope="col">Biggest blockers</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  };
+  const rows = r.tracks.length > 0 ? r.tracks : r.milestones;
+  if (rows.length === 0) {
+    return `<details class="crit-rollup"><summary>Progress by track and milestone</summary>
+      <p class="crit-note">Nothing to summarise yet: no issues in view.</p></details>`;
+  }
+  const sum = (f: (x: RollupRow) => number): number => rows.reduce((n, x) => n + f(x), 0);
+  const done = sum((x) => x.closed), total = done + sum((x) => x.open);
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  const headline = `${done} of ${total} done (${pct}%), ${sum((x) => x.startable)} ready, ` +
+    `${sum((x) => x.waiting)} waiting, ${sum((x) => x.blocked)} stuck`;
+  return `<details class="crit-rollup"${r.tracks.length + r.milestones.length > 2 ? " open" : ""}>
+    <summary>Progress by track and milestone: ${esc(headline)}</summary>
+    ${table("rollup-by-track", "By track", r.tracks)}${table("rollup-by-milestone", "By milestone", r.milestones)}
+    <p class="crit-note">Counts every issue in the repo (the sidebar track filter applies); the Track, Owner, Milestone and Status filters above change only the graph.
+    Ready to start: not begun and nothing in the way. Waiting: one step from startable. Stuck: two or more steps away, or in a dependency loop.</p>
+  </details>`;
+}
+
 /** Every string here came from data, so every one goes through esc(). */
 function renderCriticalPanel(c: CriticalViewOptions): string {
   const options = [
@@ -1230,6 +1317,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
   }).join("");
   const note = (cls: string, s: string | null) => (s ? `<div class="${cls}">${esc(s)}</div>` : "");
   return `<div class="crit-panel">
+    ${renderRollup(c.rollup)}
     <div class="crit-row">
       <label for="work-plan-critical-track">Track</label>
       <select id="work-plan-critical-track" class="graph-ctl">${options}</select>
