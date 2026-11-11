@@ -100,11 +100,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Activity-bar badge (#215): blocked-track count (the loud signal), falling
   // back to total open issues, cleared at zero. Recomputed on every tree change
-  // (refresh/lens/sort) off the RAW export so a lens can't shrink the count.
+  // (refresh/lens/sort) off the RAW export so a filtering lens can't shrink the
+  // count. A repo-focus lens is the exception: it scopes the badge to that repo.
   const syncBadge = (): void => {
     const exp = provider.rawExport;
     if (!exp) { treeView.badge = undefined; return; }
-    const { blocked, open } = badgeCounts(exp.tracks);
+    const lens = provider.activeLens;
+    const { blocked, open } = badgeCounts(
+      exp.tracks,
+      lens.kind === "repo" ? lens.repo : undefined,
+    );
     treeView.badge = blocked > 0
       ? { value: blocked, tooltip: `${blocked} blocked track${blocked === 1 ? "" : "s"}` }
       : open > 0

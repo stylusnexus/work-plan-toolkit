@@ -406,11 +406,17 @@ export function buildTree(exp: Export): RepoNode[] {
  * Activity-bar badge counts (#215): blocked tracks + total open issues, across
  * every track. Pure. The caller prefers `blocked` (the louder signal) and falls
  * back to `open`. "Blocked" matches the tree's own notion (`statusCategory`).
+ * When `repo` (a GitHub slug) is given, only that repo's tracks count — used
+ * when the tree is focused on one repo.
  */
-export function badgeCounts(tracks: Track[]): { blocked: number; open: number } {
+export function badgeCounts(
+  tracks: Track[],
+  repo?: string,
+): { blocked: number; open: number } {
   let blocked = 0;
   let open = 0;
   for (const t of tracks) {
+    if (repo !== undefined && t.repo !== repo) continue;
     if (statusCategory(t) === "blocked") blocked++;
     open += t.rollup.open;
   }
