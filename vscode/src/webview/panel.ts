@@ -22,6 +22,7 @@ import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
 import { assigneeLogins, fitToCap, lensVisibleIssues, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
 import type { CriticalFilter, CritEvent } from "./criticalPathRender.ts";
 import type { CriticalViewOptions } from "./html.ts";
+import { computeRollup } from "./rollup.ts";
 
 // ---------------------------------------------------------------------------
 // Injected move handler
@@ -355,6 +356,7 @@ export class WorkPlanPanel {
         ownerOptions: owners,
         milestoneOptions: milestones,
         filterNote: fit.render.filterNote,
+        rollup: computeRollup(model, visibleTracks),
         nodeTitles: fit.render.nodeTitles,
         nodeLinks: fit.render.nodeLinks,
         nodeStatus: fit.render.nodeStatus,

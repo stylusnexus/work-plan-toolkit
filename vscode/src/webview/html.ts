@@ -14,6 +14,7 @@
 import type { GraphMode } from "./messages.ts";
 import { buildFlowText } from "./flowCopy.ts";
 import { NO_MILESTONE, UNASSIGNED } from "./criticalPathRender.ts";
+import type { Rollup, RollupRow } from "./rollup.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
 export interface CriticalViewOptions {
@@ -39,6 +40,8 @@ export interface CriticalViewOptions {
   milestoneOptions: string[];
   /** What is left before the filtered milestone can close. */
   filterNote: string | null;
+  /** Per-track and per-milestone summary (#557); omitted when there is nothing to show. */
+  rollup?: Rollup;
   /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
   nodeTitles?: Record<string, string>;
   /** Drawn links as [from, to] Mermaid node ids; lets a click trace one issue's chain. */
@@ -831,6 +834,12 @@ ${criticalScript}
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .crit-banner { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
     .crit-warn { color: var(--fg); border-left: 3px solid var(--link); padding-left: 8px; }
+    .crit-rollup { margin: 8px 0; }
+    .crit-rollup summary { cursor: pointer; font-weight: bold; }
+    .crit-rollup-table { border-collapse: collapse; margin: 6px 0; width: 100%; font-size: 0.9em; }
+    .crit-rollup-table caption { text-align: left; font-weight: bold; padding: 4px 0; }
+    .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid var(--border); padding: 3px 8px; text-align: left; vertical-align: top; }
+    .crit-rollup-table progress { width: 7em; vertical-align: middle; }
     .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .crit-flow { margin: 6px 0; max-height: 15em; overflow: auto; }
@@ -1203,6 +1212,34 @@ function safeColor(c: string): string | null {
   return /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/.test(c) ? c : null;
 }
 
+/** Roll-up tables (#557). Every string came from data, so it goes through esc(). */
+function renderRollup(r: Rollup | undefined): string {
+  if (!r || (r.tracks.length === 0 && r.milestones.length === 0)) return "";
+  const issues = (list: { number: number; title: string; blocks?: number }[]): string =>
+    list.length === 0 ? "—" : list.map((i) =>
+      `#${i.number} ${esc(i.title)}${i.blocks === undefined ? "" : ` (holds up ${i.blocks})`}`).join("<br>");
+  const table = (title: string, rows: RollupRow[]): string => {
+    if (rows.length === 0) return "";
+    const body = rows.map((row) => {
+      const total = row.open + row.closed;
+      const pct = total === 0 ? 0 : Math.round((row.closed / total) * 100);
+      return `<tr>
+        <th scope="row">${esc(row.label)}</th>
+        <td><progress max="${total}" value="${row.closed}" aria-label="${esc(row.label)} progress"></progress>
+          ${row.closed} of ${total} closed (${pct}%)</td>
+        <td>${row.startable}</td><td>${row.waiting}</td><td>${row.blocked}</td>
+        <td>${issues(row.next)}</td><td>${issues(row.gating)}</td>
+      </tr>`;
+    }).join("");
+    return `<table class="crit-rollup-table"><caption>${esc(title)}</caption>
+      <thead><tr><th scope="col">Name</th><th scope="col">Progress</th><th scope="col">Startable</th>
+      <th scope="col">Waiting</th><th scope="col">Blocked</th><th scope="col">Start next</th>
+      <th scope="col">Holding up the most</th></tr></thead><tbody>${body}</tbody></table>`;
+  };
+  return `<details class="crit-rollup"><summary>Roll-up by track and milestone</summary>
+    ${table("By track", r.tracks)}${table("By milestone", r.milestones)}</details>`;
+}
+
 /** Every string here came from data, so every one goes through esc(). */
 function renderCriticalPanel(c: CriticalViewOptions): string {
   const options = [
@@ -1262,6 +1299,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     <div class="crit-flow" id="crit-flow" aria-live="polite">Click an issue in the graph to see its flow as text.</div>
     ${legendItems ? `<ul class="crit-status" aria-label="Status"><li><span class="legend-swatch sw-blocked"></span> ⛔ Blocked: 2+ steps from startable, or in a loop</li><li><span class="legend-swatch sw-waiting"></span> ⏳ Waiting: 1 step from startable</li></ul>` : ""}
     ${legendItems ? `<ul class="crit-legend" aria-label="Legend">${legendItems}</ul>` : ""}
+    ${renderRollup(c.rollup)}
   </div>`;
 }
 

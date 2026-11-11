@@ -1226,3 +1226,28 @@ describe("buildHtml — critical owner, milestone, status controls", () => {
     }
   });
 });
+
+describe("buildHtml — critical roll-up (#557)", () => {
+  const rollup = {
+    tracks: [{
+      label: "Alpha <b>x</b>", open: 1, closed: 3, startable: 1, waiting: 0, blocked: 0,
+      next: [{ number: 4, title: "do <i>it</i>" }],
+      gating: [{ number: 9, title: "big", blocks: 5 }],
+    }],
+    milestones: [{ label: "No milestone", open: 1, closed: 0, startable: 0, waiting: 1, blocked: 0, next: [], gating: [] }],
+  };
+  const html = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup } });
+  it("shows progress, counts, next and gating, escaping data", () => {
+    assert.match(html, /class="crit-rollup"/);
+    assert.ok(html.includes("3 of 4 closed (75%)"));
+    assert.ok(html.includes("#9 big (holds up 5)"));
+    assert.ok(html.includes("#4 do &lt;i&gt;it&lt;/i&gt;"));
+    assert.ok(!html.includes("Alpha <b>x</b>"));
+    assert.match(html, /<progress max="4" value="3"/);
+  });
+  it("is absent when there is nothing to summarise", () => {
+    const none = buildHtml({ ...BASE, mode: "critical", critical: { ...CRIT, rollup: { tracks: [], milestones: [] } } });
+    assert.ok(!none.includes("crit-rollup\""));
+    assert.ok(!buildHtml({ ...BASE, mode: "critical", critical: CRIT }).includes("crit-rollup\""));
+  });
+});
