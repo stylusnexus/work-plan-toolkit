@@ -215,6 +215,41 @@ def fetch_issues_concurrent(jobs: Iterable[tuple], max_workers: int = MAX_FETCH_
     return result
 
 
+# A closing keyword followed by this issue's reference, as GitHub reads it.
+_CLOSING_RE = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+(?:{repo}\b)?#{num}\b"
+
+
+def _has_review_pr(node: dict) -> bool:
+    """True when an open, non-draft PR is linked to this issue (#555).
+
+    A PR counts if a person linked it by hand (ConnectedEvent), or if it lives
+    in the issue's repo and its body says Fixes/Closes/Resolves for this issue.
+    A PR that only cites the issue ("see #N") does not count, and neither does a
+    draft or a closed one.
+    """
+    repo = (node.get("repository") or {}).get("nameWithOwner") or ""
+    num = node.get("number")
+    closing = None
+    if num is not None:
+        closing = re.compile(
+            _CLOSING_RE.format(repo=re.escape(repo) if repo else "", num=int(num)),
+            re.IGNORECASE)
+    for ev in (node.get("timelineItems") or {}).get("nodes") or []:
+        linked = ev.get("__typename") == "ConnectedEvent"
+        pr = ev.get("subject") if linked else ev.get("source")
+        pr = pr or {}
+        if pr.get("__typename") != "PullRequest":
+            continue
+        if (pr.get("state") or "").upper() != "OPEN" or pr.get("isDraft"):
+            continue
+        if linked:
+            return True
+        same_repo = ((pr.get("repository") or {}).get("nameWithOwner") or "") == repo
+        if same_repo and closing is not None and closing.search(pr.get("body") or ""):
+            return True
+    return False
+
+
 def _normalize_gql_node(node) -> Optional[dict]:
     """Reshape a GraphQL issueOrPullRequest node into the REST-ish shape callers
     expect (labels as [{name}], assignees as [{login}], milestone as {title}|None).
@@ -243,14 +278,7 @@ def _normalize_gql_node(node) -> Optional[dict]:
     blocking, _bl_trunc = _deps("blocking")
     deps_truncated = _bb_trunc or _bl_trunc
 
-    in_review = False
-    for ev in (node.get("timelineItems") or {}).get("nodes") or []:
-        pr = ev.get("source") or ev.get("subject") or {}
-        if (pr.get("__typename") == "PullRequest"
-                and (pr.get("state") or "").upper() == "OPEN"
-                and not pr.get("isDraft")):
-            in_review = True
-            break
+    in_review = _has_review_pr(node)
 
     return {
         "number": node.get("number"),
@@ -295,12 +323,15 @@ _GQL_FIELDS_LEAN = (
 _GQL_ISSUE_DEPS = (
     " blockedBy(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
     " blocking(first: 50) { totalCount nodes { number state title repository { nameWithOwner } } }"
-    # Open PRs that mention or link the issue, for the viewer's "in review" status
-    # (#555). Timeline cross-references, not closedByPullRequestsReferences: that
-    # field only counts PRs targeting the default branch, and PRs here target dev.
+    # Open PRs that link the issue, for the viewer's "in review" status (#555).
+    # Timeline cross-references, not closedByPullRequestsReferences or
+    # willCloseTarget: both only count PRs targeting the default branch, and PRs
+    # here target dev. So the PR body is read and checked for a closing keyword.
+    " repository { nameWithOwner }"
     " timelineItems(first: 50, itemTypes: [CROSS_REFERENCED_EVENT, CONNECTED_EVENT]) {"
     " nodes { __typename"
-    " ... on CrossReferencedEvent { source { __typename ... on PullRequest { state isDraft } } }"
+    " ... on CrossReferencedEvent { source { __typename"
+    " ... on PullRequest { state isDraft body repository { nameWithOwner } } } }"
     " ... on ConnectedEvent { subject { __typename ... on PullRequest { state isDraft } } } } }"
 )
 
