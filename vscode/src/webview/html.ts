@@ -848,11 +848,8 @@ ${criticalScript}
     .crit-rollup-table th[scope="row"] { min-width: 8em; }
     .crit-rollup-table td:nth-child(2) { min-width: 9em; }
     .crit-rollup-table td:nth-child(7), .crit-rollup-table td:nth-child(8) { min-width: 12em; }
-    /* Styled by hand: accent-color does not reach the bar in a webview, so it fell back to grey. */
-    .crit-rollup-table progress { width: 5em; height: 0.6em; vertical-align: middle; appearance: none; -webkit-appearance: none; border: 0; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--fg) 22%, transparent); color: var(--vscode-progressBar-background, #0e70c0); }
-    .crit-rollup-table progress::-webkit-progress-bar { background: color-mix(in srgb, var(--fg) 22%, transparent); }
-    .crit-rollup-table progress::-webkit-progress-value { background: var(--vscode-progressBar-background, #0e70c0); border-radius: 3px; }
-    .crit-rollup-table progress::-moz-progress-bar { background: var(--vscode-progressBar-background, #0e70c0); }
+    /* The same div bar the detail panel uses: the browser's native progress element would not take the theme colour in a webview. */
+    .crit-rollup-table .progress { width: 5em; margin: 0 0 2px 0; }
     .crit-rollup-table td > span { display: block; }
     .crit-rollup-table .crit-num { text-align: right; font-variant-numeric: tabular-nums; }
     .crit-rollup-table .crit-zero { opacity: 0.55; }
@@ -862,8 +859,6 @@ ${criticalScript}
     .crit-rollup-list { list-style: none; margin: 0; padding: 0; }
     @media (forced-colors: active) {
       .crit-rollup-table th, .crit-rollup-table td { border-bottom: 1px solid CanvasText; }
-      .crit-rollup-table progress { forced-color-adjust: auto; border: 1px solid CanvasText; }
-      .crit-rollup-table progress::-webkit-progress-value { background: Highlight; }
       .crit-rollup-table .crit-waiting, .crit-rollup-table .crit-stuck { color: CanvasText; }
     }
     .crit-flowbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
@@ -1267,7 +1262,7 @@ function renderRollup(r: Rollup | undefined): string {
         : issues(row.next, row.startable === 0 && row.inProgress > 0 ? "Nothing to start; all in progress" : "None");
       return `<tr>
         <th scope="row">${esc(row.label)}</th>
-        <td><progress max="${Math.max(total, 1)}" value="${row.closed}" aria-hidden="true" tabindex="-1"></progress>
+        <td><div class="progress" aria-hidden="true"><div class="progress-fill" style="width:${pct}%"></div></div>
           <span>${row.closed} of ${total} done (${pct}%)</span></td>
         ${num(row.startable, "")}${num(row.inProgress, "")}${num(row.waiting, "crit-waiting", "⏳")}${num(row.blocked, "crit-stuck", "⛔")}
         <td>${next}</td><td>${issues(row.gating, "None")}</td>
