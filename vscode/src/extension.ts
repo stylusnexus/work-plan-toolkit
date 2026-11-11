@@ -28,6 +28,7 @@ import { availableLenses, describeView } from "./webview/lenses.ts";
 import { exportCarriesLabels, isLabelQuery, parseSearchQuery, searchIssues } from "./webview/search.ts";
 import { SearchPanel } from "./webview/searchPanel.ts";
 import type { TrackSort } from "./tree.ts";
+import { parseSyncResult, syncArgs, syncToast } from "./planSync.ts";
 import { executeWrite } from "./write.ts";
 import type { ConfirmPrompt, WriteOutcome } from "./write.ts";
 import { resolveContainedFile } from "./pathSafety.ts";
@@ -2518,6 +2519,33 @@ export function activate(context: vscode.ExtensionContext): void {
           ? `Work Plan: ${err.message}`
           : `Work Plan: push-track failed — ${String(err)}`;
         vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
+  // workPlan.syncSharedPlan (#426) — fetch origin and fast-forward the repo's
+  // shared plan branch so a teammate's pushed planning shows up. The CLI never
+  // touches a dirty or diverged worktree; its remediation text is shown as-is.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.syncSharedPlan", async (node?: RepoNode) => {
+      const key = node?.folder;
+      if (!key) {
+        vscode.window.showInformationMessage("Work Plan: not a configured repo — nothing to sync.");
+        return;
+      }
+      try {
+        const result = await withWriteProgress(
+          `Work Plan: syncing the shared plan for ${node!.repo}…`,
+          () => runner(syncArgs(key)),
+        );
+        const parsed = parseSyncResult(result.stdout);
+        const toast = syncToast(parsed, node!.repo);
+        if (parsed?.moved) await refreshAfterWrite();
+        if (toast.level === "error") vscode.window.showErrorMessage(toast.text);
+        else if (toast.level === "warning") vscode.window.showWarningMessage(toast.text);
+        else vscode.window.showInformationMessage(toast.text);
+      } catch (err: unknown) {
+        vscode.window.showErrorMessage(`Work Plan: sync failed — ${String(err)}`);
       }
     }),
   );

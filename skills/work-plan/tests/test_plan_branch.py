@@ -277,3 +277,60 @@ class PushTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SyncCommandTest(unittest.TestCase):
+    """#426: `plan-branch sync` output, JSON shape and exit codes."""
+
+    @staticmethod
+    def _result(state, **kw):
+        return {"state": state, "ahead": 0, "behind": 0, "incoming": [],
+                "dirty_paths": [], "moved": False, "message": "", **kw}
+
+    def _sync(self, state, args=(), **kw):
+        res = self._result(state, **kw)
+        rc, out, pwmod = _run(["sync", "myrepo", *args], cfg=_cfg(plan_branch="plan"),
+                              pw={"sync_plan_branch": res})
+        return rc, out, pwmod
+
+    def test_fast_forward_lists_commits_and_exits_zero(self):
+        rc, out, _ = self._sync("fast-forwarded", moved=True, behind=2,
+                                incoming=["a1 one", "b2 two"])
+        self.assertEqual(rc, 0)
+        self.assertIn("Fast-forwarded 'plan' by 2 commits", out)
+        self.assertIn("a1 one", out)
+
+    def test_dry_run_flag_reaches_the_helper(self):
+        _, _, pwmod = self._sync("would-fast-forward", args=("--dry-run",), incoming=["a1 one"])
+        self.assertTrue(pwmod.sync_plan_branch.call_args.kwargs["dry_run"])
+
+    def test_no_ops_exit_zero(self):
+        for state in ("up-to-date", "ahead", "unpublished"):
+            rc, _, _ = self._sync(state, message="x")
+            self.assertEqual(rc, 0, state)
+
+    def test_refusals_exit_one_with_the_remediation(self):
+        for state in ("dirty", "diverged", "offline", "missing", "no-worktree", "error"):
+            rc, out, _ = self._sync(state, message=f"fix {state}", dirty_paths=["p.md"])
+            self.assertEqual(rc, 1, state)
+            self.assertIn(f"fix {state}", out)
+
+    def test_json_shape_is_stable(self):
+        rc, out, _ = self._sync("fast-forwarded", args=("--json",), moved=True, behind=1,
+                                incoming=["a1 one"])
+        data = json.loads(out)
+        self.assertEqual(rc, 0)
+        self.assertEqual(set(data), {"repo", "plan_branch", "state", "ahead", "behind",
+                                     "incoming", "dirty_paths", "moved", "message"})
+        self.assertEqual((data["repo"], data["plan_branch"], data["state"]), ("myrepo", "plan", "fast-forwarded"))
+        rc, out, _ = self._sync("dirty", args=("--json",), dirty_paths=["p.md"])
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(out)["state"], "dirty")
+
+    def test_no_plan_branch_configured(self):
+        rc, out, pwmod = _run(["sync", "myrepo"], cfg=_cfg())
+        self.assertEqual(rc, 1)
+        self.assertIn("plan-branch init", out)
+        pwmod.sync_plan_branch.assert_not_called()
+        rc, out, _ = _run(["sync", "myrepo", "--json"], cfg=_cfg())
+        self.assertEqual(json.loads(out)["state"], "unconfigured")

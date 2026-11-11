@@ -407,3 +407,118 @@ class PushPlanBranchTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _SyncGit:
+    """Routes the git calls sync_plan_branch makes. `counts` is "ahead behind"."""
+    def __init__(self, *, remote="present", counts="0 0", status="", merge_ok=True,
+                 incoming="aaa1111 teammate edit\nbbb2222 another\n"):
+        self.remote, self.counts, self.status = remote, counts, status
+        self.merge_ok, self.incoming = merge_ok, incoming
+        self.calls = []
+
+    def __call__(self, cwd, *args, timeout=None):
+        self.calls.append(args)
+        sub = args[0]
+        if sub == "ls-remote":
+            if self.remote == "present":
+                return _ok("sha\trefs/heads/plan\n")
+            return MagicMock(returncode=2 if self.remote == "absent" else 128,
+                             stdout="", stderr="")
+        if sub == "rev-list":
+            return _ok(self.counts + "\n")
+        if sub == "log":
+            return _ok(self.incoming)
+        if sub == "status":
+            return _ok(self.status)
+        if sub == "merge":
+            return _ok() if self.merge_ok else _fail()
+        return _ok()
+
+    def merged(self):
+        return any(c[0] == "merge" for c in self.calls)
+
+
+class SyncPlanBranchTest(unittest.TestCase):
+    """#426: fetch + fast-forward the plan worktree; never touch dirty/diverged."""
+
+    def _sync(self, git, *, dry_run=False, local=True, fetch=True, worktree=Path("/wt")):
+        with patch.object(pw, "_git", git), \
+             patch.object(pw, "local_branch_exists", return_value=local), \
+             patch.object(pw, "fetch_branch", return_value=fetch), \
+             patch.object(pw, "ensure_worktree", return_value=worktree):
+            return pw.sync_plan_branch(Path("/repo"), "plan", dry_run=dry_run)
+
+    def test_behind_only_fast_forwards_and_lists_incoming(self):
+        g = _SyncGit(counts="0 2")
+        r = self._sync(g)
+        self.assertEqual(r["state"], "fast-forwarded")
+        self.assertTrue(r["moved"])
+        self.assertEqual((r["ahead"], r["behind"]), (0, 2))
+        self.assertEqual(r["incoming"], ["aaa1111 teammate edit", "bbb2222 another"])
+        merge = [c for c in g.calls if c[0] == "merge"][0]
+        self.assertIn("--ff-only", merge)
+        self.assertNotIn("rebase", [c[0] for c in g.calls])
+
+    def test_up_to_date_and_ahead_are_no_ops(self):
+        for counts, state in (("0 0", "up-to-date"), ("3 0", "ahead")):
+            g = _SyncGit(counts=counts)
+            r = self._sync(g)
+            self.assertEqual(r["state"], state)
+            self.assertFalse(r["moved"])
+            self.assertFalse(g.merged())
+
+    def test_dirty_worktree_is_never_modified(self):
+        g = _SyncGit(counts="0 1", status=" M .work-plan/a.md\n?? .work-plan/b.md\n")
+        r = self._sync(g)
+        self.assertEqual(r["state"], "dirty")
+        self.assertEqual(r["dirty_paths"], [".work-plan/a.md", ".work-plan/b.md"])
+        self.assertIn("Commit or stash", r["message"])
+        self.assertFalse(g.merged())
+
+    def test_dirty_but_up_to_date_is_still_a_no_op(self):
+        g = _SyncGit(counts="0 0", status=" M .work-plan/a.md\n")
+        self.assertEqual(self._sync(g)["state"], "up-to-date")
+
+    def test_diverged_is_never_modified(self):
+        g = _SyncGit(counts="2 3", status=" M x\n")
+        r = self._sync(g)
+        self.assertEqual(r["state"], "diverged")
+        self.assertIn("git rebase origin/plan", r["message"])
+        self.assertFalse(g.merged())
+
+    def test_dry_run_reports_without_moving(self):
+        g = _SyncGit(counts="0 2")
+        r = self._sync(g, dry_run=True)
+        self.assertEqual(r["state"], "would-fast-forward")
+        self.assertFalse(r["moved"])
+        self.assertEqual(len(r["incoming"]), 2)
+        self.assertFalse(g.merged())
+
+    def test_offline_keeps_local_state(self):
+        g = _SyncGit(remote="offline")
+        r = self._sync(g)
+        self.assertEqual(r["state"], "offline")
+        self.assertFalse(g.merged())
+        # fetch failing after a reachable ls-remote is offline too
+        self.assertEqual(self._sync(_SyncGit(), fetch=False)["state"], "offline")
+
+    def test_git_missing_is_offline(self):
+        self.assertEqual(self._sync(lambda *a, **k: None)["state"], "offline")
+
+    def test_unpublished_branch_is_not_an_error_state(self):
+        r = self._sync(_SyncGit(remote="absent"))
+        self.assertEqual(r["state"], "unpublished")
+        self.assertIn("plan-branch push", r["message"])
+
+    def test_missing_local_branch_and_unusable_worktree(self):
+        self.assertEqual(self._sync(_SyncGit(), local=False)["state"], "missing")
+        self.assertEqual(self._sync(_SyncGit(), worktree=None)["state"], "no-worktree")
+
+    def test_failed_fast_forward_reports_error_and_not_moved(self):
+        r = self._sync(_SyncGit(counts="0 1", merge_ok=False))
+        self.assertEqual(r["state"], "error")
+        self.assertFalse(r["moved"])
+
+    def test_unreadable_counts_is_an_error(self):
+        self.assertEqual(self._sync(_SyncGit(counts="garbage"))["state"], "error")

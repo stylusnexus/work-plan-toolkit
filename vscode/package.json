@@ -153,6 +153,12 @@
         "icon": "$(issue-closed)"
       },
       {
+        "command": "workPlan.syncSharedPlan",
+        "title": "Sync Shared Plan",
+        "category": "Work Plan",
+        "icon": "$(sync)"
+      },
+      {
         "command": "workPlan.pushTrack",
         "title": "Publish to Team (Shared Tier)…",
         "category": "Work Plan",
@@ -532,6 +538,11 @@
           "group": "0_workPlanRepo@2"
         },
         {
+          "command": "workPlan.syncSharedPlan",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@4"
+        },
+        {
           "command": "workPlan.clearRepoLocal",
           "when": "view == workPlan.tree && viewItem == workPlanRepo",
           "group": "9_workPlanRepoDanger@1"
@@ -772,6 +783,10 @@
         },
         {
           "command": "workPlan.pushTrack",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.syncSharedPlan",
           "when": "false"
         },
         {
