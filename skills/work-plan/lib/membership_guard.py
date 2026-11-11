@@ -37,9 +37,11 @@ Scope of the guarantee (deliberately narrow — don't oversell it):
     pushing between the rebase and the eventual (separate) push is reconciled by
     the non-fast-forward push being rejected + rebase-on-next-write, not by this
     write path.
-  - `frontmatter.write_file` re-serializes the frontmatter via yq on every
-    write, so body-only edits round-trip verbatim but YAML comments / key order
-    are normalized (a pre-existing property, not introduced here).
+  - `frontmatter.write_file` keeps YAML comments and key order (#497): it
+    patches only the changed keys in place with yq. It falls back to a full
+    re-dump, which drops comments, only if the patch cannot be verified, and
+    then warns how many comment lines were lost. `github.issues` keeps its
+    existing order; new numbers are appended (#568).
 """
 import hashlib
 import json
