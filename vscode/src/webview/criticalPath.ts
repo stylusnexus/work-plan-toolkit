@@ -41,6 +41,12 @@ export interface CriticalPathModel {
   edges: CritEdge[]; stubs: CritStub[]; cycles: CritCycle[];
   notes: string[];            // e.g. missing dependency track
   trackOrder: TrackKey[];
+  /**
+   * False when issues exist but none carries `in_review`: the CLI is too old to
+   * report pull requests, so "in review" can't be told from "not started" (#555).
+   * Absent reads as true.
+   */
+  reviewKnown?: boolean;
 }
 
 /** Same check as next_up.py's blocked_by gate: open and no open blockers. */
@@ -100,6 +106,7 @@ export function computeCriticalPath(exp: Export, repo: string | null): CriticalP
       if (!members.includes(k)) members.push(k);
     }
   }
+  model.reviewKnown = issueById.size === 0 || [...issueById.values()].some(i => i.in_review !== undefined);
   const isOpen = (id: string): boolean => nodes.get(id)?.state === "open";
 
   // preds: blocker -> dependent edges stored as dependent -> blockers.

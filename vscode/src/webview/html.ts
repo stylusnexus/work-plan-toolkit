@@ -40,6 +40,8 @@ export interface CriticalViewOptions {
   milestoneOptions: string[];
   /** What is left before the filtered milestone can close. */
   filterNote: string | null;
+  /** False when the CLI is too old to report in-review pull requests (#555); absent reads as true. */
+  reviewSupported?: boolean;
   /** Per-track and per-milestone summary (#557); omitted when there is nothing to show. */
   rollup?: Rollup;
   /** Mermaid node id -> full hover text (#N, untruncated title, track, state). */
@@ -1299,10 +1301,10 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ...c.trackOptions.map((t) =>
       `<option value="${esc(t.key)}"${t.key === c.trackFilter ? " selected" : ""}>${esc(t.label)}</option>`),
   ].join("");
-  const select = (id: string, label: string, all: string, current: string | null, items: [string, string][]) =>
+  const select = (id: string, label: string, all: string, current: string | null, items: [string, string, boolean?][]) =>
     `<label for="${id}">${label}</label>
       <select id="${id}" class="graph-ctl"><option value=""${current === null ? " selected" : ""}>${all}</option>${
-        items.map(([v, t]) => `<option value="${esc(v)}"${v === current ? " selected" : ""}>${esc(t)}</option>`).join("")
+        items.map(([v, t, off]) => `<option value="${esc(v)}"${v === current ? " selected" : ""}${off ? " disabled" : ""}>${esc(t)}</option>`).join("")
       }</select>`;
   const ownerSelect = select("work-plan-critical-owner", "Owner", "Everyone", c.owner,
     [[UNASSIGNED, "Unassigned"], ...c.ownerOptions.map((o): [string, string] => [o, o])]);
@@ -1310,8 +1312,13 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     [[NO_MILESTONE, "No milestone"], ...c.milestoneOptions.map((m): [string, string] => [m, m])]);
   const statusSelect = select("work-plan-critical-status", "Status", "Any status", c.status, [
     ["not-started", "Not started"], ["startable-not-started", "Not started and startable"],
-    ["in-progress", "In progress"], ["in-review", "In review"], ["done", "Done (needs Show closed)"],
+    ["in-progress", "In progress"],
+    c.reviewSupported === false ? ["in-review", "In review (needs a newer CLI)", true] : ["in-review", "In review"],
+    ["done", "Done (needs Show closed)"],
   ]);
+  const reviewNote = c.reviewSupported === false
+    ? "Your work-plan CLI is too old to report pull requests, so \"In review\" is unavailable and those issues show as not started. Update the CLI to turn it on."
+    : null;
   const legendItems = c.legend.map((l) => {
     const color = safeColor(l.color);
     const style = color ? ` style="background:${esc(color)}"` : "";
@@ -1337,6 +1344,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ${note("crit-warn", c.tooLargeMessage)}
     ${note("crit-note", c.autoFilterNote)}
     ${note("crit-note", c.filterNote)}
+    ${note("crit-note", reviewNote)}
     ${note("crit-note", c.emptyMessage)}
     <div class="crit-flowbar" role="group" aria-label="Copy flow">
       <label for="flow-format">Format</label>

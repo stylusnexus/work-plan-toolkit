@@ -1283,3 +1283,22 @@ describe("buildHtml — critical roll-up (#557)", () => {
     assert.match(z, /class="progress-fill" style="width:0%"/);
   });
 });
+
+describe("buildHtml — status filter on an older CLI (#555)", () => {
+  const page = (reviewSupported?: boolean): string => buildHtml({
+    ...BASE, mode: "critical",
+    critical: { ...CRIT, ...(reviewSupported === undefined ? {} : { reviewSupported }) },
+  });
+  it("disables In review and says why when the CLI cannot report it", () => {
+    const html = page(false);
+    assert.match(html, /<option value="in-review" disabled>In review \(needs a newer CLI\)<\/option>/);
+    assert.ok(html.includes("too old to report pull requests"));
+    assert.ok(html.includes("those issues show as not started"));
+  });
+  it("leaves In review alone when the CLI supports it, or support is unknown", () => {
+    for (const html of [page(true), page(undefined)]) {
+      assert.match(html, /<option value="in-review">In review<\/option>/);
+      assert.ok(!html.includes("too old to report pull requests"));
+    }
+  });
+});
