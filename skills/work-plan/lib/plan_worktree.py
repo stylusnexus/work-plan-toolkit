@@ -343,6 +343,94 @@ def rebase_onto_origin(worktree: Path, branch: str) -> bool:
     return False
 
 
+def _remote_state(local_path: Path, branch: str) -> str:
+    """"present" | "absent" | "offline" for `branch` on origin, via ls-remote.
+
+    Exit 0 with output = the branch is there; exit 0 with none = origin was
+    reached and has no such branch; any failure = origin could not be reached.
+    A failed `git fetch` cannot tell the last two apart. Never raises.
+    """
+    proc = _git(Path(local_path).expanduser(), "ls-remote", "--exit-code", "--heads",
+                "origin", branch)
+    if proc is None:
+        return "offline"
+    if proc.returncode == 0 and proc.stdout.strip():
+        return "present"
+    # --exit-code makes "reached origin, no matching ref" exit 2 exactly.
+    return "absent" if proc.returncode == 2 else "offline"
+
+
+def sync_plan_branch(local_path: Path, branch: str, dry_run: bool = False) -> dict:
+    """Fetch origin/<branch> and fast-forward the cached plan worktree (#426).
+
+    Never rebases, merges or stashes, and never touches a dirty or diverged
+    worktree. Returns a dict with a stable `state`:
+
+      up-to-date          local and origin match
+      ahead               local has unpushed commits, origin has nothing new
+      fast-forwarded      behind-only: branch moved to origin (`moved` True)
+      would-fast-forward  dry run of the above; nothing moved
+      unpublished         origin has no such branch yet
+      diverged            both sides have new commits; nothing changed
+      dirty               behind-only but the worktree has uncommitted changes
+      offline             origin unreachable; local state untouched
+      missing             no local plan branch (run init)
+      no-worktree         the worktree can't be used (wrong branch, or git failed)
+      error               the fast-forward itself failed; nothing changed
+
+    Also: ahead / behind counts, `incoming` (one-line summaries of commits that
+    arrive), `dirty_paths`, and `message` (what to do), empty when nothing is.
+    Never raises.
+    """
+    local_path = Path(local_path).expanduser()
+    out = {"state": "", "ahead": 0, "behind": 0, "incoming": [],
+           "dirty_paths": [], "moved": False, "message": ""}
+
+    def done(state: str, message: str = "") -> dict:
+        out["state"], out["message"] = state, message
+        return out
+
+    if not local_branch_exists(local_path, branch):
+        return done("missing", f"No local plan branch '{branch}'. Run `plan-branch init` first.")
+    remote = _remote_state(local_path, branch)
+    if remote == "offline":
+        return done("offline", "Could not reach origin; your local plan is unchanged.")
+    if remote == "absent":
+        return done("unpublished", f"origin has no '{branch}' yet, so there is nothing to sync. "
+                                   "Share it with `plan-branch push`.")
+    if not fetch_branch(local_path, branch):
+        return done("offline", "Could not fetch from origin; your local plan is unchanged.")
+    wt = ensure_worktree(local_path, branch)
+    if wt is None:
+        return done("no-worktree", f"The plan worktree is not usable (it must be checked out at "
+                                   f"'{branch}'). Remove it with `git worktree remove` and retry.")
+    counts = _git(wt, "rev-list", "--left-right", "--count", f"{branch}...origin/{branch}")
+    try:
+        ahead, behind = (int(x) for x in counts.stdout.split())  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        return done("error", "Could not compare the plan branch with origin.")
+    out["ahead"], out["behind"] = ahead, behind
+    if behind == 0:
+        return done("ahead" if ahead else "up-to-date")
+    if ahead:
+        return done("diverged", f"Your plan branch and origin both have new commits. In {wt}, run "
+                                f"`git rebase origin/{branch}`, then `plan-branch push`.")
+    log = _git(wt, "log", "--oneline", "--no-color", f"{branch}..origin/{branch}")
+    if log is not None and log.returncode == 0:
+        out["incoming"] = [ln for ln in log.stdout.splitlines() if ln.strip()]
+    status = _git(wt, "status", "--porcelain", "--untracked-files=all")
+    if status is not None and status.stdout.strip():
+        out["dirty_paths"] = [ln[3:] for ln in status.stdout.splitlines() if ln.strip()]
+        return done("dirty", f"Uncommitted changes in {wt}. Commit or stash them, then sync again.")
+    if dry_run:
+        return done("would-fast-forward")
+    merged = _git(wt, "merge", "--ff-only", "--quiet", f"origin/{branch}")
+    if merged is None or merged.returncode != 0:
+        return done("error", "The fast-forward failed; nothing was changed.")
+    out["moved"] = True
+    return done("fast-forwarded")
+
+
 def unpushed_oneline(local_path: Path, branch: str) -> list:
     """One-line summaries of commits on local `branch` not yet on origin
     (`origin/<branch>..<branch>`). If origin/<branch> doesn't exist, every commit

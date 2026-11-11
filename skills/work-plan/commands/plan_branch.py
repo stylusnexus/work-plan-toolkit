@@ -12,13 +12,17 @@ and shares it:
   status <repo> Report the configured plan_branch: does it exist, is it
                 published to origin, how many local commits are unpushed.
                 Add --json for the machine shape.
+  sync <repo>   Fetch origin and fast-forward the local plan worktree so teammates'
+                changes show up (#426). Only moves a behind-only branch; a dirty
+                or diverged worktree is left alone with next steps. --dry-run
+                reports without moving it.
   push <repo>   Push the plan branch to origin to share it. This is the exposure
                 point: on a PUBLIC repo it prints a confirm heads-up + token and
                 exits; re-run with --confirm=<token>. --dry-run previews the
                 commits that would be pushed without pushing.
 
 Usage:
-  plan-branch <init|status|push> <repo> [--branch=<name>] [--confirm=<token>]
+  plan-branch <init|status|sync|push> <repo> [--branch=<name>] [--confirm=<token>]
                                         [--dry-run] [--json]
 """
 import json
@@ -37,7 +41,7 @@ from lib.prompts import parse_flags
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib import plan_worktree as pw
 
-_ACTIONS = ("init", "status", "push")
+_ACTIONS = ("init", "status", "sync", "push")
 _DEFAULT_BRANCH = "work-plan/plan"
 # A git refname segment: starts alnum, then alnum / . _ - and / separators. We
 # additionally reject `..`, leading/trailing `/`, and `//` below.
@@ -214,6 +218,47 @@ def _do_status(cfg, key, entry, github, local_path, flags) -> int:
     return 0
 
 
+def _do_sync(cfg, key, entry, github, local_path, flags) -> int:
+    branch = entry.get("plan_branch")
+    want_json = "--json" in flags
+    if not branch:
+        msg = f"repo '{key}' has no plan_branch. Run `plan-branch init {key}` first."
+        if want_json:
+            print(json.dumps({"repo": key, "plan_branch": None, "state": "unconfigured",
+                              "message": msg}))
+        else:
+            print(f"ERROR: {msg}")
+        return 1
+
+    result = pw.sync_plan_branch(local_path, branch, dry_run="--dry-run" in flags)
+    state = result["state"]
+    # Refusals exit 1 so a script notices; no-ops and successes exit 0.
+    ok = state in ("up-to-date", "ahead", "fast-forwarded", "would-fast-forward", "unpublished")
+    if want_json:
+        print(json.dumps({"repo": key, "plan_branch": branch, **result}))
+        return 0 if ok else 1
+
+    n = len(result["incoming"])
+    plural = f"{n} commit{'s' if n != 1 else ''}"
+    if state == "up-to-date":
+        print(f"'{branch}' is up to date with origin.")
+    elif state == "ahead":
+        print(f"'{branch}' is {result['ahead']} commit(s) ahead of origin; nothing to pull. "
+              f"Share them with `plan-branch push {key}`.")
+    elif state in ("fast-forwarded", "would-fast-forward"):
+        verb = "Fast-forwarded" if state == "fast-forwarded" else "Would fast-forward"
+        print(f"{'✓ ' if result['moved'] else ''}{verb} '{branch}' by {plural}:")
+        for line in result["incoming"][:10]:
+            print(f"  {line}")
+        if n > 10:
+            print(f"  … and {n - 10} more")
+    else:
+        print(f"{'ERROR' if state != 'unpublished' else 'Note'}: {result['message']}")
+        for path in result["dirty_paths"][:10]:
+            print(f"  {path}")
+    return 0 if ok else 1
+
+
 def _do_push(cfg, key, entry, github, local_path, flags) -> int:
     branch = entry.get("plan_branch")
     if not branch:
@@ -311,4 +356,6 @@ def run(args: list[str]) -> int:
         return _do_init(cfg, key, entry, github, local_path, flags)
     if action == "status":
         return _do_status(cfg, key, entry, github, local_path, flags)
+    if action == "sync":
+        return _do_sync(cfg, key, entry, github, local_path, flags)
     return _do_push(cfg, key, entry, github, local_path, flags)
