@@ -7,6 +7,7 @@ import {
   mergeFetchedUntracked,
   mergeStaleUntracked,
   badgeCounts,
+  takeLocalCopy,
   shouldExpandRepos,
   sortTracks,
   repoDescription,
@@ -987,6 +988,16 @@ describe("badgeCounts", () => {
   test("empty tracks", () => {
     assert.deepEqual(badgeCounts([]), { blocked: 0, open: 0 });
   });
+
+  test("repo scope counts only that repo's tracks", () => {
+    const tracks = [
+      t({ repo: "o/a", status: "blocked", rollup: { open: 3, closed: 0 } }),
+      t({ repo: "o/b", rollup: { open: 5, closed: 0 } }),
+    ];
+    assert.deepEqual(badgeCounts(tracks, "o/b"), { blocked: 0, open: 5 });
+    assert.deepEqual(badgeCounts(tracks, "o/a"), { blocked: 1, open: 3 });
+    assert.deepEqual(badgeCounts(tracks), { blocked: 1, open: 8 });
+  });
 });
 
 describe("buildTree — TrackNode.closed (#220)", () => {
@@ -1073,5 +1084,25 @@ describe("sortTracks — touched (#428)", () => {
       sortTracks(shuffled, "touched").map(n => n.name),
       sortTracks(NODES, "touched").map(n => n.name),
     );
+  });
+});
+
+describe("takeLocalCopy (#349)", () => {
+  test("private repo: short history note, plain button", () => {
+    const c = takeLocalCopy("o/r", false, 2);
+    assert.equal(c.title, "Take 2 shared tracks of “o/r” local-only?");
+    assert.match(c.detail, /git history/);
+    assert.match(c.detail, /teammates who already pulled keep their copies/);
+    assert.doesNotMatch(c.detail, /PUBLIC/);
+    assert.equal(c.button, "Take Local-Only");
+    assert.doesNotMatch(c.toast, /public/);
+  });
+  test("public repo: leads with the warning, says it is not a cleanup", () => {
+    const c = takeLocalCopy("o/r", true, 1);
+    assert.equal(c.title, "Take 1 shared track of “o/r” local-only?");
+    assert.ok(c.detail.startsWith("⚠ “o/r” is PUBLIC. This does not make the plans private."));
+    assert.match(c.detail, /already exposed/);
+    assert.equal(c.button, "Take Local-Only Anyway");
+    assert.match(c.toast, /treat past content as exposed/);
   });
 });

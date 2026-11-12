@@ -68,6 +68,9 @@ export type WriteAction =
   // config folder key (disambiguates the track). Public-repo gated by the CLI's
   // needs_confirm, which executeWrite drives.
   | { kind: "pushTrack"; track: string; repoKey?: string }
+  // Demote ALL of a repo's shared tracks back to the private tier (#349) — the
+  // repo-wide inverse of pushTrack. repoKey is the config folder key.
+  | { kind: "takeRepoLocal"; repoKey: string }
   // Set the per-track next-up ordering preset (#326 Phase 3). repoKey is the
   // config folder key (passed as --repo=<key> to the CLI). preset is omitted
   // when clear=true (which resets to the default "flow"). auto, when present,
@@ -393,6 +396,9 @@ export function actionToArgs(action: WriteAction): string[] {
         "--",
         action.track,
       ];
+
+    case "takeRepoLocal":
+      return ["unshare-track", "--all", `--repo=${action.repoKey}`];
 
     case "setNextUpPreset":
       return [

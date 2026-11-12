@@ -403,6 +403,12 @@ footer.site ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:w
 <p>Promote a PRIVATE track (local-only, in notes_root) to the repo&#x27;s SHARED tier and publish it (#306). Moves the track&#x27;s <code>.md</code> into the repo&#x27;s <code>.work-plan/</code> (on its <code>plan_branch</code>, via a worktree), removes the private copy so it isn&#x27;t duplicated, commits to the plan branch, and pushes — unless <code>--no-push</code> (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a <code>plan_branch</code> (else hints <code>plan-branch init</code>). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints <code>needs_confirm</code> + token; re-run with <code>--confirm=&lt;token&gt;</code>).</p>
 <p class="muted">Example: <code>/work-plan push-track my-feature --repo=myproject</code></p>
 </div>
+<div class="cmd" id="cmd-unshare-track">
+<h3><code>unshare-track</code></h3>
+<p class="usage"><code>work-plan unshare-track &lt;track | track@repo&gt; [--repo=&lt;key&gt;] [--no-push] | --all --repo=&lt;key&gt; [--no-push]</code></p>
+<p>Take a SHARED track back to the PRIVATE tier, the inverse of <code>push-track</code> (#349). Moves the track&#x27;s <code>.md</code> from the repo&#x27;s <code>.work-plan/</code> into <code>notes_root/&lt;repo&gt;/</code>, commits the removal to the <code>plan_branch</code>, and pushes, unless <code>--no-push</code>. <code>--all --repo=&lt;key&gt;</code> demotes every shared track in that repo in one commit. No content is deleted (the plan survives locally). This hides the track from the plan branch going forward; it does NOT unpublish it. The old copy stays in the branch&#x27;s git history and teammates who already pulled keep theirs. On a public repo, treat any sensitive text as already exposed. A track already private is a no-op.</p>
+<p class="muted">Example: <code>/work-plan unshare-track --all --repo=myproject</code></p>
+</div>
 <h2 id="plans">Plan and spec documents</h2>
 <p>These commands judge which plan and spec documents shipped and record decisions in their frontmatter.</p>
 <div class="cmd" id="cmd-plan-status">

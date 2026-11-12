@@ -2,7 +2,7 @@
   "name": "work-plan-viewer",
   "displayName": "Work Plan",
   "publisher": "stylusnexus",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Browse and manage GitHub issues as tracks — dependency graph, per-track detail, and read/write (slot, move, reconcile, close) in the sidebar.",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -163,6 +163,12 @@
         "title": "Publish to Team (Shared Tier)…",
         "category": "Work Plan",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "workPlan.takeRepoLocal",
+        "title": "Take Tracks Local-Only…",
+        "category": "Work Plan",
+        "icon": "$(cloud-download)"
       },
       {
         "command": "workPlan.signInToGitHub",
@@ -543,6 +549,11 @@
           "group": "0_workPlanRepo@4"
         },
         {
+          "command": "workPlan.takeRepoLocal",
+          "when": "view == workPlan.tree && viewItem == workPlanRepo",
+          "group": "0_workPlanRepo@5"
+        },
+        {
           "command": "workPlan.clearRepoLocal",
           "when": "view == workPlan.tree && viewItem == workPlanRepo",
           "group": "9_workPlanRepoDanger@1"
@@ -783,6 +794,10 @@
         },
         {
           "command": "workPlan.pushTrack",
+          "when": "false"
+        },
+        {
+          "command": "workPlan.takeRepoLocal",
           "when": "false"
         },
         {
