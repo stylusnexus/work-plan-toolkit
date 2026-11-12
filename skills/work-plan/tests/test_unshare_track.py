@@ -200,6 +200,10 @@ class RemovalCommitRealGitTest(unittest.TestCase):
                                        "-c", "user.name=t", *a],
                                       capture_output=True, text=True, check=True)
             git("init", "-q")
+            # commit_shared_tier commits without -c identity flags, so give the
+            # repo one (CI runners have no global git identity).
+            git("config", "user.email", "t@t"); git("config", "user.name", "t")
+            git("config", "commit.gpgsign", "false")
             (wt / ".work-plan").mkdir()
             f = wt / ".work-plan" / "feat.md"
             f.write_text("# feat\n")
