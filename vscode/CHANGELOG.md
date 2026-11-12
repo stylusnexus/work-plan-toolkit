@@ -6,6 +6,22 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.23.0] - 2026-11-12
+
+### Added
+
+- **Take Tracks Local-Only (#349).** Right-click a repo and choose **Take Tracks
+  Local-Only…** to move all of its shared tracks back to your private notes and
+  off the shared plan branch. The confirm says how many tracks move and warns
+  that earlier versions stay in the branch's git history (louder for a public
+  repo). Needs a CLI from this release.
+
+### Fixed
+
+- **The activity-bar badge follows the repo you focus (#580).** With one repo
+  focused, the badge now counts only that repo's blocked tracks or open issues
+  instead of every repo's.
+
 ## [0.22.0] - 2026-11-11
 
 ### Added
