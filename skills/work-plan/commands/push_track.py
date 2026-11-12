@@ -24,7 +24,6 @@ from lib.config import load_config, ConfigError
 from lib.tracks import (
     discover_tracks, find_track_by_name, parse_track_repo_arg, AmbiguousTrackError,
 )
-from lib.frontmatter import write_file
 from lib import plan_worktree as pw
 from lib.write_guard import needs_confirm, make_token, valid_token
 from lib.prompts import parse_flags
@@ -100,9 +99,10 @@ def run(args: list) -> int:
               file=sys.stderr)
         return 1
 
-    # Move: write into the shared tier (frontmatter preserved), then remove the
-    # private copy so discover_tracks shows the track once (shared), not twice.
-    write_file(dest, track.meta, track.body)
+    # Move: copy into the shared tier byte-for-byte (re-serialising the
+    # frontmatter would drop YAML comments), then remove the private copy so
+    # discover_tracks shows the track once (shared), not twice.
+    dest.write_bytes(track.path.read_bytes())
     try:
         track.path.unlink()
     except OSError as e:
@@ -116,13 +116,16 @@ def run(args: list) -> int:
         [f".work-plan/{track.name}.md"],
     )
     if sha is None:
-        print(f"WARN: moved '{track.name}' into the shared tier but the commit "
-              "did not land — commit it by hand in the plan-branch worktree.",
+        # Never push or report success: nothing was committed to share.
+        print(f"ERROR: moved '{track.name}' into the shared tier but the commit "
+              "did not land, so there is nothing to push. Commit it by hand in "
+              f"the plan-branch worktree, then `plan-branch push {track.folder}`.",
               file=sys.stderr)
+        return 1
 
     if no_push:
         print(f"✓ promoted '{track.name}' to the shared tier (local commit "
-              f"{sha or '—'}). Run `plan-branch push {track.folder}` to share it.")
+              f"{sha}). Run `plan-branch push {track.folder}` to share it.")
         return 0
 
     proc = pw.push_plan_branch(Path(local).expanduser(), branch)
