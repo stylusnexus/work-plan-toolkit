@@ -582,3 +582,37 @@ export function sortTracks(tracks: TrackNode[], mode: TrackSort): TrackNode[] {
 export function shouldExpandRepos(repoCount: number, expandSetting: boolean): boolean {
   return expandSetting || repoCount <= 1;
 }
+
+/**
+ * Copy for the "Take Tracks Local-Only" confirm + success toast (#349). Taking a
+ * track local-only hides it from the plan branch going forward; it does NOT
+ * unpublish it — earlier versions stay in git history and teammates who already
+ * pulled keep their copies. A PUBLIC repo gets a louder warning. Pure.
+ */
+export function takeLocalCopy(
+  repo: string,
+  isPublic: boolean,
+  count: number,
+): { title: string; detail: string; button: string; toast: string } {
+  const noun = count === 1 ? "track" : "tracks";
+  const move =
+    "Each track moves to your private notes and is removed from the plan branch. " +
+    "Nothing is deleted from your machine.";
+  const history =
+    "Earlier versions stay in the branch's git history, and teammates who already " +
+    "pulled keep their copies.";
+  const publicWarning =
+    `⚠ “${repo}” is PUBLIC. This does not make the plans private.\n\n` +
+    "Anyone can still read earlier versions in the plan branch's git history, and " +
+    "anyone who already pulled keeps a copy. If a plan ever held sensitive text, " +
+    "treat that text as already exposed. Removing it from history needs a history rewrite.";
+  return {
+    title: `Take ${count} shared ${noun} of “${repo}” local-only?`,
+    detail: isPublic ? `${publicWarning}\n\n${move}` : `${move}\n\n${history}`,
+    button: isPublic ? "Take Local-Only Anyway" : "Take Local-Only",
+    toast:
+      `Work Plan: moved ${count} ${noun} of ${repo} to your private notes and off the plan branch. ` +
+      "Earlier versions remain in git history." +
+      (isPublic ? " Repo is public: treat past content as exposed." : ""),
+  };
+}

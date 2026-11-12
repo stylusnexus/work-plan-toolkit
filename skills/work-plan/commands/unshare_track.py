@@ -6,8 +6,10 @@ so demotion is a file move: the shared `.work-plan/<name>.md` is written to
 removal is committed to the repo's plan branch and pushed — unless `--no-push`.
 No content is deleted: the plan survives locally in the private tier.
 
-Removing a plan from a PUBLIC repo is the de-exposing direction, so there is no
-confirm gate. (The old content stays in the plan branch's git history.)
+This hides a plan going forward; it does NOT unpublish it. Earlier versions stay
+in the plan branch's git history and teammates who already pulled keep their
+copies — on a PUBLIC repo, treat sensitive text as already exposed. There is no
+confirm gate here; the VS Code UI asks before calling this.
 
 Usage:
     work_plan.py unshare-track <track | track@repo> [--repo=<key>] [--no-push]
@@ -143,9 +145,10 @@ def run(args: list) -> int:
               f"`plan-branch push {folder}`.", file=sys.stderr)
         return 1
 
-    summary = f"✓ took {len(moved)} track(s) local-only: {names}."
+    summary = (f"✓ moved {len(moved)} track(s) to notes_root/{folder}/: {names}. "
+               "Earlier versions remain in the plan branch's git history.")
     if no_push:
-        print(f"{summary} Removal committed locally ({sha}). Run "
+        print(f"{summary} Removal committed locally, not pushed ({sha}). Run "
               f"`plan-branch push {folder}` to publish it.")
         return 1 if failed else 0
 
@@ -156,5 +159,5 @@ def run(args: list) -> int:
               f"{err or 'unknown git error'}. Retry with `plan-branch push "
               f"{folder}`.", file=sys.stderr)
         return 1
-    print(f"{summary} Pushed '{branch}'.")
+    print(f"{summary} Pushed the removal to '{branch}'.")
     return 1 if failed else 0

@@ -19,7 +19,7 @@ import { ackKey, unregisteredTrackRepos, LEGEND, archivableSelection, selectedDo
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode, SuggestedIssueNode, SuggestedGroupNode } from "./tree.ts";
 import type { Track, Issue, PlanDoc } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones, trackKey, trackRepoQualifier } from "./model.ts";
-import { badgeCounts } from "./treeModel.ts";
+import { badgeCounts, takeLocalCopy } from "./treeModel.ts";
 import { readSuggestions } from "./suggestions.ts";
 import { issuesFingerprint } from "./fingerprint.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
@@ -2557,8 +2557,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // workPlan.takeRepoLocal (#349) — demote every shared track of a repo back to
   // the private tier (inverse of pushTrack). Content is moved, not deleted; the
-  // removal is pushed to the plan branch. Removing a plan de-exposes it, so no
-  // public-repo gate — just a confirm naming how many tracks move.
+  // removal is pushed to the plan branch. It hides the plan going forward but
+  // does NOT unpublish it (git history + teammates' copies remain), so the
+  // confirm says so, louder for a PUBLIC repo (takeLocalCopy).
   context.subscriptions.push(
     vscode.commands.registerCommand("workPlan.takeRepoLocal", async (node?: RepoNode) => {
       const key = node?.folder;
@@ -2575,19 +2576,18 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showInformationMessage(`Work Plan: ${node!.repo} has no shared tracks.`);
         return;
       }
+      // Public if ANY of the repo's tracks is (raw export, so a lens can't hide it).
+      const isPublic = node!.isPublic ||
+        (provider.rawExport?.tracks ?? []).some(
+          t => t.folder === key && t.visibility === "PUBLIC",
+        );
+      const copy = takeLocalCopy(node!.repo, isPublic, shared);
       const ok = await vscode.window.showWarningMessage(
-        `Take ${shared} shared track${shared === 1 ? "" : "s"} of “${node!.repo}” local-only?`,
-        {
-          modal: true,
-          detail:
-            "Each track moves back to your private notes and is removed from the " +
-            "shared plan branch, and that removal is pushed — teammates will no " +
-            "longer see it. Nothing is deleted from your machine. The old copy " +
-            "stays in the plan branch's git history.",
-        },
-        "Take Local-Only",
+        copy.title,
+        { modal: true, detail: copy.detail },
+        copy.button,
       );
-      if (ok !== "Take Local-Only") return;
+      if (ok !== copy.button) return;
       try {
         const outcome: WriteOutcome = await withWriteProgress(
           `Work Plan: taking ${node!.repo} tracks local-only…`,
@@ -2599,9 +2599,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         if (outcome.status === "written") {
           await refreshAfterWrite();
-          vscode.window.showInformationMessage(
-            `Work Plan: took ${shared} track${shared === 1 ? "" : "s"} of ${node!.repo} local-only.`,
-          );
+          vscode.window.showInformationMessage(copy.toast);
         } else {
           vscode.window.showInformationMessage("Work Plan: no change written.");
         }
