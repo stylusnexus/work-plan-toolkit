@@ -103,6 +103,26 @@ class PushTrackTest(unittest.TestCase):
             self.assertTrue((shared / "my-feature.md").is_file())
             mpush.assert_not_called()
 
+    def test_yaml_comments_survive_promotion(self):
+        with tempfile.TemporaryDirectory() as d:
+            _, cfg, track, shared, priv = self._setup(d)
+            original = "---\n# keep me\ntrack: my-feature\n---\n# My Feature\n\nbody\n"
+            priv.write_text(original)
+            rc, out, err, mpush = self._drive(cfg, track, shared, ["my-feature"])
+            self.assertEqual(rc, 0)
+            self.assertEqual((shared / "my-feature.md").read_text(), original)
+
+    def test_failed_commit_exits_1_without_pushing(self):
+        for extra in ([], ["--no-push"]):
+            with tempfile.TemporaryDirectory() as d:
+                _, cfg, track, shared, priv = self._setup(d)
+                rc, out, err, mpush = self._drive(
+                    cfg, track, shared, ["my-feature", *extra], commit_sha=None)
+                self.assertEqual(rc, 1)
+                self.assertIn("did not land", err)
+                mpush.assert_not_called()
+                self.assertNotIn("✓", out)
+
     def test_already_shared_aborts(self):
         with tempfile.TemporaryDirectory() as d:
             _, cfg, track, shared, priv = self._setup(d, tier="shared")
