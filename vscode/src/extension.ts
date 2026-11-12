@@ -19,7 +19,7 @@ import { ackKey, unregisteredTrackRepos, LEGEND, archivableSelection, selectedDo
 import type { Lens, TrackNode, UntrackedIssueNode, UntrackedGroupNode, RepoNode, SuggestedIssueNode, SuggestedGroupNode } from "./tree.ts";
 import type { Track, Issue, PlanDoc } from "./model.ts";
 import { trackedIssueNumbers, collectMilestones, trackKey, trackRepoQualifier } from "./model.ts";
-import { badgeCounts } from "./treeModel.ts";
+import { badgeCounts, takeLocalCopy } from "./treeModel.ts";
 import { readSuggestions } from "./suggestions.ts";
 import { issuesFingerprint } from "./fingerprint.ts";
 import { buildIssuePickItems } from "./issuePick.ts";
@@ -2551,6 +2551,63 @@ export function activate(context: vscode.ExtensionContext): void {
         else vscode.window.showInformationMessage(toast.text);
       } catch (err: unknown) {
         vscode.window.showErrorMessage(`Work Plan: sync failed — ${String(err)}`);
+      }
+    }),
+  );
+
+  // workPlan.takeRepoLocal (#349) — demote every shared track of a repo back to
+  // the private tier (inverse of pushTrack). Content is moved, not deleted; the
+  // removal is pushed to the plan branch. It hides the plan going forward but
+  // does NOT unpublish it (git history + teammates' copies remain), so the
+  // confirm says so, louder for a PUBLIC repo (takeLocalCopy).
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.takeRepoLocal", async (node?: RepoNode) => {
+      const key = node?.folder;
+      if (!key) {
+        vscode.window.showInformationMessage("Work Plan: not a configured repo — nothing to demote.");
+        return;
+      }
+      // Count from the RAW export: node.tracks is lens-filtered, but the CLI
+      // demotes every shared track in the repo, visible or not.
+      const shared = (provider.rawExport?.tracks ?? []).filter(
+        t => t.folder === key && t.tier === "shared",
+      ).length;
+      if (shared === 0) {
+        vscode.window.showInformationMessage(`Work Plan: ${node!.repo} has no shared tracks.`);
+        return;
+      }
+      // Public if ANY of the repo's tracks is (raw export, so a lens can't hide it).
+      const isPublic = node!.isPublic ||
+        (provider.rawExport?.tracks ?? []).some(
+          t => t.folder === key && t.visibility === "PUBLIC",
+        );
+      const copy = takeLocalCopy(node!.repo, isPublic, shared);
+      const ok = await vscode.window.showWarningMessage(
+        copy.title,
+        { modal: true, detail: copy.detail },
+        copy.button,
+      );
+      if (ok !== copy.button) return;
+      try {
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: taking ${node!.repo} tracks local-only…`,
+          () => executeWrite(
+            runner,
+            { kind: "takeRepoLocal", repoKey: key },
+            confirmPublicWrite,
+          ),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(copy.toast);
+        } else {
+          vscode.window.showInformationMessage("Work Plan: no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: unshare-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
       }
     }),
   );

@@ -1136,6 +1136,15 @@ describe("actionToArgs — pushTrack", () => {
   });
 });
 
+describe("actionToArgs — takeRepoLocal (#349)", () => {
+  test("→ unshare-track --all --repo=<key>", () => {
+    assert.deepEqual(
+      actionToArgs({ kind: "takeRepoLocal", repoKey: "demo" }),
+      ["unshare-track", "--all", "--repo=demo"],
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // #241 — staleness / shared-rebase guard threading
 // ---------------------------------------------------------------------------
