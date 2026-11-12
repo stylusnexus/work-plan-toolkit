@@ -79,6 +79,7 @@ SUBCOMMANDS = {
     "notes-vcs": "commands.notes_vcs",
     "plan-branch": "commands.plan_branch",
     "push-track": "commands.push_track",
+    "unshare-track": "commands.unshare_track",
 }
 
 DESCRIPTIONS = [
@@ -278,6 +279,10 @@ DESCRIPTIONS = [
      "Promote a PRIVATE track (local-only, in notes_root) to the repo's SHARED tier and publish it (#306). Moves the track's `.md` into the repo's `.work-plan/` (on its `plan_branch`, via a worktree), removes the private copy so it isn't duplicated, commits to the plan branch, and pushes — unless `--no-push` (keeps it local). The tier is derived from location, so this is a file move, not a frontmatter edit. Requires the repo to have a local clone + a `plan_branch` (else hints `plan-branch init`). Pushing to a PUBLIC repo makes the track world-visible, so the push is confirm-token gated (prints `needs_confirm` + token; re-run with `--confirm=<token>`).",
      "When a private track is ready to share with teammates — promote it to the shared plan branch in one step instead of hand-moving the file.",
      "/work-plan push-track my-feature --repo=myproject"),
+    ("unshare-track", "<track | track@repo> [--repo=<key>] [--no-push] | --all --repo=<key> [--no-push]",
+     "Take a SHARED track back to the PRIVATE tier — the inverse of `push-track` (#349). Moves the track's `.md` from the repo's `.work-plan/` into `notes_root/<repo>/`, commits the removal to the `plan_branch`, and pushes — unless `--no-push`. `--all --repo=<key>` demotes every shared track in that repo in one commit. No content is deleted (the plan survives locally); the old copy stays in the plan branch's git history. Removing a plan is the de-exposing direction, so there is no confirm gate. A track already private is a no-op; a private track with the same name aborts that track.",
+     "When a repo got over-shared, or you want a plan out of the team branch — pull one track (or a whole repo's tracks) back to local-only.",
+     "/work-plan unshare-track --all --repo=myproject"),
     ("which-repo", "[--json]",
      "Resolve the current directory to one configured repo — by local clone path first, then the git `origin` remote. Prints the matched config key + GitHub slug, or reports no match. Read-only. Underlies `brief` cwd auto-scope and the VS Code viewer's repo auto-focus.",
      "Rarely run by hand — it's the shared resolver the viewer and `brief` call. Useful to confirm which repo a checkout maps to.",

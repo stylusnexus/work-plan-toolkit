@@ -2555,6 +2555,65 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // workPlan.takeRepoLocal (#349) — demote every shared track of a repo back to
+  // the private tier (inverse of pushTrack). Content is moved, not deleted; the
+  // removal is pushed to the plan branch. Removing a plan de-exposes it, so no
+  // public-repo gate — just a confirm naming how many tracks move.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("workPlan.takeRepoLocal", async (node?: RepoNode) => {
+      const key = node?.folder;
+      if (!key) {
+        vscode.window.showInformationMessage("Work Plan: not a configured repo — nothing to demote.");
+        return;
+      }
+      // Count from the RAW export: node.tracks is lens-filtered, but the CLI
+      // demotes every shared track in the repo, visible or not.
+      const shared = (provider.rawExport?.tracks ?? []).filter(
+        t => t.folder === key && t.tier === "shared",
+      ).length;
+      if (shared === 0) {
+        vscode.window.showInformationMessage(`Work Plan: ${node!.repo} has no shared tracks.`);
+        return;
+      }
+      const ok = await vscode.window.showWarningMessage(
+        `Take ${shared} shared track${shared === 1 ? "" : "s"} of “${node!.repo}” local-only?`,
+        {
+          modal: true,
+          detail:
+            "Each track moves back to your private notes and is removed from the " +
+            "shared plan branch, and that removal is pushed — teammates will no " +
+            "longer see it. Nothing is deleted from your machine. The old copy " +
+            "stays in the plan branch's git history.",
+        },
+        "Take Local-Only",
+      );
+      if (ok !== "Take Local-Only") return;
+      try {
+        const outcome: WriteOutcome = await withWriteProgress(
+          `Work Plan: taking ${node!.repo} tracks local-only…`,
+          () => executeWrite(
+            runner,
+            { kind: "takeRepoLocal", repoKey: key },
+            confirmPublicWrite,
+          ),
+        );
+        if (outcome.status === "written") {
+          await refreshAfterWrite();
+          vscode.window.showInformationMessage(
+            `Work Plan: took ${shared} track${shared === 1 ? "" : "s"} of ${node!.repo} local-only.`,
+          );
+        } else {
+          vscode.window.showInformationMessage("Work Plan: no change written.");
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof CliError
+          ? `Work Plan: ${err.message}`
+          : `Work Plan: unshare-track failed — ${String(err)}`;
+        vscode.window.showErrorMessage(msg);
+      }
+    }),
+  );
+
   // -------------------------------------------------------------------------
   // workPlan.markCleanup / workPlan.unmarkCleanup — flag/unflag a track as a
   // cleanup candidate (#328/#329/#330). A reversible, non-destructive frontmatter
