@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.12+53bd96f — 2026-11-12 (#587)
+
+feat(plan): take tracks local-only, badge per repo
+
+### Added
+- **Take Tracks Local-Only (#349, #582).** New `unshare-track` CLI (one track, or `--all --repo=<key>`) and a repo right-click **Take Tracks Local-Only…** in the VS Code tree. It moves shared tracks back to the private tier and pushes the removal from the plan branch. The confirm warns that earlier versions stay in git history (louder for public repos).
+
+### Fixed
+- **Activity-bar badge follows the focused repo (#580, #581).** With one repo focused, the badge counts only that repo.
+- **`push-track` keeps frontmatter comments and fails on a lost commit (#583, #584).** It copies the file byte for byte, and exits 1 without pushing when the promote commit did not land.
+
+### Release
+- VS Code extension 0.23.0 (#585, #586). Source: 8cf514a7dbaf0f12b227d11baf9cc84a403596b8
+
 ## 2026.11.11+27e1306 — 2026-11-11 (#578)
 
 feat: owner, status, roll-up, plan sync
