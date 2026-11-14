@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { dirname } from "node:path";
 import type { Export, Issue } from "./model.ts";
 import { buildTree, mergeFetchedUntracked, mergeStaleUntracked, shouldExpandRepos, sortTracks, repoDescription, visibilityTierBadge, trackCountsLabel, suggestedIssueNode } from "./treeModel.ts";
 import type { RepoNode, TrackNode, UntrackedGroupNode, UntrackedIssueNode, EmptyRepoNode, FetchUntrackedNode, TierDupWarningNode, SuggestedGroupNode, SuggestedIssueNode, NeedsReviewGroupNode, StatusCategory, TrackSort } from "./treeModel.ts";
@@ -263,6 +264,15 @@ export class WorkPlanTreeProvider
   /** The active scan's batch_id for `repo`, or undefined if none scanned yet. */
   getBatchId(repo: string): string | undefined {
     return this._batchIdByRepo.get(repo);
+  }
+
+  /** Absolute paths of the directories holding the loaded tracks' files (#589). */
+  trackDirs(): string[] {
+    const dirs = new Set<string>();
+    for (const t of this.cache?.tracks ?? []) {
+      if (t.path) dirs.add(dirname(t.path));
+    }
+    return [...dirs];
   }
 
   /**

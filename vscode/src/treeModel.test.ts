@@ -952,6 +952,14 @@ describe("mergeStaleUntracked", () => {
     }
   });
 
+  test("drops a cached issue that is now in a track (#589)", () => {
+    const lastGood = new Map([["o/r", [issue(1), issue(2)]]]);
+    const node = failedRepoNode("o/r");
+    node.tracks = [{ track: { issues: [issue(1)] } } as unknown as RepoNode["tracks"][number]];
+    const [out] = mergeStaleUntracked([node], lastGood);
+    assert.deepEqual(out.untracked.map(i => i.number), [2]);
+  });
+
   test("does not mutate the input nodes", () => {
     const lastGood = new Map([["o/r", [issue(1)]]]);
     const repos = [failedRepoNode("o/r")];

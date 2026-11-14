@@ -4284,6 +4284,57 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // -------------------------------------------------------------------------
+  // Track-file watcher (#589). A `work-plan slot` (or any edit) run outside the
+  // viewer writes track files directly; without a watcher the tree stayed stale
+  // until a manual refresh. Watches each loaded track's directory (shared-tier
+  // `.work-plan/` included) and debounces a burst of writes into one refresh;
+  // refresh() queues a trailing run, so a write landing mid-refresh is not lost.
+  // -------------------------------------------------------------------------
+
+  const trackWatchers = new Map<string, fs.FSWatcher>();
+  let trackRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const syncTrackWatchers = (): void => {
+    const dirs = new Set(provider.trackDirs());
+    for (const [dir, w] of trackWatchers) {
+      if (!dirs.has(dir)) {
+        w.close();
+        trackWatchers.delete(dir);
+      }
+    }
+    for (const dir of dirs) {
+      if (trackWatchers.has(dir)) continue;
+      try {
+        const w = fs.watch(dir, { persistent: false }, (_evt, name) => {
+          if (name && !String(name).endsWith(".md")) return;
+          if (trackRefreshTimer) clearTimeout(trackRefreshTimer);
+          trackRefreshTimer = setTimeout(() => {
+            trackRefreshTimer = undefined;
+            provider.refresh().then(() => rerenderPanel()).catch((err: unknown) => {
+              console.error("Work Plan: track-file refresh failed:", err);
+            });
+          }, 1000);
+        });
+        w.on("error", () => { /* dir removed — dropped on the next sync */ });
+        trackWatchers.set(dir, w);
+      } catch {
+        // Unwatchable dir (missing, or a remote filesystem) — best-effort.
+      }
+    }
+  };
+
+  context.subscriptions.push(
+    provider.onDidChangeTreeData(() => syncTrackWatchers()),
+    {
+      dispose: () => {
+        for (const w of trackWatchers.values()) w.close();
+        trackWatchers.clear();
+        if (trackRefreshTimer) clearTimeout(trackRefreshTimer);
+      },
+    },
+  );
+
+  // -------------------------------------------------------------------------
   // On activation: kick off initial data load + version check.
   // NEVER throw out of activate — all async work has its own catch.
   // -------------------------------------------------------------------------
