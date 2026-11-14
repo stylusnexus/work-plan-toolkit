@@ -1024,7 +1024,7 @@
     "typescript": "^5.8.0"
   },
   "dependencies": {
-    "mermaid": "^12.2.0"
+    "mermaid": "^12.3.0"
   },
   "overrides": {
     "minimatch": "^11.0.5"
