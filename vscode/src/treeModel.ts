@@ -463,7 +463,11 @@ export function mergeStaleUntracked(
   return repos.map(repo => {
     if (!repo.fetchFailed) return repo;
     const prior = lastGoodUntracked.get(repo.repo);
-    return prior && prior.length > 0 ? { ...repo, untracked: prior } : repo;
+    if (!prior || prior.length === 0) return repo;
+    // A cached issue that is now in a track is tracked, whatever the cache says
+    // (#589): the retained list can be older than the track files.
+    const tracked = new Set(repo.tracks.flatMap(t => t.track.issues.map(i => i.number)));
+    return { ...repo, untracked: prior.filter(i => !tracked.has(i.number)) };
   });
 }
 
