@@ -6,6 +6,15 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.23.1] - 2026-11-14
+
+### Fixed
+
+- **Slotted issues no longer stay in Untracked (#589).** The viewer now watches
+  your track files, so a `work-plan slot` (or any edit) run from a terminal
+  refreshes the tree within a couple of seconds, without a manual refresh. An
+  issue that is in a track never shows under Untracked.
+
 ## [0.23.0] - 2026-11-12
 
 ### Added
