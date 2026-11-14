@@ -6,6 +6,18 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.14+107ec7b — 2026-11-14 (#592)
+
+fix(viewer): refresh when track files change
+
+### Fixed
+- The VS Code viewer now watches track files, so a `work-plan slot` (or any track edit) run from a terminal refreshes the tree within a couple of seconds. Slotted issues no longer stay in Untracked (Refs #589, #590).
+
+### Release
+- VS Code extension 0.23.1 (#591). CLI unchanged; npm not republished.
+
+Source: e629e8e7a5ffc66f41da52d63682e1f4920feb41
+
 ## 2026.11.12+53bd96f — 2026-11-12 (#587)
 
 feat(plan): take tracks local-only, badge per repo
