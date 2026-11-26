@@ -13,7 +13,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Export, Track } from "../model.ts";
 import { trackKey } from "../model.ts";
-import { toMermaid, __mermaidLabelForTest as mermaidLabel } from "./graph.ts";
+import { toMermaid, hiddenGraphIssueCount, __mermaidLabelForTest as mermaidLabel } from "./graph.ts";
 import { makeIssue, makeTrack } from "../testFixtures.ts";
 
 // ---------------------------------------------------------------------------
@@ -1443,6 +1443,58 @@ describe("toMermaid — free-text blockers (#bomb)", () => {
       const mmd = render();
       assert.ok(mmd.includes("⛔ gpt-5-4-upgrades"), mmd);
       assert.ok(mmd.includes("class t_gpt_5_4_upgrades blocked"), mmd);
+    });
+  }
+});
+
+describe("issue state filtering (#598)", () => {
+  const OPEN = { open: true, closed: false };
+  function stateExport(next_up: number[], closed: number[], blockers: number[] = []): Export {
+    const issue = (n: number) => makeIssue({ number: n, title: `T${n}`, state: closed.includes(n) ? "closed" : "open" });
+    return {
+      schema: 1,
+      generated_at: "2026-11-26T00:00:00Z",
+      tracks: [
+        makeTrack({ name: "main", repo: "o/r", status: "blocked", blockers, next_up, issues: [issue(1), issue(2), issue(3)] }),
+        makeTrack({ name: "other", repo: "o/r", issues: [issue(9)] }),
+      ],
+    };
+  }
+  for (const focus of [false, true]) {
+    const mode = focus ? "focus" : "full";
+    const draw = (e: Export) => toMermaid(e, trackKey(e.tracks[0]), { focus, states: OPEN });
+    const count = (g: string, s: string) => g.split(s).length - 1;
+
+    it(`${mode}: hides a closed next_up issue and joins the chain`, () => {
+      const g = draw(stateExport([1, 2, 3], [2]));
+      assert.ok(!g.includes("#2 "));
+      assert.equal(count(g, "|then|"), 1);
+      assert.match(g, /i_1 -\.->\|then\| i_3/);
+    });
+    it(`${mode}: starts next_up at the first shown step`, () => {
+      assert.match(draw(stateExport([1, 2], [1])), /\|next_up\| i_2/);
+    });
+    it(`${mode}: drops next_up edges when every step is hidden`, () => {
+      const g = draw(stateExport([1, 2], [1, 2]));
+      assert.ok(!g.includes("|next_up|") && !g.includes("|then|"));
+    });
+    it(`${mode}: makes no self-edge for a repeated number`, () => {
+      assert.ok(!draw(stateExport([1, 2, 1], [2])).includes("|then|"));
+    });
+    it(`${mode}: removes blocks and owns edges with a hidden blocker`, () => {
+      const e = stateExport([], [9], [9]);
+      e.tracks[1].issues = [makeIssue({ number: 9, title: "T9", state: "closed" })];
+      const g = draw(e);
+      assert.ok(!g.includes("|blocks|") && !g.includes("|owns #9|"));
+      assert.ok(g.includes('"⛔ main"') && g.includes('["other"]'));
+      assert.match(g, /class t_main blocked/);
+    });
+    it(`${mode}: keeps a node with unknown state`, () => {
+      assert.ok(draw(stateExport([77], [])).includes('i_77(["#77"])'));
+    });
+    it(`${mode}: counts hidden issues once`, () => {
+      const e = stateExport([2], [2], [2]);
+      assert.equal(hiddenGraphIssueCount(e, trackKey(e.tracks[0]), { focus, states: OPEN }), 1);
     });
   }
 });
