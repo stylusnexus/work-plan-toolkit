@@ -20,6 +20,7 @@ import type { TrackKey } from "../model.ts";
 import type { CritIssueNode, CriticalPathModel } from "./criticalPath.ts";
 import { classDefLines, mermaidLabel } from "./graph.ts";
 import type { GraphMode } from "./messages.ts";
+import type { IssueStates } from "./stateFilter.ts";
 
 /** Owner filter value for issues nobody is assigned to (#554). */
 export const UNASSIGNED = "__unassigned__";
@@ -45,6 +46,11 @@ export function workStatus(i: Pick<CritIssueNode, "state" | "inProgress" | "inRe
 /** Logins in an assignee string ("@a, @b" or "—"). */
 export const assigneeLogins = (a: string): string[] =>
   a === "—" ? [] : a.split(",").map(x => x.trim()).filter(x => x.length > 0);
+
+/** Critical path charts open work only (#598): the text to show instead of a graph, or null. */
+export function criticalClosedOnly(states: IssueStates): string | null {
+  return states.open ? null : "Critical path charts open work. Check Open to see it.";
+}
 
 export interface CriticalFilter {
   trackKey: TrackKey | null;

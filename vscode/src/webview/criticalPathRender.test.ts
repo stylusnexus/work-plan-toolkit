@@ -1,3 +1,4 @@
+import { criticalClosedOnly } from "./criticalPathRender.ts";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { TrackKey } from "../model.ts";
@@ -772,5 +773,13 @@ describe("owner, milestone and status (#554 #555 #556)", () => {
     assert.equal(kept.filter.owner, UNASSIGNED);
     const moved = nextCritState(s, { type: "selectTrack", repo: "other" });
     assert.deepEqual([moved.filter.owner, moved.filter.milestone, moved.filter.status], [null, null, null]);
+  });
+});
+
+describe("criticalClosedOnly (#598)", () => {
+  it("explains an unchecked Open and is silent otherwise", () => {
+    assert.equal(criticalClosedOnly({ open: false, closed: true }), "Critical path charts open work. Check Open to see it.");
+    assert.equal(criticalClosedOnly({ open: false, closed: false }), "Critical path charts open work. Check Open to see it.");
+    assert.equal(criticalClosedOnly({ open: true, closed: false }), null);
   });
 });

@@ -15,6 +15,7 @@ import {
   trackRepoQualifier,
 } from "../model.ts";
 import { statusCategory } from "../treeModel.ts";
+import { isStateShown, type IssueStates } from "./stateFilter.ts";
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -29,6 +30,47 @@ export interface ToMermaidOptions {
    * Defaults to dark (the prior hardcoded behaviour).
    */
   dark?: boolean;
+  /** Issue states to draw (#598). Omitted draws both. Track nodes always stay. */
+  states?: IssueStates;
+}
+
+const ALL_STATES: IssueStates = { open: true, closed: true };
+
+/** Predicate over an issue number in a track's repo scope; first export match wins. */
+function issueShownIn(exp: Export, states: IssueStates): (track: Track, num: number) => boolean {
+  const state = new Map<IssueKey, Issue["state"]>();
+  for (const track of exp.tracks) {
+    for (const issue of track.issues) {
+      const key = issueKey(issueScope(track), issue.number);
+      if (!state.has(key)) state.set(key, issue.state);
+    }
+  }
+  return (track, num) => isStateShown(state.get(issueKey(issueScope(track), num)), states);
+}
+
+/** A track's issue blockers (free text dropped) and next_up, limited to shown issues. */
+function shownRefs(track: Track, shown: (t: Track, n: number) => boolean): { blockers: number[]; nextUp: number[] } {
+  return {
+    blockers: track.blockers.map(blockerIssue).filter((n): n is number => n !== null && shown(track, n)),
+    nextUp: track.next_up.filter(n => shown(track, n)),
+  };
+}
+
+/** How many unique issue nodes the state setting removes from this view. */
+export function hiddenGraphIssueCount(
+  exp: Export,
+  selection: TrackKey,
+  opts: { focus: boolean; states: IssueStates },
+): number {
+  const selected = opts.focus ? resolveTrack(exp.tracks, selection) : undefined;
+  const shown = issueShownIn(exp, opts.states);
+  const hidden = new Set<IssueKey>();
+  for (const track of selected ? [selected] : exp.tracks) {
+    for (const n of [...track.blockers.map(blockerIssue), ...track.next_up]) {
+      if (n !== null && !shown(track, n)) hidden.add(issueKey(issueScope(track), n));
+    }
+  }
+  return hidden.size;
 }
 
 /**
@@ -68,8 +110,9 @@ export function toMermaid(
   const selectedTrackObj = selectedTrack === undefined
     ? undefined
     : resolveTrack(exp.tracks, selectedTrack);
+  const states = opts?.states ?? ALL_STATES;
   if (opts?.focus === true && selectedTrackObj !== undefined) {
-    return _toMermaidFocused(exp, selectedTrackObj, dark);
+    return _toMermaidFocused(exp, selectedTrackObj, dark, states);
   }
 
   // Preserve the old unknown-name fallback, but do not let an ambiguous legacy
@@ -85,6 +128,7 @@ export function toMermaid(
     selectedTrackObj === undefined ? undefined : trackKey(selectedTrackObj),
     unknownSelection,
     dark,
+    states,
   );
 }
 
@@ -97,8 +141,10 @@ function _toMermaidFull(
   selectedTrack: TrackKey | undefined,
   unknownSelection: string | undefined,
   dark: boolean,
+  states: IssueStates,
 ): string {
   const lines: string[] = [];
+  const shown = issueShownIn(exp, states);
 
   lines.push("graph LR");
 
@@ -129,13 +175,11 @@ function _toMermaidFull(
   // insertion order so Mermaid ids remain deterministic.
   const referencedIssues = new Map<IssueKey, IssueRef>();
   for (const track of exp.tracks) {
-    for (const b of track.blockers) {
-      // Free-text blockers aren't issue nodes — skip them (a raw `i_${b}` of a
-      // prose blocker is the Mermaid "Syntax error in text" bomb).
-      const num = blockerIssue(b);
-      if (num !== null) addIssueRef(referencedIssues, issueScope(track), num);
-    }
-    for (const n of track.next_up) {
+    // Free-text blockers aren't issue nodes — shownRefs drops them (a raw `i_${b}`
+    // of a prose blocker is the Mermaid "Syntax error in text" bomb).
+    const refs = shownRefs(track, shown);
+    for (const num of refs.blockers) addIssueRef(referencedIssues, issueScope(track), num);
+    for (const n of refs.nextUp) {
       addIssueRef(referencedIssues, issueScope(track), n);
     }
   }
@@ -172,10 +216,10 @@ function _toMermaidFull(
     const currentTrackKey = trackKey(track);
     const tid = tids.get(currentTrackKey)!;
 
+    const refs = shownRefs(track, shown);
+
     // blocks edges: i_<b> -->|blocks| t_<track>
-    for (const b of track.blockers) {
-      const num = blockerIssue(b);
-      if (num === null) continue; // free-text blocker — not a graph edge
+    for (const num of refs.blockers) {
       const key = issueKey(issueScope(track), num);
       lines.push(`  ${iids.get(key)!} -->|blocks| ${tid}`);
 
@@ -189,8 +233,8 @@ function _toMermaidFull(
     }
 
     // next_up flow edges
-    if (track.next_up.length > 0) {
-      const [first, ...rest] = track.next_up;
+    if (refs.nextUp.length > 0) {
+      const [first, ...rest] = refs.nextUp;
       lines.push(`  ${tid} -->|next_up| ${iids.get(issueKey(issueScope(track), first))!}`);
       let prev = first;
       for (const n of rest) {
@@ -241,8 +285,9 @@ function _toMermaidFull(
 // Focused graph — only T's dependency neighbourhood
 // ---------------------------------------------------------------------------
 
-function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
+function _toMermaidFocused(exp: Export, t: Track, dark: boolean, states: IssueStates): string {
   const lines: string[] = [];
+  const tShown = shownRefs(t, issueShownIn(exp, states));
   lines.push("graph LR");
   lines.push(...classDefLines(dark));
 
@@ -306,11 +351,8 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   // Determine which issue nodes to include:
   //   - T's blockers and T's next_up (in that order, deduped, preserving insertion order).
   const includedIssues = new Map<IssueKey, IssueRef>();
-  for (const b of t.blockers) {
-    const num = blockerIssue(b);
-    if (num !== null) addIssueRef(includedIssues, issueScope(t), num);
-  }
-  for (const n of t.next_up) {
+  for (const num of tShown.blockers) addIssueRef(includedIssues, issueScope(t), num);
+  for (const n of tShown.nextUp) {
     addIssueRef(includedIssues, issueScope(t), n);
   }
   const iids = buildIssueIds(includedIssues.values());
@@ -345,9 +387,7 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   const tid = tids.get(selectedTrackKey)!;
 
   // blocks edges from T's blockers → T
-  for (const b of t.blockers) {
-    const num = blockerIssue(b);
-    if (num === null) continue; // free-text blocker — not a graph edge
+  for (const num of tShown.blockers) {
     const key = issueKey(issueScope(t), num);
     lines.push(`  ${iids.get(key)!} -->|blocks| ${tid}`);
     // owns edge from owning track → T
@@ -359,8 +399,8 @@ function _toMermaidFocused(exp: Export, t: Track, dark: boolean): string {
   }
 
   // next_up flow edges for T
-  if (t.next_up.length > 0) {
-    const [first, ...rest] = t.next_up;
+  if (tShown.nextUp.length > 0) {
+    const [first, ...rest] = tShown.nextUp;
     lines.push(`  ${tid} -->|next_up| ${iids.get(issueKey(issueScope(t), first))!}`);
     let prev = first;
     for (const n of rest) {

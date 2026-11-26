@@ -6,6 +6,34 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.24.0] - 2026-11-26
+
+### Added
+
+- **Choose which issue states you see (#598).** New **Issue state** checkboxes
+  beside the graph buttons apply to Focus on track, Full map, Critical path and
+  the issue tables, replacing "Show closed" and the "Done" status choice.
+- **Sort and filter the issue table from its headings (#598).** Every column
+  sorts, within each milestone group. Title filters by the text it contains,
+  State changes the Issue state setting, and Assignee is a checklist that
+  includes Unassigned. Your choices stay through a refresh.
+- **Lock the graph (#597).** A padlock button stops the mouse wheel and
+  dragging from moving or zooming the graph, so the wheel scrolls the page. A
+  locked graph keeps its zoom and position through a refresh. The same button
+  unlocks it.
+
+### Changed
+
+- **Only open issues show to start.** Check **Closed** to see closed issues.
+  Your choice is kept while the viewer panel is open.
+
+### Fixed
+
+- **Milestone groups no longer look empty in long tracks.** With more than 50
+  issues, rows past the limit stay in their own group.
+- **The graph header fits a narrow panel.** It wraps onto more lines instead of
+  overlapping or running off the edge.
+
 ## [0.23.1] - 2026-11-14
 
 ### Fixed

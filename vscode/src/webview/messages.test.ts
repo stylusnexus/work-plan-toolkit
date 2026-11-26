@@ -57,10 +57,6 @@ describe("isWebviewMessage — valid messages", () => {
     assert.equal(isWebviewMessage({ type: "clearFocusIssue" }), true);
   });
 
-  it("accepts setShowClosed with a boolean", () => {
-    assert.equal(isWebviewMessage({ type: "setShowClosed", show: true }), true);
-    assert.equal(isWebviewMessage({ type: "setShowClosed", show: false }), true);
-  });
 
   it("accepts setShowUnlinked with a boolean", () => {
     assert.equal(isWebviewMessage({ type: "setShowUnlinked", show: true }), true);
@@ -280,9 +276,6 @@ describe("isWebviewMessage — rejects malformed payloads", () => {
     assert.equal(isWebviewMessage({ type: "setCriticalTrackFilter", key: 5 }), false);
   });
 
-  it("rejects setShowClosed with a non-boolean", () => {
-    assert.equal(isWebviewMessage({ type: "setShowClosed", show: "yes" }), false);
-  });
 
   it("rejects setShowUnlinked with a non-boolean or missing show", () => {
     assert.equal(isWebviewMessage({ type: "setShowUnlinked", show: "yes" }), false);
@@ -402,5 +395,19 @@ describe("isWebviewMessage — critical-path owner, milestone, status filters", 
     assert.ok(!isWebviewMessage({ type: "setCriticalOwnerFilter", owner: 3 }));
     assert.ok(!isWebviewMessage({ type: "setCriticalMilestoneFilter" }));
     assert.ok(!isWebviewMessage({ type: "setCriticalStatusFilter", status: "blocked" }));
+  });
+});
+
+describe("setIssueStates (#598)", () => {
+  it("accepts two booleans", () => {
+    assert.equal(isWebviewMessage({ type: "setIssueStates", open: false, closed: false }), true);
+  });
+  it("rejects missing or non-boolean fields", () => {
+    assert.equal(isWebviewMessage({ type: "setIssueStates", open: true }), false);
+    assert.equal(isWebviewMessage({ type: "setIssueStates", open: "yes", closed: false }), false);
+  });
+  it("no longer accepts setShowClosed or the done status", () => {
+    assert.equal(isWebviewMessage({ type: "setShowClosed", show: true }), false);
+    assert.equal(isWebviewMessage({ type: "setCriticalStatusFilter", status: "done" }), false);
   });
 });

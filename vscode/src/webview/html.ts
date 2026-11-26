@@ -14,13 +14,16 @@
 import type { GraphMode } from "./messages.ts";
 import { buildFlowText } from "./flowCopy.ts";
 import { NO_MILESTONE, UNASSIGNED } from "./criticalPathRender.ts";
+import type { IssueStates } from "./stateFilter.ts";
+import { DETAIL_ISSUE_CAP } from "./detail.ts";
+import { computeTableView } from "./tableView.ts";
+import { setupIssueTable } from "./tableController.ts";
 import type { Rollup, RollupRow } from "./rollup.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
 export interface CriticalViewOptions {
   trackFilter: string | null;
   focusIssueLabel: string | null;
-  showClosed: boolean;
   /** Startable issues with no links are drawn (true) or collapsed into one node. */
   showUnlinked: boolean;
   /** How many such issues the current filter has. */
@@ -82,6 +85,12 @@ export interface WebviewHtmlOptions {
    * The flag is kept for forward-compatibility and test coverage.
    */
   isModule: boolean;
+  /** Which issue states the graphs and tables show (#598). */
+  issueStates: IssueStates;
+  /** Canonical key of the shown track; title and assignee filters reset when it changes. */
+  trackKey: string;
+  /** Plain text under the graph header, e.g. how many issues the state setting hides. */
+  graphNote: string | null;
   /** Current graph mode; the matching toolbar button is aria-pressed. */
   mode: GraphMode;
   /** Critical-path controls; rendered only when mode is "critical". */
@@ -199,12 +208,6 @@ ${afterRun}
       post(msg);
     });
   });
-  var showClosedBox = document.getElementById('work-plan-show-closed');
-  if (showClosedBox) {
-    showClosedBox.addEventListener('change', function () {
-      post({ type: 'setShowClosed', show: showClosedBox.checked });
-    });
-  }
   var showUnlinkedBox = document.getElementById('work-plan-show-unlinked');
   if (showUnlinkedBox) {
     showUnlinkedBox.addEventListener('change', function () {
@@ -218,7 +221,7 @@ ${afterRun}
   const linksJson = scriptJson(mode === "critical" && o.critical?.nodeLinks ? o.critical.nodeLinks : null);
   const statusJson = scriptJson(mode === "critical" && o.critical?.nodeStatus ? o.critical.nodeStatus : null);
   const criticalPanel = mode === "critical" && o.critical
-    ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] })
+    ? renderCriticalPanel(hasGraph ? o.critical : { ...o.critical, legend: [] }, !o.issueStates.open)
     : "";
   // Zoom/export act on the drawn SVG; with no graph they are disabled so they
   // can never post an export with empty data.
@@ -245,6 +248,17 @@ ${afterRun}
   });
 
 ${criticalScript}
+  // Issue state checkboxes (#598): the extension owns the setting.
+  var stateOpenBox = document.getElementById('work-plan-state-open');
+  var stateClosedBox = document.getElementById('work-plan-state-closed');
+  if (stateOpenBox && stateClosedBox) {
+    [stateOpenBox, stateClosedBox].forEach(function (b) {
+      b.addEventListener('change', function () {
+        post({ type: 'setIssueStates', open: stateOpenBox.checked, closed: stateClosedBox.checked });
+      });
+    });
+  }
+
   // Open-file button (absent when disabled — no id, so no handler binds).
   var openFileBtn = document.getElementById("work-plan-open-file");
   if (openFileBtn) {
@@ -302,28 +316,6 @@ ${criticalScript}
       var ipNum = parseInt(ipBtn.getAttribute("data-inprogress"), 10);
       var ipClear = ipBtn.getAttribute("data-clear") === "1";
       if (ipNum) { post({ type: "toggleInProgress", number: ipNum, clear: ipClear }); }
-      return;
-    }
-
-    // Milestone band collapse toggle (keyboard-operable <button>)
-    var msToggle = target.closest(".milestone-toggle-btn");
-    if (msToggle) {
-      var band = msToggle.closest(".milestone-band");
-      if (band) {
-        var collapsed = band.classList.toggle("collapsed");
-        msToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      }
-      return;
-    }
-
-    // Issue-cap "Show all" disclosure toggle
-    var capToggle = target.closest(".issue-cap-toggle");
-    if (capToggle) {
-      var capBand = capToggle.closest(".issue-cap-band");
-      if (capBand) {
-        var capCollapsed = capBand.classList.toggle("collapsed");
-        capToggle.setAttribute("aria-expanded", capCollapsed ? "false" : "true");
-      }
       return;
     }
 
@@ -530,7 +522,7 @@ ${criticalScript}
     var saved = vscode && vscode.getState ? vscode.getState() : null;
     if (saved && saved.flowFormat) { sel.value = saved.flowFormat; }
     sel.addEventListener('change', function () {
-      if (vscode) { vscode.setState({ flowFormat: sel.value }); }
+      if (vscode) { vscode.setState(Object.assign({}, vscode.getState(), { flowFormat: sel.value })); }
     });
     var timer = null;
     btn.addEventListener('click', function () {
@@ -660,7 +652,45 @@ ${criticalScript}
     }
     function reset() { state.scale = 1; state.tx = 0; state.ty = 0; apply(); }
 
+    // Lock (#597): the wheel scrolls the page and dragging does not pan. Zoom
+    // buttons and click-to-trace still work. Remembered while the panel is open.
+    var savedView = vscode && vscode.getState ? vscode.getState() : null;
+    var locked = !!savedView && savedView.graphLocked === true;
+    var lockButton = document.getElementById("graph-lock");
+    function showLock() {
+      figure.classList.toggle("locked", locked);
+      if (lockButton) {
+        lockButton.setAttribute("aria-pressed", locked ? "true" : "false");
+      }
+    }
+    showLock();
+    // A locked graph keeps its zoom and position when the page is rebuilt. The
+    // view belongs to one graph (mode and track), so no other graph gets it.
+    var viewKey = ${scriptJson(`${o.mode} ${o.trackKey}`)};
+    function saveLock() {
+      if (!vscode) { return; }
+      var patch = { graphLocked: locked };
+      if (locked) { patch.graphView = { key: viewKey, scale: state.scale, tx: state.tx, ty: state.ty }; }
+      vscode.setState(Object.assign({}, vscode.getState(), patch));
+    }
+    function keepView() { if (locked) { saveLock(); } }
+    function restoreView() {
+      var v = savedView ? savedView.graphView : null;
+      if (!locked || !v || v.key !== viewKey) { return; }
+      if (![v.scale, v.tx, v.ty].every(function (n) { return typeof n === "number" && isFinite(n); })) { return; }
+      state.scale = clamp(v.scale); state.tx = v.tx; state.ty = v.ty;
+      apply();
+    }
+    if (lockButton) {
+      lockButton.addEventListener("click", function () {
+        locked = !locked;
+        showLock();
+        saveLock();
+      });
+    }
+
     figure.addEventListener("wheel", function (e) {
+      if (locked) { return; }
       e.preventDefault();
       var r = figure.getBoundingClientRect();
       zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - r.left, e.clientY - r.top);
@@ -669,7 +699,9 @@ ${criticalScript}
     var dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0, picked = null;
     onFlowPick = function (id) { picked = id; traceIssue(svg, id); };
     figure.addEventListener("pointerdown", function (e) {
-      dragging = true; lastX = e.clientX; lastY = e.clientY; startX = lastX; startY = lastY;
+      startX = e.clientX; startY = e.clientY;
+      if (locked) { return; }
+      dragging = true; lastX = startX; lastY = startY;
       figure.classList.add("grabbing");
       try { figure.setPointerCapture(e.pointerId); } catch (err) {}
     });
@@ -704,10 +736,10 @@ ${criticalScript}
       if (el) { el.addEventListener("click", fn); }
     }
     function center() { var r = figure.getBoundingClientRect(); return [r.width / 2, r.height / 2]; }
-    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); });
-    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); });
-    on("graph-fit", fit);
-    on("graph-reset", reset);
+    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); keepView(); });
+    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); keepView(); });
+    on("graph-fit", function () { fit(); keepView(); });
+    on("graph-reset", function () { reset(); keepView(); });
 
     // Export: clone the SVG, strip our live transform, serialize. PNG rasterizes
     // the cloned SVG onto a canvas (self-contained SVG → canvas isn't tainted).
@@ -746,6 +778,7 @@ ${criticalScript}
     });
 
     fit(); // initial fit of the whole graph so a dense map is navigable from the start
+    restoreView();
     // Last, so a tooltip failure cannot leave the zoom/pan controls unbound.
     applyNodeTitles(svg);
   }
@@ -760,6 +793,18 @@ ${criticalScript}
   }
   document.addEventListener("workplan:graph-rendered", onGraphRendered);
   if (window.__workplanGraphRendered) { onGraphRendered(); }
+
+  // Issue table sort and filter menus (#598). Last, and guarded.
+  try {
+    var computeTableView = ${computeTableView.toString()};
+    var setupIssueTable = ${setupIssueTable.toString()};
+    setupIssueTable({
+      document: document, vscode: vscode, post: post, window: window,
+      states: ${scriptJson(o.issueStates)}, trackKey: ${scriptJson(o.trackKey)}, cap: ${DETAIL_ISSUE_CAP}
+    }, computeTableView);
+  } catch (err) {
+    console.error(err);
+  }
 }());
 </script>`;
 
@@ -822,6 +867,7 @@ ${criticalScript}
     .open-file-btn[disabled] { opacity: 0.5; cursor: default; color: var(--fg); }
     h2 { font-size: 1em; margin: 16px 0 8px 0; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
     .graph-header {
+      flex-wrap: wrap;
       display: flex;
       align-items: baseline;
       gap: 10px;
@@ -831,6 +877,37 @@ ${criticalScript}
     }
     .graph-header h2 { margin: 0; border: none; padding: 0; }
     .mode-group { display: flex; gap: 4px; flex-wrap: wrap; }
+    .table-scroll { overflow-x: auto; }
+    .table-scroll:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
+    table.issues .issue-row td:nth-child(2) { overflow-wrap: anywhere; min-width: 12em; }
+    table.issues thead th { white-space: nowrap; }
+    .th-sort, .th-filter {
+      background: none; border: 1px solid transparent; color: inherit; font: inherit; cursor: pointer;
+      min-width: 24px; min-height: 24px; padding: 0 4px; border-radius: 3px;
+    }
+    .th-sort:hover, .th-filter:hover { background: var(--card-bg); }
+    .th-sort:focus-visible, .th-filter:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
+    .th-filter.active { border-color: currentColor; }
+    .filter-pop {
+      position: absolute; z-index: 10; display: flex; flex-direction: column; gap: 6px;
+      box-sizing: border-box; width: 232px; max-height: 18em; overflow: auto; padding: 8px;
+      background: var(--vscode-editorWidget-background, var(--bg));
+      border: 1px solid var(--vscode-focusBorder, var(--border)); border-radius: 4px;
+    }
+    .filter-pop label { display: block; overflow-wrap: anywhere; }
+    .filter-pop input[type="text"] {
+      display: block; box-sizing: border-box; width: 100%; margin-top: 4px;
+      background: var(--vscode-input-background, var(--bg)); color: var(--vscode-input-foreground, inherit);
+      border: 1px solid var(--vscode-input-border, var(--border));
+    }
+    #work-plan-table-summary, #work-plan-table-empty { font-size: 0.9em; margin: 6px 0; }
+    @media (forced-colors: active) {
+      .th-sort, .th-filter { forced-color-adjust: auto; }
+      .th-filter.active { border: 1px solid CanvasText; }
+      .filter-pop { background: Canvas; border: 1px solid CanvasText; }
+    }
+    .state-group { display: flex; align-items: center; gap: 8px; border: 0; margin: 0; padding: 0; font-size: 0.85em; flex-shrink: 0; white-space: nowrap; }
+    .state-group legend { float: left; padding: 0; margin-right: 8px; }
     .focus-toggle[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
     .crit-panel { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px 0; font-size: 0.85em; }
     .crit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -929,6 +1006,15 @@ ${criticalScript}
       touch-action: none;
     }
     .graph-figure.grabbing { cursor: grabbing; }
+    .graph-figure.locked { cursor: default; touch-action: auto; }
+    #graph-lock svg { vertical-align: middle; }
+    #graph-lock .lock-closed, #graph-lock[aria-pressed="true"] .lock-open { display: none; }
+    #graph-lock[aria-pressed="true"] .lock-closed { display: inline; }
+    #graph-lock[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
+    @media (forced-colors: active) {
+      #graph-lock[aria-pressed="true"] { background: Highlight; color: HighlightText; border-color: Highlight; forced-color-adjust: none; }
+      #graph-lock[aria-pressed="true"]:focus-visible { outline-color: CanvasText; }
+    }
     .mermaid {
       /* svg is positioned + transformed by the pan/zoom controller; origin at
          top-left so button/wheel zoom math is simple. No padding or margin:
@@ -1031,7 +1117,7 @@ ${criticalScript}
       margin: 2px;
       font-size: 0.9em;
     }
-    .milestone-band-header td {
+    .milestone-band-header th, .milestone-band-header td {
       background: var(--bg);
       border-bottom: 1px solid var(--border);
       padding: 6px 6px;
@@ -1189,7 +1275,16 @@ ${criticalScript}
     <div class="mode-group" role="group" aria-label="Graph mode">
     ${modeButtons}
     </div>
+    <fieldset class="state-group">
+      <legend>Issue state</legend>
+      <label><input type="checkbox" id="work-plan-state-open"${o.issueStates.open ? " checked" : ""}> Open</label>
+      <label><input type="checkbox" id="work-plan-state-closed"${o.issueStates.closed ? " checked" : ""}> Closed</label>
+    </fieldset>
     <div class="graph-controls" role="group" aria-label="Graph zoom and export controls">
+      <button type="button" class="graph-ctl" id="graph-lock"${ctlOff} title="Lock graph" aria-label="Lock graph" aria-pressed="false">
+        <svg class="lock-open" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><rect x="3" y="7" width="10" height="7" rx="1" fill="currentColor"/><path d="M5.5 7V4.5a2.5 2.5 0 0 1 5 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        <svg class="lock-closed" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><rect x="3" y="7" width="10" height="7" rx="1" fill="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
       <button type="button" class="graph-ctl" id="graph-zoom-out"${ctlOff} title="Zoom out" aria-label="Zoom out">&minus;</button>
       <button type="button" class="graph-ctl" id="graph-zoom-in"${ctlOff} title="Zoom in" aria-label="Zoom in">+</button>
       <button type="button" class="graph-ctl" id="graph-fit"${ctlOff} title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
@@ -1198,6 +1293,7 @@ ${criticalScript}
       <button type="button" class="graph-ctl" id="graph-export-png"${ctlOff} title="Export graph as PNG" aria-label="Export graph as PNG">PNG</button>
     </div>
   </div>
+  ${o.graphNote ? `<div class="crit-note">${esc(o.graphNote)}</div>` : ""}
   ${criticalPanel}
   ${hasGraph ? `<div class="graph-figure" role="img" aria-label="Dependency graph for ${trackNameEsc}">
     <pre class="mermaid">${graphDef}</pre>
@@ -1295,15 +1391,15 @@ function renderRollup(r: Rollup | undefined): string {
 }
 
 /** Every string here came from data, so every one goes through esc(). */
-function renderCriticalPanel(c: CriticalViewOptions): string {
+function renderCriticalPanel(c: CriticalViewOptions, statusDisabled: boolean): string {
   const options = [
     `<option value=""${c.trackFilter === null ? " selected" : ""}>All tracks</option>`,
     ...c.trackOptions.map((t) =>
       `<option value="${esc(t.key)}"${t.key === c.trackFilter ? " selected" : ""}>${esc(t.label)}</option>`),
   ].join("");
-  const select = (id: string, label: string, all: string, current: string | null, items: [string, string, boolean?][]) =>
+  const select = (id: string, label: string, all: string, current: string | null, items: [string, string, boolean?][], disabled = false) =>
     `<label for="${id}">${label}</label>
-      <select id="${id}" class="graph-ctl"><option value=""${current === null ? " selected" : ""}>${all}</option>${
+      <select id="${id}" class="graph-ctl"${disabled ? " disabled" : ""}><option value=""${current === null ? " selected" : ""}>${all}</option>${
         items.map(([v, t, off]) => `<option value="${esc(v)}"${v === current ? " selected" : ""}${off ? " disabled" : ""}>${esc(t)}</option>`).join("")
       }</select>`;
   const ownerSelect = select("work-plan-critical-owner", "Owner", "Everyone", c.owner,
@@ -1314,8 +1410,7 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
     ["not-started", "Not started"], ["startable-not-started", "Not started and startable"],
     ["in-progress", "In progress"],
     c.reviewSupported === false ? ["in-review", "In review (needs a newer CLI)", true] : ["in-review", "In review"],
-    ["done", "Done (needs Show closed)"],
-  ]);
+  ], statusDisabled);
   const reviewNote = c.reviewSupported === false
     ? "Your work-plan CLI is too old to report pull requests, so \"In review\" is unavailable and those issues show as not started. Update the CLI to turn it on."
     : null;
@@ -1336,7 +1431,6 @@ function renderCriticalPanel(c: CriticalViewOptions): string {
       <button type="button" id="work-plan-focus-issue" class="graph-ctl">Focus on an issue…</button>
       <button type="button" id="work-plan-clear-focus" class="graph-ctl">Clear focus</button>
       ${c.focusIssueLabel ? `<span class="crit-focus-label">Focused: ${esc(c.focusIssueLabel)}</span>` : ""}
-      <label><input type="checkbox" id="work-plan-show-closed"${c.showClosed ? " checked" : ""}> Show closed</label>
       <label><input type="checkbox" id="work-plan-show-unlinked"${c.showUnlinked ? " checked" : ""}> Show unlinked issues (${c.unlinkedCount})</label>
     </div>
     <div class="crit-note">Numbers = steps from startable, not priority.</div>
