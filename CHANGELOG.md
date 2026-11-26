@@ -6,6 +6,20 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.26+2a3369f — 2026-11-26 (#613)
+
+fix(vscode): name every item in the issue chain
+
+### Fixed
+
+- **VS Code extension 0.24.2:** in Critical path, the issue chain shows names instead of internal codes such as `k_0`, on screen and in all three copy formats. This covers linked tracks, issues from outside the tracks, the "done that blocked this" item and the hidden-issues box. Long names wrap.
+
+The command-line tool is unchanged.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_011jjas1baS4ETnUAskmfcHk
+
 ## 2026.11.26+c9793df — 2026-11-26 (#607)
 
 fix(deps): update mermaid for security
