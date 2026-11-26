@@ -6,6 +6,24 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.26+c9793df — 2026-11-26 (#607)
+
+fix(deps): update mermaid for security
+
+Work Plan Viewer 0.24.1. VS Code extension only; the CLI is unchanged.
+
+### Security
+
+- **Updated the graph library (Mermaid 12.3.0).** It includes a newer version of the library it uses to clean unsafe content, which addresses GHSA-55q2-fjhq-7xh7 (medium) and GHSA-6688-9rhm-gjv2 (low). We have not determined whether the viewer was exposed to either.
+
+### Maintenance
+
+- Updated the extension publishing tool (vsce 4.1.1).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_011jjas3X96Z3QWJCiEKLnik
+
 ## 2026.11.26+a5998d8 — 2026-11-26 (#603)
 
 feat: filter issues, sort tables, lock graph
