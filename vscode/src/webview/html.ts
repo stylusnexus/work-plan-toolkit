@@ -661,15 +661,31 @@ ${criticalScript}
       figure.classList.toggle("locked", locked);
       if (lockButton) {
         lockButton.setAttribute("aria-pressed", locked ? "true" : "false");
-        lockButton.title = locked ? "Unlock graph" : "Lock graph";
       }
     }
     showLock();
+    // A locked graph keeps its zoom and position when the page is rebuilt. The
+    // view belongs to one graph (mode and track), so no other graph gets it.
+    var viewKey = ${scriptJson(`${o.mode} ${o.trackKey}`)};
+    function saveLock() {
+      if (!vscode) { return; }
+      var patch = { graphLocked: locked };
+      if (locked) { patch.graphView = { key: viewKey, scale: state.scale, tx: state.tx, ty: state.ty }; }
+      vscode.setState(Object.assign({}, vscode.getState(), patch));
+    }
+    function keepView() { if (locked) { saveLock(); } }
+    function restoreView() {
+      var v = savedView ? savedView.graphView : null;
+      if (!locked || !v || v.key !== viewKey) { return; }
+      if (![v.scale, v.tx, v.ty].every(function (n) { return typeof n === "number" && isFinite(n); })) { return; }
+      state.scale = clamp(v.scale); state.tx = v.tx; state.ty = v.ty;
+      apply();
+    }
     if (lockButton) {
       lockButton.addEventListener("click", function () {
         locked = !locked;
         showLock();
-        if (vscode) { vscode.setState(Object.assign({}, vscode.getState(), { graphLocked: locked })); }
+        saveLock();
       });
     }
 
@@ -720,10 +736,10 @@ ${criticalScript}
       if (el) { el.addEventListener("click", fn); }
     }
     function center() { var r = figure.getBoundingClientRect(); return [r.width / 2, r.height / 2]; }
-    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); });
-    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); });
-    on("graph-fit", fit);
-    on("graph-reset", reset);
+    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); keepView(); });
+    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); keepView(); });
+    on("graph-fit", function () { fit(); keepView(); });
+    on("graph-reset", function () { reset(); keepView(); });
 
     // Export: clone the SVG, strip our live transform, serialize. PNG rasterizes
     // the cloned SVG onto a canvas (self-contained SVG → canvas isn't tainted).
@@ -762,6 +778,7 @@ ${criticalScript}
     });
 
     fit(); // initial fit of the whole graph so a dense map is navigable from the start
+    restoreView();
     // Last, so a tooltip failure cannot leave the zoom/pan controls unbound.
     applyNodeTitles(svg);
   }
@@ -995,7 +1012,8 @@ ${criticalScript}
     #graph-lock[aria-pressed="true"] .lock-closed { display: inline; }
     #graph-lock[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
     @media (forced-colors: active) {
-      #graph-lock[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+      #graph-lock[aria-pressed="true"] { background: Highlight; color: HighlightText; border-color: Highlight; forced-color-adjust: none; }
+      #graph-lock[aria-pressed="true"]:focus-visible { outline-color: CanvasText; }
     }
     .mermaid {
       /* svg is positioned + transformed by the pan/zoom controller; origin at

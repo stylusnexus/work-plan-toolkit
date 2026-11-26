@@ -10,7 +10,7 @@ const BASE: WebviewHtmlOptions = {
 };
 
 /** Runs the page script over just enough of a page to drive the graph controls. */
-function run(saved?: unknown) {
+function run(saved?: unknown, page: Partial<WebviewHtmlOptions> = {}) {
   const el = () => {
     const listeners: Record<string, ((e: any) => void)[]> = {};
     const classes = new Set<string>();
@@ -38,7 +38,7 @@ function run(saved?: unknown) {
   (figure as any).querySelector = () => svg;
   let state: any = saved;
   const api = { postMessage() {}, getState: () => state, setState: (v: unknown) => { state = v; } };
-  const script = [...buildHtml(BASE).matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1])
+  const script = [...buildHtml({ ...BASE, ...page }).matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1])
     .find(b => b.includes("setupGraphControls"))!;
   new Function("document", "window", "acquireVsCodeApi", "console", script)(
     doc, { __workplanGraphRendered: true, addEventListener() {}, setTimeout: () => 0, clearTimeout() {} }, () => api, { error() {}, log() {} });
@@ -85,7 +85,7 @@ describe("graph lock (#597)", () => {
     assert.equal(p.svg.style.transform, before);
     assert.equal(p.lock.attrs["aria-pressed"], "true");
     assert.ok(p.figure.classes.has("locked") && !p.figure.classes.has("grabbing"));
-    assert.equal(p.lock.title, "Unlock graph");
+    assert.equal(p.lock.title, "", "the script never renames the button");
   });
 
   it("keeps the zoom buttons working while locked, and the same button unlocks", () => {
@@ -96,7 +96,6 @@ describe("graph lock (#597)", () => {
     assert.notEqual(p.svg.style.transform, before);
     p.click();
     assert.equal(p.wheel(), true);
-    assert.equal(p.lock.title, "Lock graph");
   });
 
   it("remembers the lock without dropping other saved choices", () => {
@@ -109,10 +108,53 @@ describe("graph lock (#597)", () => {
     assert.equal(again.wheel(), false);
   });
 
+  it("keeps a themed outline out of forced colors", () => {
+    const forced = buildHtml(BASE).match(/#graph-lock\[aria-pressed="true"\] \{ background: Highlight;[^}]*\}\s*#graph-lock\[aria-pressed="true"\]:focus-visible \{[^}]*\}/)?.[0] ?? "";
+    assert.ok(forced.includes("border-color: Highlight;") && forced.includes("outline-color: CanvasText;"), forced);
+  });
+
   it("styles both icons and the locked graph", () => {
     const html = buildHtml(BASE);
     for (const part of ['class="lock-open"', 'class="lock-closed"', ".graph-figure.locked", '#graph-lock[aria-pressed="true"] .lock-open']) {
       assert.ok(html.includes(part), part);
+    }
+  });
+});
+
+describe("graph lock keeps zoom and position through a redraw (#597)", () => {
+  const FIT = run().svg.style.transform;
+  /** Pans, locks, and returns the page. */
+  const panThenLock = () => { const p = run(); p.wheel(); p.drag(); p.click(); return p; };
+
+  it("restores the locked view after a refresh", () => {
+    const p = panThenLock();
+    assert.notEqual(p.svg.style.transform, FIT);
+    assert.equal(run(p.state()).svg.style.transform, p.svg.style.transform);
+  });
+
+  it("keeps a zoom-button change made while locked", () => {
+    const p = panThenLock();
+    p.zoom();
+    assert.equal(run(p.state()).svg.style.transform, p.svg.style.transform);
+  });
+
+  it("fits as usual once unlocked", () => {
+    const p = panThenLock();
+    p.click();
+    assert.equal(run(p.state()).svg.style.transform, FIT);
+  });
+
+  it("never applies one graph's view to another, and keeps it for the way back", () => {
+    const p = panThenLock();
+    const other = run(p.state(), { trackKey: "other" });
+    assert.equal(other.svg.style.transform, FIT);
+    assert.equal(run(other.state(), { mode: "full" }).svg.style.transform, FIT);
+    assert.equal(run(other.state()).svg.style.transform, p.svg.style.transform);
+  });
+
+  it("ignores a malformed saved view", () => {
+    for (const graphView of ["junk", { key: "focus k", scale: "2", tx: 0, ty: 0 }, { key: "focus k", scale: null, tx: 1, ty: 1 }]) {
+      assert.equal(run({ graphLocked: true, graphView }).svg.style.transform, FIT);
     }
   });
 });
