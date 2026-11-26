@@ -826,6 +826,7 @@ ${criticalScript}
     .open-file-btn[disabled] { opacity: 0.5; cursor: default; color: var(--fg); }
     h2 { font-size: 1em; margin: 16px 0 8px 0; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
     .graph-header {
+      flex-wrap: wrap;
       display: flex;
       align-items: baseline;
       gap: 10px;
@@ -864,7 +865,7 @@ ${criticalScript}
       .th-filter.active { border: 1px solid CanvasText; }
       .filter-pop { background: Canvas; border: 1px solid CanvasText; }
     }
-    .state-group { display: flex; align-items: center; gap: 8px; border: 0; margin: 0; padding: 0; font-size: 0.85em; }
+    .state-group { display: flex; align-items: center; gap: 8px; border: 0; margin: 0; padding: 0; font-size: 0.85em; flex-shrink: 0; white-space: nowrap; }
     .state-group legend { float: left; padding: 0; margin-right: 8px; }
     .focus-toggle[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
     .crit-panel { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px 0; font-size: 0.85em; }
