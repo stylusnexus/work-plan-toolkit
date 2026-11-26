@@ -79,6 +79,9 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
   var openDeps = (sameTrack ? strings(raw.openDeps) : null) || [];
   var focusId = sameTrack && typeof raw.focusId === 'string' ? raw.focusId as string : null;
   var focused = raw.focused === true;
+  // The open pop-up and the control in it, so a redraw can bring both back.
+  var popCol = sameTrack && (raw.popCol === 'title' || raw.popCol === 'state' || raw.popCol === 'assignee') ? raw.popCol as string : null;
+  var popItem = typeof raw.popItem === 'number' ? raw.popItem as number : 0;
 
   function present(): string[] {
     var names = [] as string[];
@@ -102,7 +105,7 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
     all.table = {
       sort: sort, trackKey: env.trackKey, titleText: titleText, assignees: assignees, openGroups: openGroups,
       closedWhileFiltering: closedWhileFiltering, showAll: showAll, refsShowAll: refsShowAll,
-      openDeps: openDeps, focusId: focusId, focused: focused,
+      openDeps: openDeps, focusId: focusId, focused: focused, popCol: popCol, popItem: popItem,
     };
     env.vscode.setState(all);
   }
@@ -233,6 +236,8 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
     var button = popButton;
     pop = null;
     popButton = null;
+    popCol = null;
+    save();
     if (returnFocus) { button.focus(); }
   }
   function make(tag: string, parent: any): any { var el = doc.createElement(tag) as any; parent.appendChild(el); return el; }
@@ -251,6 +256,8 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
     closePop(false);
     if (wasOpen) { button.focus(); return; }
     popButton = button;
+    popCol = col;
+    popItem = 0;
     pop = make('div', doc.body);
     pop.id = 'work-plan-filter-pop';
     pop.className = 'filter-pop';
@@ -314,6 +321,7 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
       if (e.target === edge) { e.preventDefault(); closePop(true); }
     });
     (first || close).focus();
+    save();
   }
 
   doc.addEventListener('click', function (e: any) {
@@ -423,6 +431,7 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
 
   doc.addEventListener('focusin', function (e: any) {
     var name = nameOf(e.target);
+    if (pop && pop.contains(e.target)) { popItem = Math.max(0, list(pop, 'input, button').indexOf(e.target)); }
     focused = true;
     focusId = name;
     save();
@@ -432,7 +441,16 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
 
   render();
 
-  if (focused && focusId !== null) {
+  var reopen = popCol !== null ? table.querySelector('.th-filter[data-col=' + popCol + ']') : null;
+  if (focused && reopen) {
+    var item = popItem;
+    openPop(reopen);
+    var control = list(pop, 'input, button')[item];
+    if (control) {
+      control.focus();
+      if (control.setSelectionRange && control.type === 'text') { control.setSelectionRange(control.value.length, control.value.length); }
+    }
+  } else if (focused && focusId !== null) {
     var target = findNamed(focusId);
     if (!target || unreachable(target)) { target = table.querySelector('.th-filter[data-col=title]'); }
     if (target) { target.focus({ preventScroll: true }); }
