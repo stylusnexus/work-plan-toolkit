@@ -279,6 +279,7 @@ export class WorkPlanPanel {
       mode: this._mode,
       critical,
       issueStates: { ...this._states },
+      trackKey: selectedTrackKey,
       graphNote,
       isDark,
       hasTrackFile: !!track.path,

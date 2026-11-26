@@ -93,7 +93,7 @@ describe("buildFlowText", () => {
     const html = buildHtml({
       cspSource: "x:", nonce: "n".repeat(32), mermaidUri: "x:/m.js", graphDef: "graph LR\n a --> b", detailHtml: "",
       trackName: "t", isModule: false, mode: "critical", isDark: true, hasTrackFile: true,
-      issueStates: { open: true, closed: false }, graphNote: null,
+      issueStates: { open: true, closed: false }, graphNote: null, trackKey: "k",
       critical: {
         trackFilter: null, owner: null, milestone: null, status: null, ownerOptions: [], milestoneOptions: [], filterNote: null,
         focusIssueLabel: null, showUnlinked: false, unlinkedCount: 0, banner: null,

@@ -1,3 +1,4 @@
+import { parseHtml } from "./testDom.ts";
 /**
  * Tests for src/webview/html.ts — pure HTML/CSP builder.
  *
@@ -24,6 +25,7 @@ import { makeTrack } from "../testFixtures.ts";
 const BASE: WebviewHtmlOptions = {
   issueStates: { open: true, closed: false },
   graphNote: null,
+  trackKey: "k-base",
   cspSource: "vscode-resource:",
   nonce: "aBcDeFgHiJkLmNoPqRsTuVwXyZ012345",
   mermaidUri: "vscode-resource:/ext/dist/mermaid.min.js",
@@ -1323,5 +1325,54 @@ describe("issue state control (#598)", () => {
       .match(/<select id="work-plan-critical-status"[^>]*>/)?.[0] ?? "";
     assert.ok(status(false).includes("disabled"));
     assert.ok(!status(true).includes("disabled"));
+  });
+});
+
+describe("issue table script in the page (#598)", () => {
+  const track = makeTrack({ name: "t", repo: "o/r", rollup: { open: 1, closed: 0 }, issues: [makeIssue({ number: 4, title: "x", state: "open" })] });
+  const messaging = (html: string): string => [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
+    .map(m => m[1]).find(b => b.includes("setupIssueTable"))!;
+  /** Runs the whole messaging script against the rendered table. */
+  function run(breakTable: boolean) {
+    const doc = parseHtml(renderDetail(track));
+    if (breakTable) {
+      const real = doc.getElementById.bind(doc);
+      doc.getElementById = (id: string) => { if (id === "work-plan-issues") throw new Error("boom"); return real(id); };
+    }
+    const posted: any[] = [];
+    let state: any = { table: { sort: null } };
+    const api = { postMessage: (m: unknown) => posted.push(m), getState: () => state, setState: (v: unknown) => { state = v; } };
+    const win = { addEventListener: () => {}, setTimeout: () => 0, clearTimeout: () => {} };
+    const logged: unknown[] = [];
+    new Function("document", "window", "acquireVsCodeApi", "console", messaging(buildHtml(BASE)))(
+      doc, win, () => api, { error: (...a: unknown[]) => logged.push(a), log: () => {} });
+    return { doc, posted, logged, state: () => state };
+  }
+
+  it("sets up the table with the page's issue states and track key", () => {
+    const r = run(false);
+    assert.equal(r.logged.length, 0);
+    r.doc.querySelector('.th-sort[data-col="title"]')!.click();
+    assert.equal(r.state().table.trackKey, "k-base");
+  });
+
+  it("keeps Move working when table setup throws", () => {
+    const r = run(true);
+    assert.equal(r.logged.length, 1);
+    r.doc.querySelector(".move-btn")!.click();
+    assert.deepEqual(r.posted, [{ type: "moveIssue", number: 4 }]);
+  });
+
+  it("merges the flow format into saved state", () => {
+    assert.ok(buildHtml({ ...BASE, mode: "critical", critical: CRIT })
+      .includes("vscode.setState(Object.assign({}, vscode.getState(), { flowFormat: sel.value }))"));
+  });
+
+  it("styles the heading buttons and pop-up, also in forced colours", () => {
+    const html = buildHtml(BASE);
+    for (const part of [".th-sort, .th-filter {", "min-width: 24px", ".filter-pop {", ".table-scroll { overflow-x: auto; }"]) {
+      assert.ok(html.includes(part), part);
+    }
+    assert.ok(/forced-colors: active\) \{[^@]*\.th-filter/.test(html));
   });
 });

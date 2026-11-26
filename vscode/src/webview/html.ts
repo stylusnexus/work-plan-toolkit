@@ -15,6 +15,9 @@ import type { GraphMode } from "./messages.ts";
 import { buildFlowText } from "./flowCopy.ts";
 import { NO_MILESTONE, UNASSIGNED } from "./criticalPathRender.ts";
 import type { IssueStates } from "./stateFilter.ts";
+import { DETAIL_ISSUE_CAP } from "./detail.ts";
+import { computeTableView } from "./tableView.ts";
+import { setupIssueTable } from "./tableController.ts";
 import type { Rollup, RollupRow } from "./rollup.ts";
 
 /** Critical-path view state and pre-built (unescaped) strings from the host. */
@@ -84,6 +87,8 @@ export interface WebviewHtmlOptions {
   isModule: boolean;
   /** Which issue states the graphs and tables show (#598). */
   issueStates: IssueStates;
+  /** Canonical key of the shown track; title and assignee filters reset when it changes. */
+  trackKey: string;
   /** Plain text under the graph header, e.g. how many issues the state setting hides. */
   graphNote: string | null;
   /** Current graph mode; the matching toolbar button is aria-pressed. */
@@ -314,28 +319,6 @@ ${criticalScript}
       return;
     }
 
-    // Milestone band collapse toggle (keyboard-operable <button>)
-    var msToggle = target.closest(".milestone-toggle-btn");
-    if (msToggle) {
-      var band = msToggle.closest(".milestone-band");
-      if (band) {
-        var collapsed = band.classList.toggle("collapsed");
-        msToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      }
-      return;
-    }
-
-    // Issue-cap "Show all" disclosure toggle
-    var capToggle = target.closest(".issue-cap-toggle");
-    if (capToggle) {
-      var capBand = capToggle.closest(".issue-cap-band");
-      if (capBand) {
-        var capCollapsed = capBand.classList.toggle("collapsed");
-        capToggle.setAttribute("aria-expanded", capCollapsed ? "false" : "true");
-      }
-      return;
-    }
-
     // Dep disclosure toggle (#257 B3) — pure DOM, no postMessage.
     // Finds the dep-toggle-btn by data-depissue, then the sibling dep-detail-row.
     var depToggle = target.closest(".dep-toggle-btn");
@@ -539,7 +522,7 @@ ${criticalScript}
     var saved = vscode && vscode.getState ? vscode.getState() : null;
     if (saved && saved.flowFormat) { sel.value = saved.flowFormat; }
     sel.addEventListener('change', function () {
-      if (vscode) { vscode.setState({ flowFormat: sel.value }); }
+      if (vscode) { vscode.setState(Object.assign({}, vscode.getState(), { flowFormat: sel.value })); }
     });
     var timer = null;
     btn.addEventListener('click', function () {
@@ -769,6 +752,18 @@ ${criticalScript}
   }
   document.addEventListener("workplan:graph-rendered", onGraphRendered);
   if (window.__workplanGraphRendered) { onGraphRendered(); }
+
+  // Issue table sort and filter menus (#598). Last, and guarded.
+  try {
+    var computeTableView = ${computeTableView.toString()};
+    var setupIssueTable = ${setupIssueTable.toString()};
+    setupIssueTable({
+      document: document, vscode: vscode, post: post, window: window,
+      states: ${scriptJson(o.issueStates)}, trackKey: ${scriptJson(o.trackKey)}, cap: ${DETAIL_ISSUE_CAP}
+    }, computeTableView);
+  } catch (err) {
+    console.error(err);
+  }
 }());
 </script>`;
 
@@ -840,6 +835,35 @@ ${criticalScript}
     }
     .graph-header h2 { margin: 0; border: none; padding: 0; }
     .mode-group { display: flex; gap: 4px; flex-wrap: wrap; }
+    .table-scroll { overflow-x: auto; }
+    .table-scroll:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
+    table.issues .issue-row td:nth-child(2) { overflow-wrap: anywhere; min-width: 12em; }
+    table.issues thead th { white-space: nowrap; }
+    .th-sort, .th-filter {
+      background: none; border: 1px solid transparent; color: inherit; font: inherit; cursor: pointer;
+      min-width: 24px; min-height: 24px; padding: 0 4px; border-radius: 3px;
+    }
+    .th-sort:hover, .th-filter:hover { background: var(--card-bg); }
+    .th-sort:focus-visible, .th-filter:focus-visible { outline: 2px solid var(--vscode-focusBorder, var(--link)); outline-offset: 1px; }
+    .th-filter.active { border-color: currentColor; }
+    .filter-pop {
+      position: absolute; z-index: 10; display: flex; flex-direction: column; gap: 6px;
+      box-sizing: border-box; width: 232px; max-height: 18em; overflow: auto; padding: 8px;
+      background: var(--vscode-editorWidget-background, var(--bg));
+      border: 1px solid var(--vscode-focusBorder, var(--border)); border-radius: 4px;
+    }
+    .filter-pop label { display: block; overflow-wrap: anywhere; }
+    .filter-pop input[type="text"] {
+      display: block; box-sizing: border-box; width: 100%; margin-top: 4px;
+      background: var(--vscode-input-background, var(--bg)); color: var(--vscode-input-foreground, inherit);
+      border: 1px solid var(--vscode-input-border, var(--border));
+    }
+    #work-plan-table-summary, #work-plan-table-empty { font-size: 0.9em; margin: 6px 0; }
+    @media (forced-colors: active) {
+      .th-sort, .th-filter { forced-color-adjust: auto; }
+      .th-filter.active { border: 1px solid CanvasText; }
+      .filter-pop { background: Canvas; border: 1px solid CanvasText; }
+    }
     .state-group { display: flex; align-items: center; gap: 8px; border: 0; margin: 0; padding: 0; font-size: 0.85em; }
     .state-group legend { float: left; padding: 0; margin-right: 8px; }
     .focus-toggle[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
@@ -1042,7 +1066,7 @@ ${criticalScript}
       margin: 2px;
       font-size: 0.9em;
     }
-    .milestone-band-header td {
+    .milestone-band-header th, .milestone-band-header td {
       background: var(--bg);
       border-bottom: 1px solid var(--border);
       padding: 6px 6px;
