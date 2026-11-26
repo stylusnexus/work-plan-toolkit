@@ -402,11 +402,17 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
     if (el.classList.contains('milestone-toggle-btn')) { return 'band:' + el.closest('.milestone-band').getAttribute('data-group'); }
     if (el.classList.contains('issue-cap-toggle')) { return el.closest('#work-plan-refs') ? 'cap:refs' : 'cap:owned'; }
     var row = el.closest('.issue-row');
-    if (row) { return 'row:' + row.getAttribute('data-num') + ':' + (el.className.split(' ')[0] || el.tagName.toLowerCase()); }
+    if (row) {
+      var kind = el.closest('#work-plan-refs') ? 'refrow:' : 'row:';
+      return kind + row.getAttribute('data-num') + ':' + (el.className.split(' ')[0] || el.tagName.toLowerCase());
+    }
     return null;
   }
   function findNamed(name: string): any {
     var bits = name.split(':');
+    // Saved text goes into a selector, so only plain names are let through.
+    var plain = /^[A-Za-z0-9_-]+$/;
+    if (bits.length < 2 || !bits.slice(1).every(function (b) { return plain.test(b); })) { return null; }
     if (bits[0] === 'id') { return byId(bits[1]); }
     if (bits[0] === 'sort') { return table.querySelector('.th-sort[data-col=' + bits[1] + ']'); }
     if (bits[0] === 'filter') { return table.querySelector('.th-filter[data-col=' + bits[1] + ']'); }
@@ -418,8 +424,10 @@ export function setupIssueTable(env: TableEnv, compute: typeof computeTableView)
       var root = bits[1] === 'refs' ? refsTable : table;
       return root ? root.querySelector('.issue-cap-toggle') : null;
     }
-    var row = list(table, '.issue-row').filter(function (r) { return r.getAttribute('data-num') === bits[1]; })[0];
-    if (!row) { return null; }
+    var home = bits[0] === 'refrow' ? refsTable : table;
+    if (!home) { return null; }
+    var row = list(home, '.issue-row').filter(function (r) { return r.getAttribute('data-num') === bits[1]; })[0];
+    if (!row || !bits[2]) { return null; }
     return bits[2] === 'a' ? row.querySelector('a') : row.querySelector('.' + bits[2]);
   }
   function unreachable(el: any): boolean {
