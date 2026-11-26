@@ -526,36 +526,27 @@ describe("renderDetail — issue cap", () => {
     });
   }
 
-  it("renders all issues when count is below the cap", () => {
+  it("renders every issue row", () => {
     const track = makeBigTrack(30);
     const html = renderDetail(track);
     // All 30 issues should be in the visible table
     assert.ok(html.includes("#1"), "missing #1");
     assert.ok(html.includes("#30"), "missing #30");
-    // No collapsible overflow
-    assert.ok(!html.includes("issue-cap-toggle"), "unexpected cap toggle");
+    // The Show all button stays hidden until the page script needs it.
+    assert.ok(html.includes('<tbody class="issue-cap-band" hidden>'));
   });
 
   it("caps at 50 with collapsible overflow for flat table", () => {
     const track = makeBigTrack(75);
     const html = renderDetail(track);
-    // First 50 visible
-    assert.ok(html.includes("#1"), "missing #1");
-    assert.ok(html.includes("#50"), "missing #50");
-    // #51 is rendered after #50 (collapsed in the same table, not a nested one)
-    const idx50 = html.indexOf("#50");
-    const idx51 = html.indexOf("#51");
-    assert.ok(idx51 > idx50, "#51 should appear after #50");
-    // Collapsible toggle present
-    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle");
-    assert.ok(html.includes("Show all 75 issues"), "missing 'Show all 75 issues'");
-    assert.ok(html.includes("25 more"), "missing '25 more' count");
+    const [group, cap] = html.split('<tbody class="issue-cap-band" hidden>');
+    assert.equal(group.split('class="issue-row"').length - 1, 75, "every row stays in the group");
+    assert.ok(cap.includes("issue-cap-toggle") && !cap.split("</tbody>")[0].includes("issue-row"));
     // Overflow stays inside the issues table — no invalid nested <table>/<details> (#232)
-    assert.ok(!html.includes("<details>"), "overflow must not use <details>");
-    assert.ok(!html.includes("<table>"), "overflow must not nest a bare <table>");
+    assert.ok(!html.includes("<details>") && !html.includes("<table>"));
   });
 
-  it("caps within milestone bands — overflow goes to collapsible band", () => {
+  it("keeps every row inside its own milestone group (#598)", () => {
     // 3 milestones × 20 issues = 60 total, cap at 50 → 10 in overflow
     const issues: Issue[] = [];
     for (let i = 1; i <= 60; i++) {
@@ -588,15 +579,9 @@ describe("renderDetail — issue cap", () => {
     });
 
     const html = renderDetail(track);
-    // Milestone bands should be present
-    assert.ok(html.includes("milestone-band-header"), "missing milestone bands");
-    // First 50 visible — v1 (20) + v2 (20) + null (10 of 20) = 50
-    assert.ok(html.includes("#1"), "missing #1");
-    assert.ok(html.includes("#50"), "missing #50");
-    // Overflow toggle present
-    assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle in milestone bands");
-    assert.ok(html.includes("Show all 60 issues"), "missing total count");
-    assert.ok(html.includes("10 more"), "missing '10 more' count");
+    const groups = html.split('<tbody class="issue-cap-band"')[0].split('<tbody class="milestone-band').slice(1);
+    assert.deepEqual(groups.map(g => g.split('class="issue-row"').length - 1), [20, 20, 20]);
+    assert.deepEqual(groups.map(g => g.match(/data-group="(\d+)"/)?.[1]), ["0", "1", "2"]);
   });
 
   it("milestone-band header spans all 5 columns (no colspan=4 regression)", () => {
@@ -645,10 +630,8 @@ describe("renderDetail — issue cap", () => {
     const html = renderDetail(track);
     assert.ok(html.includes("Referenced issues (60)"), "missing reference heading count");
     assert.ok(html.includes("#1"), "missing first reference row");
-    assert.ok(html.includes("#50"), "missing 50th reference row");
+    assert.equal(html.split('class="issue-row"').length - 1, 60, "every reference row is rendered");
     assert.ok(html.includes("issue-cap-toggle"), "missing cap toggle for references");
-    assert.ok(html.includes("Show all 60 issues"), "missing total count in toggle");
-    assert.ok(html.includes("10 more"), "missing '10 more' count");
     // References table has 4 columns (no Actions/move column) — the toggle's
     // colspan must match, not reuse the owned-issues table's 5.
     const refTableStart = html.indexOf('<caption class="sr-only">Referenced issues');
@@ -665,7 +648,7 @@ describe("renderDetail — table accessibility", () => {
   it("marks every header cell with scope=col", () => {
     const html = renderDetail(platformHealth);
     // 5 columns → 5 scoped headers (Num, Title, State, Assignee, Move)
-    const scoped = html.match(/<th scope="col">/g) ?? [];
+    const scoped = html.match(/<th scope="col"[ >]/g) ?? [];
     assert.equal(scoped.length, 5, `expected 5 scoped <th>, got ${scoped.length}:\n${html}`);
     // No unscoped header cells leak through.
     assert.ok(!html.includes("<th>"), "found an unscoped <th>");
@@ -720,7 +703,7 @@ describe("renderDetail — milestone band filter + keyboard toggle (#218/#248)",
     // The name + count live in the toggle button so clicking the header strip
     // collapses (the dominant expectation); filtering is the separate control.
     assert.ok(
-      /<button class="milestone-toggle-btn"[^>]*>\s*<span class="milestone-toggle">▸<\/span> <b>M1<\/b>/.test(html),
+      /<button class="milestone-toggle-btn"[^>]*>\s*<span class="milestone-toggle" aria-hidden="true">▸<\/span> <b>M1<\/b>/.test(html),
       `milestone name should sit inside the collapse button:\n${html}`,
     );
   });
@@ -1455,5 +1438,54 @@ describe("renderDetail — activity line (#428)", () => {
     );
     assert.match(html, /last touched 1 day ago \(2026-10-04\)/);
     assert.doesNotMatch(html, /<img|onerror/);
+  });
+});
+
+describe("renderDetail — table controls (#598)", () => {
+  const html = renderDetail(platformHealth);
+
+  it("puts sort and filter buttons on the headings", () => {
+    for (const [col, label] of [["num", "Num"], ["title", "Title"], ["state", "State"], ["assignee", "Assignee"]]) {
+      assert.ok(html.includes(`class="th-sort" data-col="${col}" aria-label="Sort by ${label}"`), label);
+      const filter = html.includes(`class="th-filter" data-col="${col}" aria-label="Filter by ${label}" aria-haspopup="dialog" aria-expanded="false"`);
+      assert.equal(filter, col !== "num", label);
+    }
+    assert.equal(html.split('class="th-sort"').length - 1, 4);
+  });
+
+  it("carries escaped row data without reusing data-inprogress", () => {
+    const track = makeTrack({
+      name: "d", repo: "o/r",
+      issues: [{ number: 7, title: 'a"<&', state: "open", assignee: "@a, @b", milestone: null, in_progress: true, in_progress_label: false, blocked_by: [], blocking: [] }],
+      rollup: { open: 1, closed: 0 },
+      references: [{ number: 8, title: "ref", state: "closed", assignee: "—", milestone: null, in_progress: false, in_progress_label: false, blocked_by: [], blocking: [] }],
+      reference_rollup: { open: 0, closed: 1 },
+    });
+    const out = renderDetail(track);
+    assert.ok(out.includes('<tr class="issue-row" data-num="7" data-title="a&quot;&lt;&amp;" data-state="open" data-wip="1" data-assignees="@a @b">'), out);
+    assert.ok(out.includes('<tr class="issue-row" data-num="8" data-title="ref" data-state="closed" data-wip="0" data-assignees="">'), out);
+  });
+
+  it("has the table ids, summary, status, empty block, note and scroller", () => {
+    for (const part of [
+      'id="work-plan-issues"', 'id="work-plan-table-summary"', 'id="work-plan-summary-text"',
+      'id="work-plan-clear-filters"', 'id="work-plan-table-status" class="sr-only" role="status"',
+      'id="work-plan-table-empty"', 'id="work-plan-empty-text"', 'id="work-plan-both-states"',
+      '<div class="table-scroll" tabindex="0" role="region" aria-label="Owned issues">',
+    ]) assert.ok(html.includes(part), part);
+    const refs = renderDetail({ ...platformHealth, references: platformHealth.issues, reference_rollup: { open: 1, closed: 0 } });
+    assert.ok(refs.includes('id="work-plan-refs"') && refs.includes('id="work-plan-refs-note"'));
+  });
+
+  it("lets the milestone toggle name include its count", () => {
+    assert.ok(!html.includes('aria-label="Toggle '));
+    assert.ok(html.includes('<th colspan="5" scope="colgroup">'));
+    assert.ok(html.includes('aria-label="Filter the view to M1"'));
+  });
+
+  it("keeps headings and says so for a track with no issues", () => {
+    const out = renderDetail(emptyTrack);
+    assert.ok(out.includes('class="th-sort" data-col="title"'));
+    assert.ok(out.includes('<span id="work-plan-empty-text">No owned issues</span>'));
   });
 });

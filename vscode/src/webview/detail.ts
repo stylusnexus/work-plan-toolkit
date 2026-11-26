@@ -13,7 +13,7 @@ import { describeActivity, lastActivityRaw } from "../recency.ts";
 // ---------------------------------------------------------------------------
 
 /** Maximum issues to show in the detail panel before collapsing the rest. */
-const DETAIL_ISSUE_CAP = 50;
+export const DETAIL_ISSUE_CAP = 50;
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -83,111 +83,86 @@ export function renderDetail(track: Track, opts?: { showNextUpPreset?: boolean; 
 
   const groups = groupByMilestone(track.issues, track.milestone_alignment);
 
-  parts.push('<table class="issues">');
+  // Filtering, sorting and the row limit run in the page (#598), so every row is
+  // rendered here, inside its own group.
+  parts.push(
+    '<div id="work-plan-table-summary"><span id="work-plan-summary-text"></span> ' +
+    '<button type="button" id="work-plan-clear-filters" class="open-file-btn" hidden>Clear filters</button></div>' +
+    '<div id="work-plan-table-status" class="sr-only" role="status"></div>',
+  );
+  parts.push('<div class="table-scroll" tabindex="0" role="region" aria-label="Owned issues">');
+  parts.push('<table class="issues" id="work-plan-issues">');
   parts.push(`<caption class="sr-only">Owned issues in ${esc(track.name)}</caption>`);
   parts.push(
     '<thead><tr>' +
-      '<th scope="col">Num</th>' +
-      '<th scope="col">Title</th>' +
-      '<th scope="col">State</th>' +
-      '<th scope="col">Assignee</th>' +
+      renderHeading("num", "Num", false) +
+      renderHeading("title", "Title", true) +
+      renderHeading("state", "State", true) +
+      renderHeading("assignee", "Assignee", true) +
       '<th scope="col"><span class="sr-only">Actions</span></th>' +
       '</tr></thead>',
   );
 
   if (groups.length <= 1) {
     // Flat table — single milestone group (or all null).
-    const allIssues = track.issues;
-    const visible = allIssues.slice(0, DETAIL_ISSUE_CAP);
-    const hidden = allIssues.slice(DETAIL_ISSUE_CAP);
-
-    parts.push("<tbody>");
-    for (const issue of visible) {
-      parts.push(renderIssueRow(track, issue));
-    }
+    parts.push('<tbody data-group="0">');
+    for (const issue of track.issues) parts.push(renderIssueRow(track, issue));
     parts.push("</tbody>");
-
-    if (hidden.length > 0) {
-      parts.push(renderCapToggle(allIssues.length, hidden.length));
-      for (const issue of hidden) {
-        parts.push(renderIssueRow(track, issue));
-      }
-      parts.push("</tbody>");
-    }
   } else {
     // Milestone bands.
-    let first = true;
-    let totalRendered = 0;
-    const hiddenIssues: Issue[] = [];
-
-    for (const [label, issues] of groups) {
+    groups.forEach(([label, issues], index) => {
       const heading = label ? esc(label) : "No milestone";
       const count = String(issues.length);
-      const collapsedClass = first ? "" : " collapsed";
-      const expanded = first ? "true" : "false";
+      const collapsedClass = index === 0 ? "" : " collapsed";
+      const expanded = index === 0 ? "true" : "false";
       // The caret + name + count is ONE collapse button (the dominant "click a
       // section header to collapse" expectation, #248). Filtering the whole view
       // by this milestone is a separate, explicit control to its right — only for
       // real milestones (the "No milestone" group has no lens). Both are real
-      // <button>s (keyboard-operable, aria-labelled, #244).
+      // <button>s (keyboard-operable, #244). The toggle is named by its content,
+      // so the count is read out (#598).
       const filterBtn = label
         ? ` <button class="milestone-filter-btn" data-milestone="${esc(label)}"` +
           ` title="Filter the view to ${heading}" aria-label="Filter the view to ${heading}">filter</button>`
         : "";
-      parts.push(`<tbody class="milestone-band${collapsedClass}">`);
+      parts.push(`<tbody class="milestone-band${collapsedClass}" data-group="${index}">`);
       parts.push(
-        `<tr class="milestone-band-header"><td colspan="5">` +
-          `<button class="milestone-toggle-btn" aria-expanded="${expanded}" aria-label="Toggle ${heading} issues">` +
-          `<span class="milestone-toggle">▸</span> <b>${heading}</b> <span class="milestone-count">(${count})</span>` +
+        `<tr class="milestone-band-header"><th colspan="5" scope="colgroup">` +
+          `<button class="milestone-toggle-btn" aria-expanded="${expanded}">` +
+          `<span class="milestone-toggle" aria-hidden="true">▸</span> <b>${heading}</b> <span class="milestone-count">(${count})</span>` +
           `</button>` +
           filterBtn +
-          `</td></tr>`,
+          `</th></tr>`,
       );
-
-      for (const issue of issues) {
-        if (totalRendered < DETAIL_ISSUE_CAP) {
-          parts.push(renderIssueRow(track, issue));
-          totalRendered++;
-        } else {
-          hiddenIssues.push(issue);
-        }
-      }
+      for (const issue of issues) parts.push(renderIssueRow(track, issue));
       parts.push("</tbody>");
-      first = false;
-    }
-
-    if (hiddenIssues.length > 0) {
-      parts.push(renderCapToggle(track.issues.length, hiddenIssues.length));
-      for (const issue of hiddenIssues) {
-        parts.push(renderIssueRow(track, issue));
-      }
-      parts.push("</tbody>");
-    }
+    });
   }
+  parts.push(renderCapToggle(5));
 
   parts.push("</table>");
+  parts.push("</div>");
+  const noIssues = track.issues.length === 0;
+  parts.push(
+    `<div id="work-plan-table-empty"${noIssues ? "" : " hidden"}>` +
+    `<span id="work-plan-empty-text">${noIssues ? "No owned issues" : ""}</span> ` +
+    '<button type="button" id="work-plan-both-states" class="open-file-btn" hidden>Show both states</button></div>',
+  );
 
   if (referenceTotal > 0) {
     const allReferences = track.references ?? [];
-    const visibleReferences = allReferences.slice(0, DETAIL_ISSUE_CAP);
-    const hiddenReferences = allReferences.slice(DETAIL_ISSUE_CAP);
     parts.push(`<h3>Referenced issues (${referenceTotal})</h3>`);
     parts.push('<p>Owned by other tracks; shown for coordination and excluded from this track’s status and progress.</p>');
-    parts.push('<table class="issues">');
+    parts.push('<div id="work-plan-refs-note" class="rollup" hidden></div>');
+    parts.push('<table class="issues" id="work-plan-refs">');
     parts.push(`<caption class="sr-only">Referenced issues in ${esc(track.name)}</caption>`);
     parts.push('<thead><tr><th scope="col">Num</th><th scope="col">Title</th><th scope="col">State</th><th scope="col">Assignee</th></tr></thead>');
-    parts.push("<tbody>");
-    for (const issue of visibleReferences) parts.push(renderReferenceRow(track, issue));
+    parts.push('<tbody data-group="0">');
+    for (const issue of allReferences) parts.push(renderReferenceRow(track, issue));
     parts.push("</tbody>");
-    if (hiddenReferences.length > 0) {
-      // References table has 4 columns (no Actions column), so the toggle's
-      // colspan must match — reusing the owned-issues default (5) would break
-      // the layout (#458 review finding: this table silently capped at 50
-      // with no way to reveal the rest).
-      parts.push(renderCapToggle(allReferences.length, hiddenReferences.length, 4));
-      for (const issue of hiddenReferences) parts.push(renderReferenceRow(track, issue));
-      parts.push("</tbody>");
-    }
+    // References table has 4 columns (no Actions column), so the toggle's
+    // colspan must match (#458).
+    parts.push(renderCapToggle(4));
     parts.push('</table>');
   }
 
@@ -387,7 +362,7 @@ function renderIssueRow(track: Track, issue: Issue): string {
     : "";
 
   return (
-    `<tr>` +
+    `<tr ${rowData(issue)}>` +
     numCell +
     `<td>${esc(issue.title)}${depToggleBtn}</td>` +
     `<td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span>${inProgressPill}</td>` +
@@ -403,7 +378,7 @@ function renderReferenceRow(track: Track, issue: Issue): string {
   const numCell = track.repo
     ? `<td class="num"><a href="https://github.com/${esc(track.repo)}/issues/${issue.number}" data-repo="${esc(track.repo)}" data-issue="${issue.number}">#${issue.number}</a></td>`
     : `<td class="num">#${issue.number}</td>`;
-  return `<tr>${numCell}<td>${esc(issue.title)}</td><td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td><td class="who">${esc(issue.assignee)}</td></tr>`;
+  return `<tr ${rowData(issue)}>${numCell}<td>${esc(issue.title)}</td><td><span class="pill ${esc(issue.state)}">${esc(issue.state)}</span></td><td class="who">${esc(issue.assignee)}</td></tr>`;
 }
 
 /** Renders the hidden dep-detail sub-row carrying the dep chips (#257 B3). */
@@ -453,21 +428,32 @@ function renderDepLink(track: Track, dep: IssueDep): string {
 }
 
 /**
- * Opens an issue-cap overflow `<tbody>`: a disclosure button row that reveals the
- * capped-off rows when toggled. The caller appends the hidden `<tr>`s and the
- * closing `</tbody>`. Uses a real `<button>` (natively keyboard-operable) and
- * keeps the rows inside the same table — no invalid nested `<table>`/`<details>`.
- * The `.issue-cap-row` class marks the toggle row so the collapse CSS keeps it
- * visible while hiding the rest of the band.
+ * The table's single "Show all" disclosure (#169, #598). Hidden until the page
+ * script finds more matching rows than the limit; the script writes its label.
  */
-function renderCapToggle(total: number, hidden: number, colspan = 5): string {
+function renderCapToggle(colspan: number): string {
   return (
-    `<tbody class="issue-cap-band collapsed">` +
+    `<tbody class="issue-cap-band" hidden>` +
     `<tr class="issue-cap-row"><td colspan="${colspan}">` +
     `<button type="button" class="issue-cap-toggle" aria-expanded="false">` +
-    `<span class="issue-cap-marker">▸</span> Show all ${total} issues (${hidden} more)` +
-    `</button></td></tr>`
+    `<span class="issue-cap-marker" aria-hidden="true">▸</span> <span class="issue-cap-label">Show all</span>` +
+    `</button></td></tr></tbody>`
   );
+}
+
+/** A column heading with its sort button and, when filterable, its filter button (#598). */
+function renderHeading(col: string, label: string, filterable: boolean): string {
+  const filter = filterable
+    ? `<button type="button" class="th-filter" data-col="${col}" aria-label="Filter by ${label}" aria-haspopup="dialog" aria-expanded="false"><span class="th-glyph" aria-hidden="true">▾</span></button>`
+    : "";
+  return `<th scope="col"><button type="button" class="th-sort" data-col="${col}" aria-label="Sort by ${label}">${label} <span class="th-arrow" aria-hidden="true">↕</span></button>${filter}</th>`;
+}
+
+/** The values the page script filters and sorts on. */
+function rowData(issue: Issue): string {
+  const logins = issue.assignee === "—" ? "" : issue.assignee.split(",").map(a => a.trim()).filter(Boolean).join(" ");
+  return `class="issue-row" data-num="${issue.number}" data-title="${esc(issue.title)}" data-state="${esc(issue.state)}"` +
+    ` data-wip="${issue.in_progress ? "1" : "0"}" data-assignees="${esc(logins)}"`;
 }
 
 /**

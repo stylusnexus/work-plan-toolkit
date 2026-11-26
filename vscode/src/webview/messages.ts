@@ -53,7 +53,7 @@ export interface SetCriticalMilestoneFilterMessage {
 
 export interface SetCriticalStatusFilterMessage {
   type: "setCriticalStatusFilter";
-  status: "not-started" | "in-progress" | "in-review" | "done" | "startable-not-started" | null;
+  status: "not-started" | "in-progress" | "in-review" | "startable-not-started" | null;
 }
 
 export interface PickFocusIssueMessage {
@@ -64,9 +64,11 @@ export interface ClearFocusIssueMessage {
   type: "clearFocusIssue";
 }
 
-export interface SetShowClosedMessage {
-  type: "setShowClosed";
-  show: boolean;
+/** Which issue states the graphs and tables show (#598). */
+export interface SetIssueStatesMessage {
+  type: "setIssueStates";
+  open: boolean;
+  closed: boolean;
 }
 
 export interface SetShowUnlinkedMessage {
@@ -146,7 +148,7 @@ export type WebviewMessage =
   | SetCriticalStatusFilterMessage
   | PickFocusIssueMessage
   | ClearFocusIssueMessage
-  | SetShowClosedMessage
+  | SetIssueStatesMessage
   | SetShowUnlinkedMessage
   | CopyTextMessage
   | MoveIssueMessage
@@ -206,13 +208,13 @@ export function isWebviewMessage(raw: unknown): raw is WebviewMessage {
         || (typeof msg["milestone"] === "string" && msg["milestone"].length > 0 && msg["milestone"].length < 200);
     case "setCriticalStatusFilter":
       return msg["status"] === null
-        || ["not-started", "in-progress", "in-review", "done", "startable-not-started"].includes(msg["status"] as string);
+        || ["not-started", "in-progress", "in-review", "startable-not-started"].includes(msg["status"] as string);
     case "pickFocusIssue":
       return true; // no payload to validate
     case "clearFocusIssue":
       return true; // no payload to validate
-    case "setShowClosed":
-      return typeof msg["show"] === "boolean";
+    case "setIssueStates":
+      return typeof msg["open"] === "boolean" && typeof msg["closed"] === "boolean";
     case "setShowUnlinked":
       return typeof msg["show"] === "boolean";
     case "moveIssue":
