@@ -468,8 +468,9 @@ export function renderCriticalPath(
     return `${head}${st === "blocked" ? " ⛔" : st === "waiting" ? " ⏳" : ""} · #${i.number} ${text(shorten(i.title))}<br/>▪ ${chipLine}`;
   };
   for (const m of drawnIssues) lines.push(`  ${ids.get(m.id)}["${label(m)}"]`);
+  const summaryLabel = `${plural(hiddenCount, "startable issue", "startable issues")} with no links (hidden)`;
   if (hiddenCount > 0) {
-    lines.push(`  ${SUMMARY}(["${plural(hiddenCount, "startable issue", "startable issues")} with no links (hidden)"])`);
+    lines.push(`  ${SUMMARY}(["${summaryLabel}"])`);
   }
   model.outside.forEach(o => lines.push(`  ${ids.get(o.id)}["${text(o.label)}"]`));
   model.connectors.forEach(c => lines.push(`  ${ids.get(c.id)}(["track ${text(c.dependencyTrack)} done"])`));
@@ -523,7 +524,8 @@ export function renderCriticalPath(
     };
   }
   // Labels are shortened; the hover text carries the full title (raw text: the
-  // webview sets it with textContent).
+  // webview sets it with textContent). Every clickable node needs an entry, or the
+  // issue chain shows its internal id.
   const nodeTitles: Record<string, string> = {};
   {
     for (const m of drawnIssues) {
@@ -533,6 +535,10 @@ export function renderCriticalPath(
         `\nOwner: ${m.assignee}\nMilestone: ${m.milestone ?? "none"}\nWork: ${STATUS_LABELS[workStatus(m)].toLowerCase()}`;
     }
   }
+  if (hiddenCount > 0) nodeTitles[SUMMARY] = summaryLabel;
+  model.outside.forEach(o => { nodeTitles[ids.get(o.id)!] = o.label; });
+  model.connectors.forEach(c => { nodeTitles[ids.get(c.id)!] = `track ${c.dependencyTrack} done`; });
+  model.stubs.forEach(s => { nodeTitles[ids.get(`done:${s.target}`)!] = `✓ ${s.count} done that blocked this`; });
   const nodeStatus: Record<string, IssueStatus> = {};
   for (const m of drawnIssues) {
     const st = issueStatus(m);

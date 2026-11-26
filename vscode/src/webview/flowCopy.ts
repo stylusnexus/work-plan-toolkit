@@ -10,7 +10,8 @@ export type FlowFormat = "paths" | "tasks" | "order";
 
 /**
  * @param links   drawn links as [from, to] Mermaid node ids
- * @param titles  node id -> hover text; line 1 is "#N title", a later line "State: ..."
+ * @param titles  node id -> hover text. For an issue, line 1 is "#N title" and a later
+ *                line "State: ..."; any other node's line 1 is its whole name.
  * @param focus   the picked node id
  * @param format  paths: one "#1 → #2" line per path plus an Order line;
  *                tasks: markdown task list; order: numbered list. Both with titles.
@@ -25,22 +26,25 @@ export function buildFlowText(
   var cap = 30;
   function text(id: string): string { return titles && titles[id] ? String(titles[id]) : id; }
   function first(id: string): string { return text(id).split(String.fromCharCode(10))[0]; }
+  // Where an issue's "#N title" splits; -1 keeps any other name whole.
+  function split(f: string): number { return f.charAt(0) === '#' ? f.indexOf(' ') : -1; }
   function num(id: string): string {
     var f = first(id);
-    var sp = f.indexOf(' ');
+    var sp = split(f);
     return sp > 0 ? f.slice(0, sp) : f;
   }
   function title(id: string): string {
     var f = first(id);
-    var sp = f.indexOf(' ');
+    var sp = split(f);
     return sp > 0 ? f.slice(sp + 1) : '';
   }
   function n(id: string): number {
-    var v = parseInt(num(id).replace('#', ''), 10);
+    var f = num(id);
+    var v = f.charAt(0) === '#' ? parseInt(f.slice(1), 10) : 0;
     return isNaN(v) ? 0 : v;
   }
   function closed(id: string): boolean { return text(id).indexOf('State: closed') >= 0; }
-  function inProgress(id: string): boolean { return text(id).indexOf('in progress') >= 0; }
+  function inProgress(id: string): boolean { return field(id, 'State').indexOf('in progress') >= 0; }
   // A hover-text line "Name: value" for the given name, or ''.
   function field(id: string, name: string): string {
     var lines = text(id).split(String.fromCharCode(10));
@@ -121,7 +125,7 @@ export function buildFlowText(
   var arrow = ' ' + String.fromCharCode(8594) + ' ';
   var nl = String.fromCharCode(10);
   function titled(id: string): string {
-    var t = num(id) + ' ' + title(id);
+    var t = num(id) + (title(id) ? ' ' + title(id) : '');
     if (id === focus) { t += ' (this)'; }
     if (field(id, 'Work') === 'in review') { t += ' (in review)'; }
     else if (inProgress(id)) { t += ' (in progress)'; }

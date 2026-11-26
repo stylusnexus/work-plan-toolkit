@@ -413,7 +413,7 @@ ${criticalScript}
   function flowParts(id) {
     var full = nodeTitles && nodeTitles[id] ? String(nodeTitles[id]) : id;
     var first = full.split(String.fromCharCode(10))[0];
-    var sp = first.indexOf(' ');
+    var sp = first.charAt(0) === '#' ? first.indexOf(' ') : -1;
     return { num: sp > 0 ? first.slice(0, sp) : first, title: sp > 0 ? first.slice(sp + 1) : '', full: full };
   }
   // Owner, milestone and work status, from the hover text's Owner / Milestone / Work lines.
@@ -442,7 +442,7 @@ ${criticalScript}
     if (st) { row.className += ' flow-' + st; }
     var num = document.createElement('button');
     num.type = 'button';
-    num.className = 'flow-num';
+    num.className = p.title ? 'flow-num' : 'flow-num flow-name';
     num.textContent = p.num;
     num.setAttribute('aria-label', 'Trace ' + p.num);
     num.addEventListener('click', function () { if (onFlowPick) { onFlowPick(id); } });
@@ -949,6 +949,7 @@ ${criticalScript}
     .crit-flow .flow-step { display: flex; gap: 8px; align-items: baseline; padding: 1px 6px; border-radius: 4px; min-width: 0; }
     .crit-flow .flow-num { flex: none; background: none; border: 0; padding: 0; cursor: pointer; color: var(--link); font-family: var(--vscode-editor-font-family, monospace); font-size: inherit; }
     .crit-flow .flow-num:hover { text-decoration: underline; }
+    .crit-flow .flow-name { flex: 0 1 auto; min-width: 0; text-align: left; overflow-wrap: anywhere; }
     .crit-flow .flow-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
     .crit-flow .flow-tag { flex: none; font-size: 0.85em; padding: 0 6px; border-radius: 8px; background: var(--step-bg); color: var(--step-fg); }
     .crit-flow .flow-join { opacity: 0.7; font-style: italic; }
