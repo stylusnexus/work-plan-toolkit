@@ -6,6 +6,15 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.24.1] - 2026-11-26
+
+### Security
+
+- **Updated the graph library (Mermaid 12.3.0).** It includes a newer version
+  of the library it uses to clean unsafe content, which addresses two published
+  advisories (GHSA-55q2-fjhq-7xh7, medium; GHSA-6688-9rhm-gjv2, low). We have
+  not determined whether the viewer was exposed to either.
+
 ## [0.24.0] - 2026-11-26
 
 ### Added
