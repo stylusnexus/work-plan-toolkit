@@ -13,15 +13,16 @@
 import * as vscode from "vscode";
 import type { Export, Track, TrackKey } from "../model.ts";
 import { parseTrackKey, resolveTrack, trackKey, trackRepoQualifier } from "../model.ts";
-import { toMermaid } from "./graph.ts";
+import { toMermaid, hiddenGraphIssueCount } from "./graph.ts";
 import { renderDetail } from "./detail.ts";
 import { buildHtmlIfChanged, esc } from "./html.ts";
 import { isWebviewMessage } from "./messages.ts";
 import type { GraphMode } from "./messages.ts";
 import { computeCriticalPath, criticalPickItems } from "./criticalPath.ts";
-import { assigneeLogins, fitToCap, lensVisibleIssues, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
+import { assigneeLogins, criticalClosedOnly, fitToCap, lensVisibleIssues, nextCritState, visibleTrackOrder } from "./criticalPathRender.ts";
 import type { CriticalFilter, CritEvent } from "./criticalPathRender.ts";
 import type { CriticalViewOptions } from "./html.ts";
+import { DEFAULT_ISSUE_STATES, type IssueStates } from "./stateFilter.ts";
 import { computeRollup } from "./rollup.ts";
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,8 @@ export class WorkPlanPanel {
   private _mode: GraphMode = "focus";
   /** Critical-path filters; reset/cleared by nextCritState. */
   private _critFilter: CriticalFilter = { trackKey: null, owner: null, milestone: null, status: null, focusIssue: null, showClosed: false, showUnlinked: false };
+  /** Issue states the graphs and tables show (#598); kept while the panel is open. */
+  private _states: IssueStates = { ...DEFAULT_ISSUE_STATES };
   /** Repo the critical-path filters were set against. */
   private _critRepo: string | null = null;
   /** True after the user explicitly cleared the track filter (skips auto-fit). */
@@ -242,6 +245,7 @@ export class WorkPlanPanel {
     const isDark = isDarkTheme();
     let graphDef: string;
     let critical: CriticalViewOptions | undefined;
+    let graphNote: string | null = null;
     if (this._mode === "critical") {
       const built = this._buildCritical(this._rawExport, exp, selectedTrackKey, track.repo, isDark);
       graphDef = built.graphDef;
@@ -253,7 +257,9 @@ export class WorkPlanPanel {
       const graphExp = focus
         ? exp
         : { ...exp, tracks: exp.tracks.filter(t => t.repo === track.repo) };
-      graphDef = toMermaid(graphExp, selectedTrackKey, { focus, dark: isDark });
+      graphDef = toMermaid(graphExp, selectedTrackKey, { focus, dark: isDark, states: this._states });
+      const hidden = hiddenGraphIssueCount(graphExp, selectedTrackKey, { focus, states: this._states });
+      if (hidden > 0) graphNote = `${hidden} ${hidden === 1 ? "issue" : "issues"} hidden by Issue state.`;
     }
     const showNextUpPreset = vscode.workspace
       .getConfiguration("workPlan")
@@ -272,6 +278,8 @@ export class WorkPlanPanel {
       isModule: false, // UMD bundle → global mermaid
       mode: this._mode,
       critical,
+      issueStates: { ...this._states },
+      graphNote,
       isDark,
       hasTrackFile: !!track.path,
     });
@@ -295,7 +303,6 @@ export class WorkPlanPanel {
     const base: CriticalViewOptions = {
       trackFilter: null,
       focusIssueLabel: null,
-      showClosed: this._critFilter.showClosed,
       showUnlinked: this._critFilter.showUnlinked,
       unlinkedCount: 0,
       banner: null,
@@ -325,8 +332,9 @@ export class WorkPlanPanel {
       hiddenTracks: model.trackOrder.filter(k => !shownTracks.includes(k)),
       hiddenIssues: model.issues.map(i => i.id).filter(id => !shownIssues.includes(id)),
     });
+    const closedOnly = criticalClosedOnly(this._states);
     const fit = fitToCap(model, this._critFilter, selected, {
-      dark: isDark, suppressAutoFit: this._autoFitSuppressed, visibleTracks,
+      dark: isDark, suppressAutoFit: this._autoFitSuppressed || closedOnly !== null, visibleTracks,
       selectedName: nameOf(selected),
     });
     // Save the auto-applied track so a later explicit clear is distinguishable.
@@ -337,18 +345,17 @@ export class WorkPlanPanel {
       ? model.issues.find(i => i.id === fit.filter.focusIssue)
       : undefined;
     return {
-      graphDef: fit.render.mermaid,
+      graphDef: closedOnly !== null ? "" : fit.render.mermaid,
       critical: {
         trackFilter: fit.filter.trackKey,
         focusIssueLabel: focused ? `#${focused.number} ${focused.title}` : null,
-        showClosed: fit.filter.showClosed,
         showUnlinked: fit.filter.showUnlinked,
         unlinkedCount: fit.render.unlinkedCount,
-        banner: fit.render.banner,
+        banner: closedOnly !== null ? null : fit.render.banner,
         legend: fit.render.legend.map(l => ({ label: l.label, color: l.color })),
-        tooLargeMessage: fit.render.tooLargeMessage,
+        tooLargeMessage: closedOnly !== null ? null : fit.render.tooLargeMessage,
         autoFilterNote: fit.autoFiltered ?? refreshNote,
-        emptyMessage: fit.render.empty,
+        emptyMessage: closedOnly ?? fit.render.empty,
         trackOptions: shownTracks.map(k => ({ key: k, label: nameOf(k) })),
         owner: fit.filter.owner,
         milestone: fit.filter.milestone,
@@ -379,7 +386,7 @@ export class WorkPlanPanel {
     // Same lens rule as the graph: an issue only in lens-hidden tracks can't be focused.
     const model = computeCriticalPath(this._rawExport, track.repo);
     const visible = this._currentExport ? repoTrackKeys(this._currentExport, track.repo) : undefined;
-    const items = criticalPickItems({ ...model, issues: lensVisibleIssues(model, visible) }, {
+    const items = !this._states.open ? [] : criticalPickItems({ ...model, issues: lensVisibleIssues(model, visible) }, {
       showClosed: this._critFilter.showClosed,
     });
     if (items.length === 0) {
@@ -449,8 +456,9 @@ export class WorkPlanPanel {
         this._rerender();
         break;
       }
-      case "setShowClosed": {
-        this._apply({ type: "setShowClosed", show: raw.show });
+      case "setIssueStates": {
+        this._states = { open: raw.open, closed: raw.closed };
+        this._apply({ type: "setShowClosed", show: raw.closed });
         this._rerender();
         break;
       }

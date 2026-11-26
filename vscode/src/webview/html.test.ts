@@ -22,6 +22,8 @@ import { makeTrack } from "../testFixtures.ts";
 // ---------------------------------------------------------------------------
 
 const BASE: WebviewHtmlOptions = {
+  issueStates: { open: true, closed: false },
+  graphNote: null,
   cspSource: "vscode-resource:",
   nonce: "aBcDeFgHiJkLmNoPqRsTuVwXyZ012345",
   mermaidUri: "vscode-resource:/ext/dist/mermaid.min.js",
@@ -624,7 +626,6 @@ const CRIT = {
   milestoneOptions: [] as string[],
   filterNote: null as string | null,
   focusIssueLabel: null as string | null,
-  showClosed: false,
   banner: null as string | null,
   legend: [] as { label: string; color: string }[],
   tooLargeMessage: null as string | null,
@@ -705,8 +706,8 @@ describe("buildHtml — critical-path controls", () => {
       });
       for (const needle of [
         "work-plan-critical-track", "work-plan-focus-issue", "work-plan-clear-focus",
-        "work-plan-show-closed", "setCriticalTrackFilter", "pickFocusIssue",
-        "clearFocusIssue", "setShowClosed", "BANNER-X", "LEG-X",
+        "setCriticalTrackFilter", "pickFocusIssue",
+        "clearFocusIssue", "BANNER-X", "LEG-X",
       ]) {
         assert.ok(!html.includes(needle), `${needle} leaked into mode=${mode}`);
       }
@@ -721,11 +722,10 @@ describe("buildHtml — critical-path controls", () => {
     }
   });
 
-  it("renders the track select, focus buttons and show-closed checkbox", () => {
+  it("renders the track select and focus buttons", () => {
     const html = buildHtml(critical({
       trackOptions: [{ key: "a/b#one", label: "One" }, { key: "a/b#two", label: "Two" }],
       trackFilter: "a/b#two",
-      showClosed: true,
     }));
     assert.ok(html.includes('id="work-plan-critical-track"'));
     assert.ok(html.includes('<option value="">All tracks</option>'));
@@ -733,7 +733,6 @@ describe("buildHtml — critical-path controls", () => {
     assert.ok(html.includes('<option value="a/b#two" selected>Two</option>'));
     assert.ok(html.includes("Focus on an issue…"));
     assert.ok(html.includes(">Clear focus</button>"));
-    assert.ok(/id="work-plan-show-closed"[^>]*checked/.test(html));
   });
 
   it("renders the show-unlinked checkbox with its count, off by default, and posts setShowUnlinked", () => {
@@ -748,18 +747,12 @@ describe("buildHtml — critical-path controls", () => {
     }
   });
 
-  it("show-closed checkbox is unchecked when showClosed is false", () => {
-    const html = buildHtml(critical({ showClosed: false }));
-    const tag = html.match(/<input[^>]*id="work-plan-show-closed"[^>]*>/)?.[0] ?? "";
-    assert.ok(tag && !tag.includes("checked"), tag);
-  });
 
   it("the controls post the four critical messages", () => {
     const html = buildHtml(critical());
     assert.ok(html.includes("type: 'setCriticalTrackFilter'"));
     assert.ok(html.includes("type: 'pickFocusIssue'"));
     assert.ok(html.includes("type: 'clearFocusIssue'"));
-    assert.ok(html.includes("type: 'setShowClosed'"));
   });
 
   it("shows the focused issue label escaped", () => {
@@ -894,10 +887,9 @@ describe("buildHtmlIfChanged — critical-path inputs (#423)", () => {
     assert.ok(buildHtmlIfChanged(first.key, withCrit({ nodeTitles: { i_1: "#1 a" } })));
   });
 
-  it("trackFilter, focusIssueLabel, showClosed and tooLargeMessage each re-render", () => {
+  it("trackFilter, focusIssueLabel and tooLargeMessage each re-render", () => {
     assert.ok(buildHtmlIfChanged(first.key, withCrit({ trackFilter: "a/b#t" })));
     assert.ok(buildHtmlIfChanged(first.key, withCrit({ focusIssueLabel: "#1 x" })));
-    assert.ok(buildHtmlIfChanged(first.key, withCrit({ showClosed: true })));
     assert.ok(buildHtmlIfChanged(first.key, withCrit({ tooLargeMessage: "too big" })));
   });
 });
@@ -1300,5 +1292,36 @@ describe("buildHtml — status filter on an older CLI (#555)", () => {
       assert.match(html, /<option value="in-review">In review<\/option>/);
       assert.ok(!html.includes("too old to report pull requests"));
     }
+  });
+});
+
+describe("issue state control (#598)", () => {
+  const box = (html: string, id: string): string =>
+    html.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+  it("shows both checkboxes in every mode, also with an empty graph", () => {
+    for (const mode of ["focus", "full", "critical"] as const) {
+      const html = buildHtml({ ...BASE, mode, graphDef: "", critical: CRIT, issueStates: { open: false, closed: true } });
+      assert.ok(html.includes("<legend>Issue state</legend>"), mode);
+      assert.ok(!box(html, "work-plan-state-open").includes("checked"), mode);
+      assert.ok(box(html, "work-plan-state-closed").includes("checked"), mode);
+      assert.ok(!html.includes("work-plan-show-closed") && !html.includes("Done (needs Show closed)"), mode);
+    }
+  });
+  it("posts setIssueStates from the checkboxes", () => {
+    assert.ok(buildHtml(BASE).includes("type: 'setIssueStates'"));
+  });
+  it("renders the hidden-issue note, escaped", () => {
+    assert.ok(buildHtml({ ...BASE, graphNote: "2 issues hidden by Issue state." }).includes("2 issues hidden by Issue state."));
+    assert.ok(buildHtml({ ...BASE, graphNote: "<x>" }).includes("&lt;x&gt;"));
+  });
+  it("re-renders when only the states change", () => {
+    const first = buildHtmlIfChanged(null, BASE)!;
+    assert.ok(buildHtmlIfChanged(first.key, { ...BASE, issueStates: { open: true, closed: true } }));
+  });
+  it("disables Status in critical mode while Open is unchecked", () => {
+    const status = (open: boolean): string => buildHtml({ ...BASE, mode: "critical", critical: CRIT, issueStates: { open, closed: true } })
+      .match(/<select id="work-plan-critical-status"[^>]*>/)?.[0] ?? "";
+    assert.ok(status(false).includes("disabled"));
+    assert.ok(!status(true).includes("disabled"));
   });
 });
