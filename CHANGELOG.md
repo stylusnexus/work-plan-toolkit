@@ -6,6 +6,36 @@ to `main` — from that PR's title and body. Don't hand-edit below the marker.
 
 <!-- new entries inserted below -->
 
+## 2026.11.26+a5998d8 — 2026-11-26 (#603)
+
+feat: filter issues, sort tables, lock graph
+
+Work Plan Viewer 0.24.0. VS Code extension only; the CLI is unchanged.
+
+### Added
+
+- **Choose which issue states you see (#598).** New Issue state checkboxes apply to Focus on track, Full map, Critical path and the issue tables. They replace "Show closed" and the "Done" status choice.
+- **Sort and filter the issue table from its headings (#598).** Every column sorts within each milestone group. Title, State and Assignee also filter, and your choices stay through a refresh.
+- **Lock the graph (#597).** A padlock button stops the mouse wheel and dragging from moving or zooming the graph. A locked graph keeps its zoom and position through a refresh.
+
+### Changed
+
+- **Only open issues show to start.** Check Closed to see closed issues.
+
+### Fixed
+
+- Milestone groups no longer look empty in tracks with more than 50 issues.
+- The graph header wraps in a narrow panel instead of overlapping or running off the edge.
+
+### Known issues
+
+- If the issue table's script fails, later milestone groups cannot be opened and closed issues show.
+- VoiceOver, high contrast themes, 200% zoom and a full keyboard-only pass have not been tested.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_011jjas3X96Z3QWJCiEKLnik
+
 ## 2026.11.14+107ec7b — 2026-11-14 (#592)
 
 fix(viewer): refresh when track files change
