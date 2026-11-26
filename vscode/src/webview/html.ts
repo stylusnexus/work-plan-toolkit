@@ -652,7 +652,45 @@ ${criticalScript}
     }
     function reset() { state.scale = 1; state.tx = 0; state.ty = 0; apply(); }
 
+    // Lock (#597): the wheel scrolls the page and dragging does not pan. Zoom
+    // buttons and click-to-trace still work. Remembered while the panel is open.
+    var savedView = vscode && vscode.getState ? vscode.getState() : null;
+    var locked = !!savedView && savedView.graphLocked === true;
+    var lockButton = document.getElementById("graph-lock");
+    function showLock() {
+      figure.classList.toggle("locked", locked);
+      if (lockButton) {
+        lockButton.setAttribute("aria-pressed", locked ? "true" : "false");
+      }
+    }
+    showLock();
+    // A locked graph keeps its zoom and position when the page is rebuilt. The
+    // view belongs to one graph (mode and track), so no other graph gets it.
+    var viewKey = ${scriptJson(`${o.mode} ${o.trackKey}`)};
+    function saveLock() {
+      if (!vscode) { return; }
+      var patch = { graphLocked: locked };
+      if (locked) { patch.graphView = { key: viewKey, scale: state.scale, tx: state.tx, ty: state.ty }; }
+      vscode.setState(Object.assign({}, vscode.getState(), patch));
+    }
+    function keepView() { if (locked) { saveLock(); } }
+    function restoreView() {
+      var v = savedView ? savedView.graphView : null;
+      if (!locked || !v || v.key !== viewKey) { return; }
+      if (![v.scale, v.tx, v.ty].every(function (n) { return typeof n === "number" && isFinite(n); })) { return; }
+      state.scale = clamp(v.scale); state.tx = v.tx; state.ty = v.ty;
+      apply();
+    }
+    if (lockButton) {
+      lockButton.addEventListener("click", function () {
+        locked = !locked;
+        showLock();
+        saveLock();
+      });
+    }
+
     figure.addEventListener("wheel", function (e) {
+      if (locked) { return; }
       e.preventDefault();
       var r = figure.getBoundingClientRect();
       zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - r.left, e.clientY - r.top);
@@ -661,7 +699,9 @@ ${criticalScript}
     var dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0, picked = null;
     onFlowPick = function (id) { picked = id; traceIssue(svg, id); };
     figure.addEventListener("pointerdown", function (e) {
-      dragging = true; lastX = e.clientX; lastY = e.clientY; startX = lastX; startY = lastY;
+      startX = e.clientX; startY = e.clientY;
+      if (locked) { return; }
+      dragging = true; lastX = startX; lastY = startY;
       figure.classList.add("grabbing");
       try { figure.setPointerCapture(e.pointerId); } catch (err) {}
     });
@@ -696,10 +736,10 @@ ${criticalScript}
       if (el) { el.addEventListener("click", fn); }
     }
     function center() { var r = figure.getBoundingClientRect(); return [r.width / 2, r.height / 2]; }
-    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); });
-    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); });
-    on("graph-fit", fit);
-    on("graph-reset", reset);
+    on("graph-zoom-in", function () { var c = center(); zoomAt(1.2, c[0], c[1]); keepView(); });
+    on("graph-zoom-out", function () { var c = center(); zoomAt(0.8, c[0], c[1]); keepView(); });
+    on("graph-fit", function () { fit(); keepView(); });
+    on("graph-reset", function () { reset(); keepView(); });
 
     // Export: clone the SVG, strip our live transform, serialize. PNG rasterizes
     // the cloned SVG onto a canvas (self-contained SVG → canvas isn't tainted).
@@ -738,6 +778,7 @@ ${criticalScript}
     });
 
     fit(); // initial fit of the whole graph so a dense map is navigable from the start
+    restoreView();
     // Last, so a tooltip failure cannot leave the zoom/pan controls unbound.
     applyNodeTitles(svg);
   }
@@ -965,6 +1006,15 @@ ${criticalScript}
       touch-action: none;
     }
     .graph-figure.grabbing { cursor: grabbing; }
+    .graph-figure.locked { cursor: default; touch-action: auto; }
+    #graph-lock svg { vertical-align: middle; }
+    #graph-lock .lock-closed, #graph-lock[aria-pressed="true"] .lock-open { display: none; }
+    #graph-lock[aria-pressed="true"] .lock-closed { display: inline; }
+    #graph-lock[aria-pressed="true"] { background: var(--link); color: var(--bg); border-color: var(--link); }
+    @media (forced-colors: active) {
+      #graph-lock[aria-pressed="true"] { background: Highlight; color: HighlightText; border-color: Highlight; forced-color-adjust: none; }
+      #graph-lock[aria-pressed="true"]:focus-visible { outline-color: CanvasText; }
+    }
     .mermaid {
       /* svg is positioned + transformed by the pan/zoom controller; origin at
          top-left so button/wheel zoom math is simple. No padding or margin:
@@ -1231,6 +1281,10 @@ ${criticalScript}
       <label><input type="checkbox" id="work-plan-state-closed"${o.issueStates.closed ? " checked" : ""}> Closed</label>
     </fieldset>
     <div class="graph-controls" role="group" aria-label="Graph zoom and export controls">
+      <button type="button" class="graph-ctl" id="graph-lock"${ctlOff} title="Lock graph" aria-label="Lock graph" aria-pressed="false">
+        <svg class="lock-open" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><rect x="3" y="7" width="10" height="7" rx="1" fill="currentColor"/><path d="M5.5 7V4.5a2.5 2.5 0 0 1 5 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        <svg class="lock-closed" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><rect x="3" y="7" width="10" height="7" rx="1" fill="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
       <button type="button" class="graph-ctl" id="graph-zoom-out"${ctlOff} title="Zoom out" aria-label="Zoom out">&minus;</button>
       <button type="button" class="graph-ctl" id="graph-zoom-in"${ctlOff} title="Zoom in" aria-label="Zoom in">+</button>
       <button type="button" class="graph-ctl" id="graph-fit"${ctlOff} title="Fit graph to width" aria-label="Fit graph to width">Fit</button>
