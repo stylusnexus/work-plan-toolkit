@@ -6,6 +6,15 @@ for the fuller narrative (including releases before this file started); new
 entries land here going forward on every publish, alongside the `## Status`
 line in `README.md`.
 
+## [0.24.2] - 2026-11-26
+
+### Fixed
+
+- **Critical path's issue chain shows names, not internal ids.** Linked tracks,
+  issues from outside the tracks, the “done that blocked this” item and the
+  hidden-issues box showed codes such as `k_0`, on screen and in copied text.
+  Long names now wrap.
+
 ## [0.24.1] - 2026-11-26
 
 ### Security

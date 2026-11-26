@@ -267,8 +267,9 @@ The webview loads **`dist/mermaid.min.js`** — the **UMD bundle** from Mermaid 
 
 ## Status
 
-**Published — v0.24.1 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`).
+**Published — v0.24.2 on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=stylusnexus.work-plan-viewer) and [Open VSX](https://open-vsx.org/extension/stylusnexus/work-plan-viewer)** (publisher `stylusnexus`).
 
+- **v0.24.2** — **Readable issue chains.** In Critical path, linked tracks and other non-issue items now show their names, on screen and in copied text, instead of codes such as `k_0`.
 - **v0.24.1** — **Security update to the graph library.** Mermaid 12.3.0 brings a newer content-cleaning library that addresses two published advisories (GHSA-55q2-fjhq-7xh7, GHSA-6688-9rhm-gjv2). No CLI change is required.
 - **v0.24.0** — **See only what you need.** New **Issue state** checkboxes apply to every graph view and the issue tables, with **only open issues shown to start** (check **Closed** for the rest). The issue table now sorts and filters from its headings, like a spreadsheet (#598). A padlock button locks the graph so scrolling the page no longer zooms it, and a locked graph keeps its zoom and position through a refresh (#597). Also fixes milestone groups that looked empty in tracks with more than 50 issues, and a graph header that overlapped in narrow panels. No CLI change is required.
 - **v0.23.1** — **The tree keeps up with your terminal.** The viewer now watches your track files, so slotting an issue with `work-plan slot` (or editing a track) refreshes the tree within a couple of seconds, and a slotted issue no longer lingers under Untracked (#589).
